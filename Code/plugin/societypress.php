@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.4
+ * Version:     1.1.3
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.4' );
+define( 'SOCIETYPRESS_VERSION', '1.1.3' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -105106,7 +105106,14 @@ function sp_newsletter_parse_toc( string $text ): array {
         // A title, then either a run of spaces or dot leaders, then a page
         // number. Applied repeatedly per line because these blocks are printed
         // in two or three columns that extract onto a single line.
-        if ( preg_match_all( '/(\p{L}[^\d\n]{2,60}?)[\s.]{2,}(\d{1,3})(?![\d\p{L}])/u', $line, $matches, PREG_SET_ORDER ) ) {
+        //
+        // WHY the title may contain digits: societies title articles "The 1890
+        // Problem" and "Notes on the 1921 Census" constantly. Forbidding digits
+        // outright truncated those to "Problem" and "Census". What separates a
+        // year inside a title from the page number after it is the gap — a
+        // page number is preceded by two or more spaces or a run of dots,
+        // where a year inside a phrase is preceded by one.
+        if ( preg_match_all( '/(\p{L}[^\n]{2,60}?)[ .\t]{2,}(\d{1,3})(?![\d\p{L}])/u', $line, $matches, PREG_SET_ORDER ) ) {
             foreach ( $matches as $hit ) {
                 $title = trim( (string) preg_replace( '/[\s.]+$/u', '', $hit[1] ) );
                 if ( mb_strlen( $title ) < 3 ) {

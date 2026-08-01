@@ -113,6 +113,32 @@ if [ -f "$ATTACH_SCRIPT" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 3c. Build the newsletter text index
+#
+# WHY this has to run here: the rebuild deletes and re-creates every newsletter
+# row, so yesterday's index rows point at issues that no longer exist. Without
+# this step the demo comes back each morning with covers and downloads intact
+# but nothing searchable inside them, which is the half of the module worth
+# showing. Also fills in each issue's contents list from its printed one.
+# ---------------------------------------------------------------------------
+
+echo "Indexing newsletter text..."
+$WP eval '
+global $wpdb;
+$ids = $wpdb->get_col( "SELECT id FROM {$wpdb->prefix}sp_newsletters" );
+$ok = 0; $toc = 0; $failed = 0;
+foreach ( $ids as $id ) {
+    $r = sp_newsletter_build_index( (int) $id );
+    if ( is_wp_error( $r ) ) { $failed++; continue; }
+    $ok++;
+    if ( ! empty( $r["toc_items"] ) ) { $toc++; }
+}
+echo "  Indexed {$ok} of " . count( $ids ) . " newsletters, {$toc} with a contents list";
+if ( $failed ) { echo ", {$failed} failed"; }
+echo ".\n";
+' 2>&1
+
+# ---------------------------------------------------------------------------
 # 4. Reset demo user password (in case someone changed it)
 # ---------------------------------------------------------------------------
 

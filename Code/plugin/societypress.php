@@ -5665,16 +5665,13 @@ add_action( 'admin_init', function () {
  *      flyout panels so it LOOKS like three levels even though WordPress only
  *      supports two.
  *
- * WHAT THE USER SEES:
- *
- *   SocietyPress
- *   ├── Members          → All Members, Add New, Import
- *   ├── Events           (placeholder)
- *   ├── Governance       (placeholder)
- *   ├── Library          (standalone, placeholder)
- *   ├── Finances         (standalone, placeholder)
- *   ├── Appearance       → Pages, Media
- *   └── Settings         → Settings
+ * WHAT THE USER SEES: one "SocietyPress" menu whose children are the groups
+ * defined in sp_default_menu_config() — Members, Money, Events, Meetings &
+ * Board, Volunteers, Library, Research, Newsletters & Email, Website, Reports,
+ * Settings — each opening a flyout panel of its screens.
+ * That function is the source of truth for the arrangement; an administrator
+ * can override it from Appearance → Menu Layout. Anything registered but not
+ * listed there is appended below the groups rather than lost.
  */
 // ---- SocietyPress = Dashboard (parent menu) — registered EARLY ----
 // WHY priority 5, ahead of every submenu: WordPress derives each submenu page's
@@ -6788,9 +6785,14 @@ add_action( 'admin_menu', function () {
     //      deployed, would get "Sorry, you are not allowed to access
     //      this page." This hidden submenu catches the old URL and
     //      redirects to the new Website settings page.
+    //
+    // WHY parent null rather than 'societypress': with the SocietyPress parent
+    //      it was a real sidebar entry carrying an empty label, so it drew a
+    //      blank row at the bottom of the menu. A null parent registers the
+    //      page without listing it, which is what "hidden" was meant to be.
     // -----------------------------------------------------------------
     add_submenu_page(
-        'societypress',
+        null,
         '',
         '',
         'manage_options',
@@ -6989,14 +6991,19 @@ function sp_get_menu_capability_map(): array {
 
         // Settings — admin-only (sp_manage_settings)
         'sp-settings-website'      => 'sp_manage_settings',
-        'sp-settings-org'          => 'sp_manage_settings',
+        // The page slug is sp-settings-organization; 'sp-settings-org' is the
+        // register_setting() group name and never matched a menu item, which
+        // left this screen stuck on manage_options for delegated staff.
+        'sp-settings-organization' => 'sp_manage_settings',
         'sp-settings-membership'   => 'sp_manage_settings',
         'sp-settings-directory'    => 'sp_manage_settings',
         'sp-settings-events'       => 'sp_manage_settings',
         'sp-settings-privacy'      => 'sp_manage_settings',
         'sp-settings-export'       => 'sp_manage_settings',
         'privacy-policy-guide.php' => 'sp_manage_settings',
-        'sp-design'                => 'sp_manage_settings',
+        // Same slug drift as above: the Design screen registers as
+        // sp-settings-design, not sp-design.
+        'sp-settings-design'       => 'sp_manage_settings',
         'sp-settings-modules'      => 'sp_manage_settings',
         // sp-user-access deliberately uses manage_options rather than
         // sp_manage_settings — granting capabilities to other users is
@@ -7005,6 +7012,21 @@ function sp_get_menu_capability_map(): array {
         'sp-audit-log'             => 'sp_manage_settings',
         'sp-help-tags'             => 'sp_manage_content',
         'sp-theme-presets'         => 'sp_manage_settings',
+
+        // Screens that registered late, or outside the main menu block, and
+        // were never given a delegable capability. Left on manage_options they
+        // were invisible to every role template — a librarian could open the
+        // catalog but not the subscription databases sitting next to it.
+        'sp-access-log'            => 'sp_manage_settings',
+        'sp-subscribers'           => 'sp_manage_communications',
+        'sp-database-subscriptions'=> 'sp_manage_library',
+        'sp-research-guides'       => 'sp_manage_content',
+        'sp-short-links'           => 'sp_manage_content',
+        'sp-import-ens-pages'      => 'sp_manage_content',
+        'sp-import-gallery'        => 'sp_manage_content',
+        // Deliberately NOT remapped, and each for its own reason: sp-menu-layout
+        // and sp-user-access are structural/privilege-granting (see above), and
+        // sp-settings is a hidden redirect stub with no screen of its own.
     ];
 
     // WHY apply_filters: late-registered admin pages (theme presets, help
@@ -10717,40 +10739,197 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
  *      and the merge logic that keeps new features visible. Group labels are
  *      translatable; icons are fixed per group.
  *
- * @return array{groups: array<int, array{id:string,label:string,icon:string,items:string[]}>, standalone: string[]}
+ * WHY groups are named for the work rather than for the job that does it: a
+ *      society's word for the same job varies — membership director, membership
+ *      secretary, registrar — so a group labelled with one of them reads as
+ *      somebody else's menu to half the societies using it. "Members" and
+ *      "Money" mean the same thing everywhere.
+ *
+ * An item is a page slug. An item written as [ 'heading' => '…' ] is a labelled
+ * divider inside the drop down, not a link, and everything below it is inset.
+ *
+ * @return array{groups: array<int, array{id:string,label:string,icon:string,items:array<int, string|array{heading:string}>}>, standalone: string[]}
  */
 function sp_default_menu_config(): array {
     return [
         'groups' => [
             [ 'id' => 'members', 'label' => __( 'Members', 'societypress' ), 'icon' => 'dashicons-id',
-              'items' => [ 'sp-members', 'sp-import', 'sp-export', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes' ] ],
+              'items' => [ 'sp-members', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes',
+                           [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
+                           'sp-import', 'sp-export' ] ],
+
+            [ 'id' => 'finances', 'label' => __( 'Money', 'societypress' ), 'icon' => 'dashicons-money-alt',
+              'items' => [ 'sp-finances', 'sp-record-payment', 'sp-donations', 'sp-campaigns',
+                           [ 'heading' => __( 'Store', 'societypress' ) ],
+                           'sp-store-products', 'sp-orders' ] ],
+
             [ 'id' => 'events', 'label' => __( 'Events', 'societypress' ), 'icon' => 'dashicons-calendar-alt',
-              'items' => [ 'sp-events', 'sp-event-categories', 'sp-speakers', 'sp-import-events', 'sp-external-calendars' ] ],
-            [ 'id' => 'governance', 'label' => __( 'Governance', 'societypress' ), 'icon' => 'dashicons-building',
-              'items' => [ 'sp-governance', 'sp-committees', 'sp-meetings', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-ballots' ] ],
-            [ 'id' => 'gallery', 'label' => __( 'Add Images', 'societypress' ), 'icon' => 'dashicons-format-gallery',
-              'items' => [ 'sp-gallery' ] ],
+              'items' => [ 'sp-events', 'sp-event-categories', 'sp-speakers', 'sp-external-calendars', 'sp-import-events' ] ],
+
+            // WHY 'governance' keeps its id under a plainer label: the id is what
+            // an already-saved layout matches on, so renaming it would strand the
+            // admin's arrangement in a group nothing recognises.
+            [ 'id' => 'governance', 'label' => __( 'Meetings & Board', 'societypress' ), 'icon' => 'dashicons-building',
+              'items' => [ 'sp-chair', 'sp-meetings', 'sp-governance', 'sp-committees', 'sp-ballots',
+                           [ 'heading' => __( 'Documents', 'societypress' ) ],
+                           'sp-documents', 'sp-document-categories' ] ],
+
+            [ 'id' => 'volunteers', 'label' => __( 'Volunteers', 'societypress' ), 'icon' => 'dashicons-groups',
+              'items' => [ 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities' ] ],
+
             [ 'id' => 'library', 'label' => __( 'Library', 'societypress' ), 'icon' => 'dashicons-book-alt',
-              'items' => [ 'sp-library', 'sp-resource-categories', 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-import-links', 'sp-help-requests', 'sp-newsletter-archive', 'sp-documents', 'sp-document-categories' ] ],
-            [ 'id' => 'genealogy', 'label' => __( 'Genealogy', 'societypress' ), 'icon' => 'dashicons-book',
-              'items' => [ 'sp-record-collections', 'sp-import-records', 'sp-database-subscriptions', 'sp-research-guides' ] ],
-            [ 'id' => 'lineage', 'label' => __( 'Lineage', 'societypress' ), 'icon' => 'dashicons-awards',
-              'items' => [ 'sp-lineage-programs', 'sp-lineage-applications' ] ],
-            [ 'id' => 'research_services', 'label' => __( 'Research Services', 'societypress' ), 'icon' => 'dashicons-search',
-              'items' => [ 'sp-research-cases' ] ],
-            [ 'id' => 'finances', 'label' => __( 'Finances', 'societypress' ), 'icon' => 'dashicons-money-alt',
-              'items' => [ 'sp-finances', 'sp-record-payment', 'sp-donations', 'sp-campaigns', 'sp-store-products', 'sp-orders' ] ],
-            [ 'id' => 'communications', 'label' => __( 'Communications', 'societypress' ), 'icon' => 'dashicons-email-alt',
-              'items' => [ 'sp-blast-email', 'sp-email-templates', 'sp-email-log' ] ],
-            [ 'id' => 'appearance', 'label' => __( 'Appearance', 'societypress' ), 'icon' => 'dashicons-admin-appearance',
-              'items' => [ 'sp-themes', 'sp-theme-presets', 'sp-pages', 'upload.php', 'nav-menus.php', 'widgets.php', 'customize.php', 'sp-settings-design', 'sp-menu-layout' ] ],
+              'items' => [ 'sp-library-catalog', 'sp-library-categories', 'sp-database-subscriptions',
+                           [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
+                           'sp-import-library', 'sp-library-enrich' ] ],
+
+            // WHY one Research group rather than the old Genealogy, Lineage and
+            // Research Services: three groups holding four, two and one item each
+            // made Harold guess which of three doors the thing was behind. They are
+            // one job — helping somebody find an ancestor — so they are one door
+            // with labelled shelves inside.
+            [ 'id' => 'research', 'label' => __( 'Research', 'societypress' ), 'icon' => 'dashicons-search',
+              'items' => [ 'sp-help-requests', 'sp-research-cases', 'sp-research-guides',
+                           [ 'heading' => __( 'Records', 'societypress' ) ],
+                           'sp-record-collections', 'sp-import-records', 'sp-import-records-bulk',
+                           [ 'heading' => __( 'Lineage programs', 'societypress' ) ],
+                           'sp-lineage-programs', 'sp-lineage-applications',
+                           [ 'heading' => __( 'Links for researchers', 'societypress' ) ],
+                           'sp-library', 'sp-resource-categories', 'sp-import-links' ] ],
+
+            [ 'id' => 'communications', 'label' => __( 'Newsletters & Email', 'societypress' ), 'icon' => 'dashicons-email-alt',
+              'items' => [ 'sp-blast-email', 'sp-subscribers', 'sp-email-templates', 'sp-email-log',
+                           [ 'heading' => __( 'Newsletters', 'societypress' ) ],
+                           'sp-newsletter-archive', 'sp-import-newsletters' ] ],
+
+            // WHY the website's content and its look sit in one group: a volunteer
+            // changing "the website" does not know in advance whether the thing
+            // they want is a page or a colour, and two groups both meaning "the
+            // site" is exactly the guess this redesign exists to remove. The design
+            // screens sit below a divider so the sharp tools stay out of the way
+            // without being hidden.
+            [ 'id' => 'appearance', 'label' => __( 'Website', 'societypress' ), 'icon' => 'dashicons-admin-site',
+              'items' => [ 'sp-pages', 'sp-forms', 'sp-gallery', 'upload.php', 'nav-menus.php', 'widgets.php', 'sp-short-links',
+                           [ 'heading' => __( 'How it looks', 'societypress' ) ],
+                           'sp-themes', 'sp-theme-presets', 'sp-settings-design', 'customize.php', 'sp-menu-layout',
+                           [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
+                           'sp-import-ens-pages', 'sp-import-gallery' ] ],
+
             [ 'id' => 'reports', 'label' => __( 'Reports', 'societypress' ), 'icon' => 'dashicons-chart-bar',
-              'items' => [ 'sp-reports', 'sp-insights', 'sp-annual-report', 'sp-membership-reports', 'sp-audit-log', 'sp-access-log' ] ],
+              'items' => [ 'sp-reports', 'sp-insights', 'sp-annual-report', 'sp-membership-reports' ] ],
+
             [ 'id' => 'settings', 'label' => __( 'Settings', 'societypress' ), 'icon' => 'dashicons-admin-generic',
-              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access' ] ],
+              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access',
+                           [ 'heading' => __( 'History', 'societypress' ) ],
+                           'sp-audit-log', 'sp-access-log' ] ],
         ],
+        // WHY sp-notepad is in no group: it is a personal scratchpad, not a
+        // society record, and it is the one screen a volunteer with no access
+        // area at all can open. The sidebar appends ungrouped items after the
+        // groups, which puts it below the society's work rather than inside it.
         'standalone' => [],
     ];
+}
+
+/**
+ * Groups that no longer exist in the defaults, mapped to the group that took
+ * their work over.
+ *
+ * WHY this list is needed: a saved layout stores group ids. When a shipped
+ *      group is retired, the saved copy keeps rendering it AND the successor
+ *      group arrives as brand new, so the society sees the same screens twice
+ *      under two names. Folding the retired group into its successor on read
+ *      makes an upgrade look like a rearrangement rather than a duplication.
+ *
+ * @return array<string, string> retired group id => surviving group id
+ */
+function sp_retired_menu_groups(): array {
+    return [
+        'gallery'           => 'appearance',        // Photos are part of the website
+        'genealogy'         => 'research',          // three one-job groups became
+        'lineage'           => 'research',          // labelled shelves inside a
+        'research_services' => 'research',          // single Research drop down
+    ];
+}
+
+/**
+ * Fold any retired group in a saved layout into the group that replaced it,
+ * keeping the admin's own item order and their hidden flags.
+ *
+ * INVARIANT: read-only. The stored option is left alone until the admin next
+ *            saves from the Menu Layout screen, so nothing is rewritten under
+ *            a society that only ever looked at its menu.
+ *
+ * @param array $saved The stored layout.
+ * @return array The same layout with retired groups merged away.
+ */
+function sp_fold_retired_menu_groups( array $saved ): array {
+    $retired = sp_retired_menu_groups();
+    $groups  = (array) ( $saved['groups'] ?? [] );
+
+    $needs_folding = false;
+    foreach ( $groups as $g ) {
+        if ( isset( $retired[ $g['id'] ?? '' ] ) ) {
+            $needs_folding = true;
+            break;
+        }
+    }
+    if ( ! $needs_folding ) {
+        return $saved;
+    }
+
+    $default_by_id = [];
+    foreach ( sp_default_menu_config()['groups'] as $g ) {
+        $default_by_id[ $g['id'] ] = $g;
+    }
+
+    $out     = [];
+    $pos     = [];  // surviving group id => its index in $out
+    $waiting = [];  // successor id => items whose group came first
+
+    foreach ( $groups as $g ) {
+        $gid = $g['id'] ?? '';
+
+        if ( isset( $retired[ $gid ] ) ) {
+            $items = (array) ( $g['items'] ?? [] );
+            // A retired group the admin had hidden was a deliberate "I don't use
+            // this" — carry that onto each item so folding doesn't un-hide it.
+            if ( ! empty( $g['hidden'] ) ) {
+                foreach ( $items as $k => $it ) {
+                    if ( ! empty( $it['slug'] ) ) {
+                        $items[ $k ]['hidden'] = true;
+                    }
+                }
+            }
+            $target = $retired[ $gid ];
+            if ( isset( $pos[ $target ] ) ) {
+                $out[ $pos[ $target ] ]['items'] = array_merge( (array) $out[ $pos[ $target ] ]['items'], $items );
+            } else {
+                $waiting[ $target ] = array_merge( $waiting[ $target ] ?? [], $items );
+            }
+            continue;
+        }
+
+        if ( isset( $waiting[ $gid ] ) ) {
+            $g['items'] = array_merge( (array) ( $g['items'] ?? [] ), $waiting[ $gid ] );
+            unset( $waiting[ $gid ] );
+        }
+        $pos[ $gid ] = count( $out );
+        $out[]       = $g;
+    }
+
+    // A successor the saved layout never had: start it from the shipped default.
+    foreach ( $waiting as $target => $items ) {
+        $out[] = [
+            'id'     => $target,
+            'label'  => $default_by_id[ $target ]['label'] ?? $target,
+            'custom' => false,
+            'hidden' => false,
+            'items'  => $items,
+        ];
+    }
+
+    $saved['groups'] = $out;
+    return $saved;
 }
 
 /**
@@ -10760,7 +10939,10 @@ function sp_default_menu_config(): array {
  */
 function sp_get_saved_menu_layout(): ?array {
     $saved = get_option( 'sp_menu_layout', null );
-    return ( is_array( $saved ) && ! empty( $saved['groups'] ) ) ? $saved : null;
+    if ( ! is_array( $saved ) || empty( $saved['groups'] ) ) {
+        return null;
+    }
+    return sp_fold_retired_menu_groups( $saved );
 }
 
 /**
@@ -10777,12 +10959,14 @@ function sp_get_effective_menu_config(): array {
     $default = sp_default_menu_config();
     $saved   = sp_get_saved_menu_layout();
 
-    // Normalise a default group's plain slug list into entry objects. Every
-    // group's items are entry objects downstream: { slug: … } or { heading: … }.
-    $to_entries = function ( array $slugs ): array {
-        return array_map( function ( $s ) {
-            return [ 'slug' => $s ];
-        }, $slugs );
+    // Normalise a default group's item list into entry objects. Every group's
+    // items are entry objects downstream: { slug: … } or { heading: … }. A
+    // default item is a plain slug string, except for the sub-heading dividers
+    // the defaults ship, which arrive already in entry form.
+    $to_entries = function ( array $items ): array {
+        return array_map( function ( $i ) {
+            return is_array( $i ) ? $i : [ 'slug' => $i ];
+        }, $items );
     };
 
     if ( ! $saved ) {
@@ -10799,19 +10983,24 @@ function sp_get_effective_menu_config(): array {
         $default_by_id[ $g['id'] ] = $g;
     }
 
-    // Every slug the admin has explicitly placed (grouped OR ungrouped). Used to
-    // decide which default items are brand-new and need re-homing.
+    // Every slug the admin has put inside a group. Used to decide which default
+    // items are new to this layout and need re-homing.
+    //
+    // WHY the ungrouped bucket does NOT count as placed: an item lands there
+    // two ways — the admin dragged it out of a group, or it simply had no home
+    // in the defaults when the layout was last saved. The stored data cannot
+    // tell those apart, and treating both as deliberate froze every item the
+    // defaults later adopted, permanently, on any site that had ever saved a
+    // layout. It also disagreed with the Menu Layout editor, which claims an
+    // item for its default group before it reads the ungrouped bucket, so the
+    // sidebar and the screen that edits the sidebar showed different menus.
+    // Items with no default home still stay ungrouped; nothing claims them.
     $placed = [];
     foreach ( (array) ( $saved['groups'] ?? [] ) as $sg ) {
         foreach ( (array) ( $sg['items'] ?? [] ) as $it ) {
             if ( ! empty( $it['slug'] ) ) {
                 $placed[ $it['slug'] ] = true;
             }
-        }
-    }
-    foreach ( (array) ( $saved['ungrouped'] ?? [] ) as $it ) {
-        if ( ! empty( $it['slug'] ) ) {
-            $placed[ $it['slug'] ] = true;
         }
     }
 
@@ -10852,9 +11041,14 @@ function sp_get_effective_menu_config(): array {
             }
         }
 
-        // Re-home any brand-new default items belonging to this group.
+        // Re-home any brand-new default items belonging to this group. Default
+        // sub-heading dividers are skipped: the admin's own arrangement of this
+        // group decides where dividers sit.
         if ( $dg ) {
             foreach ( $dg['items'] as $slug ) {
+                if ( ! is_string( $slug ) ) {
+                    continue;
+                }
                 if ( empty( $placed[ $slug ] ) && ! isset( $seen_slugs[ $slug ] ) ) {
                     $seen_slugs[ $slug ] = true;
                     $items[]             = [ 'slug' => $slug ];
@@ -10875,12 +11069,32 @@ function sp_get_effective_menu_config(): array {
         $out_groups[] = [ 'id' => $gid, 'label' => $label, 'icon' => $icon, 'items' => $items ];
     }
 
-    // Brand-new default groups the saved layout never saw.
+    // Brand-new default groups the saved layout never saw. Only items the admin
+    // hasn't already put somewhere come along.
+    //
+    // WHY the check: splitting Volunteers out of Meetings & Board gave those
+    //      three screens a new home, but a society that had already arranged the
+    //      old group still has them there. Without this they showed up in both
+    //      places, and the sidebar can only ever draw one of the two — so half
+    //      the menu was a lie. A new group with nothing left to hold is dropped.
     foreach ( $default['groups'] as $g ) {
-        if ( empty( $seen_gids[ $g['id'] ] ) ) {
-            $g['items']   = $to_entries( $g['items'] );
-            $out_groups[] = $g;
+        if ( ! empty( $seen_gids[ $g['id'] ] ) ) {
+            continue;
         }
+        $fresh = [];
+        foreach ( $g['items'] as $item ) {
+            if ( ! is_string( $item ) ) {
+                continue; // sub-heading divider — meaningless without its items
+            }
+            if ( empty( $placed[ $item ] ) ) {
+                $fresh[] = $item;
+            }
+        }
+        if ( ! $fresh ) {
+            continue;
+        }
+        $g['items']   = $to_entries( $fresh );
+        $out_groups[] = $g;
     }
 
     // Ungrouped items the admin hid still need pulling from the sidebar.
@@ -10926,7 +11140,7 @@ function sp_menu_layout_editor_model(): array {
                 'custom' => false,
                 'hidden' => false,
                 'items'  => array_map( function ( $s ) {
-                    return [ 'slug' => $s, 'hidden' => false ];
+                    return is_array( $s ) ? $s : [ 'slug' => $s, 'hidden' => false ];
                 }, $g['items'] ),
             ];
         }, $default['groups'] ),
@@ -10967,9 +11181,13 @@ function sp_menu_layout_editor_model(): array {
             $used[ $slug ] = true;
             $items_out[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => ! empty( $it['hidden'] ) ];
         }
-        // New default items for this group.
+        // New default items for this group. Sub-heading dividers are skipped —
+        // the editor carries through whatever dividers the admin already has.
         if ( $dg ) {
             foreach ( $dg['items'] as $slug ) {
+                if ( ! is_string( $slug ) ) {
+                    continue;
+                }
                 if ( isset( $live[ $slug ] ) && ! isset( $used[ $slug ] ) ) {
                     $used[ $slug ] = true;
                     $items_out[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => false ];
@@ -10994,6 +11212,10 @@ function sp_menu_layout_editor_model(): array {
         }
         $items_out = [];
         foreach ( $g['items'] as $slug ) {
+            if ( is_array( $slug ) && isset( $slug['heading'] ) ) {
+                $items_out[] = [ 'heading' => sanitize_text_field( (string) $slug['heading'] ) ];
+                continue;
+            }
             if ( isset( $live[ $slug ] ) && ! isset( $used[ $slug ] ) ) {
                 $used[ $slug ] = true;
                 $items_out[]   = [ 'slug' => $slug, 'label' => $live[ $slug ], 'hidden' => false ];

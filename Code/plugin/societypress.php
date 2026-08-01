@@ -5741,9 +5741,17 @@ add_action( 'admin_menu', function () {
     //      committee chairs, and volunteers holding nothing but a plain
     //      WordPress role. See sp_user_can_use_notepad() for where the line
     //      sits and why it stops short of members.
+    //
+    // WHY it is registered but not listed: every other row in the sidebar is
+    //      the society's own records, and a message between volunteers sitting
+    //      among them read as clutter. It lives on the dashboard instead —
+    //      which is where a handoff note is actually useful, because the
+    //      question it answers is "what did the last person leave me?" and you
+    //      ask that the moment you sign in. The page itself is unchanged and
+    //      the dashboard panel links straight to it.
     // -----------------------------------------------------------------
     add_submenu_page(
-        'societypress',
+        null,
         __( 'Notepad — SocietyPress', 'societypress' ),
         __( 'Notepad', 'societypress' ),
         'sp_use_notepad',
@@ -5751,10 +5759,11 @@ add_action( 'admin_menu', function () {
         'sp_render_notepad_page'
     );
 
-    // A volunteer with no SocietyPress access area never sees the
-    // SocietyPress menu, so the submenu above is invisible to them however
-    // the capability reads. Give that person the notepad on its own rather
-    // than exposing a whole menu of screens they cannot open.
+    // A volunteer with no SocietyPress access area never sees the SocietyPress
+    // menu, and never sees the dashboard the notepad now lives on either. Give
+    // that person the notepad on its own rather than exposing a whole menu of
+    // screens they cannot open. This is the one place it still appears in a
+    // sidebar, and only for someone who would otherwise have nothing.
     if ( current_user_can( 'sp_use_notepad' ) && ! current_user_can( 'sp_access_admin' ) ) {
         add_menu_page(
             __( 'Notepad — SocietyPress', 'societypress' ),
@@ -10677,6 +10686,18 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
             parentLink.href = '<?php echo esc_url( admin_url( 'admin.php?page=societypress' ) ); ?>';
         }
 
+        // Dashboard goes back first, above every group.
+        // WHY: it is the row WordPress creates to duplicate the parent menu, and
+        //      clearing the submenu above dropped it in with the ungrouped items
+        //      at the bottom — so the way back to the front page sat below
+        //      Settings. It is where you start, so it belongs where you look
+        //      first. Its slug is the parent's own.
+        var dashboardItem = null;
+        for (var d = 0; d < items.length; d++) {
+            if (items[d].slug === 'societypress') { dashboardItem = items[d]; break; }
+        }
+        if (dashboardItem) spSubmenu.appendChild(dashboardItem.el);
+
         config.groups.forEach(function(gc) {
             if (builtGroups[gc.id]) {
                 spSubmenu.appendChild(builtGroups[gc.id]);
@@ -10859,10 +10880,6 @@ function sp_default_menu_config(): array {
                            [ 'heading' => __( 'History', 'societypress' ) ],
                            'sp-audit-log', 'sp-access-log' ] ],
         ],
-        // WHY sp-notepad is in no group: it is a personal scratchpad, not a
-        // society record, and it is the one screen a volunteer with no access
-        // area at all can open. The sidebar appends ungrouped items after the
-        // groups, which puts it below the society's work rather than inside it.
         'standalone' => [],
     ];
 }
@@ -13960,6 +13977,47 @@ function sp_render_dashboard_page(): void {
                 border-color: #2271b1;
             }
 
+            /* Notepad — full-width panel above the two-column grid */
+            .sp-dash-notepad {
+                margin-bottom: 24px;
+            }
+            .sp-dash-notes {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+            }
+            .sp-dash-note {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                padding: 12px 20px;
+                border-bottom: 1px solid #f0f0f1;
+            }
+            .sp-dash-note:last-child {
+                border-bottom: none;
+            }
+            .sp-dash-note-pin {
+                color: #C9973A;
+                font-size: 16px;
+                flex-shrink: 0;
+            }
+            .sp-dash-note-text {
+                flex: 1;
+            }
+            .sp-dash-note-title {
+                font-weight: 600;
+                text-decoration: none;
+            }
+            .sp-dash-note-title:hover {
+                text-decoration: underline;
+            }
+            .sp-dash-note-meta {
+                display: block;
+                margin-top: 2px;
+                color: #646970;
+                font-size: 12px;
+            }
+
             /* Activity feed — full-width panel below the two-column grid */
             .sp-dash-activity {
                 margin-bottom: 20px;
@@ -14166,6 +14224,63 @@ function sp_render_dashboard_page(): void {
                 <span class="dashicons dashicons-external"></span> <?php echo esc_html__( 'View Site', 'societypress' ); ?>
             </a>
         </div>
+
+        <!-- Notepad — what the last volunteer left for whoever comes next.
+             WHY it sits above everything else: a handoff note is only useful
+             at the moment somebody signs in, and this is the screen they land
+             on. Checked-off notes are left out; this is the open list. -->
+        <?php if ( current_user_can( 'sp_use_notepad' ) ) :
+            $sp_dash_notes = sp_notepad_open_notes();
+            ?>
+            <div class="sp-dash-panel sp-dash-notepad">
+                <div class="sp-dash-panel-header">
+                    <?php echo esc_html__( 'Notepad', 'societypress' ); ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-notepad' ) ); ?>">
+                        <?php echo esc_html__( 'Open the notepad →', 'societypress' ); ?>
+                    </a>
+                </div>
+                <?php if ( $sp_dash_notes ) : ?>
+                    <ul class="sp-dash-notes">
+                        <?php foreach ( $sp_dash_notes as $sp_dash_note ) :
+                            // A note needs no title, so fall back to the opening
+                            // words of the note itself rather than showing a blank
+                            // row that gives Harold nothing to recognise it by.
+                            $sp_note_label = trim( (string) $sp_dash_note->title );
+                            if ( '' === $sp_note_label ) {
+                                $sp_note_label = wp_trim_words( wp_strip_all_tags( $sp_dash_note->content ), 12, '…' );
+                            }
+                            $sp_note_author = get_userdata( (int) $sp_dash_note->author_id );
+                            ?>
+                            <li class="sp-dash-note">
+                                <?php if ( ! empty( $sp_dash_note->is_pinned ) ) : ?>
+                                    <span class="dashicons dashicons-sticky sp-dash-note-pin"
+                                          title="<?php esc_attr_e( 'Pinned', 'societypress' ); ?>"></span>
+                                <?php endif; ?>
+                                <span class="sp-dash-note-text">
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-notepad' ) ); ?>" class="sp-dash-note-title">
+                                        <?php echo esc_html( $sp_note_label ); ?>
+                                    </a>
+                                    <span class="sp-dash-note-meta">
+                                        <?php
+                                        printf(
+                                            /* translators: 1: name of the person who posted the note, 2: how long ago, e.g. "3 days" */
+                                            esc_html__( '%1$s, %2$s ago', 'societypress' ),
+                                            esc_html( $sp_note_author ? $sp_note_author->display_name : __( 'Unknown', 'societypress' ) ),
+                                            esc_html( human_time_diff( strtotime( $sp_dash_note->updated_at ), current_time( 'timestamp' ) ) )
+                                        );
+                                        ?>
+                                    </span>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php else : ?>
+                    <div class="sp-dash-empty">
+                        <?php echo esc_html__( 'Nothing on the notepad. Leave a note for whoever runs the site next.', 'societypress' ); ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
 
         <!-- Two-Column Panels -->
         <div class="sp-dash-panels">
@@ -27823,6 +27938,33 @@ add_action( 'wp_ajax_sp_leave_group', 'sp_ajax_leave_group' );
 //      inline graphics) that any backend user can post, pin, check off,
 //      edit, or delete. Notes live in sp_notes and outlast any session.
 // =========================================================================
+
+/**
+ * The open notes, newest first, for anywhere that shows a short list of them.
+ *
+ * WHY a shared helper: the dashboard panel and the notepad screen order notes
+ *      the same way — pinned first, then most recently touched — and a second
+ *      copy of that ORDER BY would drift from this one the first time either
+ *      changed. Checked-off notes are left out: the dashboard is asking what
+ *      still needs doing, not what already got done.
+ *
+ * @param int $limit Most notes to return.
+ * @return array<int, object> Rows from sp_notes.
+ */
+function sp_notepad_open_notes( int $limit = 4 ): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_notes';
+
+    return (array) $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT * FROM {$table}
+              WHERE is_done = 0
+              ORDER BY is_pinned DESC, updated_at DESC, id DESC
+              LIMIT %d",
+            $limit
+        )
+    );
+}
 
 /**
  * Render one note as a board card.

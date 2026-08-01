@@ -10192,6 +10192,43 @@ add_action( 'admin_head', function () {
 ?>
 <style id="sp-flyout-menu-css">
 /* ==========================================================================
+   SIDEBAR WIDTH — wider than WordPress's 160px
+   WHY: 160px was measured for one-word blogging labels. Our group names are
+        the society's own words for the work — "Newsletters & Email",
+        "Meetings & Board" — and at 160px they ran under the arrow and got
+        clipped. Shortening them to fit would have meant naming the menu
+        after the layout instead of after the work. The menu moves instead.
+   WHY min-width 961px: below that WordPress folds the menu to icons on its
+        own, and under 782px it becomes a full-width overlay. Both are its
+        own layouts and neither wants a fixed width from us. The same goes
+        for a menu the user has collapsed themselves (body.folded).
+   ========================================================================== */
+@media screen and (min-width: 961px) {
+    body:not(.folded) #adminmenu,
+    body:not(.folded) #adminmenuback,
+    body:not(.folded) #adminmenuwrap {
+        width: 220px;
+    }
+    body:not(.folded) #wpcontent,
+    body:not(.folded) #wpfooter {
+        margin-left: 220px;
+    }
+    body.rtl:not(.folded) #wpcontent,
+    body.rtl:not(.folded) #wpfooter {
+        margin-left: 0;
+        margin-right: 220px;
+    }
+    /* WordPress pins its own flyout submenus to the old 160px edge. Ours are
+       positioned by JS off the live sidebar edge, so only core's need moving. */
+    body:not(.folded) #adminmenu .wp-submenu {
+        left: 220px;
+    }
+    body:not(.folded) #adminmenu li.wp-has-current-submenu .wp-submenu {
+        left: auto;
+    }
+}
+
+/* ==========================================================================
    GROUP HEADERS — clickable triggers in the sidebar
    WHY: Each group (Members, Events, etc.) gets a bold header with an icon
         and arrow. Clicking opens its panel over the content area.

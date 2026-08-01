@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.3
+ * Version:     1.1.4
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.3' );
+define( 'SOCIETYPRESS_VERSION', '1.1.4' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2171,6 +2171,24 @@ function sp_create_tables(): void {
         KEY slug (slug),
         KEY pub_date (pub_date),
         KEY visibility (visibility)
+    ) {$charset_collate};" );
+
+    // Extracted newsletter text, kept out of the main table on purpose: the
+    // archive screen does SELECT * across every issue, and one newsletter's
+    // text runs 20-30 KB. Held as a column, a 150-issue archive would drag
+    // several megabytes of body text into a page that only wants titles and
+    // covers.
+    //
+    // WHY no FULLTEXT index: genealogists search fragments — "Strick" to find
+    // Stricklin. MySQL's fulltext cannot do a leading wildcard, and its
+    // minimum word length and stopword list would quietly drop short surnames.
+    // A LIKE scan over a few megabytes is both faster to reason about and
+    // right more often.
+    dbDelta( "CREATE TABLE {$prefix}newsletter_text (
+        newsletter_id BIGINT(20) UNSIGNED NOT NULL,
+        body          LONGTEXT            NULL,
+        indexed_at    DATETIME            NULL,
+        PRIMARY KEY (newsletter_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -37710,9 +37728,15 @@ function sp_get_widget_registry(): array {
         ],
         'newsletter_archive' => [
             'label'       => __( 'Newsletter Archive', 'societypress' ),
-            'description' => __( 'Recent posts from the Newsletter category with dates and excerpts.', 'societypress' ),
+            'description' => __( 'Your newsletters as a grid of covers, with a search box and year filter. Can also show as a compact list.', 'societypress' ),
             'icon'        => 'media-text',
             'category'    => 'content',
+        ],
+        'volunteer_opportunities' => [
+            'label'       => __( 'Volunteer Opportunities', 'societypress' ),
+            'description' => __( 'The board of open volunteer roles members can sign up for, with committee and type filters.', 'societypress' ),
+            'icon'        => 'heart',
+            'category'    => 'action',
         ],
         'volunteer_stats' => [
             'label'       => __( 'Volunteer Stats', 'societypress' ),
@@ -38495,28 +38519,69 @@ function sp_builder_fields_community_link( $index, array $settings ): void {
  * Newsletter Archive widget settings.
  */
 function sp_builder_fields_newsletter_archive( $index, array $settings ): void {
-    $count         = $settings['count'] ?? 10;
-    $show_excerpt  = $settings['show_excerpt'] ?? true;
-    $show_date     = $settings['show_date'] ?? true;
+    $count          = $settings['count'] ?? 0;
+    $layout         = ( 'list' === ( $settings['layout'] ?? 'grid' ) ) ? 'list' : 'grid';
+    $show_search    = $settings['show_search'] ?? true;
+    $show_years     = $settings['show_years'] ?? true;
+    $show_excerpt   = $settings['show_excerpt'] ?? true;
+    $show_date      = $settings['show_date'] ?? true;
     $login_required = $settings['login_required'] ?? false;
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Newsletters you publish under SocietyPress → Newsletters will appear here automatically.', 'societypress' ); ?></p>
+        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-layout"><?php esc_html_e( 'How should they look?', 'societypress' ); ?></label>
+        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][layout]" id="sp-w-<?php echo esc_attr( $index ); ?>-layout">
+            <option value="grid" <?php selected( $layout, 'grid' ); ?>><?php esc_html_e( 'Covers — a grid of issue covers', 'societypress' ); ?></option>
+            <option value="list" <?php selected( $layout, 'list' ); ?>><?php esc_html_e( 'List — titles and dates only', 'societypress' ); ?></option>
+        </select>
+        <p class="description"><?php esc_html_e( 'Covers is the full archive, with a search box and year filter. List is a compact block, better suited to a sidebar or home page.', 'societypress' ); ?></p>
+    </div>
+    <div class="sp-builder-field">
         <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Number of newsletters to show', 'societypress' ); ?></label>
         <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" id="sp-w-<?php echo esc_attr( $index ); ?>-count">
+            <option value="0" <?php selected( (int) $count, 0 ); ?>><?php esc_html_e( 'All of them', 'societypress' ); ?></option>
             <?php foreach ( [ 5, 10, 15, 20, 50 ] as $opt ) : ?>
-                <option value="<?php echo $opt; ?>" <?php selected( $count, $opt ); ?>><?php echo $opt; ?></option>
+                <option value="<?php echo $opt; ?>" <?php selected( (int) $count, $opt ); ?>><?php echo $opt; ?></option>
             <?php endforeach; ?>
         </select>
     </div>
     <div class="sp-builder-field">
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_excerpt]" value="1" <?php checked( $show_excerpt ); ?>> <?php esc_html_e( 'Show excerpt', 'societypress' ); ?></label><br>
-        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_date]" value="1" <?php checked( $show_date ); ?>> <?php esc_html_e( 'Show date', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_search]" value="1" <?php checked( $show_search ); ?>> <?php esc_html_e( 'Show the search box (Covers only)', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_years]" value="1" <?php checked( $show_years ); ?>> <?php esc_html_e( 'Show the year filter (Covers only)', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_excerpt]" value="1" <?php checked( $show_excerpt ); ?>> <?php esc_html_e( 'Show excerpt (List only)', 'societypress' ); ?></label><br>
+        <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][show_date]" value="1" <?php checked( $show_date ); ?>> <?php esc_html_e( 'Show date (List only)', 'societypress' ); ?></label><br>
         <label><input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>> <?php esc_html_e( 'Require login to view', 'societypress' ); ?></label>
     </div>
     <?php
 }
 
+
+/**
+ * Volunteer Opportunities widget settings.
+ */
+function sp_builder_fields_volunteer_opportunities( $index, array $settings ): void {
+    $login_required = $settings['login_required'] ?? false;
+    ?>
+    <div class="sp-builder-field">
+        <p class="description">
+            <?php
+            printf(
+                /* translators: %s: link to the volunteer opportunities admin screen */
+                esc_html__( 'Shows every opportunity you have marked Open or Filled under %s. Members sign up here, and the board handles capacity and the waiting list on its own.', 'societypress' ),
+                '<a href="' . esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ) . '">' . esc_html__( 'Governance → Volunteer Opportunities', 'societypress' ) . '</a>'
+            );
+            ?>
+        </p>
+    </div>
+    <div class="sp-builder-field">
+        <label>
+            <input type="checkbox" name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][login_required]" value="1" <?php checked( $login_required ); ?>>
+            <?php esc_html_e( 'Require login to view the board', 'societypress' ); ?>
+        </label>
+        <p class="description"><?php esc_html_e( 'Left unticked, visitors can read what help is needed but are asked to sign in before signing up — which is usually what recruits them.', 'societypress' ); ?></p>
+    </div>
+    <?php
+}
 
 /**
  * Volunteer Stats widget settings.
@@ -43939,12 +44004,40 @@ function sp_render_event_edit_page(): void {
                         <button type="button" class="button sp-event-edit-add-btn" id="sp-add-speaker-btn">
                             + <?php esc_html_e( 'Add Speaker', 'societypress' ); ?>
                         </button>
-                        <?php if ( empty( $all_speakers ) ) : ?>
-                            <p class="description sp-event-edit-no-speakers-note">
-                                <?php echo esc_html__( 'No speakers in the system yet.', 'societypress' ); ?>
-                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-speaker-edit' ) ); ?>"><?php esc_html_e( 'Add one', 'societypress' ); ?></a> <?php esc_html_e( 'first.', 'societypress' ); ?>
+                        <button type="button" class="button sp-event-edit-add-btn" id="sp-new-speaker-btn">
+                            + <?php esc_html_e( 'New Speaker…', 'societypress' ); ?>
+                        </button>
+
+                        <p class="description sp-event-edit-no-speakers-note" id="sp-no-speakers-note"
+                            <?php echo empty( $all_speakers ) ? '' : 'hidden'; ?>>
+                            <?php esc_html_e( 'No speakers in the system yet. Use “+ New Speaker” to add one without leaving this page.', 'societypress' ); ?>
+                        </p>
+
+                        <!-- Quick-add panel.
+                             WHY inline rather than a modal: the event form stays
+                             visible behind it, so a volunteer never loses their
+                             place, and there is no overlay to dismiss by mistake.
+                             WHY type="button" on every control: this sits inside
+                             the event form, where a bare <button> would submit
+                             the whole event instead of adding a speaker. -->
+                        <div class="sp-new-speaker-panel" id="sp-new-speaker-panel" hidden>
+                            <h3 class="sp-new-speaker-heading"><?php esc_html_e( 'Add a new speaker', 'societypress' ); ?></h3>
+                            <p class="sp-new-speaker-field">
+                                <label for="sp-new-speaker-name"><?php esc_html_e( 'Name', 'societypress' ); ?> <span class="sp-text-error" aria-hidden="true">*</span></label><br>
+                                <input type="text" id="sp-new-speaker-name" class="regular-text" autocomplete="off">
                             </p>
-                        <?php endif; ?>
+                            <p class="sp-new-speaker-field">
+                                <label for="sp-new-speaker-title"><?php esc_html_e( 'Title / Role', 'societypress' ); ?></label><br>
+                                <input type="text" id="sp-new-speaker-title" class="regular-text" autocomplete="off"
+                                       placeholder="<?php echo esc_attr__( 'e.g., Genealogy Instructor', 'societypress' ); ?>">
+                            </p>
+                            <p class="sp-new-speaker-actions">
+                                <button type="button" class="button button-primary" id="sp-new-speaker-save"><?php esc_html_e( 'Add Speaker', 'societypress' ); ?></button>
+                                <button type="button" class="button" id="sp-new-speaker-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                            </p>
+                            <p class="description"><?php esc_html_e( 'Only the name is required. You can add a bio, photo, and contact details afterward.', 'societypress' ); ?></p>
+                            <div class="sp-new-speaker-status" id="sp-new-speaker-status" role="status" aria-live="polite"></div>
+                        </div>
 
                         <!-- Template for JS to clone when adding a new speaker row -->
                         <template id="sp-speaker-row-template">
@@ -44353,6 +44446,42 @@ function sp_render_event_edit_page(): void {
         margin-top: 6px;
     }
 
+    /* sp-new-speaker-panel
+       The on-the-fly speaker form. Boxed and tinted so it reads as a small
+       side task rather than another section of the event form it sits in. */
+    .sp-new-speaker-panel {
+        margin-top: 12px;
+        padding: 12px 14px;
+        max-width: 460px;
+        background: #f6f7f7;
+        border: 1px solid #dcdcde;
+        border-radius: 6px;
+    }
+    .sp-new-speaker-heading {
+        margin: 0 0 10px;
+        font-size: 14px;
+    }
+    .sp-new-speaker-field {
+        margin: 0 0 10px;
+    }
+    .sp-new-speaker-actions {
+        margin: 0 0 8px;
+        display: flex;
+        gap: 8px;
+    }
+    .sp-new-speaker-status:not(:empty) {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #dcdcde;
+    }
+    .sp-new-speaker-msg {
+        margin: 0 0 8px;
+        font-weight: 600;
+    }
+    .sp-new-speaker-msg--error {
+        color: #b32d2e;
+    }
+
     /* sp-event-edit-recurrence-select
        Minimum width for the recurrence type dropdown so all option labels
        are readable without truncation. */
@@ -44708,6 +44837,161 @@ function sp_render_event_edit_page(): void {
                 this.closest('.sp-speaker-row').remove();
             });
         });
+
+        // ---- Add a speaker to the roster without leaving this page ----
+        var newSpeakerBtn    = document.getElementById('sp-new-speaker-btn');
+        var newSpeakerPanel  = document.getElementById('sp-new-speaker-panel');
+        var newSpeakerName   = document.getElementById('sp-new-speaker-name');
+        var newSpeakerTitle  = document.getElementById('sp-new-speaker-title');
+        var newSpeakerSave   = document.getElementById('sp-new-speaker-save');
+        var newSpeakerCancel = document.getElementById('sp-new-speaker-cancel');
+        var newSpeakerStatus = document.getElementById('sp-new-speaker-status');
+        var noSpeakersNote   = document.getElementById('sp-no-speakers-note');
+
+        if (newSpeakerBtn && newSpeakerPanel) {
+            var qaNonce      = <?php echo wp_json_encode( wp_create_nonce( 'sp_quick_add_speaker' ) ); ?>;
+            /* translators: %s: speaker name */
+            var qaMsgAdded   = <?php echo wp_json_encode( __( '%s was added to your speaker list.', 'societypress' ) ); ?>;
+            /* translators: %s: speaker name */
+            var qaMsgExists  = <?php echo wp_json_encode( __( '%s was already on your speaker list, so we selected them instead of adding a duplicate.', 'societypress' ) ); ?>;
+            /* translators: %s: speaker name */
+            var qaMsgFinish  = <?php echo wp_json_encode( __( 'Finish %s’s profile', 'societypress' ) ); ?>;
+            var qaMsgNoName  = <?php echo wp_json_encode( __( 'Please enter the speaker’s name.', 'societypress' ) ); ?>;
+            var qaMsgFailed  = <?php echo wp_json_encode( __( 'Something went wrong and the speaker was not saved. Please try again.', 'societypress' ) ); ?>;
+            var qaSaving     = <?php echo wp_json_encode( __( 'Adding…', 'societypress' ) ); ?>;
+            var qaSaveLabel  = newSpeakerSave.textContent;
+
+            function qaShowError(message) {
+                newSpeakerStatus.innerHTML = '';
+                var p = document.createElement('p');
+                p.className = 'sp-new-speaker-msg sp-new-speaker-msg--error';
+                p.textContent = message;
+                newSpeakerStatus.appendChild(p);
+            }
+
+            /* WHY textContent and createElement rather than innerHTML: the
+               speaker name is whatever the volunteer typed, and it lands back
+               in the page verbatim. Building nodes keeps it inert. */
+            function qaShowResult(data) {
+                newSpeakerStatus.innerHTML = '';
+
+                var p = document.createElement('p');
+                p.className = 'sp-new-speaker-msg';
+                p.textContent = (data.existing ? qaMsgExists : qaMsgAdded).replace('%s', data.name);
+                newSpeakerStatus.appendChild(p);
+
+                var link = document.createElement('a');
+                link.href = data.edit_url;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                link.className = 'button';
+                link.textContent = qaMsgFinish.replace('%s', data.name);
+                newSpeakerStatus.appendChild(link);
+            }
+
+            // Add the speaker to every dropdown on the page, including the
+            // template that new rows are cloned from -- otherwise a row added
+            // after this point would not offer the speaker just created.
+            function qaAddOption(data) {
+                var label = data.title ? data.name + ' \u2014 ' + data.title : data.name;
+
+                function addTo(select) {
+                    if (!select || select.querySelector('option[value="' + data.id + '"]')) { return; }
+                    var opt = document.createElement('option');
+                    opt.value = data.id;
+                    opt.textContent = label;
+                    select.appendChild(opt);
+                }
+
+                document.querySelectorAll('.sp-speaker-select').forEach(addTo);
+                if (speakerTemplate) {
+                    addTo(speakerTemplate.content.querySelector('.sp-speaker-select'));
+                }
+            }
+
+            // Drop the new speaker into the first empty row, or open a fresh
+            // row if every existing one is already spoken for.
+            function qaSelectSpeaker(id) {
+                var selects = document.querySelectorAll('.sp-speaker-select');
+                var target  = null;
+
+                for (var i = 0; i < selects.length; i++) {
+                    if (!selects[i].value) { target = selects[i]; break; }
+                }
+
+                if (!target && addSpeakerBtn) {
+                    addSpeakerBtn.click();
+                    var refreshed = document.querySelectorAll('.sp-speaker-select');
+                    target = refreshed[refreshed.length - 1];
+                }
+
+                if (target) { target.value = id; }
+            }
+
+            newSpeakerBtn.addEventListener('click', function() {
+                newSpeakerPanel.hidden = false;
+                newSpeakerStatus.innerHTML = '';
+                newSpeakerName.focus();
+            });
+
+            newSpeakerCancel.addEventListener('click', function() {
+                newSpeakerPanel.hidden = true;
+                newSpeakerName.value = '';
+                newSpeakerTitle.value = '';
+                newSpeakerStatus.innerHTML = '';
+            });
+
+            /* WHY Enter is intercepted: these inputs sit inside the event form,
+               so the browser's default action would submit the entire event
+               half-finished. Route it to the Add Speaker button instead. */
+            [newSpeakerName, newSpeakerTitle].forEach(function(input) {
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        newSpeakerSave.click();
+                    }
+                });
+            });
+
+            newSpeakerSave.addEventListener('click', function() {
+                var name = newSpeakerName.value.trim();
+                if (!name) {
+                    qaShowError(qaMsgNoName);
+                    newSpeakerName.focus();
+                    return;
+                }
+
+                newSpeakerSave.disabled = true;
+                newSpeakerSave.textContent = qaSaving;
+
+                var body = new FormData();
+                body.append('action', 'sp_quick_add_speaker');
+                body.append('nonce', qaNonce);
+                body.append('name', name);
+                body.append('title', newSpeakerTitle.value.trim());
+
+                fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (!res || !res.success) {
+                            qaShowError((res && res.data && res.data.message) || qaMsgFailed);
+                            return;
+                        }
+                        qaAddOption(res.data);
+                        qaSelectSpeaker(res.data.id);
+                        qaShowResult(res.data);
+                        newSpeakerName.value = '';
+                        newSpeakerTitle.value = '';
+                        newSpeakerName.focus();
+                        if (noSpeakersNote) { noSpeakersNote.hidden = true; }
+                    })
+                    .catch(function() { qaShowError(qaMsgFailed); })
+                    .finally(function() {
+                        newSpeakerSave.disabled = false;
+                        newSpeakerSave.textContent = qaSaveLabel;
+                    });
+            });
+        }
 
         // ---- Registration Options: nested question / choice rows ----
         // WHY: Two levels of repeatable rows — a question (group) block, and
@@ -55470,7 +55754,18 @@ class SP_Speakers_List_Table extends WP_List_Table {
             }
         }
 
+        // Flag the stubs left behind by the event screen's quick-add so an
+        // unfinished profile is visible here instead of quietly shipping a
+        // bare name onto the public event page.
+        $incomplete = '';
+        if ( empty( $item->bio ) && empty( $item->photo_id ) ) {
+            $incomplete = ' <span class="sp-speaker-incomplete">'
+                        . esc_html__( 'Profile incomplete', 'societypress' )
+                        . '</span>';
+        }
+
         return $photo . '<a class="row-title" href="' . esc_url( $edit_url ) . '">' . esc_html( $item->name ) . '</a>'
+             . $incomplete
              . $this->row_actions( $actions );
     }
 
@@ -55533,6 +55828,7 @@ function sp_render_speakers_page(): void {
     <style>
         .sp-speaker-photo-thumb { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; vertical-align: middle; margin-right: 8px; }
         .sp-speaker-status-active { color: #1d6b30; font-weight: 500; }
+        .sp-speaker-incomplete { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 9px; background: #fcf0e4; color: #8a5700; font-size: 11px; font-weight: 600; vertical-align: middle; }
     </style>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Speakers', 'societypress' ); ?></h1>
@@ -55602,6 +55898,78 @@ add_action( 'admin_init', function () {
     exit;
 } );
 
+
+/**
+ * Create a speaker from the event edit screen without leaving the page.
+ *
+ * WHY it takes only a name and title: those are the two fields the event
+ * screen's speaker dropdown actually displays. A volunteer scheduling an event
+ * normally has both in hand and does not yet have the bio or headshot -- those
+ * arrive by email days later -- so demanding a full profile here would buy
+ * blank fields rather than better data. The response carries an edit URL so
+ * finishing the profile stays one click away instead of something to remember.
+ */
+add_action( 'wp_ajax_sp_quick_add_speaker', 'sp_ajax_quick_add_speaker' );
+function sp_ajax_quick_add_speaker(): void {
+    check_ajax_referer( 'sp_quick_add_speaker', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_events' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to add speakers.', 'societypress' ) ] );
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_event_speakers';
+
+    $name  = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+    $title = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
+
+    if ( '' === $name ) {
+        wp_send_json_error( [ 'message' => __( 'Please enter the speaker’s name.', 'societypress' ) ] );
+    }
+
+    // Reuse an existing roster entry rather than creating a second record for
+    // the same person. This matches how the event importer resolves speakers.
+    $existing = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, name, title, active FROM {$table} WHERE LOWER(name) = %s LIMIT 1",
+        strtolower( $name )
+    ) );
+
+    if ( $existing ) {
+        // An inactive match is absent from the dropdown, so reactivate it --
+        // otherwise the speaker appears to vanish the moment they are added.
+        if ( ! $existing->active ) {
+            $wpdb->update( $table, [ 'active' => 1 ], [ 'id' => (int) $existing->id ], [ '%d' ], [ '%d' ] );
+        }
+
+        wp_send_json_success( [
+            'id'       => (int) $existing->id,
+            'name'     => $existing->name,
+            'title'    => (string) $existing->title,
+            'existing' => true,
+            'edit_url' => admin_url( 'admin.php?page=sp-speaker-edit&speaker_id=' . (int) $existing->id ),
+        ] );
+    }
+
+    $inserted = $wpdb->insert(
+        $table,
+        [ 'name' => $name, 'title' => $title, 'active' => 1 ],
+        [ '%s', '%s', '%d' ]
+    );
+
+    if ( false === $inserted ) {
+        wp_send_json_error( [ 'message' => __( 'The speaker could not be saved. Please try again.', 'societypress' ) ] );
+    }
+
+    $speaker_id = (int) $wpdb->insert_id;
+
+    wp_send_json_success( [
+        'id'       => $speaker_id,
+        'name'     => $name,
+        'title'    => $title,
+        'existing' => false,
+        'edit_url' => admin_url( 'admin.php?page=sp-speaker-edit&speaker_id=' . $speaker_id ),
+    ] );
+}
 
 /**
  * Render the speaker add/edit form.
@@ -59113,6 +59481,23 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
         return;
     }
 
+    // WHY grid is the default: this widget is called "Newsletter Archive", and
+    // what anyone means by an archive of newsletters is the wall of covers —
+    // the same thing the archive template page shows. The bare list stays
+    // available for the case it is actually good at: a short "latest issues"
+    // block in a sidebar or on a home page, where covers would overwhelm.
+    $layout = ( 'list' === ( $s['layout'] ?? 'grid' ) ) ? 'list' : 'grid';
+
+    if ( 'grid' === $layout ) {
+        sp_render_newsletter_archive_grid( [
+            'heading' => false,   // the builder page supplies its own title
+            'limit'   => max( 0, (int) ( $s['count'] ?? 0 ) ),
+            'search'  => ! empty( $s['show_search'] ) || ! isset( $s['show_search'] ),
+            'years'   => ! empty( $s['show_years'] )  || ! isset( $s['show_years'] ),
+        ] );
+        return;
+    }
+
     $count        = max( 1, (int) ( $s['count'] ?? 5 ) );
     $show_excerpt = $s['show_excerpt'] ?? true;
     $show_date    = $s['show_date'] ?? true;
@@ -59191,6 +59576,31 @@ function sp_render_builder_widget_newsletter_archive( array $s ): void {
  *      Highlights the community's collective effort with total hours,
  *      active volunteer count, and optionally top contributors.
  */
+/**
+ * Volunteer Opportunities board as a page-builder widget.
+ *
+ * WHY this exists rather than telling admins to paste the shortcode: the rich
+ * text widget runs wp_kses_post() over its output, and that strips <select>.
+ * The board's committee and type filters are select elements, so the shortcode
+ * route silently produced a board with its filters torn out. Rendering here
+ * echoes the markup untouched.
+ */
+function sp_render_builder_widget_volunteer_opportunities( array $s ): void {
+    if ( ! empty( $s['login_required'] ) && ! is_user_logged_in() ) {
+        echo '<div class="sp-widget-login-required">';
+        echo '<p>' . esc_html__( 'Please', 'societypress' ) . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a> ' . esc_html__( 'to see volunteer opportunities.', 'societypress' ) . '</p>';
+        echo '</div>';
+        return;
+    }
+
+    if ( ! sp_module_enabled( 'governance' ) ) {
+        return;
+    }
+
+    // Already escaped field by field inside the renderer.
+    echo sp_render_volunteer_opportunities_frontend(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+}
+
 function sp_render_builder_widget_volunteer_stats( array $s ): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -77670,6 +78080,59 @@ function sp_extract_cover_url( array $doc ): string {
  *      Shows cover image, title, date, volume/issue, visibility badge, and
  *      Edit/Delete action links. Sorted newest-first by publication date.
  */
+/**
+ * Remove one newsletter from the archive, and with it the PDF and cover it owns.
+ *
+ * WHY the files go too: every import creates a fresh attachment for the PDF and
+ * a generated cover image. Deleting only the archive row leaves both behind as
+ * orphans that nothing links to and no volunteer will ever find to clean up, so
+ * a society that re-imports its back catalogue twice ends up storing it twice.
+ *
+ * WHY the ownership check before deleting: two archive entries can legitimately
+ * point at the same attachment — a volunteer who splits a combined issue, say.
+ * An attachment is only removed once no remaining newsletter still needs it.
+ *
+ * @param int  $newsletter_id Row id in sp_newsletters.
+ * @param bool $delete_files  Whether to remove the PDF and cover as well.
+ * @return bool True when a row was found and removed.
+ */
+function sp_newsletter_delete( int $newsletter_id, bool $delete_files = true ): bool {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_newsletters';
+
+    $nl = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, file_id, cover_image_id FROM {$table} WHERE id = %d",
+        $newsletter_id
+    ) );
+    if ( ! $nl ) {
+        return false;
+    }
+
+    if ( false === $wpdb->delete( $table, [ 'id' => (int) $nl->id ], [ '%d' ] ) ) {
+        return false;
+    }
+
+    $wpdb->delete( $wpdb->prefix . 'sp_newsletter_text', [ 'newsletter_id' => (int) $nl->id ], [ '%d' ] );
+
+    if ( $delete_files ) {
+        foreach ( [ (int) $nl->file_id, (int) $nl->cover_image_id ] as $attachment_id ) {
+            if ( ! $attachment_id ) {
+                continue;
+            }
+            $still_used = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$table} WHERE file_id = %d OR cover_image_id = %d",
+                $attachment_id,
+                $attachment_id
+            ) );
+            if ( 0 === $still_used ) {
+                wp_delete_attachment( $attachment_id, true );
+            }
+        }
+    }
+
+    return true;
+}
+
 function sp_render_newsletter_archive_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -77678,33 +78141,55 @@ function sp_render_newsletter_archive_page(): void {
     if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['newsletter_id'] ) ) {
         $newsletter_id = absint( $_POST['newsletter_id'] );
         check_admin_referer( 'sp_delete_newsletter_' . $newsletter_id );
-        $wpdb->delete( $prefix . 'newsletters', [ 'id' => $newsletter_id ] );
-        echo '<div class="notice notice-success"><p>' . esc_html__( 'Newsletter deleted.', 'societypress' ) . '</p></div>';
+        sp_newsletter_delete( $newsletter_id );
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Newsletter deleted, along with its PDF and cover image.', 'societypress' ) . '</p></div>';
     }
 
-    // ========== HANDLE BULK VISIBILITY ==========
+    // ========== HANDLE BULK ACTIONS ==========
     // WHY: Flipping many issues between Public and Members Only one card at a
-    // time is tedious on an archive with dozens of newsletters. Select the
-    // ones to change, pick a visibility, apply once.
-    if ( ( $_POST['action'] ?? '' ) === 'bulk_visibility' ) {
+    // time is tedious on an archive with dozens of newsletters, and clearing a
+    // bad import one card at a time is worse. Select the ones to act on, pick
+    // an action, apply once.
+    if ( ( $_POST['action'] ?? '' ) === 'bulk_newsletters' ) {
         check_admin_referer( 'sp_newsletter_bulk' );
-        $vis = $_POST['bulk_visibility'] ?? '';
+        $do  = sanitize_key( $_POST['sp_nl_do'] ?? '' );
         $ids = array_filter( array_map( 'absint', (array) ( $_POST['newsletter_ids'] ?? [] ) ) );
-        if ( ! in_array( $vis, [ 'public', 'members_only' ], true ) ) {
-            echo '<div class="notice notice-error"><p>' . esc_html__( 'Choose a visibility to apply.', 'societypress' ) . '</p></div>';
-        } elseif ( empty( $ids ) ) {
+
+        if ( empty( $ids ) ) {
             echo '<div class="notice notice-warning"><p>' . esc_html__( 'Select at least one newsletter first.', 'societypress' ) . '</p></div>';
-        } else {
+        } elseif ( 'delete' === $do ) {
+            $deleted = 0;
             foreach ( $ids as $id ) {
-                $wpdb->update( $prefix . 'newsletters', [ 'visibility' => $vis ], [ 'id' => $id ] );
+                if ( sp_newsletter_delete( $id ) ) {
+                    $deleted++;
+                }
             }
-            $label = 'public' === $vis ? __( 'Public', 'societypress' ) : __( 'Members Only', 'societypress' );
             echo '<div class="notice notice-success"><p>' . esc_html( sprintf(
-                /* translators: 1: number of newsletters, 2: visibility label */
-                _n( '%1$d newsletter set to %2$s.', '%1$d newsletters set to %2$s.', count( $ids ), 'societypress' ),
-                count( $ids ),
-                $label
+                /* translators: %d: number of newsletters deleted */
+                _n(
+                    '%d newsletter deleted, along with its PDF and cover image.',
+                    '%d newsletters deleted, along with their PDFs and cover images.',
+                    $deleted,
+                    'societypress'
+                ),
+                $deleted
             ) ) . '</p></div>';
+        } else {
+            $vis = $_POST['bulk_visibility'] ?? '';
+            if ( ! in_array( $vis, [ 'public', 'members_only' ], true ) ) {
+                echo '<div class="notice notice-error"><p>' . esc_html__( 'Choose a visibility to apply.', 'societypress' ) . '</p></div>';
+            } else {
+                foreach ( $ids as $id ) {
+                    $wpdb->update( $prefix . 'newsletters', [ 'visibility' => $vis ], [ 'id' => $id ] );
+                }
+                $label = 'public' === $vis ? __( 'Public', 'societypress' ) : __( 'Members Only', 'societypress' );
+                echo '<div class="notice notice-success"><p>' . esc_html( sprintf(
+                    /* translators: 1: number of newsletters, 2: visibility label */
+                    _n( '%1$d newsletter set to %2$s.', '%1$d newsletters set to %2$s.', count( $ids ), 'societypress' ),
+                    count( $ids ),
+                    $label
+                ) ) . '</p></div>';
+            }
         }
     }
 
@@ -77736,6 +78221,14 @@ function sp_render_newsletter_archive_page(): void {
         .sp-newsletter-archive-search-form   { margin: 16px 0; }
         .sp-newsletter-archive-bulkbar       { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; padding: 10px 12px; background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 6px; }
         .sp-newsletter-archive-bulkbar select { min-width: 160px; }
+
+        /* ---- Pushes the destructive button away from the routine one ---- */
+        .sp-newsletter-archive-bulkbar-spacer { flex: 1 1 24px; min-width: 24px; }
+        .sp-newsletter-archive-bulk-delete    { color: #b32d2e; border-color: #b32d2e; }
+        .sp-newsletter-archive-bulk-delete:hover,
+        .sp-newsletter-archive-bulk-delete:focus { color: #fff; background: #b32d2e; border-color: #b32d2e; }
+        .sp-newsletter-archive-bulk-help      { margin: -4px 0 0; max-width: 70ch; }
+
         .sp-newsletter-archive-card-select   { display: block; margin-bottom: 8px; font-size: 13px; color: #50575e; }
         .sp-newsletter-archive-grid          { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
 
@@ -77804,7 +78297,7 @@ function sp_render_newsletter_archive_page(): void {
                  Instead the checkboxes bind to this toolbar form by id. -->
             <form method="post" id="sp-nl-bulk-form" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ); ?>" class="sp-newsletter-archive-bulkbar">
                 <?php wp_nonce_field( 'sp_newsletter_bulk' ); ?>
-                <input type="hidden" name="action" value="bulk_visibility">
+                <input type="hidden" name="action" value="bulk_newsletters">
                 <label><input type="checkbox" id="sp-nl-select-all"> <?php esc_html_e( 'Select all', 'societypress' ); ?></label>
                 <label for="sp-nl-bulk-visibility"><?php esc_html_e( 'Set selected to:', 'societypress' ); ?></label>
                 <select id="sp-nl-bulk-visibility" name="bulk_visibility">
@@ -77812,8 +78305,45 @@ function sp_render_newsletter_archive_page(): void {
                     <option value="public"><?php esc_html_e( 'Public', 'societypress' ); ?></option>
                     <option value="members_only"><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
                 </select>
-                <button type="submit" class="button"><?php esc_html_e( 'Apply', 'societypress' ); ?></button>
+                <button type="submit" name="sp_nl_do" value="visibility" class="button"><?php esc_html_e( 'Apply', 'societypress' ); ?></button>
+                <span class="sp-newsletter-archive-bulkbar-spacer"></span>
+                <button type="submit" name="sp_nl_do" value="delete" id="sp-nl-bulk-delete" class="button sp-newsletter-archive-bulk-delete"><?php esc_html_e( 'Delete Selected', 'societypress' ); ?></button>
             </form>
+            <p class="description sp-newsletter-archive-bulk-help">
+                <?php esc_html_e( 'To empty the archive completely, tick "Select all" and choose Delete Selected. Deleting a newsletter also removes its PDF and cover image from the media library, so a fresh import will not stack a second copy on top of the first.', 'societypress' ); ?>
+            </p>
+
+            <?php
+            /*
+             * Catch-up indexing for issues that predate the text index, or that
+             * were added one at a time through the edit screen rather than the
+             * importer. Nothing renders when there is nothing left to do.
+             */
+            $unindexed = $wpdb->get_col(
+                "SELECT n.id
+                   FROM {$prefix}newsletters n
+                   LEFT JOIN {$prefix}newsletter_text t ON t.newsletter_id = n.id
+                  WHERE n.file_id IS NOT NULL
+                    AND ( t.newsletter_id IS NULL OR t.body IS NULL OR t.body = '' )
+                  ORDER BY n.pub_date DESC"
+            );
+            if ( $unindexed ) :
+                ?>
+                <div class="notice notice-info sp-newsletter-archive-index-notice">
+                    <p><strong><?php echo esc_html( sprintf(
+                        /* translators: %d: number of newsletters with no searchable text yet */
+                        _n(
+                            '%d newsletter has not been indexed yet.',
+                            '%d newsletters have not been indexed yet.',
+                            count( $unindexed ),
+                            'societypress'
+                        ),
+                        count( $unindexed )
+                    ) ); ?></strong>
+                    <?php esc_html_e( 'Until they are, a member searching the site can only match their titles — not a word of what is printed inside them.', 'societypress' ); ?></p>
+                    <?php sp_newsletter_index_runner( array_map( 'absint', $unindexed ), false ); ?>
+                </div>
+            <?php endif; ?>
 
             <div class="sp-newsletter-archive-grid">
                 <?php foreach ( $newsletters as $nl ) :
@@ -77887,6 +78417,38 @@ function sp_render_newsletter_archive_page(): void {
                 var boxes = document.querySelectorAll('.sp-nl-bulk-cb');
                 all.addEventListener('change', function () {
                     boxes.forEach(function (b) { b.checked = all.checked; });
+                });
+
+                /* WHY this is wired here rather than relying on the shared bulk
+                   confirm: that handler keys off a .wp-list-table, and this
+                   screen is a card grid. Same safety net, local wiring. */
+                var del  = document.getElementById('sp-nl-bulk-delete');
+                var form = document.getElementById('sp-nl-bulk-form');
+                if (!del || !form) return;
+
+                var MSG_ONE  = <?php echo wp_json_encode( __( "Delete this newsletter?\n\nIts PDF and cover image are deleted too. This cannot be undone.", 'societypress' ) ); ?>;
+                var MSG_MANY = <?php echo wp_json_encode( __( "Delete %d newsletters?\n\nTheir PDFs and cover images are deleted too. This cannot be undone.", 'societypress' ) ); ?>;
+
+                del.addEventListener('click', function (e) {
+                    /* Checked inside the handler, not at bind time: spConfirm is
+                       defined in the admin footer, which has not run yet when
+                       this script parses. With nothing selected, let the submit
+                       through so the server says so in a notice. */
+                    var checked = document.querySelectorAll('.sp-nl-bulk-cb:checked').length;
+                    if (typeof spConfirm !== 'function' || !checked) return;
+
+                    e.preventDefault();
+                    var msg = checked === 1 ? MSG_ONE : MSG_MANY.replace('%d', checked);
+                    spConfirm(msg, function () {
+                        /* The button's own name/value is what tells PHP this is a
+                           delete, and a scripted submit() would drop it. */
+                        var flag = document.createElement('input');
+                        flag.type  = 'hidden';
+                        flag.name  = 'sp_nl_do';
+                        flag.value = 'delete';
+                        form.appendChild(flag);
+                        form.submit();
+                    });
                 });
             })();
             </script>
@@ -78436,14 +78998,59 @@ add_filter( 'template_include', function( $template ) {
  *      button only work for logged-in members when visibility is members_only.
  */
 function sp_frontend_newsletter_archive(): void {
+    sp_render_newsletter_archive_grid();
+}
+
+/**
+ * Render the newsletter archive as a grid of cover cards.
+ *
+ * WHY this was split out of sp_frontend_newsletter_archive(): the archive
+ * reaches members two ways — through the template page, and through the
+ * "Newsletter Archive" page-builder widget. The widget had its own renderer
+ * that printed a bare list of links: no covers, no search, no year filter. A
+ * society that built its Newsletters page with the builder, which is the
+ * obvious way to build a page, got a visibly poorer archive than one that did
+ * not, and neither the covers nor the text index were reachable from it. Both
+ * entry points now come through here.
+ *
+ * @param array $args {
+ *     @type bool $heading Print the "Newsletter Archive" title. Off inside the
+ *                         builder, where the page already has its own title.
+ *     @type int  $limit   Newest N issues, or 0 for the whole archive.
+ *     @type bool $search  Show the search box.
+ *     @type bool $years   Show the year filter.
+ * }
+ */
+function sp_render_newsletter_archive_grid( array $args = [] ): void {
+    // Several controls below are addressed by id, and the modal is a singleton.
+    // A second grid on the same page therefore renders cards only.
+    static $instance = 0;
+    $instance++;
+
+    $args = wp_parse_args( $args, [
+        'heading' => true,
+        'limit'   => 0,
+        'search'  => true,
+        'years'   => true,
+    ] );
+
+    $primary = ( 1 === $instance );
+    if ( ! $primary ) {
+        $args['search'] = false;
+        $args['years']  = false;
+    }
+
     global $wpdb;
     $prefix    = $wpdb->prefix . 'sp_';
     $logged_in = is_user_logged_in();
 
-    // Fetch all newsletters, newest first
-    $newsletters = $wpdb->get_results(
-        "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC"
-    );
+    // Fetch newsletters, newest first
+    $limit = max( 0, (int) $args['limit'] );
+    $sql   = "SELECT * FROM {$prefix}newsletters ORDER BY pub_date DESC, created_at DESC";
+    if ( $limit > 0 ) {
+        $sql .= $wpdb->prepare( ' LIMIT %d', $limit );
+    }
+    $newsletters = $wpdb->get_results( $sql );
 
     // Prime attachment metadata in one query so the per-card
     // wp_get_attachment_* calls below read from cache instead of firing a
@@ -78456,20 +79063,81 @@ function sp_frontend_newsletter_archive(): void {
     if ( $att_ids ) {
         _prime_post_caches( array_unique( $att_ids ), false, true );
     }
+
+    // Years present in the archive, newest first — the query is already sorted
+    // that way, so first sighting order is the order we want.
+    $years = [];
+    foreach ( $newsletters as $nl ) {
+        if ( ! empty( $nl->pub_date ) ) {
+            $years[ substr( (string) $nl->pub_date, 0, 4 ) ] = true;
+        }
+    }
+    $years = array_keys( $years );
     ?>
+    <?php if ( $primary ) : ?>
     <style id="sp-nl-archive-css">
         .sp-nl-search-input { width: 100%; max-width: 400px; padding: 10px 14px; border: 2px solid #dee2e6; border-radius: 6px; font-size: 16px; }
         /* Only clickable covers carry a data-pdf attribute; cursor follows that. */
         .sp-newsletter-card-cover[data-pdf] { cursor: pointer; }
-    </style>
-    <div class="sp-newsletter-archive">
-        <h1 class="entry-title sp-mb-8"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
 
+        /* ---- Year filter ---- */
+        .sp-nl-years        { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+        .sp-nl-year         { padding: 6px 12px; border: 1px solid #dee2e6; border-radius: 999px; background: #fff; font-size: 14px; cursor: pointer; color: inherit; }
+        .sp-nl-year:hover   { border-color: #adb5bd; }
+        .sp-nl-year.is-active { background: var(--sp-color-primary, #0d1f3c); border-color: var(--sp-color-primary, #0d1f3c); color: #fff; }
+
+        /* ---- Result reporting ---- */
+        .sp-nl-result-count { margin: 4px 0 16px; font-size: 14px; color: #6b7280; }
+        .sp-nl-no-results   { margin: 16px 0; }
+
+        /* ---- Matched text pulled from inside the PDF ---- */
+        .sp-newsletter-card-snippet {
+            margin: 8px 0 0; padding-left: 10px; font-size: 13px; line-height: 1.5;
+            border-left: 3px solid var(--sp-color-accent, #c9973a); color: #444;
+        }
+    </style>
+    <?php endif; ?>
+    <div class="sp-newsletter-archive">
+        <?php if ( $args['heading'] ) : ?>
+            <h1 class="entry-title sp-mb-8"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
+        <?php endif; ?>
+
+        <?php if ( $args['search'] ) : ?>
         <!-- Search bar -->
-        <div class="sp-mb-24">
-            <input type="text" id="sp-nl-search" placeholder="<?php echo esc_attr__( 'Search newsletters…', 'societypress' ); ?>"
-                   class="sp-nl-search-input">
+        <div>
+            <input type="search" id="sp-nl-search"
+                   placeholder="<?php echo esc_attr( $logged_in
+                       ? __( 'Search inside every issue…', 'societypress' )
+                       : __( 'Search newsletters…', 'societypress' ) ); ?>"
+                   class="sp-nl-search-input"
+                   aria-describedby="sp-nl-search-help">
+            <p class="sp-nl-result-count" id="sp-nl-search-help">
+                <?php echo esc_html( $logged_in
+                    ? __( 'Searches the full text of every newsletter, not just their titles.', 'societypress' )
+                    : __( 'Sign in to search the text inside each issue.', 'societypress' ) ); ?>
+            </p>
         </div>
+        <?php endif; ?>
+
+        <?php if ( $args['years'] && count( $years ) > 1 ) : ?>
+            <div class="sp-nl-years" role="group" aria-label="<?php echo esc_attr__( 'Filter by year', 'societypress' ); ?>">
+                <button type="button" class="sp-nl-year is-active" data-year="all" aria-pressed="true">
+                    <?php esc_html_e( 'All years', 'societypress' ); ?>
+                </button>
+                <?php foreach ( $years as $year_option ) : ?>
+                    <button type="button" class="sp-nl-year" data-year="<?php echo esc_attr( $year_option ); ?>" aria-pressed="false">
+                        <?php echo esc_html( $year_option ); ?>
+                    </button>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ( $args['search'] || $args['years'] ) : ?>
+            <p class="sp-nl-result-count" id="sp-nl-count" role="status" aria-live="polite"></p>
+            <p class="sp-nl-no-results" id="sp-nl-none" hidden>
+                <?php esc_html_e( 'Nothing matched. Try a different word, or choose All years.', 'societypress' ); ?>
+            </p>
+        <?php endif; ?>
 
         <?php if ( empty( $newsletters ) ) : ?>
             <p><?php esc_html_e( 'No newsletters have been published yet. Check back soon!', 'societypress' ); ?></p>
@@ -78496,7 +79164,10 @@ function sp_frontend_newsletter_archive(): void {
                     // Download URL goes through our AJAX endpoint for access control
                     $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
                 ?>
-                    <div class="sp-newsletter-card" data-title="<?php echo esc_attr( strtolower( $nl->title ) ); ?>">
+                    <div class="sp-newsletter-card"
+                         data-id="<?php echo (int) $nl->id; ?>"
+                         data-year="<?php echo esc_attr( $nl->pub_date ? substr( (string) $nl->pub_date, 0, 4 ) : '' ); ?>"
+                         data-title="<?php echo esc_attr( strtolower( $nl->title ) ); ?>">
                         <!-- Cover image -->
                         <div class="sp-newsletter-card-cover"
                              <?php if ( $can_access && $pdf_url ) : ?>
@@ -78530,6 +79201,9 @@ function sp_frontend_newsletter_archive(): void {
                             <?php if ( $nl->description ) : ?>
                                 <p class="sp-newsletter-card-desc"><?php echo esc_html( $nl->description ); ?></p>
                             <?php endif; ?>
+
+                            <!-- Filled in by a search that matched text inside this PDF. -->
+                            <p class="sp-newsletter-card-snippet" hidden></p>
                             <?php
                             // Table of contents — visible to everyone, including non-members,
                             // so the archive advertises what each issue covers even when the
@@ -78562,7 +79236,10 @@ function sp_frontend_newsletter_archive(): void {
         <?php endif; ?>
     </div>
 
-    <!-- PDF Viewer Modal -->
+    <?php if ( ! $primary ) { return; } ?>
+
+    <!-- PDF Viewer Modal. Rendered once per page: the handlers below are bound
+         to document, so one modal serves every card on the page. -->
     <div id="sp-pdf-modal" class="sp-pdf-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-pdf-modal-title">
         <div class="sp-pdf-modal-overlay"></div>
         <div class="sp-pdf-modal-content" tabindex="-1">
@@ -78592,18 +79269,140 @@ function sp_frontend_newsletter_archive(): void {
     (function() {
         'use strict';
 
-        // ========== SEARCH FILTER ==========
+        // ========== SEARCH + YEAR FILTER ==========
+        //
+        // Two filters over one grid. Year is decided in the browser, since every
+        // card is already on the page. Search asks the server, because what a
+        // member is really searching is the text inside the PDFs, which lives in
+        // the index and was never sent to the browser. Signed-out visitors have
+        // no access to that text, so for them the box falls back to matching
+        // titles — the same behaviour this page has always had.
         var searchInput = document.getElementById('sp-nl-search');
-        if (searchInput) {
-            searchInput.addEventListener('input', function() {
-                var query = this.value.toLowerCase().trim();
-                var cards = document.querySelectorAll('.sp-newsletter-card');
-                cards.forEach(function(card) {
-                    var title = card.getAttribute('data-title') || '';
-                    card.style.display = (!query || title.indexOf(query) !== -1) ? '' : 'none';
+        var countEl     = document.getElementById('sp-nl-count');
+        var noneEl      = document.getElementById('sp-nl-none');
+        var cards       = Array.prototype.slice.call(document.querySelectorAll('.sp-newsletter-card'));
+
+        var SEARCH = <?php echo wp_json_encode( $logged_in ? [
+            'url'   => admin_url( 'admin-ajax.php' ),
+            'nonce' => wp_create_nonce( 'sp_nl_archive_search' ),
+        ] : null ); ?>;
+        var STR = <?php echo wp_json_encode( [
+            'showingAll' => __( 'Showing all %d issues.', 'societypress' ),
+            'showing'    => __( 'Showing %1$d of %2$d issues.', 'societypress' ),
+            'searching'  => __( 'Searching…', 'societypress' ),
+        ] ); ?>;
+
+        var state = { year: 'all', q: '', matches: null };
+
+        function setSnippet(card, text) {
+            var el = card.querySelector('.sp-newsletter-card-snippet');
+            if (!el) return;
+            if (text) { el.textContent = text; el.hidden = false; }
+            else      { el.textContent = '';   el.hidden = true;  }
+        }
+
+        function apply() {
+            var shown = 0;
+            var searching = state.q.length >= 2;
+
+            cards.forEach(function (card) {
+                var ok = true;
+
+                if (state.year !== 'all' && card.getAttribute('data-year') !== state.year) ok = false;
+
+                if (ok && searching) {
+                    if (state.matches) {
+                        var snippet = state.matches[card.getAttribute('data-id')];
+                        ok = (snippet !== undefined);
+                        setSnippet(card, ok ? snippet : '');
+                    } else {
+                        ok = (card.getAttribute('data-title') || '').indexOf(state.q.toLowerCase()) !== -1;
+                        setSnippet(card, '');
+                    }
+                } else {
+                    setSnippet(card, '');
+                }
+
+                card.style.display = ok ? '' : 'none';
+                if (ok) shown++;
+            });
+
+            if (countEl) {
+                countEl.textContent = (shown === cards.length)
+                    ? STR.showingAll.replace('%d', cards.length)
+                    : STR.showing.replace('%1$d', shown).replace('%2$d', cards.length);
+            }
+            if (noneEl) noneEl.hidden = (shown > 0);
+        }
+
+        // ---- Year buttons ----
+        var yearButtons = Array.prototype.slice.call(document.querySelectorAll('.sp-nl-year'));
+        yearButtons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                state.year = btn.getAttribute('data-year') || 'all';
+                yearButtons.forEach(function (b) {
+                    var on = (b === btn);
+                    b.classList.toggle('is-active', on);
+                    b.setAttribute('aria-pressed', on ? 'true' : 'false');
                 });
+                apply();
+            });
+        });
+
+        // ---- Search box ----
+        if (searchInput) {
+            var timer   = null;
+            var inFlight = null;
+
+            searchInput.addEventListener('input', function () {
+                state.q = this.value.trim();
+                if (timer) clearTimeout(timer);
+
+                if (state.q.length < 2) {
+                    state.matches = null;
+                    apply();
+                    return;
+                }
+
+                if (!SEARCH) { state.matches = null; apply(); return; }
+
+                if (countEl) countEl.textContent = STR.searching;
+
+                /* Debounced so a fast typist fires one query, not eight. */
+                timer = setTimeout(function () {
+                    /* Drop any earlier answer still in flight — otherwise a slow
+                       response for "smi" can land after "smith" and overwrite it. */
+                    if (inFlight) inFlight.abort();
+                    inFlight = ('AbortController' in window) ? new AbortController() : null;
+
+                    var data = new FormData();
+                    data.append('action', 'sp_nl_archive_search');
+                    data.append('nonce', SEARCH.nonce);
+                    data.append('q', state.q);
+
+                    fetch(SEARCH.url, {
+                        method: 'POST',
+                        body: data,
+                        credentials: 'same-origin',
+                        signal: inFlight ? inFlight.signal : undefined
+                    })
+                        .then(function (r) { return r.json(); })
+                        .then(function (r) {
+                            state.matches = (r && r.success && r.data && r.data.matches) ? r.data.matches : {};
+                            apply();
+                        })
+                        .catch(function (err) {
+                            if (err && err.name === 'AbortError') return;
+                            /* Server unreachable — fall back to titles rather
+                               than leaving the grid frozen on "Searching…". */
+                            state.matches = null;
+                            apply();
+                        });
+                }, 300);
             });
         }
+
+        apply();
 
         // ========== PDF VIEWER MODAL ==========
         var modal       = document.getElementById('sp-pdf-modal');
@@ -78959,29 +79758,41 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
     }
 
     // =====================================================================
-    // NEWSLETTERS — Search title, description
+    // NEWSLETTERS — Search title, description, contents list and full text
     // WHY logged-in only: Newsletters are member content. The archive grid
     //     is visible publicly (for marketing), but search results showing
     //     newsletter titles/descriptions should be member-only to be
     //     consistent with the download access control.
+    // WHY the join rather than a column: the indexed body of every issue is
+    //     held in its own table so ordinary newsletter queries never carry it.
     // =====================================================================
     if ( $logged_in ) {
+        $nl_from = "FROM {$prefix}newsletters n
+                    LEFT JOIN {$prefix}newsletter_text t ON t.newsletter_id = n.id";
+
         $nl_where = $wpdb->prepare(
-            "WHERE (title LIKE %s OR description LIKE %s)",
-            $like, $like
+            "WHERE (n.title LIKE %s OR n.description LIKE %s OR n.toc LIKE %s OR t.body LIKE %s)",
+            $like, $like, $like, $like
         );
 
         $nl_total = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$prefix}newsletters {$nl_where}"
+            "SELECT COUNT(*) {$nl_from} {$nl_where}"
         );
 
         $nl_items = $wpdb->get_results( $wpdb->prepare(
-            "SELECT id, title, description, pub_date, volume, issue_number
-             FROM {$prefix}newsletters {$nl_where}
-             ORDER BY pub_date DESC
+            "SELECT n.id, n.title, n.description, n.pub_date, n.volume, n.issue_number, t.body
+             {$nl_from} {$nl_where}
+             ORDER BY n.pub_date DESC
              LIMIT %d",
             $per_module
         ) );
+
+        // Turn the matched body into a short quotation and drop the full text
+        // before it travels any further — the renderer only needs the snippet.
+        foreach ( $nl_items as $nl_item ) {
+            $nl_item->excerpt = sp_newsletter_text_excerpt( (string) ( $nl_item->body ?? '' ), $query );
+            unset( $nl_item->body );
+        }
 
         if ( $nl_total > 0 ) {
             $results['newsletters'] = [
@@ -79206,6 +80017,16 @@ function sp_render_search_page(): void {
             font-size: 0.85rem;
             color: var(--sp-color-text-secondary, #6b7280);
         }
+
+        /* Quoted line showing where inside a newsletter the match was found. */
+        .sp-search-item-excerpt {
+            margin-top: 6px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: var(--sp-color-text, #1a1a1a);
+            border-left: 3px solid var(--sp-color-border, #e5e7eb);
+            padding-left: 10px;
+        }
     </style>
     <?php
 }
@@ -79389,6 +80210,9 @@ function sp_render_search_newsletters( array $items ): void {
                 echo implode( ' · ', $meta_parts );
                 ?>
             </div>
+            <?php if ( ! empty( $nl->excerpt ) ) : ?>
+                <div class="sp-search-item-excerpt"><?php echo esc_html( $nl->excerpt ); ?></div>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -103855,46 +104679,65 @@ function sp_newsletters_parse_filename( string $filename ): array {
             break;
         }
     }
-    // Month name. Use letter-boundary lookarounds instead of \b because
-    // \b doesn't match between letters and underscores (both are word chars),
-    // so "August_2022" would otherwise miss the August match.
-    if ( $month === 0 ) {
-        $months = [
-            'january'=>1,'jan'=>1,'february'=>2,'feb'=>2,'march'=>3,'mar'=>3,
-            'april'=>4,'apr'=>4,'may'=>5,'june'=>6,'jun'=>6,
-            'july'=>7,'jul'=>7,'august'=>8,'aug'=>8,'september'=>9,'sep'=>9,'sept'=>9,
-            'october'=>10,'oct'=>10,'november'=>11,'nov'=>11,'december'=>12,'dec'=>12,
-        ];
-        foreach ( $months as $name => $m_num ) {
-            if ( preg_match( '/(?<![A-Za-z])' . preg_quote( $name, '/' ) . '(?![A-Za-z])/i', $base ) ) {
-                $month = $m_num;
-                break;
+
+    // Month names, gathered in the order they appear rather than stopping at
+    // the first hit. WHY: a bi-monthly issue names both of its months
+    // ("Nov_Dec", "Jly_Aug", "May-June"), and taking only the first left the
+    // second invisible — every two-month issue was titled as a single month.
+    //
+    // Letter-boundary lookarounds stand in for \b because \b doesn't fire
+    // between a letter and an underscore, both being word characters, so
+    // "August_2022" would otherwise miss.
+    $month_names = [
+        'january'=>1,'jan'=>1,'february'=>2,'feb'=>2,'march'=>3,'mar'=>3,
+        'april'=>4,'apr'=>4,'may'=>5,'june'=>6,'jun'=>6,
+        'july'=>7,'jul'=>7,'jly'=>7,'august'=>8,'aug'=>8,
+        'september'=>9,'sep'=>9,'sept'=>9,'october'=>10,'oct'=>10,
+        'november'=>11,'nov'=>11,'december'=>12,'dec'=>12,
+    ];
+    $by_position = [];
+    foreach ( $month_names as $name => $m_num ) {
+        if ( preg_match( '/(?<![A-Za-z])' . preg_quote( $name, '/' ) . '(?![A-Za-z])/i', $base, $m, PREG_OFFSET_CAPTURE ) ) {
+            $at = (int) $m[0][1];
+            // Keep the earliest sighting of each month, so "June" and "Jun"
+            // in one name do not read as two different months.
+            if ( ! isset( $by_position[ $m_num ] ) || $at < $by_position[ $m_num ] ) {
+                $by_position[ $m_num ] = $at;
             }
         }
     }
+    asort( $by_position );
+    $sequence = array_keys( $by_position );
 
-    // Numeric month sitting next to the year — the single most common real-world
-    // pattern ("2016_11", "2018_06_07"). Anchoring to the year (rather than
-    // grabbing any 1-2 digit run) keeps us from mistaking a volume or issue
-    // number for a month. A trailing "-07" is a bi-monthly range; we take the
-    // first month and flag it so the review step can note the span.
-    $is_range = false;
-    if ( $month === 0 && $year > 0
-        && preg_match( '/(?:19[5-9]\d|20\d\d|21\d\d)[_\-\s]+(\d{1,2})([_\-]\d{1,2})?/', $base, $m ) ) {
-        $mm = (int) $m[1];
-        if ( $mm >= 1 && $mm <= 12 ) {
-            $month    = $mm;
-            $is_range = ! empty( $m[2] );
+    // Numeric months sitting next to the year — the most common real-world
+    // pattern ("2016_11", "2018_06_07"). Anchoring to the year rather than
+    // grabbing any one- or two-digit run keeps a volume or issue number from
+    // being mistaken for a month.
+    if ( ! $sequence && $year > 0
+        && preg_match( '/(?:19[5-9]\d|20\d\d|21\d\d)[_\-\s]+(\d{1,2})(?:[_\-](\d{1,2}))?/', $base, $m ) ) {
+        foreach ( [ (int) $m[1], (int) ( $m[2] ?? 0 ) ] as $mm ) {
+            if ( $mm >= 1 && $mm <= 12 && ! in_array( $mm, $sequence, true ) ) {
+                $sequence[] = $mm;
+            }
         }
     }
     // Month-before-year variant ("03_2011").
-    if ( $month === 0 && $year > 0
+    if ( ! $sequence && $year > 0
         && preg_match( '/(?<!\d)(\d{1,2})[_\-\s]+(?:19[5-9]\d|20\d\d|21\d\d)/', $base, $m ) ) {
         $mm = (int) $m[1];
         if ( $mm >= 1 && $mm <= 12 ) {
-            $month = $mm;
+            $sequence[] = $mm;
         }
     }
+
+    // A named season already decided the month and is the better label for it,
+    // so it wins over anything the month scan turned up.
+    $end_month = 0;
+    if ( '' === $season && $sequence ) {
+        $month     = (int) $sequence[0];
+        $end_month = isset( $sequence[1] ) ? (int) $sequence[1] : 0;
+    }
+    $is_range = $end_month > 0;
 
     $pub_date = '';
     if ( $year > 0 ) {
@@ -103914,9 +104757,828 @@ function sp_newsletters_parse_filename( string $filename ): array {
         'season'       => $season,
         'year'         => $year,
         'month'        => $month,
+        'end_month'    => $end_month,
         'is_range'     => $is_range,
         'confidence'   => $confidence,
     ];
+}
+
+/**
+ * Build the title a member actually reads, from the date rather than the file.
+ *
+ * WHY this exists: the importer used to title each issue with its filename,
+ * underscores swapped for spaces. That published every quirk a volunteer ever
+ * typed — "2024 03 MAR NEWSLETTER", "2026 01 Jan Newslettter", "2025 01 Jan
+ * Newsletter(1)" — straight onto a public page. The date is the one thing every
+ * issue genuinely has, and it reads consistently down a grid.
+ *
+ * @param  array $parsed Output of sp_newsletters_parse_filename().
+ * @return string Display title, or '' when there is no date to build one from.
+ */
+function sp_newsletters_display_title( array $parsed ): string {
+    global $wp_locale;
+
+    $year = (int) ( $parsed['year'] ?? 0 );
+    if ( $year <= 0 ) {
+        return '';
+    }
+
+    // A named season is how the society itself labelled that issue; keep it.
+    $season = (string) ( $parsed['season'] ?? '' );
+    if ( '' !== $season ) {
+        $labels = [
+            'Spring' => __( 'Spring', 'societypress' ),
+            'Summer' => __( 'Summer', 'societypress' ),
+            'Fall'   => __( 'Fall', 'societypress' ),
+            'Winter' => __( 'Winter', 'societypress' ),
+        ];
+        return sprintf(
+            /* translators: 1: season name, 2: four-digit year */
+            _x( '%1$s %2$d', 'newsletter title: season and year', 'societypress' ),
+            $labels[ $season ] ?? $season,
+            $year
+        );
+    }
+
+    $month = (int) ( $parsed['month'] ?? 0 );
+    if ( $month < 1 || $month > 12 || ! $wp_locale ) {
+        return (string) $year;
+    }
+
+    $start = $wp_locale->get_month( zeroise( $month, 2 ) );
+    $end   = (int) ( $parsed['end_month'] ?? 0 );
+
+    if ( $end >= 1 && $end <= 12 && $end !== $month ) {
+        return sprintf(
+            /* translators: 1: first month, 2: second month, 3: year. En dash separates a two-month issue. */
+            _x( '%1$s–%2$s %3$d', 'newsletter title: month range and year', 'societypress' ),
+            $start,
+            $wp_locale->get_month( zeroise( $end, 2 ) ),
+            $year
+        );
+    }
+
+    return sprintf(
+        /* translators: 1: month name, 2: four-digit year */
+        _x( '%1$s %2$d', 'newsletter title: month and year', 'societypress' ),
+        $start,
+        $year
+    );
+}
+
+// ============================================================================
+// PAGE RENAME REDIRECTS
+//
+// WordPress remembers a post's former slugs and redirects the old URL, but
+// wp_check_for_changed_slugs() bails on hierarchical post types — so renaming
+// a *page* silently breaks every link anyone ever shared to it. That is a trap
+// for exactly the person this software is for: a volunteer who tidies a page
+// title, sees the site still works, and never learns that the newsletter they
+// mailed last month now points at a 404.
+// ============================================================================
+
+/**
+ * Record a page's previous slug whenever it changes.
+ *
+ * Deliberately mirrors core's meta key so anything else that understands
+ * _wp_old_slug — including core's own redirect for non-hierarchical types —
+ * keeps working unchanged.
+ */
+add_action( 'post_updated', function ( $post_id, $post_after, $post_before ) {
+    if ( ! is_post_type_hierarchical( $post_after->post_type ) ) {
+        return;   // core already handles these
+    }
+    if ( 'publish' !== $post_after->post_status ) {
+        return;
+    }
+    if ( $post_after->post_name === $post_before->post_name || '' === $post_before->post_name ) {
+        return;
+    }
+
+    $old = get_post_meta( $post_id, '_wp_old_slug' );
+    if ( ! in_array( $post_before->post_name, (array) $old, true ) ) {
+        add_post_meta( $post_id, '_wp_old_slug', $post_before->post_name );
+    }
+}, 12, 3 );
+
+/**
+ * Send a request for a page's old slug to wherever that page lives now.
+ *
+ * WHY this cannot lean on core's wp_old_slug_redirect(): that function reads
+ * the 'name' query variable, and a page request populates 'pagename' instead,
+ * so it never matches a renamed page even once the meta exists.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! is_404() ) {
+        return;
+    }
+
+    $requested = get_query_var( 'pagename' );
+    if ( '' === $requested ) {
+        $requested = get_query_var( 'name' );
+    }
+    if ( '' === $requested ) {
+        return;
+    }
+
+    // A nested page misses on its full path, so match the last segment.
+    $slug = basename( untrailingslashit( (string) $requested ) );
+
+    global $wpdb;
+    $post_id = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT pm.post_id
+           FROM {$wpdb->postmeta} pm
+           INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+          WHERE pm.meta_key = '_wp_old_slug'
+            AND pm.meta_value = %s
+            AND p.post_status = 'publish'
+          LIMIT 1",
+        $slug
+    ) );
+
+    if ( ! $post_id ) {
+        return;
+    }
+
+    $link = get_permalink( $post_id );
+    if ( $link ) {
+        wp_safe_redirect( $link, 301 );
+        exit;
+    }
+} );
+
+
+// ============================================================================
+// NEWSLETTER TEXT INDEX
+//
+// Newsletters arrive as PDFs, which means a decade of a society's history is
+// invisible to its own search box. Pulling the text out once, at import, makes
+// every issue findable by anything printed in it — which for a genealogical
+// society is the whole point of keeping the back catalogue online.
+// ============================================================================
+
+/**
+ * Whether PHP on this host may shell out at all.
+ *
+ * WHY the disable_functions check on top of function_exists(): shared hosts
+ * routinely blacklist shell_exec in php.ini rather than removing it, so the
+ * function still exists and calling it raises a warning instead of working.
+ */
+function sp_can_shell_out(): bool {
+    static $can = null;
+    if ( null !== $can ) {
+        return $can;
+    }
+    if ( ! function_exists( 'shell_exec' ) ) {
+        return $can = false;
+    }
+    $disabled = array_map( 'trim', explode( ',', (string) ini_get( 'disable_functions' ) ) );
+
+    return $can = ! in_array( 'shell_exec', $disabled, true );
+}
+
+/**
+ * Locate something on this server that can turn a PDF into text.
+ *
+ * Prefers pdftotext for its cleaner column handling, but falls back to
+ * Ghostscript, which is present on nearly every host that can show a PDF
+ * thumbnail at all — Imagick shells out to it for exactly that.
+ *
+ * @return array ['bin' => path, 'kind' => 'pdftotext'|'gs'], or [] if neither.
+ */
+function sp_pdf_text_tool(): array {
+    static $tool = null;
+    if ( null !== $tool ) {
+        return $tool;
+    }
+    $tool = [];
+    if ( ! sp_can_shell_out() ) {
+        return $tool;
+    }
+    foreach ( [ 'pdftotext', 'gs' ] as $name ) {
+        $path = trim( (string) shell_exec( 'command -v ' . escapeshellarg( $name ) . ' 2>/dev/null' ) );
+        if ( '' !== $path ) {
+            $tool = [ 'bin' => $path, 'kind' => $name ];
+            break;
+        }
+    }
+
+    return $tool;
+}
+
+/**
+ * Extract a PDF's text, keeping the column spacing intact.
+ *
+ * WHY spacing is preserved rather than collapsed here: the contents-block
+ * parser reads a printed table of contents by the gap between an article title
+ * and its page number. Collapse the runs of spaces first and that structure is
+ * gone. Compaction happens later, in sp_newsletter_compact_text().
+ *
+ * @return string|WP_Error Layout-preserving text.
+ */
+function sp_newsletter_extract_pdf_text( string $path ) {
+    if ( '' === $path || ! is_readable( $path ) ) {
+        return new WP_Error( 'sp_nl_text_unreadable', __( 'The PDF file could not be read.', 'societypress' ) );
+    }
+
+    $tool = sp_pdf_text_tool();
+    if ( ! $tool ) {
+        return new WP_Error( 'sp_nl_text_no_tool', __( 'This server has no PDF text extractor available, so newsletters cannot be indexed.', 'societypress' ) );
+    }
+
+    if ( 'pdftotext' === $tool['kind'] ) {
+        $text = (string) shell_exec(
+            escapeshellarg( $tool['bin'] ) . ' -layout -enc UTF-8 -q ' . escapeshellarg( $path ) . ' - 2>/dev/null'
+        );
+    } else {
+        // Ghostscript will not stream txtwrite to stdout dependably, so it
+        // writes to a temp file we read back and remove.
+        $tmp = wp_tempnam( 'sp-nl-text' );
+        if ( ! $tmp ) {
+            return new WP_Error( 'sp_nl_text_no_tmp', __( 'A temporary file could not be created for text extraction.', 'societypress' ) );
+        }
+        shell_exec(
+            escapeshellarg( $tool['bin'] ) . ' -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=txtwrite'
+            . ' -sOutputFile=' . escapeshellarg( $tmp )
+            . ' ' . escapeshellarg( $path ) . ' 2>/dev/null'
+        );
+        $text = (string) @file_get_contents( $tmp );
+        @unlink( $tmp );
+    }
+
+    $text = str_replace( [ "\r\n", "\r" ], "\n", $text );
+
+    // Extractors emit whatever bytes the PDF's own font encodings produced,
+    // and that is not always valid UTF-8.
+    //
+    // WHY this has to happen before the strip below: that pattern carries the
+    // /u flag, and preg_replace() returns null when handed malformed UTF-8.
+    // Cast to a string, null becomes '', and a perfectly readable newsletter
+    // was reported to the volunteer as an unreadable scan needing OCR. One
+    // stray byte anywhere in fifteen pages was enough to lose the whole issue.
+    if ( function_exists( 'mb_check_encoding' ) && ! mb_check_encoding( $text, 'UTF-8' ) ) {
+        $text = mb_convert_encoding( $text, 'UTF-8', 'UTF-8' );
+    } elseif ( function_exists( 'iconv' ) ) {
+        $converted = @iconv( 'UTF-8', 'UTF-8//IGNORE', $text );
+        if ( false !== $converted ) {
+            $text = $converted;
+        }
+    }
+
+    // Strip control characters, keeping newlines and the horizontal padding the
+    // layout depends on. Left alone if the pattern still cannot run.
+    $stripped = preg_replace( '/[^\P{C}\n\t]+/u', '', $text );
+    if ( null !== $stripped ) {
+        $text = $stripped;
+    }
+
+    if ( '' === trim( $text ) ) {
+        return new WP_Error(
+            'sp_nl_text_empty',
+            __( 'No text found. This issue is almost certainly a scanned image, which has to be run through OCR before it can be indexed.', 'societypress' )
+        );
+    }
+
+    return $text;
+}
+
+/**
+ * Squeeze layout-preserving text down to something worth storing and searching.
+ */
+function sp_newsletter_compact_text( string $text ): string {
+    $text = (string) preg_replace( '/[ \t]+/', ' ', $text );
+    $text = (string) preg_replace( '/ ?\n ?/', "\n", $text );
+    $text = (string) preg_replace( '/\n{3,}/', "\n\n", $text );
+    $text = trim( $text );
+
+    // A hard ceiling so one pathological PDF cannot bloat the table. Two
+    // megabytes is far past any real newsletter — the longest issue in a
+    // twelve-year run here is under 30 KB.
+    if ( strlen( $text ) > 2097152 ) {
+        $text = substr( $text, 0, 2097152 );
+    }
+
+    return $text;
+}
+
+/**
+ * Read the "Inside this Issue" block a newsletter prints on its own front page.
+ *
+ * WHY only the printed block, with nothing derived for issues that lack one:
+ * a heading-detection pass was built and measured against this archive first.
+ * Extracted PDF text carries no font information, so there is nothing to
+ * separate a section heading from a byline, a board roster line, or a masthead
+ * fragment — it returned about half junk, including sentence fragments. An
+ * empty field an editor can fill beats a contents list nobody can trust.
+ *
+ * @param  string $text Layout-preserving text from sp_newsletter_extract_pdf_text().
+ * @return array  Lines shaped "Article title — 7", ready to store one per line.
+ */
+function sp_newsletter_parse_toc( string $text ): array {
+    $lines = explode( "\n", $text );
+    $start = -1;
+
+    foreach ( $lines as $i => $line ) {
+        if ( preg_match( '/\b(?:inside this issue|in this issue|table of contents|contents)\b\s*:?/i', $line ) ) {
+            $start = $i;
+            break;
+        }
+    }
+    if ( $start < 0 ) {
+        return [];
+    }
+
+    $items  = [];
+    $seen   = [];
+    $misses = 0;
+    $count  = count( $lines );
+
+    // WHY it stops after two consecutive misses rather than running to the end
+    // of the page: body prose further down throws up the occasional
+    // "something   5" that looks exactly like a contents entry.
+    for ( $i = $start + 1; $i < $count && $misses < 2 && count( $items ) < 40; $i++ ) {
+        $line = rtrim( $lines[ $i ] );
+        if ( '' === trim( $line ) ) {
+            continue;
+        }
+
+        $found = 0;
+        // A title, then either a run of spaces or dot leaders, then a page
+        // number. Applied repeatedly per line because these blocks are printed
+        // in two or three columns that extract onto a single line.
+        if ( preg_match_all( '/(\p{L}[^\d\n]{2,60}?)[\s.]{2,}(\d{1,3})(?![\d\p{L}])/u', $line, $matches, PREG_SET_ORDER ) ) {
+            foreach ( $matches as $hit ) {
+                $title = trim( (string) preg_replace( '/[\s.]+$/u', '', $hit[1] ) );
+                if ( mb_strlen( $title ) < 3 ) {
+                    continue;
+                }
+                $key = mb_strtolower( $title );
+                if ( isset( $seen[ $key ] ) ) {
+                    continue;
+                }
+                $seen[ $key ] = true;
+                $items[]      = $title . ' — ' . (int) $hit[2];
+                $found++;
+            }
+        }
+
+        $misses = $found ? 0 : $misses + 1;
+    }
+
+    return $items;
+}
+
+/**
+ * Extract, store and index one newsletter.
+ *
+ * @return array|WP_Error ['chars' => int, 'toc_items' => int, 'toc_written' => bool]
+ */
+function sp_newsletter_build_index( int $newsletter_id ) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_newsletters';
+
+    $nl = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, title, file_id, toc FROM {$table} WHERE id = %d",
+        $newsletter_id
+    ) );
+    if ( ! $nl ) {
+        return new WP_Error( 'sp_nl_index_missing', __( 'That newsletter no longer exists.', 'societypress' ) );
+    }
+    if ( ! $nl->file_id ) {
+        return new WP_Error( 'sp_nl_index_no_file', __( 'This newsletter has no PDF attached.', 'societypress' ) );
+    }
+
+    $path = get_attached_file( (int) $nl->file_id );
+    $text = sp_newsletter_extract_pdf_text( (string) $path );
+    if ( is_wp_error( $text ) ) {
+        return $text;
+    }
+
+    $toc     = sp_newsletter_parse_toc( $text );
+    $compact = sp_newsletter_compact_text( $text );
+
+    $wpdb->query( $wpdb->prepare(
+        "REPLACE INTO {$wpdb->prefix}sp_newsletter_text (newsletter_id, body, indexed_at) VALUES (%d, %s, %s)",
+        (int) $nl->id,
+        $compact,
+        current_time( 'mysql' )
+    ) );
+
+    // Never overwrite a contents list someone typed by hand.
+    $toc_written = false;
+    if ( $toc && '' === trim( (string) $nl->toc ) ) {
+        $wpdb->update( $table, [ 'toc' => implode( "\n", $toc ) ], [ 'id' => (int) $nl->id ] );
+        $toc_written = true;
+    }
+
+    return [
+        'chars'       => strlen( $compact ),
+        'toc_items'   => count( $toc ),
+        'toc_written' => $toc_written,
+    ];
+}
+
+/**
+ * Pull a readable snippet around the first match, so a search hit inside a
+ * fifteen-page PDF shows why it matched instead of just asserting that it did.
+ */
+function sp_newsletter_text_excerpt( string $body, string $query, int $radius = 90 ): string {
+    if ( '' === $body || '' === $query ) {
+        return '';
+    }
+    $pos = mb_stripos( $body, $query );
+    if ( false === $pos ) {
+        return '';
+    }
+    $start   = max( 0, $pos - $radius );
+    $length  = mb_strlen( $query ) + ( $radius * 2 );
+    $snippet = trim( (string) preg_replace( '/\s+/', ' ', mb_substr( $body, $start, $length ) ) );
+
+    return ( $start > 0 ? '…' : '' ) . $snippet . ( ( $start + $length ) < mb_strlen( $body ) ? '…' : '' );
+}
+
+/**
+ * AJAX: search the newsletter archive, including the text inside each PDF.
+ *
+ * WHY there is no nopriv twin: the indexed body is the newsletter's contents,
+ * and newsletters are member material. Returning quoted passages to anyone who
+ * asked would hand out the very thing the download gate protects. Signed-out
+ * visitors keep the browser-side title filter instead.
+ */
+add_action( 'wp_ajax_sp_nl_archive_search', 'sp_ajax_newsletter_archive_search' );
+function sp_ajax_newsletter_archive_search(): void {
+    check_ajax_referer( 'sp_nl_archive_search', 'nonce' );
+
+    global $wpdb;
+    $query = trim( (string) wp_unslash( $_POST['q'] ?? '' ) );
+    if ( mb_strlen( $query ) < 2 ) {
+        wp_send_json_success( [ 'matches' => (object) [] ] );
+    }
+
+    $like   = '%' . $wpdb->esc_like( $query ) . '%';
+    $tbl_nl = $wpdb->prefix . 'sp_newsletters';
+    $tbl_tx = $wpdb->prefix . 'sp_newsletter_text';
+
+    // The snippet window is cut by MySQL rather than in PHP so a broad search
+    // does not drag every issue's full text across the wire just to throw it
+    // away. SUBSTRING counts characters on utf8mb4, so accents stay intact.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT n.id,
+                CASE
+                    WHEN t.body IS NULL OR LOCATE( %s, t.body ) = 0 THEN ''
+                    ELSE SUBSTRING( t.body, GREATEST( 1, LOCATE( %s, t.body ) - 90 ), 240 )
+                END AS snippet
+           FROM {$tbl_nl} n
+           LEFT JOIN {$tbl_tx} t ON t.newsletter_id = n.id
+          WHERE n.title LIKE %s OR n.description LIKE %s OR n.toc LIKE %s OR t.body LIKE %s",
+        $query,
+        $query,
+        $like,
+        $like,
+        $like,
+        $like
+    ) );
+
+    $matches = [];
+    foreach ( $rows as $row ) {
+        $snippet = trim( (string) preg_replace( '/\s+/', ' ', (string) $row->snippet ) );
+        if ( '' !== $snippet ) {
+            // Trim the ragged half-words the fixed window leaves at each end.
+            $snippet = (string) preg_replace( '/^\S*\s+|\s+\S*$/u', '', $snippet );
+            $snippet = '…' . $snippet . '…';
+        }
+        $matches[ (string) (int) $row->id ] = $snippet;
+    }
+
+    wp_send_json_success( [ 'matches' => (object) $matches ] );
+}
+
+/**
+ * AJAX: index a small batch of newsletters.
+ *
+ * WHY batched at all: extraction shells out to Ghostscript, which takes about a
+ * second per issue. A hundred-issue archive done in one request would hit the
+ * server's execution limit and die halfway with nothing to show for it.
+ */
+add_action( 'wp_ajax_sp_nl_index_batch', 'sp_ajax_newsletter_index_batch' );
+function sp_ajax_newsletter_index_batch(): void {
+    check_ajax_referer( 'sp_nl_index', 'nonce' );
+
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to index newsletters.', 'societypress' ) ] );
+    }
+
+    $ids = array_filter( array_map( 'absint', (array) ( $_POST['ids'] ?? [] ) ) );
+    if ( ! $ids ) {
+        wp_send_json_error( [ 'message' => __( 'No newsletters were sent to index.', 'societypress' ) ] );
+    }
+
+    $indexed = 0;
+    $tocs    = 0;
+    $errors  = [];
+
+    foreach ( array_slice( $ids, 0, 5 ) as $id ) {
+        $result = sp_newsletter_build_index( (int) $id );
+        if ( is_wp_error( $result ) ) {
+            $title = (string) $GLOBALS['wpdb']->get_var( $GLOBALS['wpdb']->prepare(
+                "SELECT title FROM {$GLOBALS['wpdb']->prefix}sp_newsletters WHERE id = %d",
+                (int) $id
+            ) );
+            $errors[] = sprintf(
+                /* translators: 1: newsletter title, 2: error message */
+                __( '%1$s: %2$s', 'societypress' ),
+                $title ?: __( 'Untitled', 'societypress' ),
+                $result->get_error_message()
+            );
+            continue;
+        }
+        $indexed++;
+        if ( ! empty( $result['toc_written'] ) ) {
+            $tocs++;
+        }
+    }
+
+    wp_send_json_success( [
+        'indexed' => $indexed,
+        'tocs'    => $tocs,
+        'errors'  => $errors,
+    ] );
+}
+
+/**
+ * Render the batched index runner.
+ *
+ * One component serves both callers — the screen shown after an import, which
+ * starts on its own, and the archive's catch-up button, which waits to be
+ * clicked. Keeping them on one implementation means the progress reporting and
+ * the error handling cannot drift apart.
+ *
+ * @param int[] $ids       Newsletters to index.
+ * @param bool  $autostart Whether to begin without waiting for a click.
+ */
+function sp_newsletter_index_runner( array $ids, bool $autostart = false ): void {
+    $ids = array_values( array_filter( array_map( 'absint', $ids ) ) );
+    if ( ! $ids ) {
+        return;
+    }
+
+    $tool = sp_pdf_text_tool();
+    if ( ! $tool ) {
+        echo '<div class="notice notice-warning"><p>' . esc_html__(
+            'This server has no PDF text extractor available, so the contents of these newsletters cannot be indexed. They are still in the archive and members can still download them — but searching will only match their titles and descriptions.',
+            'societypress'
+        ) . '</p></div>';
+        return;
+    }
+    ?>
+    <div class="sp-nl-index" id="sp-nl-index">
+        <?php if ( ! $autostart ) : ?>
+            <p>
+                <button type="button" class="button button-primary" id="sp-nl-index-start">
+                    <?php echo esc_html( sprintf(
+                        /* translators: %d: number of newsletters to index */
+                        _n( 'Build Search Index (%d newsletter)', 'Build Search Index (%d newsletters)', count( $ids ), 'societypress' ),
+                        count( $ids )
+                    ) ); ?>
+                </button>
+            </p>
+            <p class="description">
+                <?php esc_html_e( 'Reads the text of each PDF so members can search what is inside them, and fills in the table of contents for any issue that prints one. Anything you typed by hand is left alone. This takes roughly a second per issue.', 'societypress' ); ?>
+            </p>
+        <?php endif; ?>
+
+        <div class="sp-nl-index-progress" id="sp-nl-index-progress" <?php echo $autostart ? '' : 'hidden'; ?>>
+            <div class="sp-nl-index-track"><div class="sp-nl-index-bar" id="sp-nl-index-bar"></div></div>
+            <p class="sp-nl-index-status" id="sp-nl-index-status" role="status" aria-live="polite"></p>
+            <ul class="ul-disc sp-nl-index-errors" id="sp-nl-index-errors"></ul>
+        </div>
+    </div>
+    <style>
+        .sp-nl-index          { margin: 16px 0; }
+        .sp-nl-index-progress { max-width: 600px; margin-top: 12px; }
+        .sp-nl-index-track    { height: 20px; background: #e6e6e6; border-radius: 10px; overflow: hidden; }
+        .sp-nl-index-bar      { height: 100%; width: 0; background: #2271b1; transition: width .2s ease; }
+        .sp-nl-index-status   { margin: 8px 0 0; font-weight: 600; }
+        .sp-nl-index-errors   { margin: 8px 0 0; color: #b32d2e; }
+    </style>
+    <script>
+    (function () {
+        var IDS   = <?php echo wp_json_encode( $ids ); ?>;
+        var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_nl_index' ) ); ?>;
+        var STR   = <?php echo wp_json_encode( [
+            'working' => __( 'Indexing %1$d of %2$d…', 'societypress' ),
+            'done'    => __( 'Done — %1$d of %2$d indexed, %3$d tables of contents filled in.', 'societypress' ),
+            'stopped' => __( 'Stopped early — %1$d of %2$d indexed.', 'societypress' ),
+            'network' => __( 'Lost contact with the server.', 'societypress' ),
+        ] ); ?>;
+
+        var wrap   = document.getElementById('sp-nl-index-progress');
+        var bar    = document.getElementById('sp-nl-index-bar');
+        var status = document.getElementById('sp-nl-index-status');
+        var errEl  = document.getElementById('sp-nl-index-errors');
+        var start  = document.getElementById('sp-nl-index-start');
+        if (!wrap || !window.fetch) return;
+
+        /* Five per request: enough to amortise the round trip, few enough that
+           a slow host still answers well inside its execution limit. */
+        var BATCH = 5;
+        var done = 0, indexed = 0, tocs = 0, at = 0;
+
+        function fmt(tpl, a, b, c) {
+            return tpl.replace('%1$d', a).replace('%2$d', b).replace('%3$d', c).replace('%d', a);
+        }
+
+        function showErrors(list) {
+            list.forEach(function (msg) {
+                var li = document.createElement('li');
+                li.textContent = msg;   /* server text, but never trusted as markup */
+                errEl.appendChild(li);
+            });
+        }
+
+        function run() {
+            if (at >= IDS.length) {
+                bar.style.width = '100%';
+                status.textContent = fmt(STR.done, indexed, IDS.length, tocs);
+                if (start) start.disabled = false;
+                return;
+            }
+
+            var slice = IDS.slice(at, at + BATCH);
+            var data  = new FormData();
+            data.append('action', 'sp_nl_index_batch');
+            data.append('nonce', NONCE);
+            slice.forEach(function (id) { data.append('ids[]', id); });
+
+            fetch(AJAX, { method: 'POST', body: data, credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (r) {
+                    if (!r || !r.success) {
+                        showErrors([(r && r.data && r.data.message) || STR.network]);
+                        status.textContent = fmt(STR.stopped, indexed, IDS.length);
+                        if (start) start.disabled = false;
+                        return;
+                    }
+                    indexed += r.data.indexed;
+                    tocs    += r.data.tocs;
+                    if (r.data.errors && r.data.errors.length) showErrors(r.data.errors);
+
+                    at   += slice.length;
+                    done  = at;
+                    bar.style.width = Math.round((done / IDS.length) * 100) + '%';
+                    status.textContent = fmt(STR.working, done, IDS.length);
+                    run();
+                })
+                .catch(function () {
+                    showErrors([STR.network]);
+                    status.textContent = fmt(STR.stopped, indexed, IDS.length);
+                    if (start) start.disabled = false;
+                });
+        }
+
+        function begin() {
+            wrap.hidden = false;
+            if (start) start.disabled = true;
+            status.textContent = fmt(STR.working, 0, IDS.length);
+            run();
+        }
+
+        if (start) { start.addEventListener('click', begin); }
+        <?php if ( $autostart ) : ?>
+        begin();
+        <?php endif; ?>
+    })();
+    </script>
+    <?php
+}
+
+/**
+ * Meta key holding a newsletter PDF's SHA-256, stored on its attachment.
+ *
+ * WHY on the attachment rather than a column on sp_newsletters: the importer
+ * has to recognise a repeat upload before there is an archive row to hang the
+ * fingerprint on, and the attachment exists the moment the file lands.
+ */
+const SP_NEWSLETTER_HASH_META = '_sp_nl_sha256';
+
+/**
+ * Fingerprint a PDF by its contents.
+ *
+ * WHY contents and not the filename: societies rename their back catalogue
+ * constantly — "Spring 2019.pdf", "2019_03.pdf" and "newsletter-spring-19.pdf"
+ * are routinely the same scan. The bytes are the only stable identity.
+ *
+ * @param  string $path Readable path to the file, before it is moved.
+ * @return string Lowercase hex digest, or '' when the file could not be read.
+ */
+function sp_newsletter_file_fingerprint( string $path ): string {
+    if ( '' === $path || ! is_readable( $path ) ) {
+        return '';
+    }
+    $hash = hash_file( 'sha256', $path );
+
+    return is_string( $hash ) ? $hash : '';
+}
+
+/**
+ * Decide whether a newsletter about to be imported is one the society already has.
+ *
+ * The same issue arrives in two different disguises, so there are two passes.
+ * An identical file re-uploaded under any name is caught by its SHA-256 and is
+ * never a legitimate second entry. A fresh scan of an issue already in the
+ * archive has different bytes but the same date, volume and issue number — that
+ * is a judgement call, not a certainty, which is why the caller decides what
+ * weight to give it via $mode.
+ *
+ * @param string $hash       SHA-256 of the PDF, or '' when it could not be read.
+ * @param array  $row        Parsed or edited metadata: title, pub_date, volume, issue_number.
+ * @param int    $ignore_att Attachment id to exclude — the one just uploaded.
+ * @param string $mode       'all' to include the metadata pass, 'file' for bytes only.
+ * @return array  Empty when unique; otherwise id (0 if not yet in the archive),
+ *                title of the existing entry, and a reason phrase for humans.
+ */
+function sp_newsletter_find_duplicate( string $hash, array $row, int $ignore_att = 0, string $mode = 'all' ): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_newsletters';
+
+    // ----- Pass 1: identical bytes -----
+    if ( '' !== $hash ) {
+        $twin = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT post_id FROM {$wpdb->postmeta}
+              WHERE meta_key = %s AND meta_value = %s AND post_id <> %d
+              LIMIT 1",
+            SP_NEWSLETTER_HASH_META,
+            $hash,
+            $ignore_att
+        ) );
+
+        if ( $twin ) {
+            $existing = $wpdb->get_row( $wpdb->prepare(
+                "SELECT id, title FROM {$table} WHERE file_id = %d LIMIT 1",
+                $twin
+            ) );
+
+            // WHY a matching archive row is required, rather than treating any
+            // fingerprinted twin as a duplicate: an import abandoned at the
+            // review screen leaves its uploaded PDFs behind, fingerprint and
+            // all. Counting those would flag a volunteer's second, honest
+            // attempt at the same files as duplicates of their own false start.
+            // Two identical files inside one import are still caught — by the
+            // time the second reaches the insert guard, the first has become an
+            // archive row for it to match against.
+            if ( $existing ) {
+                return [
+                    'id'     => (int) $existing->id,
+                    'title'  => (string) $existing->title,
+                    'reason' => __( 'the identical PDF is already in the archive', 'societypress' ),
+                ];
+            }
+        }
+    }
+
+    if ( 'all' !== $mode ) {
+        return [];
+    }
+
+    // ----- Pass 2: same issue, different scan -----
+    $pub_date = (string) ( $row['pub_date'] ?? '' );
+    if ( '' !== $pub_date ) {
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, title FROM {$table}
+              WHERE pub_date = %s
+                AND COALESCE(volume, 0)       = %d
+                AND COALESCE(issue_number, 0) = %d
+              LIMIT 1",
+            $pub_date,
+            (int) ( $row['volume'] ?? 0 ),
+            (int) ( $row['issue_number'] ?? 0 )
+        ) );
+        if ( $existing ) {
+            return [
+                'id'     => (int) $existing->id,
+                'title'  => (string) $existing->title,
+                'reason' => __( 'an issue with the same date, volume and number is already in the archive', 'societypress' ),
+            ];
+        }
+    }
+
+    $title = trim( (string) ( $row['title'] ?? '' ) );
+    if ( '' !== $title ) {
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, title FROM {$table} WHERE title = %s LIMIT 1",
+            $title
+        ) );
+        if ( $existing ) {
+            return [
+                'id'     => (int) $existing->id,
+                'title'  => (string) $existing->title,
+                'reason' => __( 'a newsletter with the same title is already in the archive', 'societypress' ),
+            ];
+        }
+    }
+
+    return [];
 }
 
 /**
@@ -103926,6 +105588,21 @@ function sp_newsletters_parse_filename( string $filename ): array {
  */
 function sp_newsletters_insert_row( array $row, int $file_id, int $cover_id, int $user_id ) {
     global $wpdb;
+
+    // Last line of defence against a duplicate. Only the bytes are enforced
+    // here: identical PDFs are never a legitimate second entry, whereas two
+    // issues can honestly share a date — a bi-monthly "2016_11_12" and a
+    // "2016_11" both parse to November — and blocking those would leave the
+    // volunteer no way through. Those are surfaced at review instead.
+    // Ticking the box on a flagged row is the volunteer's explicit override.
+    if ( empty( $row['allow_duplicate'] ) && $file_id ) {
+        $hash = (string) get_post_meta( $file_id, SP_NEWSLETTER_HASH_META, true );
+        $dupe = sp_newsletter_find_duplicate( $hash, $row, $file_id, 'file' );
+        if ( $dupe ) {
+            /* translators: %s: reason the file was recognised as a duplicate */
+            return new WP_Error( 'sp_nl_duplicate', sprintf( __( 'skipped, %s', 'societypress' ), $dupe['reason'] ) );
+        }
+    }
 
     $title    = trim( (string) ( $row['title'] ?? '' ) );
     if ( $title === '' ) $title = __( 'Untitled Newsletter', 'societypress' );
@@ -103950,6 +105627,11 @@ function sp_newsletters_insert_row( array $row, int $file_id, int $cover_id, int
         $pub_date = '';
     }
 
+    $visibility = (string) ( $row['visibility'] ?? 'members_only' );
+    if ( ! in_array( $visibility, [ 'members_only', 'public' ], true ) ) {
+        $visibility = 'members_only';
+    }
+
     $insert = $wpdb->insert( $table, [
         'title'          => $title,
         'slug'           => $slug,
@@ -103960,7 +105642,11 @@ function sp_newsletters_insert_row( array $row, int $file_id, int $cover_id, int
         'issue_number'   => max( 0, (int) ( $row['issue_number'] ?? 0 ) ) ?: null,
         'file_id'        => $file_id,
         'cover_image_id' => $cover_id ?: null,
-        'visibility'     => in_array( $row['visibility'] ?? 'members_only', [ 'members_only', 'public' ], true ) ? $row['visibility'] : 'members_only',
+        // WHY the local: the fallback has to cover the value as well as the
+        // test. Guarding only the in_array() call meant a row with no
+        // visibility key passed the check and then wrote a NULL into a NOT NULL
+        // column, which the database rejected as an unexplained insert failure.
+        'visibility'     => $visibility,
         'created_by'     => $user_id,
     ] );
 
@@ -104024,14 +105710,23 @@ function sp_newsletter_import_handle_file( array $file ) {
         return new WP_Error( 'sp_nl_not_pdf', sprintf( __( '%1$s: not a PDF (detected %2$s)', 'societypress' ), $name, $real_type ?: __( 'unknown', 'societypress' ) ) );
     }
 
+    // Fingerprint before wp_handle_upload(), which moves the file out from
+    // under $tmp_name.
+    $hash = sp_newsletter_file_fingerprint( $tmp_name );
+
+    // WHY the variable: wp_handle_upload() takes its first argument by
+    // reference, so handing it an array literal is a fatal error in PHP 8 --
+    // which killed the AJAX request and reported itself as a lost connection.
+    $upload = [
+        'name'     => $name,
+        'tmp_name' => $tmp_name,
+        'type'     => 'application/pdf',
+        'error'    => 0,
+        'size'     => (int) ( $file['size'] ?? 0 ),
+    ];
+
     $handled = wp_handle_upload(
-        [
-            'name'     => $name,
-            'tmp_name' => $tmp_name,
-            'type'     => 'application/pdf',
-            'error'    => 0,
-            'size'     => (int) ( $file['size'] ?? 0 ),
-        ],
+        $upload,
         [ 'test_form' => false, 'action' => 'sp_nl_import' ]
     );
 
@@ -104056,6 +105751,10 @@ function sp_newsletter_import_handle_file( array $file ) {
         wp_generate_attachment_metadata( (int) $attachment_id, $handled['file'] )
     );
 
+    if ( '' !== $hash ) {
+        update_post_meta( (int) $attachment_id, SP_NEWSLETTER_HASH_META, $hash );
+    }
+
     // Cover generation is best-effort: a missing thumbnail is cosmetic, and
     // Imagick is absent on plenty of shared hosts.
     $cover    = sp_generate_newsletter_cover_for_pdf( (int) $attachment_id );
@@ -104071,15 +105770,85 @@ function sp_newsletter_import_handle_file( array $file ) {
 
     $parsed = sp_newsletters_parse_filename( $name );
 
+    // Look for a collision now, while the volunteer is still at the review
+    // step and can act on it, rather than discovering a doubled archive later.
+    $dupe = sp_newsletter_find_duplicate( $hash, $parsed, (int) $attachment_id );
+
+    // Prefer a title built from the date. The filename-derived one is only a
+    // fallback for an issue whose name carries no readable date at all, and the
+    // review table shows the original filename underneath either way.
+    $title = sp_newsletters_display_title( $parsed );
+    if ( '' === $title ) {
+        $title = $parsed['title'];
+    }
+
     return [
-        'file_id'      => (int) $attachment_id,
-        'cover_id'     => $cover_id,
-        'filename'     => $name,
-        'title'        => $parsed['title'],
-        'pub_date'     => $parsed['pub_date'],
-        'volume'       => $parsed['volume'],
-        'issue_number' => $parsed['issue_number'],
+        'file_id'          => (int) $attachment_id,
+        'cover_id'         => $cover_id,
+        'filename'         => $name,
+        'title'            => $title,
+        'pub_date'         => $parsed['pub_date'],
+        'volume'           => $parsed['volume'],
+        'issue_number'     => $parsed['issue_number'],
+        'duplicate_of'     => $dupe['title']  ?? '',
+        'duplicate_reason' => $dupe['reason'] ?? '',
     ];
+}
+
+/**
+ * Bulk visibility control for the import review table.
+ *
+ * WHY it exists: newsletters arrive as a back catalogue, and a society almost
+ * always wants the whole run treated the same way. Setting fifty dropdowns one
+ * at a time is the kind of tedium that makes a volunteer abandon the import.
+ *
+ * WHY it starts hidden: it works by rewriting the row dropdowns in the browser,
+ * so without JavaScript it would be a button that does nothing. The script
+ * below reveals it, which means it only ever appears when it can actually work.
+ */
+function sp_newsletter_import_bulk_visibility_bar(): void {
+    ?>
+    <div class="sp-nl-bulkbar" id="sp-nl-bulkbar" hidden>
+        <label for="sp-nl-bulk-visibility"><?php esc_html_e( 'Set every newsletter below to:', 'societypress' ); ?></label>
+        <select id="sp-nl-bulk-visibility">
+            <option value="members_only"><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
+            <option value="public"><?php esc_html_e( 'Public', 'societypress' ); ?></option>
+        </select>
+        <button type="button" class="button" id="sp-nl-bulk-apply"><?php esc_html_e( 'Apply to All', 'societypress' ); ?></button>
+        <span class="sp-nl-bulk-status" id="sp-nl-bulk-status" role="status" aria-live="polite"></span>
+    </div>
+    <style>
+        .sp-nl-bulkbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; padding: 10px 12px; background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 6px; }
+        .sp-nl-bulk-status { color: #50575e; font-style: italic; }
+    </style>
+    <script>
+    (function () {
+        var bar = document.getElementById( 'sp-nl-bulkbar' );
+        if ( ! bar ) { return; }
+        bar.hidden = false;
+
+        /* translators: 1: number of newsletters, 2: visibility name */
+        var template = <?php echo wp_json_encode( __( '%1$d newsletters set to %2$s.', 'societypress' ) ); ?>;
+        var one      = <?php echo wp_json_encode( __( '1 newsletter set to %2$s.', 'societypress' ) ); ?>;
+
+        document.getElementById( 'sp-nl-bulk-apply' ).addEventListener( 'click', function () {
+            var choice = document.getElementById( 'sp-nl-bulk-visibility' );
+            var value  = choice.value;
+            var label  = choice.options[ choice.selectedIndex ].textContent;
+
+            // Queried at click time, not on load: the AJAX uploader appends rows
+            // as each batch lands, so the table is not fully built until then.
+            var rows = document.querySelectorAll( 'select[name^="sp_nl_items"][name$="[visibility]"]' );
+            Array.prototype.forEach.call( rows, function ( select ) { select.value = value; } );
+
+            document.getElementById( 'sp-nl-bulk-status' ).textContent =
+                ( rows.length === 1 ? one : template )
+                    .replace( '%1$d', rows.length )
+                    .replace( '%2$s', label );
+        } );
+    })();
+    </script>
+    <?php
 }
 
 /**
@@ -104094,15 +105863,43 @@ function sp_newsletter_import_preview_row( array $row, int $idx ): string {
     $cover_url = ! empty( $row['cover_id'] ) ? wp_get_attachment_image_url( (int) $row['cover_id'], 'thumbnail' ) : '';
     $field     = 'sp_nl_items[' . $idx . ']';
 
-    $out  = '<tr>';
+    // A flagged row arrives unticked. WHY not simply dropped: the volunteer is
+    // the one who knows whether a second copy is wanted, and silently discarding
+    // an issue they meant to add is the worse of the two failures.
+    $reason  = (string) ( $row['duplicate_reason'] ?? '' );
+    $is_dupe = '' !== $reason;
+
+    $out  = '<tr' . ( $is_dupe ? ' class="sp-nl-row-dupe"' : '' ) . '>';
     $out .= '<td><input type="hidden" name="' . esc_attr( $field ) . '[file_id]" value="' . (int) $row['file_id'] . '">';
     $out .= '<input type="hidden" name="' . esc_attr( $field ) . '[cover_id]" value="' . (int) $row['cover_id'] . '">';
-    $out .= '<input type="checkbox" name="' . esc_attr( $field ) . '[import]" value="1" checked aria-label="' . esc_attr__( 'Import this newsletter', 'societypress' ) . '"></td>';
+    if ( $is_dupe ) {
+        // Carries the flag through to the commit step, where a ticked box on a
+        // flagged row is what authorises the duplicate past the insert guard.
+        $out .= '<input type="hidden" name="' . esc_attr( $field ) . '[dup]" value="1">';
+    }
+    $out .= '<input type="checkbox" name="' . esc_attr( $field ) . '[import]" value="1"' . ( $is_dupe ? '' : ' checked' ) . ' aria-label="' . esc_attr__( 'Import this newsletter', 'societypress' ) . '"></td>';
     $out .= '<td>' . ( $cover_url
         ? '<img src="' . esc_url( $cover_url ) . '" alt="" class="sp-nl-cover-img">'
         : '<em class="sp-nl-no-cover">' . esc_html__( 'none', 'societypress' ) . '</em>'
     ) . '</td>';
-    $out .= '<td><input type="text" name="' . esc_attr( $field ) . '[title]" value="' . esc_attr( $row['title'] ) . '" class="regular-text"><br><small class="sp-nl-filename">' . esc_html( $row['filename'] ) . '</small></td>';
+    $out .= '<td><input type="text" name="' . esc_attr( $field ) . '[title]" value="' . esc_attr( $row['title'] ) . '" class="regular-text"><br><small class="sp-nl-filename">' . esc_html( $row['filename'] ) . '</small>';
+    if ( $is_dupe ) {
+        $existing = trim( (string) ( $row['duplicate_of'] ?? '' ) );
+        $note     = '' !== $existing
+            ? sprintf(
+                /* translators: 1: title of the newsletter already in the archive, 2: reason phrase */
+                __( 'Already have this one — “%1$s”, because %2$s. Tick the box only if you really want a second copy.', 'societypress' ),
+                $existing,
+                $reason
+            )
+            : sprintf(
+                /* translators: %s: reason phrase */
+                __( 'Already have this one, because %s. Tick the box only if you really want a second copy.', 'societypress' ),
+                $reason
+            );
+        $out .= '<br><small class="sp-nl-dupe-note">' . esc_html( $note ) . '</small>';
+    }
+    $out .= '</td>';
     $out .= '<td><input type="date" name="' . esc_attr( $field ) . '[pub_date]" value="' . esc_attr( $row['pub_date'] ) . '"></td>';
     $out .= '<td><input type="number" name="' . esc_attr( $field ) . '[volume]" value="' . (int) $row['volume'] . '" min="0" class="small-text"></td>';
     $out .= '<td><input type="number" name="' . esc_attr( $field ) . '[issue_number]" value="' . (int) $row['issue_number'] . '" min="0" class="small-text"></td>';
@@ -104187,6 +105984,10 @@ function sp_render_import_newsletters_page(): void {
         .sp-nl-cover-img   { max-width: 60px; max-height: 80px; border: 1px solid #c3c4c7; }
         .sp-nl-no-cover    { color: #767676; }
         .sp-nl-filename    { color: #767676; }
+        /* Flagged duplicate rows. The selector is deliberately more specific
+           than .striped so the warning tint survives the zebra striping. */
+        .widefat.striped > tbody > tr.sp-nl-row-dupe { background: #fcf3e3; }
+        .sp-nl-dupe-note   { display: block; margin-top: 4px; color: #8a5700; font-weight: 600; }
     </style>';
     echo '<div class="wrap">';
     echo '<h1>' . esc_html__( 'Import Newsletters', 'societypress' ) . '</h1>';
@@ -104200,10 +106001,27 @@ function sp_render_import_newsletters_page(): void {
     if ( $action === 'commit' ) {
         check_admin_referer( 'sp_nl_import' );
 
-        $items   = isset( $_POST['sp_nl_items'] ) && is_array( $_POST['sp_nl_items'] ) ? $_POST['sp_nl_items'] : [];
-        $created = 0;
-        $errors  = [];
-        $user_id = (int) get_current_user_id();
+        $items       = isset( $_POST['sp_nl_items'] ) && is_array( $_POST['sp_nl_items'] ) ? $_POST['sp_nl_items'] : [];
+        $created     = 0;
+        $created_ids = [];
+        $skipped     = 0;
+        $errors      = [];
+        $user_id     = (int) get_current_user_id();
+
+        /**
+         * Discard the PDF and cover belonging to a row that never became an
+         * archive entry.
+         *
+         * WHY: the review step uploads every file before the volunteer decides
+         * anything, so an unticked row has already put two attachments in the
+         * media library that nothing will ever point at. Left alone they pile
+         * up on every pass — which is exactly how a re-import ends up with the
+         * same back catalogue stored twice.
+         */
+        $discard = static function ( int $file_id, int $cover_id ): void {
+            if ( $file_id )  { wp_delete_attachment( $file_id, true ); }
+            if ( $cover_id ) { wp_delete_attachment( $cover_id, true ); }
+        };
 
         foreach ( $items as $idx => $raw ) {
             $file_id  = (int) ( $raw['file_id']  ?? 0 );
@@ -104211,7 +106029,11 @@ function sp_render_import_newsletters_page(): void {
             if ( ! $file_id ) continue;
             // The review form uses an "import" checkbox; an unchecked box
             // sends no value, so skip any row that wasn't explicitly ticked.
-            if ( empty( $raw['import'] ) ) continue;
+            if ( empty( $raw['import'] ) ) {
+                $discard( $file_id, $cover_id );
+                $skipped++;
+                continue;
+            }
 
             $row = [
                 'title'        => sanitize_text_field( (string) ( $raw['title'] ?? '' ) ),
@@ -104220,24 +106042,52 @@ function sp_render_import_newsletters_page(): void {
                 'issue_number' => (int) ( $raw['issue_number'] ?? 0 ),
                 'description'  => sanitize_textarea_field( (string) ( $raw['description'] ?? '' ) ),
                 'visibility'   => in_array( $raw['visibility'] ?? '', [ 'members_only', 'public' ], true ) ? $raw['visibility'] : 'members_only',
+                // Ticking a row the review step flagged is the volunteer saying
+                // yes, they do want a second copy of that exact file.
+                'allow_duplicate' => ! empty( $raw['dup'] ),
             ];
 
             $result = sp_newsletters_insert_row( $row, $file_id, $cover_id, $user_id );
             if ( is_wp_error( $result ) ) {
+                $discard( $file_id, $cover_id );
                 $errors[] = sprintf( /* translators: 1: newsletter title, 2: error message */ __( '%1$s: %2$s', 'societypress' ), $row['title'] ?: __( 'Untitled', 'societypress' ), $result->get_error_message() );
             } else {
                 $created++;
+                $created_ids[] = (int) $result;
             }
         }
 
         echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
         /* translators: %d: number of newsletters added */
         echo '<p>' . sprintf( esc_html( _n( '%d newsletter added to the archive.', '%d newsletters added to the archive.', $created, 'societypress' ) ), $created ) . '</p>';
+        if ( $skipped ) {
+            echo '<p>' . esc_html( sprintf(
+                /* translators: %d: number of unticked rows */
+                _n(
+                    '%d was left out, and its uploaded PDF was removed so it does not linger in the media library.',
+                    '%d were left out, and their uploaded PDFs were removed so they do not linger in the media library.',
+                    $skipped,
+                    'societypress'
+                ),
+                $skipped
+            ) ) . '</p>';
+        }
         if ( $errors ) {
             echo '<div class="notice notice-warning"><p><strong>' . esc_html__( 'Errors:', 'societypress' ) . '</strong></p><ul class="ul-disc">';
             foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
             echo '</ul></div>';
         }
+
+        // Reading the PDFs happens here rather than during the insert loop
+        // above: extraction shells out per file, and a back catalogue committed
+        // in one request would run past the server's execution limit. This
+        // picks up straight away and reports its own progress.
+        if ( $created_ids ) {
+            echo '<h3>' . esc_html__( 'Indexing the contents', 'societypress' ) . '</h3>';
+            echo '<p>' . esc_html__( 'Reading the text of each PDF so members can search inside these newsletters. You can leave this page once it finishes.', 'societypress' ) . '</p>';
+            sp_newsletter_index_runner( $created_ids, true );
+        }
+
         echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-newsletter-archive' ) ) . '">' . esc_html__( 'View Newsletter Archive', 'societypress' ) . '</a></p>';
         echo '</div>';
         return;
@@ -104312,11 +106162,29 @@ function sp_render_import_newsletters_page(): void {
         }
 
         echo '<h2>' . esc_html__( 'Review and confirm', 'societypress' ) . '</h2>';
-        echo '<p>' . esc_html__( 'Each row will become a newsletter archive entry. Adjust the auto-detected fields, uncheck any you do not want to import, then save.', 'societypress' ) . '</p>';
+        echo '<p>' . esc_html__( 'Each ticked row will become a newsletter archive entry. Adjust the auto-detected fields, uncheck any you do not want to import, then save.', 'societypress' ) . '</p>';
+
+        $flagged = count( array_filter( $rows, static function ( $r ) {
+            return ! empty( $r['duplicate_reason'] );
+        } ) );
+        if ( $flagged ) {
+            echo '<div class="notice notice-warning"><p>' . esc_html( sprintf(
+                /* translators: %d: number of rows recognised as already in the archive */
+                _n(
+                    '%d of these is already in the archive. It is highlighted below and left unticked — leave it that way unless you truly want a second copy.',
+                    '%d of these are already in the archive. They are highlighted below and left unticked — leave them that way unless you truly want second copies.',
+                    $flagged,
+                    'societypress'
+                ),
+                $flagged
+            ) ) . '</p></div>';
+        }
 
         echo '<form method="post">';
         wp_nonce_field( 'sp_nl_import' );
         echo '<input type="hidden" name="sp_nl_import_action" value="commit">';
+
+        sp_newsletter_import_bulk_visibility_bar();
 
         echo '<table class="widefat striped">';
         echo '<thead><tr>';
@@ -105606,10 +107474,12 @@ function sp_render_import_newsletters_upload_form(): void {
     // empty and hidden until the uploads finish, then the rows land in it.
     echo '<div id="sp-nl-review" hidden>';
     echo '<h2>' . esc_html__( 'Review and confirm', 'societypress' ) . '</h2>';
-    echo '<p>' . esc_html__( 'Each row will become a newsletter archive entry. Adjust the auto-detected fields, uncheck any you do not want to import, then save.', 'societypress' ) . '</p>';
+    echo '<p>' . esc_html__( 'Each ticked row will become a newsletter archive entry. Adjust the auto-detected fields, uncheck any you do not want to import, then save.', 'societypress' ) . '</p>';
+    echo '<div class="notice notice-warning" id="sp-nl-dupe-notice" hidden><p id="sp-nl-dupe-notice-text"></p></div>';
     echo '<form method="post">';
     wp_nonce_field( 'sp_nl_import' );
     echo '<input type="hidden" name="sp_nl_import_action" value="commit">';
+    sp_newsletter_import_bulk_visibility_bar();
     echo '<table class="widefat striped">';
     echo '<thead><tr>';
     echo '<th scope="col">' . esc_html__( 'Import?', 'societypress' ) . '</th>';
@@ -105659,6 +107529,8 @@ function sp_render_import_newsletters_upload_form(): void {
             'failed'  => __( 'The upload stopped early. %d ready to review.', 'societypress' ),
             'none'    => __( 'No valid PDFs were uploaded.', 'societypress' ),
             'network' => __( 'Lost contact with the server.', 'societypress' ),
+            'dupeOne'  => __( '%d of these is already in the archive. It is highlighted below and left unticked — leave it that way unless you truly want a second copy.', 'societypress' ),
+            'dupeMany' => __( '%d of these are already in the archive. They are highlighted below and left unticked — leave them that way unless you truly want second copies.', 'societypress' ),
         ] ); ?>;
 
         var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
@@ -105705,6 +107577,18 @@ function sp_render_import_newsletters_upload_form(): void {
                 }
 
                 statusEl.textContent = ok ? fmt(STR.done, added) : fmt(STR.failed, added);
+
+                /* Counted from the rendered rows rather than returned per batch:
+                   the last batch is the only one that knows the full tally. */
+                var dupes = reviewRows.querySelectorAll('tr.sp-nl-row-dupe').length;
+                if (dupes) {
+                    var notice = document.getElementById('sp-nl-dupe-notice');
+                    var text   = document.getElementById('sp-nl-dupe-notice-text');
+                    if (notice && text) {
+                        text.textContent = (dupes === 1 ? STR.dupeOne : STR.dupeMany).replace('%d', dupes);
+                        notice.hidden = false;
+                    }
+                }
 
                 /* Hand the page over to the review table. Errors stay visible by
                    moving with it, so a partial failure is not hidden by success. */

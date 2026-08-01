@@ -28658,7 +28658,13 @@ class SP_Pages_List_Table extends WP_List_Table {
             $args['orderby'] = $orderby;
             $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
         } else {
-            $args['orderby'] = 'menu_order';
+            // WHY menu_order AND title: menu_order is zero on every page until
+            // somebody deliberately drags one, so on a normal site the whole
+            // list ties and MySQL returns whatever order it likes — which reads
+            // as "oldest first" and looks broken. Falling back to the title
+            // makes the untouched case alphabetical while still honouring an
+            // order Harold set on purpose.
+            $args['orderby'] = 'menu_order title';
             $args['order']   = 'ASC';
         }
 
@@ -29212,7 +29218,20 @@ function sp_render_page_edit(): void {
                         <p class="description"><?php esc_html_e( 'A private link for reviewing this page before it goes live — anyone with the link can view it, no account needed. It stops working once the page is published or when you generate a new link.', 'societypress' ); ?></p>
                         <input type="text" id="sp-review-link" class="sp-review-link-input" readonly value="<?php echo esc_attr( $sp_review_url ); ?>">
                         <button type="button" class="button" id="sp-copy-review-link"><?php esc_html_e( 'Copy link', 'societypress' ); ?></button>
-                        <a href="<?php echo esc_url( $sp_review_url ); ?>" class="button" target="_blank" rel="noopener"><?php esc_html_e( 'Preview', 'societypress' ); ?></a>
+                        <?php
+                        /*
+                         * WHY Preview is a submit button and not a link: as a
+                         * link it opened the page as it was last SAVED, so
+                         * somebody who edited a content block and pressed
+                         * Preview saw their old text and concluded the editor
+                         * had lost the change. Preview now saves first.
+                         *
+                         * WHY formtarget: the save happens in the new tab, so
+                         * this tab stays exactly where it was rather than
+                         * jumping to the pages list mid-edit.
+                         */
+                        ?>
+                        <button type="submit" name="sp_preview" value="1" class="button" formtarget="_blank"><?php esc_html_e( 'Save & Preview', 'societypress' ); ?></button>
                         <label class="sp-review-link-reset">
                             <input type="checkbox" name="sp_reset_review_link" value="1">
                             <?php esc_html_e( 'Generate a new link when I save (turns off the old one)', 'societypress' ); ?>
@@ -29458,6 +29477,17 @@ function sp_handle_page_save(): void {
     // Review link: reset it on request (invalidating the old link), otherwise
     // ensure one exists so the Copy Review Link button always has a URL.
     sp_page_review_token( $saved_id, ! empty( $_POST['sp_reset_review_link'] ) );
+
+    // "Save & Preview" posts into a new tab, so land that tab on the page
+    // itself. A published page is just viewed; a draft needs its review link,
+    // which is the only way to see an unpublished page without an account.
+    if ( ! empty( $_POST['sp_preview'] ) ) {
+        $preview_url = ( 'publish' === get_post_status( $saved_id ) )
+            ? get_permalink( $saved_id )
+            : sp_page_review_url( $saved_id );
+        wp_safe_redirect( $preview_url );
+        exit;
+    }
 
     wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
     exit;
@@ -88310,6 +88340,20 @@ function sp_render_documents_page(): void {
                         <td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit&id=' . $doc->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                             |
+                            <?php
+                            /*
+                             * WHY a copy button: a document is served through
+                             * admin-ajax so its access level can be enforced,
+                             * which means its address is nothing a volunteer
+                             * could guess or find. Without this, "link the
+                             * Library Rules PDF on the Library page" had no
+                             * answer — you could upload the file and then had
+                             * no way to point at it.
+                             */
+                            ?>
+                            <button type="button" class="sp-link-btn sp-copy-doc-link"
+                                    data-url="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $doc->id ) ); ?>"><?php esc_html_e( 'Copy link', 'societypress' ); ?></button>
+                            |
                             <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr( __( 'Delete this document?', 'societypress' ) ); ?>">
                                 <?php wp_nonce_field( 'sp_delete_document_' . $doc->id ); ?>
                                 <input type="hidden" name="action" value="delete">
@@ -88326,6 +88370,28 @@ function sp_render_documents_page(): void {
         <p class="sp-documents-count">
             <?php printf( esc_html__( '%d document(s)', 'societypress' ), count( $docs ) ); ?>
         </p>
+
+        <script>
+        /* Copy a document's address so it can be pasted into a page. Falls back
+           to a prompt where navigator.clipboard is unavailable — it needs a
+           secure context, and some societies still run their admin over HTTP. */
+        document.addEventListener( 'click', function ( e ) {
+            var btn = e.target.closest( '.sp-copy-doc-link' );
+            if ( ! btn ) { return; }
+            e.preventDefault();
+            var url  = btn.getAttribute( 'data-url' );
+            var said = btn.textContent;
+            var done = function () {
+                btn.textContent = <?php echo wp_json_encode( __( 'Copied', 'societypress' ) ); ?>;
+                setTimeout( function () { btn.textContent = said; }, 1500 );
+            };
+            if ( navigator.clipboard && window.isSecureContext ) {
+                navigator.clipboard.writeText( url ).then( done, function () { window.prompt( said, url ); } );
+            } else {
+                window.prompt( said, url );
+            }
+        } );
+        </script>
     </div>
     <?php
 }
@@ -109398,7 +109464,18 @@ function sp_forms_render_field_row( $index, array $field, array $field_types ): 
                     <option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $type, $slug ); ?>><?php echo esc_html( $meta['label'] ); ?></option>
                 <?php endforeach; ?>
             </select>
-            <input type="text" class="sp-field-label-input" name="<?php echo $base; ?>[label]" value="<?php echo esc_attr( $label ); ?>" placeholder="<?php esc_attr_e( 'Question label (e.g. Your Name)', 'societypress' ); ?>">
+            <?php
+            /*
+             * WHY required: the save handler drops any field with a blank label,
+             * because a question with nothing to read is meaningless to a
+             * visitor — but it dropped it in silence. Someone who added a drop
+             * down, typed its options, and left the label empty saved the form
+             * and found the field simply gone, with nothing said. The browser
+             * now stops the save and points at the empty box instead. The
+             * server-side check stays as the backstop.
+             */
+            ?>
+            <input type="text" class="sp-field-label-input" name="<?php echo $base; ?>[label]" value="<?php echo esc_attr( $label ); ?>" placeholder="<?php esc_attr_e( 'Question label (e.g. Your Name)', 'societypress' ); ?>" required>
             <span class="sp-field-row-actions">
                 <button type="button" class="button sp-field-up" aria-label="<?php esc_attr_e( 'Move up', 'societypress' ); ?>"><span class="dashicons dashicons-arrow-up-alt2"></span></button>
                 <button type="button" class="button sp-field-down" aria-label="<?php esc_attr_e( 'Move down', 'societypress' ); ?>"><span class="dashicons dashicons-arrow-down-alt2"></span></button>

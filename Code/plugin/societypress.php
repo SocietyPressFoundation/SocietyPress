@@ -28470,6 +28470,68 @@ add_action( 'wp_ajax_sp_notepad_toggle', function () {
 // =========================================================================
 
 /**
+ * The sort this person last chose for an admin list, remembered between visits.
+ *
+ * WHY remember it: sorting a list is a statement about how somebody wants to
+ *      read it, not a one-off. A volunteer who clicks "Title" to get the pages
+ *      alphabetically means "show me these alphabetically" — and having to say
+ *      it again on every visit reads as the software forgetting. WordPress
+ *      already treats per-person view settings this way in Screen Options, so
+ *      this stores the same way, as user meta.
+ *
+ * WHY per user and not per site: two volunteers can want different orders, and
+ *      neither should be able to change the other's screen without knowing it.
+ *
+ * Call once while preparing a list. A sort arriving in the URL is honoured and
+ * saved; with nothing in the URL, the saved choice applies.
+ *
+ * @param string   $key     Short name for the screen, e.g. 'pages'.
+ * @param string[] $allowed Column keys that may be sorted on.
+ * @return array{orderby:string, order:string}|null Null when this person has
+ *                                                  never chosen, so the caller
+ *                                                  can apply its own default.
+ */
+function sp_list_sort_preference( string $key, array $allowed ): ?array {
+    $meta_key = 'sp_list_sort_' . sanitize_key( $key );
+    $user_id  = get_current_user_id();
+
+    // phpcs:disable WordPress.Security.NonceVerification.Recommended -- Sorting
+    // a list is a read. It changes nothing but this person's own view of it.
+    $requested = isset( $_GET['orderby'] ) ? sanitize_key( wp_unslash( $_GET['orderby'] ) ) : '';
+    $direction = isset( $_GET['order'] ) && 'desc' === strtolower( sanitize_key( wp_unslash( $_GET['order'] ) ) ) ? 'DESC' : 'ASC';
+    // phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+    if ( '' !== $requested && in_array( $requested, $allowed, true ) ) {
+        $chosen = [ 'orderby' => $requested, 'order' => $direction ];
+        if ( $user_id ) {
+            update_user_meta( $user_id, $meta_key, $chosen );
+        }
+        return $chosen;
+    }
+
+    if ( ! $user_id ) {
+        return null;
+    }
+
+    $saved = get_user_meta( $user_id, $meta_key, true );
+    if ( ! is_array( $saved ) || empty( $saved['orderby'] ) ) {
+        return null;
+    }
+
+    // A column can stop being sortable between releases; a saved choice must
+    // never outlive the column it names.
+    if ( ! in_array( $saved['orderby'], $allowed, true ) ) {
+        delete_user_meta( $user_id, $meta_key );
+        return null;
+    }
+
+    return [
+        'orderby' => $saved['orderby'],
+        'order'   => ( 'DESC' === ( $saved['order'] ?? 'ASC' ) ) ? 'DESC' : 'ASC',
+    ];
+}
+
+/**
  * SP_Pages_List_Table
  *
  * Extends WP_List_Table to display WordPress pages in the SP admin UI.
@@ -28513,7 +28575,13 @@ class SP_Pages_List_Table extends WP_List_Table {
         // actually orders by menu_order made the Title header render as though
         // it were already sorted A→Z — so the first click appeared to do
         // nothing, because it flipped to descending instead.
-        $orderby = sanitize_key( $_GET['orderby'] ?? 'menu_order' ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        //
+        // WHY it reads the remembered sort too: with a saved choice the list
+        // arrives already sorted with nothing in the URL, and marking no column
+        // would put the header and the rows out of step — the arrow would sit
+        // on menu_order while the pages sat in title order.
+        $remembered = sp_list_sort_preference( 'pages', [ 'post_title', 'post_date', 'menu_order' ] );
+        $orderby    = $remembered['orderby'] ?? 'menu_order';
 
         return [
             'title' => [ 'post_title', 'post_title' === $orderby ],
@@ -28644,26 +28712,22 @@ class SP_Pages_List_Table extends WP_List_Table {
             $args['s'] = sanitize_text_field( $search );
         }
 
-        // Sorting — default to menu_order so pages appear in the same
-        // order Harold arranged them in Appearance → Menus / Pages.
-        // WHY menu_order: WordPress stores a numeric order on each page.
-        // When Harold drags pages around in the WP page list or sets parent
-        // pages, menu_order reflects that hierarchy. Showing pages in this
-        // order matches what he sees on the actual site nav.
-        $orderby = $_GET['orderby'] ?? 'menu_order';
-        $order   = $_GET['order'] ?? 'ASC';
-
+        // Sorting. Clicking a column heading is remembered and becomes this
+        // person's default for this screen from then on.
+        //
+        // WHY the fallback is menu_order AND title: menu_order is zero on every
+        // page until somebody deliberately drags one, so on a normal site the
+        // whole list ties and MySQL returns whatever order it likes — which
+        // reads as "oldest first" and looks broken. Falling back to the title
+        // makes the untouched case alphabetical while still honouring an order
+        // that was set on purpose.
         $allowed_orderby = [ 'post_title', 'post_date', 'menu_order' ];
-        if ( in_array( $orderby, $allowed_orderby, true ) ) {
-            $args['orderby'] = $orderby;
-            $args['order']   = strtoupper( $order ) === 'DESC' ? 'DESC' : 'ASC';
+        $sort            = sp_list_sort_preference( 'pages', $allowed_orderby );
+
+        if ( null !== $sort ) {
+            $args['orderby'] = $sort['orderby'];
+            $args['order']   = $sort['order'];
         } else {
-            // WHY menu_order AND title: menu_order is zero on every page until
-            // somebody deliberately drags one, so on a normal site the whole
-            // list ties and MySQL returns whatever order it likes — which reads
-            // as "oldest first" and looks broken. Falling back to the title
-            // makes the untouched case alphabetical while still honouring an
-            // order Harold set on purpose.
             $args['orderby'] = 'menu_order title';
             $args['order']   = 'ASC';
         }

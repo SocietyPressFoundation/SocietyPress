@@ -15762,6 +15762,28 @@ class SP_Members_List_Table extends WP_List_Table {
         return sp_member_decrypt_rows( $rows );
     }
 
+    /**
+     * Every user_id matching the current filters, ignoring pagination.
+     *
+     * WHY it is separate from get_all_filtered_rows(): a bulk action only needs
+     * identifiers. Decrypting several hundred member rows to keep one column
+     * would be wasted work on a shared host.
+     *
+     * @return int[]
+     */
+    public function get_all_filtered_user_ids(): array {
+        global $wpdb;
+        $table = $wpdb->prefix . 'sp_members';
+        list( $where_sql, $values ) = $this->get_filter_sql();
+        $query = "SELECT m.user_id FROM {$table} m
+                  LEFT JOIN {$wpdb->users} u ON m.user_id = u.ID
+                  {$where_sql}";
+        $ids = empty( $values )
+            ? $wpdb->get_col( $query )
+            : $wpdb->get_col( $wpdb->prepare( $query, ...$values ) );
+        return array_map( 'intval', $ids );
+    }
+
     public function prepare_items(): void {
         global $wpdb;
 
@@ -15902,6 +15924,36 @@ function sp_cascade_delete_member_data( $user_id ) {
  *
  * We check $_GET['page'] === 'sp-members' to avoid running on unrelated pages.
  */
+
+/**
+ * Resolve which members a bulk action on the Members screen should act on.
+ *
+ * WHY: The row checkboxes only ever cover the page on screen. Retiring a
+ *      membership plan means moving all four hundred people off it, not the
+ *      twenty-five Harold happens to be looking at, and paging through to tick
+ *      the same box seventeen times is exactly the kind of chore this software
+ *      exists to remove. The list screen therefore offers an explicit "everyone
+ *      matching this filter" box, and this decides which of the two the request
+ *      asked for.
+ *
+ *      The filtered set is recomputed from the request's own search and filter
+ *      parameters rather than trusting a count posted by the browser, so what
+ *      gets changed is always what the filter actually matches.
+ *
+ * @return int[]
+ */
+function sp_bulk_member_ids(): array {
+    if ( ! empty( $_REQUEST['sp_apply_to_all'] ) ) {
+        if ( ! class_exists( 'WP_List_Table' ) ) {
+            require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
+        }
+        $list = new SP_Members_List_Table();
+        return $list->get_all_filtered_user_ids();
+    }
+
+    return array_map( 'intval', (array) ( $_REQUEST['member'] ?? [] ) );
+}
+
 add_action( 'admin_init', function () {
     // Only run on the Members page
     if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sp-members' ) {
@@ -16032,12 +16084,22 @@ add_action( 'admin_init', function () {
         exit;
     }
 
+    // Both bulk handlers below resolve their target list through
+    // sp_bulk_member_ids(), so "everyone matching this filter" behaves the same
+    // way for each of them.
+
     // ---- Bulk Assign to Group ----
     // WHY: Harold needs to batch-add members to groups for blast email targeting.
     //      Select 20 members, pick a group, done — instead of editing each group
     //      one at a time and adding members individually.
     if ( ( ( $_REQUEST['action'] ?? '' ) === 'assign_to_group' || ( $_REQUEST['action2'] ?? '' ) === 'assign_to_group' )
-         && ! empty( $_REQUEST['member'] ) && ! empty( $_REQUEST['sp_assign_group_id'] ) ) {
+         && ( ! empty( $_REQUEST['member'] ) || ! empty( $_REQUEST['sp_apply_to_all'] ) )
+         && ! empty( $_REQUEST['sp_assign_group_id'] ) ) {
+        check_admin_referer( 'bulk-members' );
+
+        if ( ! current_user_can( 'sp_manage_members' ) ) {
+            wp_die( esc_html__( 'You do not have permission to assign members to groups.', 'societypress' ) );
+        }
 
         global $wpdb;
         $prefix   = $wpdb->prefix . 'sp_';
@@ -16055,8 +16117,7 @@ add_action( 'admin_init', function () {
                 "SELECT name FROM {$prefix}groups WHERE id = %d", $group_id
             ) );
 
-            foreach ( (array) $_REQUEST['member'] as $user_id ) {
-                $user_id = (int) $user_id;
+            foreach ( sp_bulk_member_ids() as $user_id ) {
                 // Only insert if not already in the group (UNIQUE KEY handles
                 // this at the DB level too, but checking first avoids errors)
                 $already = $wpdb->get_var( $wpdb->prepare(
@@ -16095,7 +16156,8 @@ add_action( 'admin_init', function () {
     //      selected member to the chosen tier in one pass. Mirrors the
     //      Assign-to-Group handler above.
     if ( ( ( $_REQUEST['action'] ?? '' ) === 'change_plan' || ( $_REQUEST['action2'] ?? '' ) === 'change_plan' )
-         && ! empty( $_REQUEST['member'] ) && ! empty( $_REQUEST['sp_change_tier_id'] ) ) {
+         && ( ! empty( $_REQUEST['member'] ) || ! empty( $_REQUEST['sp_apply_to_all'] ) )
+         && ! empty( $_REQUEST['sp_change_tier_id'] ) ) {
         check_admin_referer( 'bulk-members' );
 
         if ( ! current_user_can( 'sp_manage_members' ) ) {
@@ -16114,8 +16176,7 @@ add_action( 'admin_init', function () {
         ) );
 
         if ( $tier_name !== null ) {
-            foreach ( (array) $_REQUEST['member'] as $user_id ) {
-                $user_id = (int) $user_id;
+            foreach ( sp_bulk_member_ids() as $user_id ) {
                 $updated = $wpdb->update(
                     $prefix . 'members',
                     [ 'tier_id' => $tier_id ],
@@ -16790,6 +16851,8 @@ function sp_render_members_page(): void {
             .sp-members-empty-title { margin: 0 0 8px 0; font-size: 14px; }
             .sp-assign-label { font-weight: 600; margin-right: 8px; }
             .sp-group-assign-wrap { margin: 8px 0; padding: 8px 12px; background: #f0f6fc; border: 1px solid #72aee6; border-radius: 4px; }
+            .sp-apply-all-wrap { margin: 8px 0; padding: 8px 12px; background: #fcf9e8; border: 1px solid #dba617; border-radius: 4px; }
+            .sp-apply-all-wrap label { font-weight: 600; }
         </style>
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Members', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit' ) ); ?>" class="page-title-action">
@@ -16972,6 +17035,35 @@ function sp_render_members_page(): void {
             </div>
 
             <?php
+            // Tick boxes only ever cover the page on screen. When the filter
+            // matches more people than fit on one page, offer the whole set
+            // explicitly rather than leaving Harold to page through and tick
+            // the same box over and over.
+            $sp_total_matches = (int) $table->get_pagination_arg( 'total_items' );
+            $sp_on_this_page  = count( $table->items );
+            if ( $sp_total_matches > $sp_on_this_page ) :
+            ?>
+                <div id="sp-apply-all-wrap" class="sp-apply-all-wrap" hidden>
+                    <label for="sp-apply-to-all">
+                        <input type="checkbox" name="sp_apply_to_all" id="sp-apply-to-all" value="1">
+                        <?php
+                        echo esc_html( sprintf(
+                            /* translators: 1: total members matching the filter, 2: members shown on this page */
+                            _n(
+                                'Apply to all %1$s member that matches these filters, not just the %2$s shown on this page.',
+                                'Apply to all %1$s members that match these filters, not just the %2$s shown on this page.',
+                                $sp_total_matches,
+                                'societypress'
+                            ),
+                            number_format_i18n( $sp_total_matches ),
+                            number_format_i18n( $sp_on_this_page )
+                        ) );
+                        ?>
+                    </label>
+                </div>
+            <?php endif; ?>
+
+            <?php
             $table->search_box( __( 'Search Members', 'societypress' ), 'sp-member-search' );
             $table->display();
             ?>
@@ -16985,11 +17077,26 @@ function sp_render_members_page(): void {
                 var sel = document.querySelector('select[name="action"]');
                 var groupWrap = document.getElementById('sp-group-assign-wrap');
                 var planWrap = document.getElementById('sp-plan-change-wrap');
-                if (sel && groupWrap) {
+                var allWrap = document.getElementById('sp-apply-all-wrap');
+                var allBox = document.getElementById('sp-apply-to-all');
+                if (!sel) {
+                    return;
+                }
+                if (groupWrap) {
                     groupWrap.style.display = sel.value === 'assign_to_group' ? '' : 'none';
                 }
-                if (sel && planWrap) {
+                if (planWrap) {
                     planWrap.style.display = sel.value === 'change_plan' ? '' : 'none';
+                }
+                // Only the two actions that honour it may offer "apply to all".
+                // Leaving it on screen for Delete would read as a promise the
+                // server does not keep.
+                if (allWrap) {
+                    var supported = sel.value === 'assign_to_group' || sel.value === 'change_plan';
+                    allWrap.hidden = !supported;
+                    if (!supported && allBox) {
+                        allBox.checked = false;
+                    }
                 }
             }
             var sel = document.querySelector('select[name="action"]');
@@ -16997,6 +17104,37 @@ function sp_render_members_page(): void {
                 sel.addEventListener('change', toggleBulkPickers);
                 toggleBulkPickers();
             }
+
+            // "Apply to all" reaches far past what is on screen, so confirm the
+            // real number before it runs. Rule 35 of the membership model: an
+            // administrator keeps every capability and gets a guardrail, not a
+            // restriction.
+            var SP_APPLY_ALL_MSG = <?php
+                echo wp_json_encode( sprintf(
+                    /* translators: %s: number of members */
+                    __( 'This will apply to all %s members that match the current filters, including the ones not shown on this page. Continue?', 'societypress' ),
+                    '%s'
+                ) );
+            ?>;
+            document.addEventListener('submit', function (e) {
+                var form = e.target;
+                if (!form || typeof spConfirm !== 'function') return;
+                if (form.dataset.spApplyAllConfirmed === '1') {
+                    delete form.dataset.spApplyAllConfirmed;
+                    return;
+                }
+                var box = form.querySelector('#sp-apply-to-all');
+                if (!box || !box.checked) return;
+                var top    = form.querySelector('select[name="action"]');
+                var bottom = form.querySelector('select[name="action2"]');
+                var act    = (top && top.value !== '-1') ? top.value : (bottom ? bottom.value : '-1');
+                if (act !== 'change_plan' && act !== 'assign_to_group') return;
+                e.preventDefault();
+                spConfirm(SP_APPLY_ALL_MSG.replace('%s', <?php echo (int) $sp_total_matches; ?>), function () {
+                    form.dataset.spApplyAllConfirmed = '1';
+                    form.submit();
+                });
+            });
         })();
         </script>
 
@@ -27327,19 +27465,43 @@ add_action( 'wp', 'sp_maybe_auto_breadcrumbs' );
 /**
  * Render the Groups admin list page.
  */
+/**
+ * Delete a group.
+ *
+ * WHY admin_init: same reason as sp_handle_group_edit_save() — a wp_redirect()
+ *      from inside the page renderer runs after the admin header has already
+ *      been sent, so it fails and the exit() leaves a half-written page.
+ *
+ * The delete stays POST-only so a browser prefetch or link preview can never
+ * trigger it.
+ */
+function sp_handle_group_delete(): void {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-groups' ) {
+        return;
+    }
+    if ( ( $_POST['action'] ?? '' ) !== 'delete' || ! isset( $_POST['group_id'] ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage groups.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_delete_group_' . $_POST['group_id'] );
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $gid    = (int) $_POST['group_id'];
+
+    $wpdb->delete( $prefix . 'group_members', [ 'group_id' => $gid ] );
+    $wpdb->delete( $prefix . 'groups', [ 'id' => $gid ] );
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-groups&deleted=1' ) );
+    exit;
+}
+add_action( 'admin_init', 'sp_handle_group_delete' );
+
 function sp_render_groups_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
-
-    // Handle delete — POST-only to prevent browser prefetch / link-preview accidents
-    if ( isset( $_POST['action'] ) && $_POST['action'] === 'delete' && isset( $_POST['group_id'] ) ) {
-        check_admin_referer( 'sp_delete_group_' . $_POST['group_id'] );
-        $gid = (int) $_POST['group_id'];
-        $wpdb->delete( $prefix . 'group_members', [ 'group_id' => $gid ] );
-        $wpdb->delete( $prefix . 'groups', [ 'id' => $gid ] );
-        wp_redirect( admin_url( 'admin.php?page=sp-groups&deleted=1' ) );
-        exit;
-    }
 
     $groups = $wpdb->get_results(
         "SELECT g.*,
@@ -27661,6 +27823,107 @@ function sp_render_member_autocomplete( string $field_name, array $args = [] ): 
     <?php
 }
 
+/**
+ * Save the Edit Group screen.
+ *
+ * WHY admin_init: this fires before wp-admin/admin-header.php emits anything, so
+ *      wp_redirect() can still set a Location header. Handling the POST inside
+ *      the page renderer meant the redirect failed on "headers already sent" and
+ *      the exit() that followed cut the response off mid-page — which is what
+ *      looked like a blank screen after adding a member.
+ *
+ * WHY it returns to the group: adding someone to a group is rarely a single
+ *      action. Bouncing back to the group list forced Harold to find the group
+ *      and reopen it for every person he wanted to add.
+ */
+function sp_handle_group_edit_save(): void {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-group-edit' ) {
+        return;
+    }
+    if ( ( $_SERVER['REQUEST_METHOD'] ?? '' ) !== 'POST' || ! isset( $_POST['sp_group_nonce'] ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage groups.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_save_group', 'sp_group_nonce' );
+
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $group_id = (int) ( $_GET['group_id'] ?? 0 );
+    $redirect = [ 'page' => 'sp-group-edit' ];
+
+    $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+    if ( ! $name ) {
+        if ( $group_id ) {
+            $redirect['group_id'] = $group_id;
+        }
+        $redirect['sp_error'] = 'name-required';
+        wp_safe_redirect( add_query_arg( $redirect, admin_url( 'admin.php' ) ) );
+        exit;
+    }
+
+    $data = [
+        'name'         => $name,
+        'slug'         => sanitize_title( $name ),
+        'description'  => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
+        'leader_id'    => (int) ( $_POST['leader_id'] ?? 0 ) ?: null,
+        'meeting_info' => sanitize_text_field( wp_unslash( $_POST['meeting_info'] ?? '' ) ) ?: null,
+        'status'       => sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) ),
+        'sort_order'   => (int) ( $_POST['sort_order'] ?? 0 ),
+    ];
+
+    if ( $group_id ) {
+        $wpdb->update( $prefix . 'groups', $data, [ 'id' => $group_id ] );
+        $redirect['sp_saved'] = 1;
+    } else {
+        $wpdb->insert( $prefix . 'groups', $data );
+        $group_id               = (int) $wpdb->insert_id;
+        $redirect['sp_created'] = 1;
+    }
+    $redirect['group_id'] = $group_id;
+
+    $removed = 0;
+    if ( ! empty( $_POST['remove_members'] ) && is_array( $_POST['remove_members'] ) ) {
+        foreach ( (array) $_POST['remove_members'] as $uid ) {
+            $removed += (int) $wpdb->delete( $prefix . 'group_members', [
+                'group_id' => $group_id,
+                'user_id'  => (int) $uid,
+            ] );
+        }
+    }
+    if ( $removed ) {
+        $redirect['sp_removed'] = $removed;
+    }
+
+    // Report the added person by name. "Member added" leaves Harold scanning a
+    // long table to work out whether the right person went in.
+    $add_user = (int) ( $_POST['add_member_id'] ?? 0 );
+    $user     = $add_user ? get_userdata( $add_user ) : null;
+    if ( $user ) {
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}group_members WHERE group_id = %d AND user_id = %d",
+            $group_id, $add_user
+        ) );
+        if ( $exists ) {
+            $redirect['sp_dupe'] = $user->display_name;
+        } else {
+            $wpdb->insert( $prefix . 'group_members', [
+                'group_id'  => $group_id,
+                'user_id'   => $add_user,
+                'joined_at' => current_time( 'mysql' ),
+            ] );
+            $redirect['sp_added'] = $user->display_name;
+        }
+    } elseif ( $add_user ) {
+        $redirect['sp_error'] = 'no-such-member';
+    }
+
+    wp_safe_redirect( add_query_arg( $redirect, admin_url( 'admin.php' ) ) );
+    exit;
+}
+add_action( 'admin_init', 'sp_handle_group_edit_save' );
+
 function sp_render_group_edit_page(): void {
     global $wpdb;
     $prefix   = $wpdb->prefix . 'sp_';
@@ -27687,63 +27950,6 @@ function sp_render_group_edit_page(): void {
         ) );
     }
 
-    // Handle save
-    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_group_nonce'] ) ) {
-        check_admin_referer( 'sp_save_group', 'sp_group_nonce' );
-
-        $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
-        if ( ! $name ) {
-            echo '<div class="notice notice-error"><p>' . esc_html__( 'Group name is required.', 'societypress' ) . '</p></div>';
-        } else {
-            $slug = sanitize_title( $name );
-            $data = [
-                'name'         => $name,
-                'slug'         => $slug,
-                'description'  => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
-                'leader_id'    => (int) ( $_POST['leader_id'] ?? 0 ) ?: null,
-                'meeting_info' => sanitize_text_field( wp_unslash( $_POST['meeting_info'] ?? '' ) ) ?: null,
-                'status'       => sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) ),
-                'sort_order'   => (int) ( $_POST['sort_order'] ?? 0 ),
-            ];
-
-            if ( $group_id ) {
-                $wpdb->update( $prefix . 'groups', $data, [ 'id' => $group_id ] );
-            } else {
-                $wpdb->insert( $prefix . 'groups', $data );
-                $group_id = (int) $wpdb->insert_id;
-            }
-
-            // Handle member removal
-            if ( ! empty( $_POST['remove_members'] ) && is_array( $_POST['remove_members'] ) ) {
-                foreach ( $_POST['remove_members'] as $uid ) {
-                    $wpdb->delete( $prefix . 'group_members', [
-                        'group_id' => $group_id,
-                        'user_id'  => (int) $uid,
-                    ] );
-                }
-            }
-
-            // Handle adding a member
-            $add_user = (int) ( $_POST['add_member_id'] ?? 0 );
-            if ( $add_user ) {
-                $exists = $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(*) FROM {$prefix}group_members WHERE group_id = %d AND user_id = %d",
-                    $group_id, $add_user
-                ) );
-                if ( ! $exists ) {
-                    $wpdb->insert( $prefix . 'group_members', [
-                        'group_id'  => $group_id,
-                        'user_id'   => $add_user,
-                        'joined_at' => current_time( 'mysql' ),
-                    ] );
-                }
-            }
-
-            wp_redirect( admin_url( 'admin.php?page=sp-groups&saved=1' ) );
-            exit;
-        }
-    }
-
     // Label for the currently-assigned leader so the autocomplete can show the
     // existing pick in edit mode without loading the whole membership.
     $leader_label = '';
@@ -27761,11 +27967,51 @@ function sp_render_group_edit_page(): void {
     ?>
     <style id="sp-group-edit-css">
         .sp-group-order-input { width: 80px; }
+        .sp-group-add-row { display: flex; gap: 8px; align-items: flex-start; }
         .sp-group-lapsed-flag { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #fde8e8; color: #b32d2e; vertical-align: middle; }
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $group_id ? esc_html__( 'Edit Group', 'societypress' ) : esc_html__( 'Add New Group', 'societypress' ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>">&larr; <?php esc_html_e( 'Back to Groups', 'societypress' ); ?></a></p>
+
+        <?php if ( ! empty( $_GET['sp_added'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php
+                echo esc_html( sprintf(
+                    /* translators: %s: member name */
+                    __( '%s was added to this group.', 'societypress' ),
+                    sanitize_text_field( wp_unslash( $_GET['sp_added'] ) )
+                ) );
+            ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_dupe'] ) ) : ?>
+            <div class="notice notice-info is-dismissible"><p><?php
+                echo esc_html( sprintf(
+                    /* translators: %s: member name */
+                    __( '%s is already in this group.', 'societypress' ),
+                    sanitize_text_field( wp_unslash( $_GET['sp_dupe'] ) )
+                ) );
+            ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_removed'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php
+                $removed_count = (int) $_GET['sp_removed'];
+                echo esc_html( sprintf(
+                    /* translators: %d: number of members removed */
+                    _n( '%d member removed from this group.', '%d members removed from this group.', $removed_count, 'societypress' ),
+                    $removed_count
+                ) );
+            ?></p></div>
+        <?php endif; ?>
+        <?php if ( ! empty( $_GET['sp_created'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Group created. You can add members to it below.', 'societypress' ); ?></p></div>
+        <?php elseif ( ! empty( $_GET['sp_saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Group saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+        <?php if ( ( $_GET['sp_error'] ?? '' ) === 'name-required' ) : ?>
+            <div class="notice notice-error"><p><?php esc_html_e( 'Group name is required.', 'societypress' ); ?></p></div>
+        <?php elseif ( ( $_GET['sp_error'] ?? '' ) === 'no-such-member' ) : ?>
+            <div class="notice notice-error"><p><?php esc_html_e( 'That member could not be found, so nobody was added. Pick a name from the suggestions list.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
 
         <form method="post" class="sp-max-w-600">
             <?php wp_nonce_field( 'sp_save_group', 'sp_group_nonce' ); ?>
@@ -27833,15 +28079,19 @@ function sp_render_group_edit_page(): void {
 
             <?php if ( $group_id ) : ?>
                 <h2><?php esc_html_e( 'Add Member', 'societypress' ); ?></h2>
-                <?php
-                // Members already in the group are skipped server-side on save
-                // (the duplicate guard in the POST handler), so the search can
-                // offer everyone without loading the whole roster up front.
-                sp_render_member_autocomplete( 'add_member_id', [
-                    'input_id'    => 'sp-g-addmember',
-                    'placeholder' => __( 'Type a name to add a member', 'societypress' ),
-                ] );
-                ?>
+                <div class="sp-group-add-row">
+                    <?php
+                    // Members already in the group are skipped server-side on save
+                    // (the duplicate guard in the save handler), so the search can
+                    // offer everyone without loading the whole roster up front.
+                    sp_render_member_autocomplete( 'add_member_id', [
+                        'input_id'    => 'sp-g-addmember',
+                        'placeholder' => __( 'Type a name to add a member', 'societypress' ),
+                    ] );
+                    ?>
+                    <button type="submit" class="button"><?php esc_html_e( 'Add to Group', 'societypress' ); ?></button>
+                </div>
+                <p class="description"><?php esc_html_e( 'Add one person at a time. You stay on this page, so you can keep adding.', 'societypress' ); ?></p>
             <?php endif; ?>
 
             <p class="submit">
@@ -40754,6 +41004,89 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     background: #f8f8f8;
 }
 
+/* sp-surname-th-sortable — Column headers that reorder the results. The whole
+   label is a link so it is reachable by keyboard, not just by mouse. */
+.sp-surname-th-sortable a {
+    color: inherit;
+    text-decoration: none;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.sp-surname-th-sortable a:hover,
+.sp-surname-th-sortable a:focus {
+    text-decoration: underline;
+}
+
+.sp-surname-sort-marker {
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+/* sp-surname-resultbar — Record count on the left, per-page picker on the right */
+.sp-surname-resultbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 16px 0 8px;
+}
+
+.sp-surname-record-count {
+    margin: 0;
+    font-weight: 600;
+}
+
+.sp-surname-perpage-form {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.sp-surname-perpage-go {
+    padding: 2px 10px;
+    font-size: 13px;
+}
+
+/* sp-surname-pager — Numbered page jump beneath the results table */
+.sp-surname-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 16px;
+    font-size: 14px;
+}
+
+.sp-surname-pager-label {
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.sp-surname-page {
+    display: inline-block;
+    min-width: 28px;
+    padding: 4px 8px;
+    text-align: center;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.sp-surname-page:hover,
+.sp-surname-page:focus {
+    border-color: #999;
+}
+
+.sp-surname-page-current {
+    background: var(--sp-color-primary, #1e3a5f);
+    border-color: var(--sp-color-primary, #1e3a5f);
+    color: #fff;
+    font-weight: 600;
+}
+
 /* sp-surname-td — Standard data cell */
 .sp-surname-td {
     padding: 8px 12px;
@@ -40960,51 +41293,167 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     }
 
     if ( ! empty( $search ) ) {
+        // WHY the surname leads and the researcher does not: people come to a
+        //      registry like this asking "is anyone working on Whitfield in Rusk
+        //      County", not "what is Harold working on". Naming the researcher in
+        //      the list also publishes who belongs to the society, so that column
+        //      is shown to signed-in members only. Everyone can still make contact
+        //      — the Contact button has never exposed an email address.
+        $sp_show_researcher = is_user_logged_in();
+
+        // Sortable columns. Every entry is a fixed SQL fragment chosen by key, so
+        // nothing a visitor types can reach the ORDER BY clause.
+        $sort_columns = [
+            'surname'    => 's.surname',
+            'county'     => 's.county',
+            'state'      => 's.state',
+            'country'    => 's.country',
+            'year_from'  => 's.year_from',
+            'year_to'    => 's.year_to',
+            'researcher' => 'm.last_name',
+        ];
+        $sort = isset( $_GET['sp_sort'] ) ? sanitize_key( wp_unslash( $_GET['sp_sort'] ) ) : 'surname';
+        if ( ! isset( $sort_columns[ $sort ] ) || ( $sort === 'researcher' && ! $sp_show_researcher ) ) {
+            $sort = 'surname';
+        }
+        $dir     = ( isset( $_GET['sp_dir'] ) && strtolower( (string) $_GET['sp_dir'] ) === 'desc' ) ? 'DESC' : 'ASC';
+        $order_by = $sort_columns[ $sort ] . ' ' . $dir . ', s.surname ASC, m.last_name ASC';
+
+        // Per-page choices carried over from the registry people are used to.
+        $per_page_choices = [ 25, 50, 75, 100, 150, 200 ];
+        $per_page         = isset( $_GET['sp_per'] ) ? (int) $_GET['sp_per'] : 50;
+        if ( ! in_array( $per_page, $per_page_choices, true ) ) {
+            $per_page = 50;
+        }
+
+        list( $surname_sql, $surname_params ) = sp_surname_match_clause( $search, 's', $fuzzy );
+
+        $total = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*)
+             FROM {$prefix}member_surnames s
+             INNER JOIN {$prefix}members m ON s.user_id = m.user_id
+             WHERE {$surname_sql} AND m.status = 'active'",
+            ...$surname_params
+        ) );
+
+        $total_pages = max( 1, (int) ceil( $total / $per_page ) );
+        $page        = isset( $_GET['sp_pg'] ) ? max( 1, (int) $_GET['sp_pg'] ) : 1;
+        if ( $page > $total_pages ) {
+            $page = $total_pages;
+        }
+        $offset = ( $page - 1 ) * $per_page;
+
         // WHY: We also select m.user_id so the "Contact Researcher" button
         //      can reference the researcher without exposing their email.
-        list( $surname_sql, $surname_params ) = sp_surname_match_clause( $search, 's', $fuzzy );
         $results = $wpdb->get_results( $wpdb->prepare(
             "SELECT s.surname, s.county, s.state, s.country, s.year_from, s.year_to,
                     m.user_id, m.first_name, m.last_name
              FROM {$prefix}member_surnames s
              INNER JOIN {$prefix}members m ON s.user_id = m.user_id
              WHERE {$surname_sql} AND m.status = 'active'
-             ORDER BY s.surname ASC, m.last_name ASC",
-            ...$surname_params
+             ORDER BY {$order_by}
+             LIMIT %d OFFSET %d",
+            ...array_merge( $surname_params, [ $per_page, $offset ] )
         ) );
 
         if ( ! empty( $results ) ) {
-            echo '<h3>' . sprintf( _n( '%d result found', '%d results found', count( $results ), 'societypress' ), count( $results ) ) . '</h3>';
+            // Sorting or paging always restarts at page 1 of the new view; keeping
+            // the old page number would drop someone onto an empty screen.
+            $sp_sort_link = static function ( string $key ) use ( $sort, $dir ) {
+                $next = ( $sort === $key && $dir === 'ASC' ) ? 'desc' : 'asc';
+                return esc_url( add_query_arg( [ 'sp_sort' => $key, 'sp_dir' => $next, 'sp_pg' => 1 ] ) );
+            };
+            $sp_sort_marker = static function ( string $key ) use ( $sort, $dir ) {
+                if ( $sort !== $key ) {
+                    return '';
+                }
+                return ' <span class="sp-surname-sort-marker" aria-hidden="true">' . ( $dir === 'ASC' ? '&uarr;' : '&darr;' ) . '</span>';
+            };
+            $sp_sort_aria = static function ( string $key ) use ( $sort, $dir ) {
+                if ( $sort !== $key ) {
+                    return '';
+                }
+                return ' aria-sort="' . ( $dir === 'ASC' ? 'ascending' : 'descending' ) . '"';
+            };
+
+            $sp_columns = [
+                'surname'   => __( 'Surname', 'societypress' ),
+                'county'    => __( 'County', 'societypress' ),
+                'state'     => __( 'State/Prov./Rgn.', 'societypress' ),
+                'country'   => __( 'Country', 'societypress' ),
+                'year_from' => __( 'Begin Year', 'societypress' ),
+                'year_to'   => __( 'End Year', 'societypress' ),
+            ];
+            if ( $sp_show_researcher ) {
+                $sp_columns['researcher'] = __( 'Researcher', 'societypress' );
+            }
+
+            $first_row = $offset + 1;
+            $last_row  = min( $offset + count( $results ), $total );
+
+            echo '<div class="sp-surname-resultbar">';
+            echo '<p class="sp-surname-record-count">' . esc_html( sprintf(
+                /* translators: 1: first record shown, 2: last record shown, 3: total records */
+                __( 'Records: %1$s to %2$s of %3$s', 'societypress' ),
+                number_format_i18n( $first_row ),
+                number_format_i18n( $last_row ),
+                number_format_i18n( $total )
+            ) ) . '</p>';
+
+            // Per-page picker. It is a plain form so it works with JavaScript off;
+            // the hidden fields carry the current search along with it.
+            echo '<form method="get" class="sp-surname-perpage-form">';
+            foreach ( [ 'sp_surname' => $search, 'sp_fuzzy' => $fuzzy ? '1' : '0', 'sp_sort' => $sort, 'sp_dir' => strtolower( $dir ) ] as $hk => $hv ) {
+                echo '<input type="hidden" name="' . esc_attr( $hk ) . '" value="' . esc_attr( (string) $hv ) . '">';
+            }
+            echo '<label for="sp-surname-perpage">' . esc_html__( 'Results Per Page:', 'societypress' ) . ' </label>';
+            echo '<select name="sp_per" id="sp-surname-perpage" onchange="this.form.submit();">';
+            foreach ( $per_page_choices as $choice ) {
+                echo '<option value="' . (int) $choice . '"' . selected( $per_page, $choice, false ) . '>' . (int) $choice . '</option>';
+            }
+            echo '</select>';
+            echo '<noscript><button type="submit" class="sp-btn sp-btn-outline sp-surname-perpage-go">' . esc_html__( 'Go', 'societypress' ) . '</button></noscript>';
+            echo '</form>';
+            echo '</div>';
+
             echo '<table class="sp-surname-results-table">';
             echo '<thead><tr>';
-            echo '<th class="sp-surname-th">' . esc_html__( 'Surname', 'societypress' ) . '</th>';
-            echo '<th class="sp-surname-th">' . esc_html__( 'Location', 'societypress' ) . '</th>';
-            echo '<th class="sp-surname-th">' . esc_html__( 'Time Period', 'societypress' ) . '</th>';
-            echo '<th class="sp-surname-th">' . esc_html__( 'Researcher', 'societypress' ) . '</th>';
-            echo '<th class="sp-surname-th-center">' . esc_html__( 'Contact', 'societypress' ) . '</th>';
+            foreach ( $sp_columns as $col_key => $col_label ) {
+                echo '<th class="sp-surname-th sp-surname-th-sortable" scope="col"' . $sp_sort_aria( $col_key ) . '>';
+                echo '<a href="' . $sp_sort_link( $col_key ) . '">' . esc_html( $col_label ) . $sp_sort_marker( $col_key ) . '</a>';
+                echo '</th>';
+            }
+            echo '<th class="sp-surname-th-center" scope="col">' . esc_html__( 'Contact', 'societypress' ) . '</th>';
             echo '</tr></thead><tbody>';
 
-            foreach ( $results as $row ) {
-                $loc = implode( ', ', array_filter( [ $row->county, $row->state, $row->country ] ) ) ?: '—';
-                $period = ( $row->year_from && $row->year_to ) ? "{$row->year_from}–{$row->year_to}"
-                    : ( $row->year_from ? "{$row->year_from}–" : ( $row->year_to ? "–{$row->year_to}" : '—' ) );
+            // A member who lists surnames is contactable through the registry;
+            // listing the surnames is the opt-in.
+            $sp_public_contact = ! empty( sp_settings()['surname_public_contact'] );
 
+            foreach ( $results as $row ) {
                 echo '<tr>';
                 echo '<td class="sp-surname-td"><strong>' . esc_html( $row->surname ) . '</strong></td>';
-                echo '<td class="sp-surname-td">' . esc_html( $loc ) . '</td>';
-                echo '<td class="sp-surname-td">' . esc_html( $period ) . '</td>';
-                echo '<td class="sp-surname-td">' . esc_html( $row->first_name . ' ' . $row->last_name ) . '</td>';
+                echo '<td class="sp-surname-td">' . esc_html( $row->county ?: '—' ) . '</td>';
+                echo '<td class="sp-surname-td">' . esc_html( $row->state ?: '—' ) . '</td>';
+                echo '<td class="sp-surname-td">' . esc_html( $row->country ?: '—' ) . '</td>';
+                echo '<td class="sp-surname-td">' . esc_html( $row->year_from ?: '—' ) . '</td>';
+                echo '<td class="sp-surname-td">' . esc_html( $row->year_to ?: '—' ) . '</td>';
+                if ( $sp_show_researcher ) {
+                    echo '<td class="sp-surname-td">' . esc_html( trim( $row->first_name . ' ' . $row->last_name ) ) . '</td>';
+                }
 
-                // Contact button — shown when the viewer is logged in, or when
-                // the society allows public (non-member) contact on its
-                // registry. A member who lists surnames is contactable through
-                // the registry; listing the surnames is the opt-in.
-                $sp_public_contact = ! empty( sp_settings()['surname_public_contact'] );
+                // The name attached to the button is what the contact dialog reads
+                // back to the sender, so a visitor who cannot see the Researcher
+                // column must not be handed the name here either.
+                $sp_btn_name = $sp_show_researcher
+                    ? trim( $row->first_name . ' ' . $row->last_name )
+                    : __( 'this researcher', 'societypress' );
+
                 echo '<td class="sp-surname-td-center">';
                 if ( is_user_logged_in() || $sp_public_contact ) {
                     echo '<button type="button" class="sp-btn sp-btn-outline sp-surname-contact-btn sp-surname-contact-btn-sm" '
                        . 'data-researcher-id="' . esc_attr( $row->user_id ) . '" '
-                       . 'data-researcher-name="' . esc_attr( $row->first_name . ' ' . $row->last_name ) . '" '
+                       . 'data-researcher-name="' . esc_attr( $sp_btn_name ) . '" '
                        . 'data-surname="' . esc_attr( $row->surname ) . '">' . esc_html__( 'Contact', 'societypress' ) . '</button>';
                 } else {
                     echo '<span class="sp-surname-no-contact">' . esc_html__( 'Log in to contact', 'societypress' ) . '</span>';
@@ -41014,6 +41463,28 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                 echo '</tr>';
             }
             echo '</tbody></table>';
+
+            // Page jump. Shown only when there is more than one page, so a short
+            // result set is not cluttered with a control that does nothing.
+            if ( $total_pages > 1 ) {
+                echo '<nav class="sp-surname-pager" aria-label="' . esc_attr__( 'Search results pages', 'societypress' ) . '">';
+                echo '<span class="sp-surname-pager-label">' . esc_html__( 'Jump to Page:', 'societypress' ) . '</span>';
+
+                if ( $page > 1 ) {
+                    echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $page - 1 ) ) . '" rel="prev">' . esc_html__( 'Previous', 'societypress' ) . '</a>';
+                }
+                for ( $p = 1; $p <= $total_pages; $p++ ) {
+                    if ( $p === $page ) {
+                        echo '<span class="sp-surname-page sp-surname-page-current" aria-current="page">' . esc_html( number_format_i18n( $p ) ) . '</span>';
+                    } else {
+                        echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $p ) ) . '">' . esc_html( number_format_i18n( $p ) ) . '</a>';
+                    }
+                }
+                if ( $page < $total_pages ) {
+                    echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $page + 1 ) ) . '" rel="next">' . esc_html__( 'Next', 'societypress' ) . '</a>';
+                }
+                echo '</nav>';
+            }
 
             // Surname contact modal — shown when any Contact button is clicked.
             // WHY: Uses a simple inline modal instead of a separate page so the
@@ -79717,9 +80188,17 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
                             <?php endif; ?>
 
                             <!-- Action buttons -->
+                            <?php
+                            // WHY "Read Online" leads: the cover has always opened a
+                            // reader, but nothing on the card said so, and a lone
+                            // "Download" button reads as the only way in. Someone who
+                            // does not want a file on their computer would conclude the
+                            // newsletter was closed to them.
+                            ?>
                             <div class="sp-newsletter-card-actions">
                                 <?php if ( $can_access && $pdf_url ) : ?>
-                                    <a href="<?php echo esc_url( $download_url ); ?>" class="sp-newsletter-btn sp-newsletter-btn-download"><?php esc_html_e( 'Download', 'societypress' ); ?></a>
+                                    <button type="button" class="sp-newsletter-btn sp-newsletter-btn-read"><?php esc_html_e( 'Read Online', 'societypress' ); ?></button>
+                                    <a href="<?php echo esc_url( $download_url ); ?>" class="sp-newsletter-btn sp-newsletter-btn-download"><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
                                 <?php else : ?>
                                     <span class="sp-newsletter-members-badge" title="<?php echo esc_attr__( 'Cover, title, date, and contents are visible to everyone. The PDF itself is reserved for members.', 'societypress' ); ?>"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
                                 <?php endif; ?>
@@ -79741,7 +80220,7 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
             <div class="sp-pdf-modal-header">
                 <h3 id="sp-pdf-modal-title"></h3>
                 <div class="sp-pdf-modal-actions">
-                    <a href="#" id="sp-pdf-modal-download" class="sp-newsletter-btn sp-newsletter-btn-download" target="_blank"><?php esc_html_e( 'Download', 'societypress' ); ?></a>
+                    <a href="#" id="sp-pdf-modal-download" class="sp-newsletter-btn sp-newsletter-btn-download" target="_blank"><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
                     <button type="button" id="sp-pdf-modal-close" class="sp-newsletter-btn sp-newsletter-btn-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
                 </div>
             </div>
@@ -79924,8 +80403,15 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
             }
         }
 
+        // The cover and the "Read Online" button both open the reader. The button
+        // carries no data of its own — it borrows its card's cover — so the two
+        // paths can never drift apart.
         document.addEventListener('click', function(e) {
-            var cover = e.target.closest('.sp-newsletter-card-cover[data-pdf]');
+            var opener = e.target.closest('.sp-newsletter-card-cover[data-pdf], .sp-newsletter-btn-read');
+            if (!opener) return;
+            var cover = opener.classList.contains('sp-newsletter-btn-read')
+                ? (opener.closest('.sp-newsletter-card') || document).querySelector('.sp-newsletter-card-cover[data-pdf]')
+                : opener;
             if (!cover) return;
             e.preventDefault();
             openPdfModal(cover);

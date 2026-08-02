@@ -2485,12 +2485,40 @@ input[type="date"]:focus {
     transition: background 0.2s ease;
 }
 
+/* "Read Online" is the primary action, so it carries the solid fill. Download
+   is the secondary path and is outlined, which is what tells someone at a
+   glance that reading is the ordinary way in and downloading is optional. */
+.sp-newsletter-btn-read {
+    background: var(--sp-color-primary, #1e3a5f);
+    color: #fff;
+    margin-right: 6px;
+}
+
+.sp-newsletter-btn-read:hover {
+    background: var(--sp-color-primary-hover, #2c5282);
+    color: #fff;
+}
+
 .sp-newsletter-btn-download {
+    background: transparent;
+    color: var(--sp-color-primary, #1e3a5f);
+    box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.sp-newsletter-btn-download:hover {
     background: var(--sp-color-primary, #1e3a5f);
     color: #fff;
 }
 
-.sp-newsletter-btn-download:hover {
+/* Inside the reader the download link is the only action, so it keeps the
+   solid treatment rather than sitting there looking disabled. */
+.sp-pdf-modal .sp-newsletter-btn-download {
+    background: var(--sp-color-primary, #1e3a5f);
+    color: #fff;
+    box-shadow: none;
+}
+
+.sp-pdf-modal .sp-newsletter-btn-download:hover {
     background: var(--sp-color-primary-hover, #2c5282);
     color: #fff;
 }

@@ -5,19 +5,45 @@
  * editor on the SocietyPress page screen had no way to build a table short of
  * hand-writing HTML — something a non-technical volunteer should never have to
  * do. This registers a small vanilla TinyMCE plugin (no third-party TinyMCE
- * distribution) that adds a Table menu: insert, add/delete rows and columns,
- * plus formatting — row background color, column width, and table borders.
- * Inserted tables carry the sp-content-table class so they pick up
- * assets/css/sp-editor-table.css in the editor and on the front end; formatting
- * choices are written as inline styles so they travel with the saved content.
+ * distribution) that adds a Table menu: insert, add and delete rows and
+ * columns, a header-row toggle, and a gallery of ready-made table styles.
+ *
+ * WHY a style gallery instead of the colour, border and width pickers this
+ * plugin used to carry: those wrote inline styles, so every table a volunteer
+ * built looked different from every other table on the site, and none of them
+ * could be revised later without opening every page. A style is a class on the
+ * table. One click, no decisions about hex codes, and consistent everywhere.
+ * The looks themselves live in assets/css/sp-editor-table.css.
  */
 ( function () {
 	tinymce.PluginManager.add( 'sp_table', function ( editor ) {
 
 		function t( str ) { return editor.translate( str ); }
 
-		function buildTable( rows, cols, header ) {
-			var html = '<table class="sp-content-table"><tbody>';
+		/*
+		 * The gallery. `id` is the class suffix (sp-tbl-<id>) and must match a
+		 * preset in sp-editor-table.css. Theme leads because it follows the
+		 * society's own palette; the neutrals come next because they suit the
+		 * commonest job, a list of names and dates; the colourways last.
+		 */
+		var STYLES = [
+			{ id: 'theme',    name: 'Theme colors' },
+			{ id: 'grid',     name: 'Grid' },
+			{ id: 'stripe',   name: 'Stripes' },
+			{ id: 'plain',    name: 'Plain' },
+			{ id: 'navy',     name: 'Navy' },
+			{ id: 'green',    name: 'Green' },
+			{ id: 'burgundy', name: 'Burgundy' },
+			{ id: 'gold',     name: 'Gold' },
+			{ id: 'plum',     name: 'Plum' }
+		];
+
+		var DEFAULT_STYLE = 'theme';
+
+		function styleClass( id ) { return 'sp-tbl-' + id; }
+
+		function buildTable( rows, cols, header, style ) {
+			var html = '<table class="sp-content-table ' + styleClass( style ) + '"><tbody>';
 			for ( var r = 0; r < rows; r++ ) {
 				html += '<tr>';
 				var tag = ( header && r === 0 ) ? 'th' : 'td';
@@ -34,7 +60,7 @@
 		function currentRow()   { return editor.dom.getParent( editor.selection.getStart(), 'tr' ); }
 		function currentTable() { return editor.dom.getParent( editor.selection.getStart(), 'table' ); }
 
-		// Every formatting action needs the caret inside a table; guard with a
+		// Every action below needs the caret inside a table; guard with a
 		// friendly nudge rather than silently doing nothing.
 		function needTable() {
 			if ( currentTable() ) { return true; }
@@ -42,68 +68,107 @@
 			return false;
 		}
 
-		// Normalize a stored color (which the browser reports back as rgb(...))
-		// to the #rrggbb form the native color input requires.
-		function toHex( c ) {
-			if ( ! c ) { return ''; }
-			c = ( '' + c ).trim();
-			if ( c.charAt( 0 ) === '#' ) {
-				return c.length === 4 ? '#' + c[ 1 ] + c[ 1 ] + c[ 2 ] + c[ 2 ] + c[ 3 ] + c[ 3 ] : c;
+		function currentStyle( table ) {
+			for ( var i = 0; i < STYLES.length; i++ ) {
+				if ( editor.dom.hasClass( table, styleClass( STYLES[ i ].id ) ) ) {
+					return STYLES[ i ].id;
+				}
 			}
-			var m = c.match( /rgba?\((\d+),\s*(\d+),\s*(\d+)/i );
-			if ( ! m ) { return ''; }
-			function h( n ) { n = parseInt( n, 10 ).toString( 16 ); return n.length === 1 ? '0' + n : n; }
-			return '#' + h( m[ 1 ] ) + h( m[ 2 ] ) + h( m[ 3 ] );
+			return '';
 		}
 
-		// Markup for a real color picker: the browser's native color chooser
-		// paired with a hex box so an exact brand color can be typed or pasted.
-		// The two stay in sync. Returns the field ids so the caller can read them.
-		var colorSeq = 0;
-		function colorFieldHtml( startValue ) {
-			var id  = 'sp-color-' + ( colorSeq++ );
-			var val = toHex( startValue ) || '#ffffff';
-			var html =
-				'<span class="sp-color-field" style="display:inline-flex;align-items:center;gap:8px;">' +
-					'<input type="color" id="' + id + '" value="' + val + '" ' +
-						'style="width:48px;height:32px;padding:0;border:1px solid #8c8f94;border-radius:3px;background:none;cursor:pointer;">' +
-					'<input type="text" id="' + id + '-hex" value="' + val + '" maxlength="7" ' +
-						'style="width:90px;height:30px;">' +
-				'</span>';
-			return { id: id, html: html };
+		function applyStyle( table, id ) {
+			for ( var i = 0; i < STYLES.length; i++ ) {
+				editor.dom.removeClass( table, styleClass( STYLES[ i ].id ) );
+			}
+			editor.dom.addClass( table, 'sp-content-table' );
+			editor.dom.addClass( table, styleClass( id ) );
+
+			/*
+			 * Strip the inline colours the retired pickers used to write. A
+			 * table carrying background-color on its rows would sit there
+			 * ignoring every style the volunteer picked, which reads as the
+			 * feature being broken. Only the properties those controls set are
+			 * cleared — anything else on the element is left alone.
+			 */
+			editor.dom.setStyle( table, 'background-color', '' );
+			var i2, rows = table.rows;
+			for ( i2 = 0; i2 < rows.length; i2++ ) {
+				editor.dom.setStyle( rows[ i2 ], 'background-color', '' );
+				var cells = rows[ i2 ].cells;
+				for ( var c = 0; c < cells.length; c++ ) {
+					editor.dom.setStyle( cells[ c ], 'background-color', '' );
+					editor.dom.setStyle( cells[ c ], 'border', '' );
+				}
+			}
 		}
 
-		// Wire the native picker and the hex box together once the dialog DOM
-		// exists. windowManager.open() renders synchronously into the admin
-		// document, so the elements are already queryable here.
-		function bindColorField( id ) {
-			var native = document.getElementById( id );
-			var hex    = document.getElementById( id + '-hex' );
-			if ( ! native || ! hex ) { return; }
-			native.addEventListener( 'input', function () { hex.value = native.value; } );
-			hex.addEventListener( 'change', function () {
-				if ( /^#[0-9a-fA-F]{6}$/.test( hex.value ) ) { native.value = hex.value; }
+		// One miniature: a header band plus four body rows, drawn with the
+		// preset's own custom properties so a swatch can never drift from the
+		// table it represents.
+		function miniHtml() {
+			return '<span class="sp-tbl-mini"><i></i><i></i><i></i><i></i><i></i></span>';
+		}
+
+		function pickerHtml( selected ) {
+			var html = '<div class="sp-tbl-picker">';
+			for ( var i = 0; i < STYLES.length; i++ ) {
+				var s = STYLES[ i ];
+				html += '<button type="button" class="sp-tbl-swatch ' + styleClass( s.id ) + '"' +
+					' data-sp-style="' + s.id + '"' +
+					' aria-pressed="' + ( s.id === selected ? 'true' : 'false' ) + '">' +
+					miniHtml() +
+					'<span class="sp-tbl-swatch-name">' + t( s.name ) + '</span>' +
+					'</button>';
+			}
+			return html + '</div>';
+		}
+
+		/*
+		 * WHY the click handler is wired after the dialog opens rather than
+		 * inline in the markup: TinyMCE renders the container HTML into the
+		 * dialog itself, so the nodes do not exist until it is on screen, and
+		 * inline handlers would be stripped by the editor's own sanitizer.
+		 */
+		function bindPicker( onPick ) {
+			var root = document.querySelector( '.sp-tbl-picker' );
+			if ( ! root ) { return; }
+			root.addEventListener( 'click', function ( e ) {
+				var btn = e.target.closest( '.sp-tbl-swatch' );
+				if ( ! btn ) { return; }
+				e.preventDefault();
+				var all = root.querySelectorAll( '.sp-tbl-swatch' );
+				for ( var i = 0; i < all.length; i++ ) {
+					all[ i ].setAttribute( 'aria-pressed', all[ i ] === btn ? 'true' : 'false' );
+				}
+				onPick( btn.getAttribute( 'data-sp-style' ) );
 			} );
 		}
 
-		function readColorField( id ) {
-			var native = document.getElementById( id );
-			return native ? native.value : '';
-		}
+		function chooseStyle() {
+			if ( ! needTable() ) { return; }
+			var table = currentTable();
+			var start = currentStyle( table ) || DEFAULT_STYLE;
 
-		// Shared dialog for the table and row background pickers.
-		function pickBackground( title, current, apply ) {
-			var field = colorFieldHtml( current );
 			editor.windowManager.open( {
-				title: t( title ),
-				body: [ { type: 'container', label: t( 'Color' ), html: field.html } ],
+				title: t( 'Table Style' ),
+				body: [ { type: 'container', html: pickerHtml( start ) } ],
 				buttons: [
-					{ text: t( 'Clear color' ), onclick: function () { apply( '' ); editor.windowManager.getWindows()[ 0 ].close(); } },
-					{ text: t( 'Ok' ), subtype: 'primary', onclick: function () { apply( readColorField( field.id ) ); editor.windowManager.getWindows()[ 0 ].close(); } },
-					{ text: t( 'Cancel' ), onclick: function () { editor.windowManager.getWindows()[ 0 ].close(); } }
+					{ text: t( 'Cancel' ), onclick: function () { closeTop(); } }
 				]
 			} );
-			bindColorField( field.id );
+
+			// Picking a style applies it and closes — a volunteer choosing a
+			// look should not then have to confirm the choice they just made.
+			bindPicker( function ( id ) {
+				applyStyle( table, id );
+				closeTop();
+			} );
+		}
+
+		function closeTop() {
+			var win = editor.windowManager.getWindows()[ 0 ];
+			if ( win ) { win.close(); }
 		}
 
 		function insertTable() {
@@ -117,9 +182,49 @@
 				onsubmit: function ( e ) {
 					var rows = Math.max( 1, Math.min( parseInt( e.data.rows, 10 ) || 1, 50 ) );
 					var cols = Math.max( 1, Math.min( parseInt( e.data.cols, 10 ) || 1, 20 ) );
-					editor.insertContent( buildTable( rows, cols, e.data.header ) );
+					editor.insertContent( buildTable( rows, cols, e.data.header, DEFAULT_STYLE ) );
 				}
 			} );
+		}
+
+		// Rules on or off, independent of which style is applied.
+		function toggleBorders() {
+			if ( ! needTable() ) { return; }
+			var table = currentTable();
+			editor.dom.toggleClass( table, 'sp-tbl-noborders' );
+
+			/*
+			 * Clear any border the retired Table borders control left inline.
+			 * An inline border beats a stylesheet rule, so without this the
+			 * toggle would appear to do nothing on an older table — on exactly
+			 * the tables whose owner is most likely to be trying it.
+			 */
+			editor.dom.setStyle( table, 'border', '' );
+			for ( var r = 0; r < table.rows.length; r++ ) {
+				var cells = table.rows[ r ].cells;
+				for ( var c = 0; c < cells.length; c++ ) {
+					editor.dom.setStyle( cells[ c ], 'border', '' );
+				}
+			}
+		}
+
+		// Turn the first row into header cells, or back into ordinary ones.
+		// WHY it matters beyond looks: a real <th> is what tells a screen reader
+		// which column a cell belongs to.
+		function toggleHeaderRow() {
+			if ( ! needTable() ) { return; }
+			var table = currentTable();
+			var first = table.rows[ 0 ];
+			if ( ! first ) { return; }
+
+			var makeHeader = first.cells.length > 0 && first.cells[ 0 ].tagName.toLowerCase() === 'td';
+			var want = makeHeader ? 'th' : 'td';
+
+			for ( var i = first.cells.length - 1; i >= 0; i-- ) {
+				var old = first.cells[ i ];
+				var cell = editor.dom.create( want, {}, old.innerHTML );
+				old.parentNode.replaceChild( cell, old );
+			}
 		}
 
 		function addRow( after ) {
@@ -164,73 +269,206 @@
 			}
 		}
 
-		function rowColor() {
-			if ( ! needTable() ) { return; }
-			var row = currentRow();
-			pickBackground( 'Row Background Color', editor.dom.getStyle( row, 'background-color' ), function ( c ) {
-				editor.dom.setStyle( row, 'background-color', c );
-			} );
-		}
+		/* --------------------------------------------------------- row height */
 
-		function columnWidth() {
-			if ( ! needTable() ) { return; }
-			var cell = currentCell(), table = currentTable();
-			var idx = cell.cellIndex;
-			editor.windowManager.open( {
-				title: t( 'Column Width' ),
-				body: [
-					{ type: 'textbox', name: 'width', label: t( 'Width (e.g. 25% or 150px)' ), value: editor.dom.getStyle( cell, 'width' ) || '', size: 12 }
-				],
-				onsubmit: function ( e ) {
-					var w = ( e.data.width || '' ).trim();
-					for ( var i = 0; i < table.rows.length; i++ ) {
-						var cc = table.rows[ i ].cells[ idx ];
-						if ( cc ) { editor.dom.setStyle( cc, 'width', w ); }
-					}
-				}
-			} );
-		}
-
-		function tableColor() {
+		// Compact and Roomy are classes; Normal is their absence, so the
+		// commonest choice leaves no markup behind.
+		function setDensity( id ) {
 			if ( ! needTable() ) { return; }
 			var table = currentTable();
-			pickBackground( 'Table Background Color', editor.dom.getStyle( table, 'background-color' ), function ( c ) {
-				editor.dom.setStyle( table, 'background-color', c );
+			editor.dom.removeClass( table, 'sp-tbl-compact' );
+			editor.dom.removeClass( table, 'sp-tbl-roomy' );
+			if ( id ) { editor.dom.addClass( table, 'sp-tbl-' + id ); }
+			editor.undoManager.add();
+		}
+
+		/*
+		 * Put row height back to the stylesheet's own spacing.
+		 *
+		 * WHY this is more than picking Normal: Normal only drops the two
+		 * density classes. A table built before this existed, or pasted in from
+		 * Word or a spreadsheet, can carry height and padding set inline on the
+		 * rows and cells — and inline beats the stylesheet, so Compact and Roomy
+		 * would both appear to do nothing on it. This clears those too, which is
+		 * what someone reaching for "reset" actually wants.
+		 */
+		function resetRowHeight() {
+			if ( ! needTable() ) { return; }
+			var table = currentTable();
+			editor.dom.removeClass( table, 'sp-tbl-compact' );
+			editor.dom.removeClass( table, 'sp-tbl-roomy' );
+
+			for ( var r = 0; r < table.rows.length; r++ ) {
+				var row = table.rows[ r ];
+				editor.dom.setStyle( row, 'height', '' );
+				editor.dom.setStyle( row, 'line-height', '' );
+				row.removeAttribute( 'height' );
+
+				for ( var c = 0; c < row.cells.length; c++ ) {
+					var cell = row.cells[ c ];
+					editor.dom.setStyle( cell, 'height', '' );
+					editor.dom.setStyle( cell, 'padding', '' );
+					editor.dom.setStyle( cell, 'line-height', '' );
+					cell.removeAttribute( 'height' );
+				}
+			}
+
+			editor.undoManager.add();
+		}
+
+		/* ------------------------------------------------------ column widths */
+
+		/*
+		 * Widths live on a <colgroup>, not on every cell.
+		 *
+		 * WHY: one element per column instead of one per cell means resizing a
+		 * ten-row table touches three nodes rather than thirty, the widths
+		 * cannot drift out of step row to row, and wp_kses_post keeps <col> and
+		 * its width style on save — checked before this was built.
+		 */
+		function colsOf( table ) {
+			var group = table.querySelector( 'colgroup' );
+			return group ? group.querySelectorAll( 'col' ) : [];
+		}
+
+		function columnCount( table ) {
+			return table.rows.length ? table.rows[ 0 ].cells.length : 0;
+		}
+
+		// Build (or rebuild) the colgroup. Passing equal spreads the width
+		// evenly; otherwise each column keeps the share it currently occupies,
+		// so adding the group never moves anything on screen.
+		function ensureColgroup( table, equal ) {
+			var count = columnCount( table );
+			if ( ! count ) { return []; }
+
+			var existing = table.querySelector( 'colgroup' );
+			var widths = [];
+			var i;
+
+			if ( equal || ! existing ) {
+				var row = table.rows[ 0 ];
+				var total = row.offsetWidth || 1;
+				for ( i = 0; i < count; i++ ) {
+					widths.push( equal ? ( 100 / count ) : ( row.cells[ i ].offsetWidth / total ) * 100 );
+				}
+			}
+
+			if ( existing && ! equal && existing.querySelectorAll( 'col' ).length === count ) {
+				return existing.querySelectorAll( 'col' );
+			}
+
+			if ( existing ) { editor.dom.remove( existing ); }
+
+			var group = editor.dom.create( 'colgroup' );
+			for ( i = 0; i < count; i++ ) {
+				var col = editor.dom.create( 'col' );
+				col.style.width = widths[ i ].toFixed( 2 ) + '%';
+				group.appendChild( col );
+			}
+			table.insertBefore( group, table.firstChild );
+			return group.querySelectorAll( 'col' );
+		}
+
+		function equalColumns() {
+			if ( ! needTable() ) { return; }
+			ensureColgroup( currentTable(), true );
+			editor.undoManager.add();
+		}
+
+		function resetColumnWidths() {
+			if ( ! needTable() ) { return; }
+			var group = currentTable().querySelector( 'colgroup' );
+			if ( group ) { editor.dom.remove( group ); }
+			editor.undoManager.add();
+		}
+
+		/*
+		 * Drag a column edge to resize, the way a spreadsheet does.
+		 *
+		 * WHY dragging rather than the "Column width" box this replaced: that
+		 * box asked for "25% or 150px" — a volunteer should not have to know the
+		 * difference, or guess a number and reopen the dialog to check it.
+		 *
+		 * Dragging moves the boundary between two neighbours: one gives up
+		 * exactly what the other takes, so the table always still adds to 100%
+		 * and nothing overflows the page. The last column has no neighbour to
+		 * its right, so its outer edge is not a handle.
+		 */
+		var EDGE = 6;   // px either side of a boundary that counts as the handle
+		var MIN  = 5;   // smallest a column may be squeezed to, in percent
+
+		function boundaryAt( e ) {
+			var table = editor.dom.getParent( e.target, 'table' );
+			if ( ! table || ! editor.dom.hasClass( table, 'sp-content-table' ) ) { return null; }
+
+			var row = table.rows[ 0 ];
+			if ( ! row || row.cells.length < 2 ) { return null; }
+
+			// Every boundary except the table's own right edge.
+			for ( var i = 0; i < row.cells.length - 1; i++ ) {
+				var edge = row.cells[ i ].getBoundingClientRect().right;
+				if ( Math.abs( e.clientX - edge ) <= EDGE ) {
+					return { table: table, index: i };
+				}
+			}
+			return null;
+		}
+
+		function bindColumnResize() {
+			var doc = editor.getDoc();
+			var drag = null;
+
+			editor.on( 'mousemove', function ( e ) {
+				if ( drag ) {
+					var deltaPct = ( ( e.clientX - drag.startX ) / drag.tableWidth ) * 100;
+					var left  = drag.startLeft + deltaPct;
+					var right = drag.startRight - deltaPct;
+
+					// Clamp as a pair so the two always still total what they
+					// started with — otherwise repeated drags shrink the table.
+					if ( left < MIN )  { right -= ( MIN - left );  left = MIN; }
+					if ( right < MIN ) { left  -= ( MIN - right ); right = MIN; }
+
+					drag.cols[ drag.index ].style.width     = left.toFixed( 2 ) + '%';
+					drag.cols[ drag.index + 1 ].style.width = right.toFixed( 2 ) + '%';
+					e.preventDefault();
+					return;
+				}
+
+				doc.body.style.cursor = boundaryAt( e ) ? 'col-resize' : '';
+			} );
+
+			editor.on( 'mousedown', function ( e ) {
+				var hit = boundaryAt( e );
+				if ( ! hit ) { return; }
+
+				// Stop TinyMCE starting a text selection under the drag.
+				e.preventDefault();
+
+				var cols = ensureColgroup( hit.table, false );
+				if ( cols.length < hit.index + 2 ) { return; }
+
+				drag = {
+					table: hit.table,
+					cols: cols,
+					index: hit.index,
+					startX: e.clientX,
+					tableWidth: hit.table.offsetWidth || 1,
+					startLeft: parseFloat( cols[ hit.index ].style.width ) || 0,
+					startRight: parseFloat( cols[ hit.index + 1 ].style.width ) || 0
+				};
+			} );
+
+			editor.on( 'mouseup', function () {
+				if ( ! drag ) { return; }
+				drag = null;
+				doc.body.style.cursor = '';
+				editor.undoManager.add();
 			} );
 		}
 
-		function tableBorders() {
-			if ( ! needTable() ) { return; }
-			var table = currentTable();
-			var field = colorFieldHtml( '#767676' );
-			editor.windowManager.open( {
-				title: t( 'Table Borders' ),
-				body: [
-					{ type: 'textbox', name: 'width', label: t( 'Thickness (px)' ), value: '1', size: 4 },
-					{ type: 'listbox', name: 'style', label: t( 'Style' ), value: 'solid', values: [
-						{ text: t( 'Solid' ),  value: 'solid' },
-						{ text: t( 'Dashed' ), value: 'dashed' },
-						{ text: t( 'Dotted' ), value: 'dotted' },
-						{ text: t( 'None' ),   value: 'none' }
-					] },
-					{ type: 'container', label: t( 'Color' ), html: field.html }
-				],
-				onsubmit: function ( e ) {
-					var w = parseInt( e.data.width, 10 );
-					if ( isNaN( w ) || w < 0 ) { w = 1; }
-					var color  = readColorField( field.id ) || '#767676';
-					var border = ( e.data.style === 'none' )
-						? '0'
-						: w + 'px ' + e.data.style + ' ' + color;
-					editor.dom.setStyle( table, 'border', border );
-					var cells = table.querySelectorAll( 'td,th' );
-					for ( var i = 0; i < cells.length; i++ ) {
-						editor.dom.setStyle( cells[ i ], 'border', border );
-					}
-				}
-			} );
-			bindColorField( field.id );
-		}
+		editor.on( 'init', bindColumnResize );
 
 		editor.addButton( 'sp_table', {
 			type: 'menubutton',
@@ -238,21 +476,29 @@
 			icon: false,
 			menu: [
 				{ text: t( 'Insert table' ),        onclick: insertTable },
+				{ text: t( 'Table style…' ),        onclick: chooseStyle },
+				{ text: t( 'Header row on/off' ),   onclick: toggleHeaderRow },
+				{ text: t( 'Borders on/off' ),      onclick: toggleBorders },
+				{ text: t( 'Row height' ), menu: [
+					{ text: t( 'Compact' ), onclick: function () { setDensity( 'compact' ); } },
+					{ text: t( 'Normal' ),  onclick: function () { setDensity( '' ); } },
+					{ text: t( 'Roomy' ),   onclick: function () { setDensity( 'roomy' ); } },
+					{ text: '-' },
+					{ text: t( 'Reset row height' ), onclick: resetRowHeight }
+				] },
+				{ text: t( 'Equal columns' ),       onclick: equalColumns },
+				{ text: t( 'Reset column widths' ), onclick: resetColumnWidths },
 				{ text: '-' },
 				{ text: t( 'Insert row above' ),    onclick: function () { addRow( false ); } },
 				{ text: t( 'Insert row below' ),    onclick: function () { addRow( true ); } },
 				{ text: t( 'Delete row' ),          onclick: deleteRow },
-				{ text: t( 'Row background color' ), onclick: rowColor },
 				{ text: '-' },
 				{ text: t( 'Insert column left' ),  onclick: function () { addColumn( false ); } },
 				{ text: t( 'Insert column right' ), onclick: function () { addColumn( true ); } },
 				{ text: t( 'Delete column' ),       onclick: deleteColumn },
-				{ text: t( 'Column width' ),        onclick: columnWidth },
 				{ text: '-' },
-				{ text: t( 'Table background color' ), onclick: tableColor },
-				{ text: t( 'Table borders' ),       onclick: tableBorders },
 				{ text: t( 'Delete table' ),        onclick: function () { var tbl = currentTable(); if ( tbl ) { editor.dom.remove( tbl ); } } }
 			]
 		} );
 	} );
-} )();
+}() );

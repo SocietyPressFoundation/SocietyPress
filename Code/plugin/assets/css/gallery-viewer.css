@@ -53,6 +53,14 @@
 	display: grid;
 	/* Bar and footer size to content; the stage absorbs everything left. */
 	grid-template-rows: auto minmax( 0, 1fr ) auto;
+	/* The column MUST be constrained, not auto. An auto column sizes to its
+	   widest content, and the filmstrip's intrinsic width is 68px per photo —
+	   over 3000px for a fifty-photo album. That blew the column out far past
+	   the viewport, which stretched the stage with it, so a "centred" photo
+	   landed way off to the right and got clipped at the screen edge. Pinning
+	   the column to the shell's own width makes the filmstrip scroll inside
+	   it instead of dragging the whole layout wider. */
+	grid-template-columns: minmax( 0, 1fr );
 	width: 100%;
 	height: 100%;
 }
@@ -242,12 +250,19 @@
 .sp-pv-foot {
 	background: var( --sp-pv-chrome );
 	color: var( --sp-pv-text );
+	/* Grid and flex children refuse to shrink below their content by default.
+	   Without this the filmstrip inside can still push the footer wider than
+	   the shell. */
+	min-width: 0;
 }
 
 .sp-pv-caption {
 	margin: 0;
 	padding: 12px 16px 0;
-	font-size: 0.9375rem;
+	/* Double the old 0.9375rem. The caption is the only thing telling a
+	   visitor what they are looking at, and on a dark full-screen stage it
+	   was being read at the same size as body copy on a bright page. */
+	font-size: 1.875rem;
 	line-height: 1.45;
 	text-align: center;
 }
@@ -256,13 +271,27 @@
 	display: none;
 }
 
+/* Credit sits under the caption, deliberately quieter than it — it answers
+   "who gave us this" rather than "what am I looking at". */
+.sp-pv-credit {
+	margin: 0;
+	padding: 6px 16px 0;
+	font-size: 0.9375rem;
+	line-height: 1.4;
+	text-align: center;
+	color: var( --sp-pv-text-dim );
+}
+
+.sp-pv-credit:empty {
+	display: none;
+}
+
+/* Likes and comments were removed from the product outright; what remains in
+   this bar is the view count and the share buttons, and those stay hidden too.
+   Views are still recorded — the number simply is not put in front of the
+   visitor. Deleting the markup as well would take the share sheet with it. */
 .sp-pv-meta {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-wrap: wrap;
-	gap: 6px 14px;
-	padding: 10px 16px;
+	display: none;
 }
 
 .sp-pv-stat {
@@ -277,21 +306,6 @@
 .sp-pv-stat .sp-pv-icon {
 	width: 17px;
 	height: 17px;
-}
-
-.sp-pv-like[aria-pressed="true"] {
-	color: #ff6b81;
-	background: transparent;
-}
-
-.sp-pv-like[aria-pressed="true"] .sp-pv-icon {
-	fill: #ff6b81;
-	stroke: #ff6b81;
-}
-
-.sp-pv-like.is-busy {
-	opacity: 0.5;
-	pointer-events: none;
 }
 
 .sp-pv-share {
@@ -335,7 +349,15 @@
 	gap: 6px;
 	overflow-x: auto;
 	scrollbar-width: thin;
-	padding: 0 16px 12px;
+	/* Top padding, not caption bottom padding: the gap has to hold whether the
+	   photo has a caption, a credit, both, or neither. */
+	padding: 16px 16px 12px;
+	/* Cap and centre the strip rather than letting it run the full width of a
+	   wide monitor. An album of fifty photographs otherwise draws one unbroken
+	   ribbon of thumbnails from bezel to bezel, which reads as a scrollbar
+	   accident instead of a control. It still scrolls — inside a band. */
+	max-width: min( 1100px, 100% );
+	margin-inline: auto;
 	/* Scroll-snap makes the strip land on a thumbnail rather than halfway
 	   between two when flicked on a touchscreen. */
 	scroll-snap-type: x proximity;
@@ -380,163 +402,6 @@
 	opacity: 1;
 }
 
-/* --------------------------------------------------------------- comments */
-
-.sp-pv-comments {
-	position: absolute;
-	top: 0;
-	right: 0;
-	bottom: 0;
-	z-index: 3;
-	display: flex;
-	flex-direction: column;
-	width: min( 380px, 100% );
-	background: #17171a;
-	color: var( --sp-pv-text );
-	border-left: 1px solid rgba( 255, 255, 255, 0.14 );
-}
-
-.sp-pv-comments[hidden] {
-	display: none;
-}
-
-.sp-pv-comments-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	padding: 12px 14px;
-	border-bottom: 1px solid rgba( 255, 255, 255, 0.14 );
-}
-
-.sp-pv-comments-title {
-	margin: 0;
-	font-size: 1rem;
-}
-
-.sp-pv-comments-list {
-	flex: 1 1 auto;
-	overflow-y: auto;
-	margin: 0;
-	padding: 12px 14px;
-	list-style: none;
-}
-
-.sp-pv-comment {
-	padding: 10px 0;
-	border-bottom: 1px solid rgba( 255, 255, 255, 0.09 );
-}
-
-.sp-pv-comment:last-child {
-	border-bottom: 0;
-}
-
-.sp-pv-comment-head {
-	display: flex;
-	align-items: baseline;
-	justify-content: space-between;
-	gap: 10px;
-	margin-bottom: 3px;
-}
-
-.sp-pv-comment-author {
-	font-weight: 600;
-	font-size: 0.875rem;
-}
-
-.sp-pv-comment-date {
-	font-size: 0.75rem;
-	color: var( --sp-pv-text-dim );
-}
-
-.sp-pv-comment-body {
-	margin: 0;
-	font-size: 0.875rem;
-	line-height: 1.5;
-	/* Comments are user text: a pasted URL or a long surname must wrap
-	   instead of widening the drawer. */
-	overflow-wrap: anywhere;
-}
-
-.sp-pv-comment-delete {
-	margin-top: 6px;
-	padding: 0;
-	border: 0;
-	background: none;
-	color: #ff9aa5;
-	font: inherit;
-	font-size: 0.75rem;
-	text-decoration: underline;
-	cursor: pointer;
-}
-
-.sp-pv-comments-empty,
-.sp-pv-comments-locked {
-	margin: 0;
-	padding: 12px 14px;
-	font-size: 0.875rem;
-	color: var( --sp-pv-text-dim );
-}
-
-.sp-pv-comments-locked a {
-	color: var( --sp-pv-accent );
-}
-
-.sp-pv-comment-form {
-	padding: 12px 14px;
-	border-top: 1px solid rgba( 255, 255, 255, 0.14 );
-}
-
-.sp-pv-comment-input {
-	width: 100%;
-	min-height: 68px;
-	padding: 8px 10px;
-	border: 1px solid rgba( 255, 255, 255, 0.28 );
-	border-radius: 5px;
-	background: #0f0f11;
-	color: #ffffff;
-	font: inherit;
-	font-size: 0.875rem;
-	resize: vertical;
-}
-
-.sp-pv-comment-input:focus-visible {
-	outline: 2px solid var( --sp-pv-accent );
-	outline-offset: 1px;
-}
-
-.sp-pv-comment-submit {
-	margin-top: 8px;
-	padding: 8px 16px;
-	border: 0;
-	border-radius: 5px;
-	background: var( --sp-pv-accent );
-	color: #1a1a1a;
-	font: inherit;
-	font-weight: 600;
-	cursor: pointer;
-}
-
-.sp-pv-comment-submit:focus-visible {
-	outline: 2px solid #ffffff;
-	outline-offset: 2px;
-}
-
-.sp-pv-comment-submit[disabled] {
-	opacity: 0.5;
-	cursor: default;
-}
-
-.sp-pv-comment-error {
-	margin: 8px 0 0;
-	font-size: 0.8125rem;
-	color: #ff9aa5;
-}
-
-.sp-pv-comment-error:empty {
-	display: none;
-}
-
 /* ------------------------------------------------------------------ phone */
 
 @media ( max-width: 640px ) {
@@ -551,19 +416,10 @@
 		height: 38px;
 	}
 
+	/* Doubled to match the desktop caption, keeping the same slight step down
+	   for the narrower screen. */
 	.sp-pv-caption {
-		font-size: 0.875rem;
-	}
-
-	/* Full-height side drawer has nowhere to go on a narrow screen, so the
-	   comments become a bottom sheet. */
-	.sp-pv-comments {
-		top: auto;
-		left: 0;
-		height: 72%;
-		width: 100%;
-		border-left: 0;
-		border-top: 1px solid rgba( 255, 255, 255, 0.14 );
+		font-size: 1.75rem;
 	}
 }
 
@@ -583,8 +439,7 @@
    borders to stay legible against the system canvas. */
 @media ( forced-colors: active ) {
 	.sp-pv-bar,
-	.sp-pv-foot,
-	.sp-pv-comments {
+	.sp-pv-foot {
 		border: 1px solid CanvasText;
 	}
 

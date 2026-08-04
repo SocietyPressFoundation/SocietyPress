@@ -1760,7 +1760,6 @@ function sp_create_tables(): void {
         cover_image_id          BIGINT(20) UNSIGNED NULL,
         event_id                BIGINT(20) UNSIGNED NULL,
         visibility              VARCHAR(20)         NOT NULL DEFAULT 'public',
-        allow_downloads         TINYINT(1)          NOT NULL DEFAULT 0,
         submission_type         VARCHAR(20)         NOT NULL DEFAULT 'curated',
         accepts_submissions     TINYINT(1)          NOT NULL DEFAULT 0,
         submission_instructions TEXT                NULL,
@@ -1788,6 +1787,7 @@ function sp_create_tables(): void {
         album_id          BIGINT(20) UNSIGNED NOT NULL,
         attachment_id     BIGINT(20) UNSIGNED NOT NULL,
         caption           VARCHAR(500)        NULL,
+        credit            VARCHAR(255)        NULL,
         sort_order        INT                 NOT NULL DEFAULT 0,
         submitter_user_id BIGINT(20) UNSIGNED NULL,
         ancestor_name     VARCHAR(255)        NULL,
@@ -1795,71 +1795,12 @@ function sp_create_tables(): void {
         submission_status VARCHAR(20)         NOT NULL DEFAULT 'approved',
         submission_note   TEXT                NULL,
         view_count        BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
-        like_count        BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
-        comment_count     BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         created_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY album_id (album_id),
         KEY sort_order (sort_order),
         KEY submission_status (submission_status),
         KEY submitter_user_id (submitter_user_id)
-    ) {$charset_collate};" );
-
-    // ========================================================================
-    // sp_photo_likes — One row per person per photo
-    //
-    // WHY a table instead of only a counter: without a row to check, nothing
-    //      stops the same visitor liking a photo fifty times. Members are
-    //      identified by user_id; everyone else by visitor_hash, a salted
-    //      hash of IP + user agent. WHY hashed and not stored raw: a like is
-    //      not worth keeping an identifiable IP log for, and the hash still
-    //      does the one job we need — telling two visitors apart.
-    //
-    //      The counters on sp_photo_album_items are denormalized from this
-    //      table so the gallery grid never has to COUNT() per photo.
-    // ========================================================================
-    dbDelta( "CREATE TABLE {$prefix}photo_likes (
-        id           BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        item_id      BIGINT(20) UNSIGNED NOT NULL,
-        user_id      BIGINT(20) UNSIGNED NULL,
-        visitor_hash VARCHAR(64)         NULL,
-        created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY item_id (item_id),
-        KEY user_id (user_id),
-        UNIQUE KEY item_member (item_id, user_id),
-        UNIQUE KEY item_visitor (item_id, visitor_hash)
-    ) {$charset_collate};" );
-
-    // ========================================================================
-    // sp_photo_comments — Member comments on a photo
-    //
-    // WHY this exists: on a genealogical society's gallery the comments are
-    //      where the actual genealogy happens — "that's my grandmother on
-    //      the left, second row." That information is worth more than the
-    //      caption and there is nowhere else for it to land.
-    //
-    // WHY members only, posting immediately (no moderation queue): members
-    //      are known people who paid to join, so there is nothing to screen.
-    //      A queue would need a volunteer to check it daily, and an
-    //      unattended queue is how comments quietly die. Officers can delete
-    //      anything after the fact.
-    //
-    //      author_name is denormalized at insert time so a comment still
-    //      reads correctly after the member record is renamed or removed,
-    //      and so GDPR erasure can scrub the name without losing the note.
-    // ========================================================================
-    dbDelta( "CREATE TABLE {$prefix}photo_comments (
-        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-        item_id     BIGINT(20) UNSIGNED NOT NULL,
-        user_id     BIGINT(20) UNSIGNED NULL,
-        author_name VARCHAR(255)        NOT NULL,
-        content     TEXT                NOT NULL,
-        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (id),
-        KEY item_id (item_id),
-        KEY user_id (user_id),
-        KEY created_at (created_at)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -5808,6 +5749,15 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
+        __( 'Shared Addresses — SocietyPress', 'societypress' ),
+        __( 'Shared Addresses', 'societypress' ),
+        'manage_options',
+        'sp-shared-addresses',
+        'sp_render_shared_addresses_page'
+    );
+
+    add_submenu_page(
+        'societypress',
         __( 'Import Members — SocietyPress', 'societypress' ),
         __( 'Import Members', 'societypress' ),
         'manage_options',
@@ -6888,6 +6838,7 @@ function sp_get_menu_capability_map(): array {
 
         // Members
         'sp-members'               => 'sp_manage_members',
+        'sp-shared-addresses'      => 'sp_manage_members',
         'sp-import'                => 'sp_manage_members',
         'sp-export'                => 'sp_manage_members',
         'sp-member-tiers'          => 'sp_manage_members',
@@ -9899,6 +9850,38 @@ add_filter( 'submenu_file', function ( $submenu_file ) {
 // ============================================================================
 
 /**
+ * Hold admin output in a buffer so redirects on SocietyPress screens work.
+ *
+ * THE BUG THIS FIXES: 72 wp_redirect() calls live inside sp_render_*_page()
+ * functions across 29 admin screens — save a member, delete a donation, update
+ * an order, and the handler redirects from inside the render. But a render
+ * function runs when the page is being drawn, long after admin_head has printed
+ * the stylesheet below. Headers were already sent, so wp_redirect() failed with
+ * "Cannot modify header information", and the exit() immediately after it cut
+ * the page off mid-draw. What the volunteer saw was a blank screen instead of
+ * the list they came from. Every one of those 29 screens had it.
+ *
+ * WHY buffer instead of fixing all 29 in place: the correct fix is to move form
+ * handling onto admin_init, before any output — and that is worth doing, screen
+ * by screen, with each one verified. This makes the failure impossible in the
+ * meantime rather than leaving a known blank-screen bug in front of users while
+ * that work happens. With the buffer open, headers have not been sent when the
+ * redirect fires, so it succeeds.
+ *
+ * WHY only SocietyPress screens: buffering someone else's plugin page could
+ * change how their output behaves, and this bug is ours.
+ *
+ * The buffer needs no explicit flush — PHP emits it at request end, and on the
+ * redirect path the browser follows the Location header and discards the body.
+ */
+add_action( 'admin_init', function (): void {
+    $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+    if ( $page !== '' && str_starts_with( $page, 'sp-' ) && ! ob_get_level() ) {
+        ob_start();
+    }
+}, 0 );
+
+/**
  * Inject utility CSS classes used throughout admin pages.
  *
  * WHY: The plugin originally used inline style= attributes for common patterns
@@ -10813,6 +10796,7 @@ function sp_default_menu_config(): array {
         'groups' => [
             [ 'id' => 'members', 'label' => __( 'Members', 'societypress' ), 'icon' => 'dashicons-id',
               'items' => [ 'sp-members', 'sp-member-tiers', 'sp-groups', 'sp-pending-changes',
+                           'sp-shared-addresses',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
                            'sp-import', 'sp-export' ] ],
 
@@ -17909,9 +17893,18 @@ function sp_member_edit_load_context(): ?array {
         $admin_photo_url = get_avatar_url( $user_id, [ 'size' => 120 ] );
     }
 
-    $tiers = $wpdb->get_results(
-        "SELECT id, name FROM {$prefix}membership_tiers WHERE active = 1 ORDER BY sort_order"
-    );
+    // Retired plans stay out of the picker so nobody gets assigned to one by
+    // accident — but the member's OWN plan is always offered, even when it has
+    // been retired. Without it the dropdown has nothing to select, silently
+    // falls back to "— None —", and the next save wipes a membership the
+    // member legitimately holds (e.g. a Lifetime award on a closed plan).
+    $current_tier_id = (int) ( $member->tier_id ?? 0 );
+    $tiers = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, name, active FROM {$prefix}membership_tiers
+         WHERE active = 1 OR id = %d
+         ORDER BY sort_order",
+        $current_tier_id
+    ) );
 
     $error = get_transient( 'sp_member_error' );
     if ( $error ) {
@@ -18459,7 +18452,20 @@ function sp_render_member_edit_page(): void {
                                 <?php foreach ( $tiers as $t ) : ?>
                                     <option value="<?php echo esc_attr( $t->id ); ?>"
                                         <?php selected( $member->tier_id ?? 0, $t->id ); ?>>
-                                        <?php echo esc_html( $t->name ); ?>
+                                        <?php
+                                        // A retired plan only reaches this list when the member is
+                                        // already on it. Say so, so nobody mistakes it for a plan
+                                        // they can still put other people on.
+                                        echo esc_html(
+                                            empty( $t->active )
+                                                ? sprintf(
+                                                    /* translators: %s: membership plan name */
+                                                    __( '%s (Inactive)', 'societypress' ),
+                                                    $t->name
+                                                )
+                                                : $t->name
+                                        );
+                                        ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
@@ -29328,12 +29334,52 @@ add_action( 'wp_ajax_sp_quick_edit_page', 'sp_handle_quick_edit_page' );
 function sp_page_editor_enable_table(): void {
     add_filter( 'mce_external_plugins', 'sp_page_editor_table_plugin' );
     add_filter( 'mce_buttons', 'sp_page_editor_table_button' );
+    add_filter( 'mce_buttons', 'sp_page_editor_text_buttons' );
+    add_filter( 'mce_buttons_2', 'sp_page_editor_second_row' );
+    add_filter( 'tiny_mce_before_init', 'sp_page_editor_font_sizes' );
     add_filter( 'mce_css', 'sp_page_editor_table_css' );
+
+    /*
+     * The same stylesheet also has to load into the admin page itself, not only
+     * into the editor. mce_css reaches inside TinyMCE's iframe, but the Table
+     * Style dialog is rendered into the parent document — so without this the
+     * style gallery would come up as a column of unstyled buttons.
+     *
+     * filemtime in the version so editing the stylesheet busts the cache on its
+     * own; nobody should have to force a refresh to see a style change.
+     */
+    wp_enqueue_style( 'sp-content-table', sp_asset_url( 'assets/css/sp-editor-table.css' ), [], null );
 }
 
+/**
+ * Point TinyMCE at the table plugin, cache-busted by file modification time.
+ *
+ * WHY the version matters here more than usual: mce_external_plugins takes a
+ * bare URL and WordPress adds nothing to it, so without this the browser keeps
+ * serving whatever copy of the script it cached the first time the editor was
+ * opened — for as long as it feels like. A volunteer would go on seeing the old
+ * Table menu after an update and have no way to know why, and nobody should be
+ * told to force-refresh to see a fix that already shipped.
+ */
 function sp_page_editor_table_plugin( array $plugins ): array {
-    $plugins['sp_table'] = SOCIETYPRESS_PLUGIN_URL . 'assets/js/sp-editor-table.js';
+    $plugins['sp_table'] = sp_asset_url( 'assets/js/sp-editor-table.js' );
     return $plugins;
+}
+
+/**
+ * A plugin asset URL stamped with the file's modification time.
+ *
+ * WHY modification time and not SOCIETYPRESS_VERSION: the plugin version only
+ * moves on a release, so editing a stylesheet or a script between releases left
+ * every browser holding the copy it already had. Fixes reached the server and
+ * stopped there. Keyed on the file itself, a change to the file is a change to
+ * the URL, and nobody is ever told to force-refresh to see work that shipped.
+ */
+function sp_asset_url( string $relative ): string {
+    $path = SOCIETYPRESS_PLUGIN_DIR . $relative;
+    $ver  = SOCIETYPRESS_VERSION . ( file_exists( $path ) ? '.' . filemtime( $path ) : '' );
+
+    return add_query_arg( 'ver', $ver, SOCIETYPRESS_PLUGIN_URL . $relative );
 }
 
 function sp_page_editor_table_button( array $buttons ): array {
@@ -29341,8 +29387,89 @@ function sp_page_editor_table_button( array $buttons ): array {
     return $buttons;
 }
 
+/**
+ * Put text size and text colour on the first toolbar row.
+ *
+ * WHY: text colour already ships with WordPress, but it sits on the second row
+ * behind the "Toolbar Toggle" button — which a volunteer has no reason to know
+ * exists, so in practice the feature may as well not be there. Font size is not
+ * in either of core's toolbars at all. Both belong in plain sight of someone
+ * laying out a page.
+ *
+ * They go directly after the paragraph/heading select because that is where the
+ * eye already is when someone is thinking about how text should look.
+ */
+function sp_page_editor_text_buttons( array $buttons ): array {
+    $add = [ 'styleselect', 'fontsizeselect', 'forecolor' ];
+    $at  = array_search( 'formatselect', $buttons, true );
+
+    if ( false === $at ) {
+        return array_merge( $buttons, $add );
+    }
+
+    array_splice( $buttons, $at + 1, 0, $add );
+    return $buttons;
+}
+
+/**
+ * Drop text colour from the second row now that it lives on the first.
+ *
+ * WHY bother: two identical colour buttons in one editor is the kind of small
+ * confusion that makes a volunteer stop trusting the toolbar.
+ */
+function sp_page_editor_second_row( array $buttons ): array {
+    return array_values( array_diff( $buttons, [ 'forecolor' ] ) );
+}
+
+/**
+ * A short ladder of text sizes rather than a free-for-all.
+ *
+ * WHY these six and not a pixel box: left open, a page ends up with 11px body
+ * copy nobody over fifty can read and a 96px heading that breaks the layout on
+ * a phone. Six steps cover every real need — small print, body, lead-in,
+ * subheading, heading, banner — and every one of them is legible.
+ */
+function sp_page_editor_font_sizes( array $init ): array {
+    $init['fontsize_formats'] = '13px 16px 20px 24px 32px 42px';
+
+    /*
+     * Font choices, as three names rather than a list of typefaces.
+     *
+     * WHY not a real font dropdown: picking "Georgia" writes the word Georgia
+     * into the page. The child theme IS the society's identity — switch themes
+     * and the logo, colours and typography are all supposed to move together —
+     * but a page with a typeface baked into it does not move. It keeps
+     * rendering Georgia on a theme built around something else, and the only
+     * cure is opening every page and clearing it by hand. That is the same trap
+     * the table colour pickers were, one level down.
+     *
+     * These apply a class instead. The class points at the theme's own
+     * --sp-font-body / --sp-font-heading, so a page set in "Heading font"
+     * follows the theme wherever the society takes it.
+     */
+    $init['style_formats'] = wp_json_encode( [
+        [
+            'title'   => __( 'Body font', 'societypress' ),
+            'inline'  => 'span',
+            'classes' => 'sp-font-body',
+        ],
+        [
+            'title'   => __( 'Heading font', 'societypress' ),
+            'inline'  => 'span',
+            'classes' => 'sp-font-heading',
+        ],
+        [
+            'title'   => __( 'Typewriter', 'societypress' ),
+            'inline'  => 'span',
+            'classes' => 'sp-font-mono',
+        ],
+    ] );
+
+    return $init;
+}
+
 function sp_page_editor_table_css( string $css ): string {
-    $url = SOCIETYPRESS_PLUGIN_URL . 'assets/css/sp-editor-table.css';
+    $url = sp_asset_url( 'assets/css/sp-editor-table.css' );
     return $css === '' ? $url : $css . ',' . $url;
 }
 
@@ -29358,14 +29485,35 @@ add_action( 'wp_enqueue_scripts', function (): void {
         return;
     }
     $post = get_post();
-    if ( $post && str_contains( (string) $post->post_content, 'sp-content-table' ) ) {
-        wp_enqueue_style(
-            'sp-content-table',
-            SOCIETYPRESS_PLUGIN_URL . 'assets/css/sp-editor-table.css',
-            [],
-            SOCIETYPRESS_VERSION
-        );
+    $content = $post ? (string) $post->post_content : '';
+    if ( str_contains( $content, 'sp-content-table' ) || str_contains( $content, 'sp-font-' ) ) {
+        wp_enqueue_style( 'sp-content-table', sp_asset_url( 'assets/css/sp-editor-table.css' ), [], null );
     }
+} );
+
+/**
+ * Run the page save before anything is printed.
+ *
+ * WHY this is on admin_init and not at the top of the render function, where it
+ * used to live: a render function runs while the page is being drawn, by which
+ * point admin_head has already emitted the admin stylesheet. wp_redirect() then
+ * failed with "Cannot modify header information", the exit() right after it cut
+ * the response off mid-draw, and Save & Preview opened a blank white tab. The
+ * save itself had worked — only the trip to the preview was lost, which is the
+ * cruellest version of the bug because nothing looks saved.
+ *
+ * admin_init fires before any output, so the redirect has headers to set. This
+ * is the shape every one of the other screens still needs.
+ */
+add_action( 'admin_init', function (): void {
+    if ( $_SERVER['REQUEST_METHOD'] !== 'POST' || ! isset( $_POST['sp_page_nonce'] ) ) {
+        return;
+    }
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-page-edit' ) {
+        return;
+    }
+
+    sp_handle_page_save();
 } );
 
 /**
@@ -29377,12 +29525,6 @@ add_action( 'wp_enqueue_scripts', function (): void {
  *      frontend rendering kicks in automatically.
  */
 function sp_render_page_edit(): void {
-
-    // Handle save on POST
-    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_page_nonce'] ) ) {
-        sp_handle_page_save();
-        return; // sp_handle_page_save() redirects, but just in case
-    }
 
     // Load existing page data if editing
     $post_id  = (int) ( $_GET['post_id'] ?? 0 );
@@ -29807,6 +29949,243 @@ function sp_handle_page_save(): void {
     exit;
 }
 
+
+
+// ============================================================================
+// SHARED ADDRESSES — who lives together, and are they tied together
+// ============================================================================
+//
+// WHY this screen has to exist as PHP and cannot be a database query: member
+// addresses are encrypted at rest with a per-record nonce, so two people at the
+// same address hold completely different ciphertext. A GROUP BY on address_1
+// reports zero shared addresses across an entire membership — confidently, and
+// wrongly. The only way to compare them is to decrypt each one and compare the
+// plaintext in memory, which is what this does.
+//
+// The same caveat applies to anything else that wants to match, sort or group
+// by address: mailing-label dedupe, household counts, one-newsletter-per-house.
+// None of it can be done in SQL.
+
+/**
+ * Group the membership by address, decrypting as it goes.
+ *
+ * @return array<string,array{postal:string,city:string,people:array}>
+ */
+function sp_shared_address_groups(): array {
+    global $wpdb;
+
+    $rows = $wpdb->get_results(
+        "SELECT user_id, household_id, first_name, last_name, address_1, city, postal_code
+         FROM {$wpdb->prefix}sp_members
+         ORDER BY last_name, first_name"
+    );
+
+    $groups = [];
+
+    foreach ( (array) $rows as $row ) {
+        $plain = sp_decrypt( (string) $row->address_1 );
+        if ( ! is_string( $plain ) ) {
+            // A row encrypted under a key we no longer hold cannot be compared
+            // to anything. Skipping it is honest; guessing would not be.
+            continue;
+        }
+
+        // Collapse whitespace and case so "123 Main St" and "123  main st"
+        // land together. Deliberately no deeper normalisation than that —
+        // turning "Street" into "St" invents matches the data does not support.
+        $norm = strtolower( trim( preg_replace( '/\s+/', ' ', $plain ) ) );
+        $zip  = strtolower( trim( (string) $row->postal_code ) );
+
+        if ( $norm === '' ) {
+            continue;
+        }
+
+        $key = $norm . '|' . $zip;
+
+        if ( ! isset( $groups[ $key ] ) ) {
+            $groups[ $key ] = [
+                'address' => $plain,
+                'city'    => (string) $row->city,
+                'postal'  => (string) $row->postal_code,
+                'people'  => [],
+            ];
+        }
+
+        $groups[ $key ]['people'][] = $row;
+    }
+
+    // Only addresses with more than one person are interesting here.
+    $groups = array_filter( $groups, static fn( $g ) => count( $g['people'] ) > 1 );
+
+    // Households that disagree float to the top — those are the ones needing a
+    // decision. Everything else is confirmation that things are already right.
+    uasort( $groups, static function ( $a, $b ) {
+        return sp_shared_address_is_split( $b['people'] ) <=> sp_shared_address_is_split( $a['people'] );
+    } );
+
+    return $groups;
+}
+
+/**
+ * Do these people at one address disagree about which household they are in?
+ */
+function sp_shared_address_is_split( array $people ): bool {
+    $ids = array_unique( array_map( static fn( $p ) => (int) $p->household_id, $people ) );
+
+    // More than one household, or anyone with none at all.
+    return count( $ids ) > 1 || in_array( 0, $ids, true );
+}
+
+/**
+ * Tie everyone at one address into a single household.
+ *
+ * WHY admin_init and not the render function: a redirect from inside a render
+ * runs after admin_head has already printed, so it fails and the screen goes
+ * blank with the work apparently lost. This is the shape every screen wants.
+ */
+add_action( 'admin_init', function (): void {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-shared-addresses' ) {
+        return;
+    }
+    if ( empty( $_POST['sp_tie_household'] ) ) {
+        return;
+    }
+
+    check_admin_referer( 'sp_tie_household' );
+
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage members.', 'societypress' ) );
+    }
+
+    global $wpdb;
+
+    $user_ids = array_values( array_filter( array_map( 'absint', (array) ( $_POST['member_ids'] ?? [] ) ) ) );
+    if ( count( $user_ids ) < 2 ) {
+        return;
+    }
+
+    /*
+     * Keep the lowest household id already in use rather than minting a new
+     * one. An existing id may already be referenced by dues, renewals or a
+     * mailing; a fresh number would orphan all of it.
+     */
+    $in       = implode( ',', $user_ids );
+    $existing = array_filter( array_map( 'intval', (array) $wpdb->get_col(
+        "SELECT household_id FROM {$wpdb->prefix}sp_members WHERE user_id IN ({$in})"
+    ) ) );
+
+    $household = $existing ? min( $existing ) : (int) $wpdb->get_var(
+        "SELECT COALESCE( MAX( household_id ), 0 ) + 1 FROM {$wpdb->prefix}sp_members"
+    );
+
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$wpdb->prefix}sp_members SET household_id = %d WHERE user_id IN ({$in})",
+        $household
+    ) );
+
+    wp_safe_redirect( add_query_arg(
+        [ 'page' => 'sp-shared-addresses', 'tied' => $household ],
+        admin_url( 'admin.php' )
+    ) );
+    exit;
+} );
+
+/**
+ * Render: Shared Addresses
+ */
+function sp_render_shared_addresses_page(): void {
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage members.', 'societypress' ) );
+    }
+
+    $groups = sp_shared_address_groups();
+    $split  = array_filter( $groups, static fn( $g ) => sp_shared_address_is_split( $g['people'] ) );
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Shared Addresses', 'societypress' ); ?></h1>
+
+        <?php if ( isset( $_GET['tied'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p>
+                <?php
+                printf(
+                    /* translators: %d: household number */
+                    esc_html__( 'Tied into household %d.', 'societypress' ),
+                    absint( $_GET['tied'] )
+                );
+                ?>
+            </p></div>
+        <?php endif; ?>
+
+        <p class="description">
+            <?php esc_html_e( 'Everyone who shares a mailing address, so you can confirm that couples and families are tied into one membership. Addresses that disagree about which household they belong to are listed first.', 'societypress' ); ?>
+        </p>
+
+        <p>
+            <strong><?php echo esc_html( sprintf( _n( '%d shared address', '%d shared addresses', count( $groups ), 'societypress' ), count( $groups ) ) ); ?></strong>
+            &mdash;
+            <?php echo esc_html( sprintf( _n( '%d needs a look', '%d need a look', count( $split ), 'societypress' ), count( $split ) ) ); ?>
+        </p>
+
+        <?php if ( empty( $groups ) ) : ?>
+            <p><?php esc_html_e( 'No two members share an address.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <table class="wp-list-table widefat striped">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e( 'Address', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'People', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Household', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Action', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ( $groups as $group ) :
+                    $is_split = sp_shared_address_is_split( $group['people'] );
+                    ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html( $group['address'] ); ?></strong><br>
+                            <span class="sp-text-muted"><?php echo esc_html( trim( $group['city'] . ' ' . $group['postal'] ) ); ?></span>
+                        </td>
+                        <td>
+                            <?php foreach ( $group['people'] as $person ) : ?>
+                                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . (int) $person->user_id ) ); ?>">
+                                    <?php echo esc_html( trim( $person->first_name . ' ' . $person->last_name ) ); ?>
+                                </a><br>
+                            <?php endforeach; ?>
+                        </td>
+                        <td>
+                            <?php foreach ( $group['people'] as $person ) : ?>
+                                <?php if ( (int) $person->household_id ) : ?>
+                                    <?php echo esc_html( (string) (int) $person->household_id ); ?><br>
+                                <?php else : ?>
+                                    <span class="sp-text-danger"><?php esc_html_e( 'none', 'societypress' ); ?></span><br>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </td>
+                        <td>
+                            <?php if ( $is_split ) : ?>
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-shared-addresses' ) ); ?>">
+                                    <?php wp_nonce_field( 'sp_tie_household' ); ?>
+                                    <?php foreach ( $group['people'] as $person ) : ?>
+                                        <input type="hidden" name="member_ids[]" value="<?php echo esc_attr( (int) $person->user_id ); ?>">
+                                    <?php endforeach; ?>
+                                    <button type="submit" name="sp_tie_household" value="1" class="button">
+                                        <?php esc_html_e( 'Tie into one household', 'societypress' ); ?>
+                                    </button>
+                                </form>
+                            <?php else : ?>
+                                <span class="sp-text-success"><?php esc_html_e( 'Already tied', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+}
 
 /**
  * Register "Interest Groups" as a page template.
@@ -36070,9 +36449,9 @@ add_action( "admin_enqueue_scripts", function ( $hook ) {
 
     wp_enqueue_script(
         'sp-leadership-search',
-        plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/js/leadership-search.js',
+        sp_asset_url( 'assets/js/leadership-search.js' ),
         [],
-        SOCIETYPRESS_VERSION,
+        null,
         true // load in footer
     );
 
@@ -36155,15 +36534,15 @@ add_action( 'admin_enqueue_scripts', function () {
 
     wp_enqueue_style(
         'sp-searchable-select',
-        plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/css/sp-searchable-select.css',
+        sp_asset_url( 'assets/css/sp-searchable-select.css' ),
         [],
-        SOCIETYPRESS_VERSION
+        null
     );
     wp_enqueue_script(
         'sp-searchable-select',
-        plugin_dir_url( SOCIETYPRESS_PLUGIN_FILE ) . 'assets/js/sp-searchable-select.js',
+        sp_asset_url( 'assets/js/sp-searchable-select.js' ),
         [],
-        SOCIETYPRESS_VERSION,
+        null,
         true // load in footer
     );
     wp_localize_script( 'sp-searchable-select', 'spSearchableSelect', [
@@ -60736,13 +61115,13 @@ function sp_photo_visitor_hash(): string {
 /**
  * Load a photo plus its album, enforcing who is allowed to see it.
  *
- * WHY every endpoint goes through here: likes, views and comments all leak
+ * WHY every endpoint goes through here: view counting can leak
  * information about a photo — that it exists, how popular it is, what people
  * said about it. A members-only album must not leak any of that to a logged-
  * out visitor, and an unapproved submission must not leak at all. Centralising
  * the check means a new endpoint cannot forget it.
  *
- * @return object|null The item row with visibility and allow_downloads joined
+ * @return object|null The item row with the album's visibility joined
  *                     on, or null if the caller may not see this photo.
  */
 function sp_photo_item_context( int $item_id ) {
@@ -60750,7 +61129,7 @@ function sp_photo_item_context( int $item_id ) {
     $prefix = $wpdb->prefix . 'sp_';
 
     $item = $wpdb->get_row( $wpdb->prepare(
-        "SELECT i.*, a.visibility, a.allow_downloads
+        "SELECT i.*, a.visibility
          FROM {$prefix}photo_album_items i
          INNER JOIN {$prefix}photo_albums a ON a.id = i.album_id
          WHERE i.id = %d",
@@ -60775,101 +61154,39 @@ function sp_photo_item_context( int $item_id ) {
 }
 
 /**
- * Can the current user post a comment?
+ * Print the one-time "hands off the photographs" script.
  *
- * Members only, by design — see the sp_photo_comments table comment.
- */
-function sp_photo_can_comment(): bool {
-    return is_user_logged_in();
-}
-
-/**
- * Can the current user remove someone else's comment?
+ * WHY this is worth having and WHY it is only a deterrent: anything a browser
+ * renders, the browser has already fetched, and the file URL is one View Source
+ * away. This stops the casual right-click-and-Save-Image and the drag-to-the-
+ * desktop — which is most of what actually happens — and nothing more. It is
+ * deliberately not sold as protection anywhere in the admin. Real protection
+ * means serving a watermarked derivative and never publishing the original.
  *
- * WHY sp_manage_content: the gallery lives in the content access area, so
- * whoever the society trusted with content is who can moderate it. Comment
- * authors can always remove their own.
+ * WHY delegated on document rather than bound per image: the gallery lazy-loads
+ * thumbnails and the viewer builds its <img> after page load, so there is no
+ * single moment when every photo element exists to bind to.
  */
-function sp_photo_can_moderate_comments(): bool {
-    return current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' );
-}
-
-/**
- * Resync the denormalized counters on a photo after a like or comment change.
- *
- * WHY denormalized at all: the gallery grid and the viewer both need counts
- * for every photo in an album at once. Counting on read meant two extra
- * queries per photo — 200 queries for a 100-photo album. These columns are
- * the cache; this function is how it stays honest.
- */
-function sp_photo_recount( int $item_id ): array {
-    global $wpdb;
-    $prefix = $wpdb->prefix . 'sp_';
-
-    $likes = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$prefix}photo_likes WHERE item_id = %d", $item_id
-    ) );
-    $comments = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$prefix}photo_comments WHERE item_id = %d", $item_id
-    ) );
-
-    $wpdb->update(
-        $prefix . 'photo_album_items',
-        [ 'like_count' => $likes, 'comment_count' => $comments ],
-        [ 'id' => $item_id ]
-    );
-
-    return [ 'likes' => $likes, 'comments' => $comments ];
-}
-
-/**
- * The site's date-and-time format, for photo comment timestamps.
- *
- * WHY not just concatenate the two options: a site can have an empty
- * time_format — several of the sites this was tested against do — which
- * yields "July 30, 2026 " with a dangling space and no time at all. A
- * comment saying only what day it was posted is materially less useful when
- * several people are discussing one photograph in an afternoon.
- */
-function sp_photo_datetime_format(): string {
-    $date = get_option( 'date_format' ) ?: 'F j, Y';
-    $time = get_option( 'time_format' ) ?: 'g:i a';
-
-    return $date . ' ' . $time;
-}
-
-/**
- * Build the comment list payload for one photo.
- *
- * Content is returned as plain text; the viewer writes it with textContent so
- * it is never parsed as HTML.
- */
-function sp_photo_comments_payload( int $item_id ): array {
-    global $wpdb;
-    $prefix = $wpdb->prefix . 'sp_';
-
-    $rows = $wpdb->get_results( $wpdb->prepare(
-        "SELECT * FROM {$prefix}photo_comments WHERE item_id = %d ORDER BY created_at ASC",
-        $item_id
-    ) );
-
-    $current   = get_current_user_id();
-    $moderator = sp_photo_can_moderate_comments();
-    $format    = sp_photo_datetime_format();
-    $out       = [];
-
-    foreach ( (array) $rows as $row ) {
-        $out[] = [
-            'id'         => (int) $row->id,
-            'author'     => $row->author_name,
-            'content'    => $row->content,
-            'date'       => mysql2date( $format, $row->created_at ),
-            'iso'        => mysql2date( 'c', $row->created_at ),
-            'can_delete' => $moderator || ( $current && (int) $row->user_id === $current ),
-        ];
+function sp_gallery_protect_script(): void {
+    static $printed = false;
+    if ( $printed ) {
+        return;
     }
-
-    return $out;
+    $printed = true;
+    ?>
+<script>
+( function () {
+	var SEL = '.sp-pv-image, .sp-gallery-thumb-img, .sp-gallery-cover-img, .sp-gallery-lightbox-img';
+	function block( e ) {
+		if ( e.target && e.target.closest && e.target.closest( SEL ) ) {
+			e.preventDefault();
+		}
+	}
+	document.addEventListener( 'contextmenu', block );
+	document.addEventListener( 'dragstart', block );
+}() );
+</script>
+    <?php
 }
 
 /**
@@ -60901,7 +61218,6 @@ function sp_photo_viewer_assets(): void {
     $config = [
         'ajaxUrl'     => admin_url( 'admin-ajax.php' ),
         'nonce'       => wp_create_nonce( 'sp_photo_viewer' ),
-        'canComment'  => sp_photo_can_comment(),
         'showViews'   => true,
         'loginUrl'    => wp_login_url( get_permalink() ?: home_url() ),
         'i18n'        => [
@@ -60912,29 +61228,12 @@ function sp_photo_viewer_assets(): void {
             'zoomIn'              => __( 'Zoom in', 'societypress' ),
             'zoomOut'             => __( 'Zoom out', 'societypress' ),
             'fullscreen'          => __( 'Full screen', 'societypress' ),
-            'download'            => __( 'Download this photo', 'societypress' ),
             /* translators: 1: current photo number, 2: total number of photos */
             'counter'             => __( 'Photo %s of %d', 'societypress' ),
             /* translators: %s: photo number */
             'goToPhoto'           => __( 'Go to photo %s', 'societypress' ),
-            'like'                => __( 'Like this photo', 'societypress' ),
-            'unlike'              => __( 'Remove your like', 'societypress' ),
             /* translators: %s: number of views */
             'views'               => __( '%s views', 'societypress' ),
-            'comments'            => __( 'Comments', 'societypress' ),
-            'closeComments'       => __( 'Close comments', 'societypress' ),
-            /* translators: %s: number of comments */
-            'commentCount'        => __( '%s comments', 'societypress' ),
-            'noComments'          => __( 'No comments yet. Add the first one.', 'societypress' ),
-            'loading'             => __( 'Loading…', 'societypress' ),
-            'commentsFailed'      => __( 'Comments could not be loaded. Please try again.', 'societypress' ),
-            'commentsMembersOnly' => __( 'Only members can comment on photos.', 'societypress' ),
-            'logIn'               => __( 'Log in', 'societypress' ),
-            'yourComment'         => __( 'Your comment', 'societypress' ),
-            'commentPlaceholder'  => __( 'Recognize someone? Add what you know.', 'societypress' ),
-            'postComment'         => __( 'Post Comment', 'societypress' ),
-            'commentFailed'       => __( 'Your comment could not be posted. Please try again.', 'societypress' ),
-            'deleteComment'       => __( 'Delete', 'societypress' ),
             'share'               => __( 'Share this photo', 'societypress' ),
             'shareFacebook'       => __( 'Share on Facebook', 'societypress' ),
             'shareX'              => __( 'Share on X', 'societypress' ),
@@ -60999,364 +61298,6 @@ function sp_ajax_photo_view(): void {
 add_action( 'wp_ajax_sp_photo_view', 'sp_ajax_photo_view' );
 add_action( 'wp_ajax_nopriv_sp_photo_view', 'sp_ajax_photo_view' );
 
-/**
- * AJAX: toggle a like.
- *
- * Members are keyed by user id, visitors by salted hash. Both columns carry a
- * UNIQUE index against item_id, and MySQL permits repeated NULLs in a unique
- * index — which is exactly what lets one table hold both kinds of row without
- * members and visitors colliding.
- */
-function sp_ajax_photo_like(): void {
-    check_ajax_referer( 'sp_photo_viewer', 'nonce' );
-
-    $item = sp_photo_item_context( absint( $_POST['item_id'] ?? 0 ) );
-    if ( ! $item ) {
-        wp_send_json_error();
-    }
-
-    global $wpdb;
-    $prefix = $wpdb->prefix . 'sp_';
-    $table  = $prefix . 'photo_likes';
-
-    $user_id = get_current_user_id();
-
-    // Two fully separate prepared statements rather than one with a stitched-on
-    // WHERE fragment — concatenating prepared strings is how placeholder bugs
-    // get introduced later.
-    if ( $user_id ) {
-        $insert   = [ 'item_id' => $item->id, 'user_id' => $user_id, 'visitor_hash' => null ];
-        $existing = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT id FROM {$table} WHERE item_id = %d AND user_id = %d",
-            $item->id,
-            $user_id
-        ) );
-    } else {
-        $hash     = sp_photo_visitor_hash();
-        $insert   = [ 'item_id' => $item->id, 'user_id' => null, 'visitor_hash' => $hash ];
-        $existing = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT id FROM {$table} WHERE item_id = %d AND visitor_hash = %s",
-            $item->id,
-            $hash
-        ) );
-    }
-
-    if ( $existing ) {
-        $wpdb->delete( $table, [ 'id' => $existing ] );
-        $liked = false;
-    } else {
-        $wpdb->insert( $table, $insert );
-        $liked = true;
-    }
-
-    $counts = sp_photo_recount( (int) $item->id );
-
-    wp_send_json_success( [ 'liked' => $liked, 'likes' => $counts['likes'] ] );
-}
-add_action( 'wp_ajax_sp_photo_like', 'sp_ajax_photo_like' );
-add_action( 'wp_ajax_nopriv_sp_photo_like', 'sp_ajax_photo_like' );
-
-/**
- * AJAX: fetch the comments on a photo.
- */
-function sp_ajax_photo_comments_get(): void {
-    check_ajax_referer( 'sp_photo_viewer', 'nonce' );
-
-    $item = sp_photo_item_context( absint( $_POST['item_id'] ?? 0 ) );
-    if ( ! $item ) {
-        wp_send_json_error();
-    }
-
-    $comments = sp_photo_comments_payload( (int) $item->id );
-
-    wp_send_json_success( [
-        'comments' => $comments,
-        'total'    => count( $comments ),
-    ] );
-}
-add_action( 'wp_ajax_sp_photo_comments_get', 'sp_ajax_photo_comments_get' );
-add_action( 'wp_ajax_nopriv_sp_photo_comments_get', 'sp_ajax_photo_comments_get' );
-
-/**
- * AJAX: post a comment. Members only.
- */
-function sp_ajax_photo_comment_add(): void {
-    check_ajax_referer( 'sp_photo_viewer', 'nonce' );
-
-    if ( ! sp_photo_can_comment() ) {
-        wp_send_json_error();
-    }
-
-    $item = sp_photo_item_context( absint( $_POST['item_id'] ?? 0 ) );
-    if ( ! $item ) {
-        wp_send_json_error();
-    }
-
-    // Plain text only. Comments are displayed with textContent, so any markup
-    // would show as literal characters rather than render — strip it at the
-    // door so what is stored matches what is shown.
-    $content = sanitize_textarea_field( wp_unslash( $_POST['content'] ?? '' ) );
-    $content = trim( mb_substr( $content, 0, 2000 ) );
-
-    if ( $content === '' ) {
-        wp_send_json_error();
-    }
-
-    $user_id = get_current_user_id();
-
-    // A short cooldown. Members are known people, so this is about catching a
-    // stuck submit button rather than defending against an attacker.
-    $throttle = 'sp_pc_wait_' . $user_id;
-    if ( get_transient( $throttle ) ) {
-        wp_send_json_error();
-    }
-    set_transient( $throttle, 1, 10 );
-
-    global $wpdb;
-    $prefix = $wpdb->prefix . 'sp_';
-    $user   = get_userdata( $user_id );
-
-    $wpdb->insert( $prefix . 'photo_comments', [
-        'item_id'     => $item->id,
-        'user_id'     => $user_id,
-        // Denormalized so the comment still reads correctly if the member is
-        // later renamed or removed, and so erasure can scrub the name alone.
-        'author_name' => $user ? $user->display_name : __( 'Member', 'societypress' ),
-        'content'     => $content,
-    ] );
-
-    sp_photo_recount( (int) $item->id );
-    $comments = sp_photo_comments_payload( (int) $item->id );
-
-    wp_send_json_success( [
-        'comments' => $comments,
-        'total'    => count( $comments ),
-    ] );
-}
-add_action( 'wp_ajax_sp_photo_comment_add', 'sp_ajax_photo_comment_add' );
-
-/**
- * AJAX: delete a comment — its author, or anyone who manages content.
- */
-function sp_ajax_photo_comment_delete(): void {
-    check_ajax_referer( 'sp_photo_viewer', 'nonce' );
-
-    if ( ! is_user_logged_in() ) {
-        wp_send_json_error();
-    }
-
-    global $wpdb;
-    $prefix     = $wpdb->prefix . 'sp_';
-    $comment_id = absint( $_POST['comment_id'] ?? 0 );
-
-    $comment = $wpdb->get_row( $wpdb->prepare(
-        "SELECT * FROM {$prefix}photo_comments WHERE id = %d", $comment_id
-    ) );
-    if ( ! $comment ) {
-        wp_send_json_error();
-    }
-
-    $is_author = (int) $comment->user_id === get_current_user_id();
-    if ( ! $is_author && ! sp_photo_can_moderate_comments() ) {
-        wp_send_json_error();
-    }
-
-    // Confirm the caller can see the photo at all before acting on it.
-    $item = sp_photo_item_context( (int) $comment->item_id );
-    if ( ! $item ) {
-        wp_send_json_error();
-    }
-
-    $wpdb->delete( $prefix . 'photo_comments', [ 'id' => $comment_id ] );
-    sp_photo_recount( (int) $comment->item_id );
-
-    $comments = sp_photo_comments_payload( (int) $comment->item_id );
-
-    wp_send_json_success( [
-        'comments' => $comments,
-        'total'    => count( $comments ),
-    ] );
-}
-add_action( 'wp_ajax_sp_photo_comment_delete', 'sp_ajax_photo_comment_delete' );
-
-/**
- * Which of these photos has the current visitor already liked?
- *
- * One query for the whole album rather than one per photo.
- *
- * @param int[] $item_ids
- * @return array<int,bool> Keyed by item id.
- */
-function sp_photo_liked_map( array $item_ids ): array {
-    global $wpdb;
-
-    $item_ids = array_values( array_filter( array_map( 'intval', $item_ids ) ) );
-    if ( empty( $item_ids ) ) {
-        return [];
-    }
-
-    $prefix = $wpdb->prefix . 'sp_';
-    $in     = implode( ',', $item_ids ); // cast to int above — safe to inline
-
-    if ( is_user_logged_in() ) {
-        $rows = $wpdb->get_col( $wpdb->prepare(
-            "SELECT item_id FROM {$prefix}photo_likes WHERE user_id = %d AND item_id IN ({$in})",
-            get_current_user_id()
-        ) );
-    } else {
-        $rows = $wpdb->get_col( $wpdb->prepare(
-            "SELECT item_id FROM {$prefix}photo_likes WHERE visitor_hash = %s AND item_id IN ({$in})",
-            sp_photo_visitor_hash()
-        ) );
-    }
-
-    $out = [];
-    foreach ( (array) $rows as $id ) {
-        $out[ (int) $id ] = true;
-    }
-    return $out;
-}
-
-
-// ============================================================================
-// PHOTO VIEWER — GDPR EXPORT AND ERASURE
-//
-// WHY erasure deletes here rather than pseudonymizing: donations are kept in
-// scrubbed form because IRS recordkeeping gives the society a legal basis to
-// retain them. Nothing comparable applies to a photo comment or a like — they
-// are voluntary contributions with no retention requirement — so a data
-// subject asking to be erased gets them removed outright.
-//
-// The tradeoff is real and worth naming: a comment identifying who is in a
-// hundred-year-old photograph may be the only record of that fact anywhere,
-// and erasing the member erases the identification with them.
-// ============================================================================
-
-add_filter( 'wp_privacy_personal_data_exporters', function ( $exporters ) {
-    $exporters['societypress-photo-engagement'] = [
-        'exporter_friendly_name' => __( 'SocietyPress Photo Comments and Likes', 'societypress' ),
-        'callback'               => 'sp_privacy_export_photo_engagement',
-    ];
-    return $exporters;
-} );
-
-add_filter( 'wp_privacy_personal_data_erasers', function ( $erasers ) {
-    $erasers['societypress-photo-engagement'] = [
-        'eraser_friendly_name' => __( 'SocietyPress Photo Comments and Likes', 'societypress' ),
-        'callback'             => 'sp_privacy_erase_photo_engagement',
-    ];
-    return $erasers;
-} );
-
-/**
- * GDPR exporter: every photo comment and like belonging to this person.
- */
-function sp_privacy_export_photo_engagement( string $email_address, int $page = 1 ): array {
-    global $wpdb;
-    $prefix       = $wpdb->prefix . 'sp_';
-    $export_items = [];
-
-    $user = get_user_by( 'email', $email_address );
-    if ( ! $user ) {
-        return [ 'data' => $export_items, 'done' => true ];
-    }
-
-    $format = sp_photo_datetime_format();
-
-    $comments = $wpdb->get_results( $wpdb->prepare(
-        "SELECT c.*, a.title AS album_title
-         FROM {$prefix}photo_comments c
-         LEFT JOIN {$prefix}photo_album_items i ON i.id = c.item_id
-         LEFT JOIN {$prefix}photo_albums a ON a.id = i.album_id
-         WHERE c.user_id = %d
-         ORDER BY c.created_at ASC",
-        $user->ID
-    ) );
-
-    $none = __( '(none)', 'societypress' );
-
-    foreach ( (array) $comments as $row ) {
-        $export_items[] = [
-            'group_id'    => 'sp-photo-comments',
-            'group_label' => __( 'Photo Comments', 'societypress' ),
-            'item_id'     => 'sp-photo-comment-' . (int) $row->id,
-            'data'        => [
-                [ 'name' => __( 'Album', 'societypress' ),        'value' => $row->album_title ?: $none ],
-                [ 'name' => __( 'Comment', 'societypress' ),      'value' => $row->content ],
-                [ 'name' => __( 'Posted As', 'societypress' ),    'value' => $row->author_name ],
-                [ 'name' => __( 'Posted', 'societypress' ),       'value' => mysql2date( $format, $row->created_at ) ],
-            ],
-        ];
-    }
-
-    $likes = $wpdb->get_results( $wpdb->prepare(
-        "SELECT l.*, a.title AS album_title, i.caption
-         FROM {$prefix}photo_likes l
-         LEFT JOIN {$prefix}photo_album_items i ON i.id = l.item_id
-         LEFT JOIN {$prefix}photo_albums a ON a.id = i.album_id
-         WHERE l.user_id = %d
-         ORDER BY l.created_at ASC",
-        $user->ID
-    ) );
-
-    foreach ( (array) $likes as $row ) {
-        $export_items[] = [
-            'group_id'    => 'sp-photo-likes',
-            'group_label' => __( 'Photo Likes', 'societypress' ),
-            'item_id'     => 'sp-photo-like-' . (int) $row->id,
-            'data'        => [
-                [ 'name' => __( 'Album', 'societypress' ),   'value' => $row->album_title ?: $none ],
-                [ 'name' => __( 'Photo', 'societypress' ),   'value' => $row->caption ?: $none ],
-                [ 'name' => __( 'Liked', 'societypress' ),   'value' => mysql2date( $format, $row->created_at ) ],
-            ],
-        ];
-    }
-
-    return [ 'data' => $export_items, 'done' => true ];
-}
-
-/**
- * GDPR eraser: remove this person's photo comments and likes.
- */
-function sp_privacy_erase_photo_engagement( string $email_address, int $page = 1 ): array {
-    global $wpdb;
-    $prefix = $wpdb->prefix . 'sp_';
-
-    $user = get_user_by( 'email', $email_address );
-    if ( ! $user ) {
-        return [
-            'items_removed'  => false,
-            'items_retained' => false,
-            'messages'       => [],
-            'done'           => true,
-        ];
-    }
-
-    // Capture the affected photos before deleting, so their denormalized
-    // counters can be resynced afterwards. Skipping this would leave counts
-    // permanently overstating what is actually in the tables.
-    $item_ids = $wpdb->get_col( $wpdb->prepare(
-        "SELECT item_id FROM {$prefix}photo_comments WHERE user_id = %d
-         UNION
-         SELECT item_id FROM {$prefix}photo_likes WHERE user_id = %d",
-        $user->ID,
-        $user->ID
-    ) );
-
-    $removed  = (int) $wpdb->delete( $prefix . 'photo_comments', [ 'user_id' => $user->ID ] );
-    $removed += (int) $wpdb->delete( $prefix . 'photo_likes', [ 'user_id' => $user->ID ] );
-
-    foreach ( (array) $item_ids as $item_id ) {
-        sp_photo_recount( (int) $item_id );
-    }
-
-    return [
-        'items_removed'  => $removed > 0,
-        'items_retained' => false,
-        'messages'       => [],
-        'done'           => true,
-    ];
-}
 
 
 /**
@@ -61364,7 +61305,7 @@ function sp_privacy_erase_photo_engagement( string $email_address, int $page = 1
  *
  * WHY: Feature 5 — displays photo albums or a single album's images on the
  *      frontend. Thumbnails open the photo viewer (swipe, zoom, filmstrip,
- *      likes, comments, sharing). A pure CSS :target lightbox ships inside
+ *      sharing). A pure CSS :target lightbox ships inside
  *      <noscript> so the gallery still works without JavaScript.
  */
 function sp_render_builder_widget_photo_gallery( array $s ): void {
@@ -61398,9 +61339,14 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
 .sp-gallery-not-found          { color: #666; }
 .sp-gallery-album-title        { margin: 0 0 16px; }
 .sp-gallery-album-desc         { color: #555; margin: 0 0 16px; }
+.sp-gallery-album-desc p       { margin: 0 0 12px; }
+.sp-gallery-album-desc p:last-child { margin-bottom: 0; }
 .sp-gallery-empty              { color: #666; font-style: italic; }
-.sp-gallery-photo-grid         { display: flex; flex-wrap: wrap; gap: 8px; }
-.sp-gallery-thumb-img          { width: 100%; height: 100%; object-fit: cover; }
+/* align-items:flex-start so a short photo does not get stretched to match the
+   tallest one in its row now that tiles size to the image. */
+.sp-gallery-photo-grid         { display: flex; flex-wrap: wrap; gap: 8px;
+                                  align-items: flex-start; }
+.sp-gallery-thumb-img          { width: 100%; height: auto; display: block; }
 /* Lightbox overlay — display:none kept inline; :target rule overrides it */
 .sp-gallery-lightbox           { position: fixed; inset: 0; z-index: 100000;
                                   background: rgba(0,0,0,0.9);
@@ -61449,11 +61395,24 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
             return;
         }
 
+        // Admin shortcut: jump straight to this album's edit screen from the
+        // front end, same as events and the library already offer.
+        sp_frontend_edit_link(
+            'sp_manage_content',
+            admin_url( 'admin.php?page=sp-album-edit&album_id=' . (int) $album->id ),
+            __( 'Edit this album', 'societypress' )
+        );
+
         if ( $album->title ) {
             echo '<h3 class="sp-gallery-album-title">' . esc_html( $album->title ) . '</h3>';
         }
         if ( $album->description ) {
-            echo '<p class="sp-gallery-album-desc">' . esc_html( $album->description ) . '</p>';
+            // wpautop covers descriptions written before the field became a
+            // rich-text editor — those are stored as bare text with real line
+            // breaks, and without it every paragraph ran together into one
+            // block. wp_kses_post is the escaping boundary for the markup the
+            // editor now produces.
+            echo '<div class="sp-gallery-album-desc">' . wp_kses_post( wpautop( $album->description ) ) . '</div>';
         }
 
         // submission_status filter: a member-submitted photo still awaiting
@@ -61488,17 +61447,18 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
             // Emit the per-instance dynamic thumbnail width rule so the rest
             // of the thumbnail link's styles can live in the static block above.
             echo '<style>
-.sp-gallery-thumb-link { aspect-ratio: 1; overflow: hidden; border-radius: 6px; display: block; }
+/* No aspect-ratio and no cropping: a thumbnail keeps the proportions of the
+   photograph behind it and fills the full column width. Square tiles cut the
+   ends off every landscape postcard, which is exactly the detail a society
+   scanned the postcard for. Rows end up with ragged bottoms; that is the
+   trade, and it is the right one for archival images. */
+.sp-gallery-thumb-link { overflow: hidden; border-radius: 6px; display: block; }
 /* On phones, cap the gallery at 2 columns regardless of the admin column count.
    The per-thumb width is an inline calc() from that setting, so a 4-6 column
    gallery would otherwise render as postage-stamp thumbnails on a narrow screen.
    !important is required to beat the inline style. */
 @media (max-width: 600px) { .sp-gallery-photo-grid .sp-gallery-thumb-link { width: calc(50% - 8px) !important; } }
 </style>';
-
-            // One query tells us every photo in this album the visitor has
-            // already liked, so the hearts render in the right state.
-            $liked_map = sp_photo_liked_map( array_map( static fn( $it ) => (int) $it->id, $items ) );
 
             // Photos the viewer will page through, and the no-JS markup, are
             // built in the same pass. The fallback is buffered rather than
@@ -61526,7 +61486,22 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                 // WHY alt falls back to empty (decorative) not "Photo N": a
                 // sequential label conveys nothing to a screen-reader user, so
                 // an empty alt is the correct choice when there's no caption.
-                echo '<img src="' . esc_url( $img_url ) . '" alt="' . esc_attr( (string) $item->caption ) . '" class="sp-gallery-thumb-img" loading="lazy">';
+                // wp_get_attachment_image rather than a bare <img>: it emits
+                // srcset, and a tile that now fills its whole column is far
+                // wider than the 300px "medium" file the cropped square used to
+                // get away with. sizes mirrors the column width so the browser
+                // picks the right file instead of the largest one.
+                echo wp_get_attachment_image(
+                    $item->attachment_id,
+                    'large',
+                    false,
+                    [
+                        'alt'     => (string) $item->caption,
+                        'class'   => 'sp-gallery-thumb-img',
+                        'loading' => 'lazy',
+                        'sizes'   => '(max-width: 600px) 50vw, ' . $col_width . 'vw',
+                    ]
+                );
                 echo '</a>';
 
                 $viewer_photos[] = [
@@ -61534,15 +61509,12 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                     'full'     => $full_url ?: $img_url,
                     'thumb'    => $img_url,
                     'caption'  => (string) $item->caption,
+                    'credit'   => (string) ( $item->credit ?? '' ),
                     // ?? 0 because the counter columns arrive via an admin_init
                     // migration, and admin_init never fires on a frontend
                     // request — so the first public page view on a site that
                     // updated in place can land before the columns exist.
                     'views'    => (int) ( $item->view_count ?? 0 ),
-                    'likes'    => (int) ( $item->like_count ?? 0 ),
-                    'comments' => (int) ( $item->comment_count ?? 0 ),
-                    'liked'    => isset( $liked_map[ (int) $item->id ] ),
-                    'download' => ! empty( $album->allow_downloads ),
                 ];
 
                 /*
@@ -61601,6 +61573,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                 . '</script>';
 
             sp_photo_viewer_assets();
+            sp_gallery_protect_script();
         }
     } else {
         // Albums grid view — show album covers
@@ -61667,6 +61640,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                 echo '</div>';
             }
             echo '</div>';
+            sp_gallery_protect_script();
         }
     }
     echo '</div>';
@@ -63131,18 +63105,6 @@ function sp_render_gallery_page(): void {
         $album_id = absint( $_POST['album_id'] );
         check_admin_referer( 'sp_delete_album_' . $album_id );
 
-        // Clear the engagement rows before the photos they point at, or the
-        // likes and comments outlive the album as unreachable orphans.
-        $item_ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT id FROM {$prefix}photo_album_items WHERE album_id = %d",
-            $album_id
-        ) );
-        if ( $item_ids ) {
-            $in = implode( ',', array_map( 'intval', $item_ids ) );
-            $wpdb->query( "DELETE FROM {$prefix}photo_likes WHERE item_id IN ({$in})" );
-            $wpdb->query( "DELETE FROM {$prefix}photo_comments WHERE item_id IN ({$in})" );
-        }
-
         $wpdb->delete( $prefix . 'photo_album_items', [ 'album_id' => $album_id ] );
         $wpdb->delete( $prefix . 'photo_albums', [ 'id' => $album_id ] );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Album deleted.', 'societypress' ) . '</p></div>';
@@ -63249,11 +63211,13 @@ function sp_render_album_edit_page(): void {
         $data = [
             'title'           => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
             'slug'            => sanitize_title( wp_unslash( $_POST['title'] ?? '' ) ),
-            'description'     => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
+            // wp_kses_post, not sanitize_textarea_field: the description is a
+            // wp_editor field now, so the markup it produces has to survive the
+            // save. kses still strips anything a post body would not allow.
+            'description'     => wp_kses_post( wp_unslash( $_POST['description'] ?? '' ) ),
             'cover_image_id'  => absint( $_POST['cover_image_id'] ?? 0 ),
             'event_id'        => absint( $_POST['event_id'] ?? 0 ) ?: null,
             'visibility'      => $visibility,
-            'allow_downloads' => empty( $_POST['allow_downloads'] ) ? 0 : 1,
             'sort_order'      => absint( $_POST['sort_order'] ?? 0 ),
         ];
 
@@ -63271,6 +63235,7 @@ function sp_render_album_edit_page(): void {
             array_filter( array_map( 'absint', explode( ',', $_POST['photo_ids'] ?? '' ) ) )
         ) );
         $captions  = (array) ( $_POST['photo_captions'] ?? [] );
+        $credits   = (array) ( $_POST['photo_credits'] ?? [] );
 
         /*
          * WHY this is an upsert and not the delete-then-reinsert it used to
@@ -63295,11 +63260,12 @@ function sp_render_album_edit_page(): void {
 
         foreach ( $photo_ids as $order => $attachment_id ) {
             $caption = sanitize_text_field( wp_unslash( $captions[ $attachment_id ] ?? '' ) );
+            $credit  = sanitize_text_field( wp_unslash( $credits[ $attachment_id ] ?? '' ) );
 
             if ( isset( $existing[ $attachment_id ] ) ) {
                 $wpdb->update(
                     $prefix . 'photo_album_items',
-                    [ 'caption' => $caption, 'sort_order' => $order ],
+                    [ 'caption' => $caption, 'credit' => $credit, 'sort_order' => $order ],
                     [ 'id' => $existing[ $attachment_id ] ]
                 );
                 unset( $existing[ $attachment_id ] );
@@ -63308,17 +63274,15 @@ function sp_render_album_edit_page(): void {
                     'album_id'      => $album_id,
                     'attachment_id' => $attachment_id,
                     'caption'       => $caption,
+                    'credit'        => $credit,
                     'sort_order'    => $order,
                 ] );
             }
         }
 
-        // Whatever is left in $existing was removed from the album in this
-        // save. Drop those rows and the engagement hanging off them.
+        // Whatever is left in $existing was removed from the album in this save.
         if ( $existing ) {
             $removed_ids = implode( ',', array_map( 'intval', $existing ) );
-            $wpdb->query( "DELETE FROM {$prefix}photo_likes WHERE item_id IN ({$removed_ids})" );
-            $wpdb->query( "DELETE FROM {$prefix}photo_comments WHERE item_id IN ({$removed_ids})" );
             $wpdb->query( "DELETE FROM {$prefix}photo_album_items WHERE id IN ({$removed_ids})" );
         }
 
@@ -63350,6 +63314,7 @@ function sp_render_album_edit_page(): void {
     .sp-album-edit-photo-tile    { position: relative; width: 120px; cursor: grab; }
     .sp-album-edit-photo-img     { width: 120px; height: 120px; object-fit: cover; border-radius: 6px; }
     .sp-album-edit-caption-input { width: 120px; font-size: 0.75rem; margin-top: 4px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; }
+    .sp-album-edit-credit-input  { width: 120px; font-size: 0.75rem; margin-top: 3px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; color: #50575e; }
     .sp-album-edit-remove-btn    { position: absolute; top: -6px; right: -6px; background: #b32d2e; color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 14px; line-height: 18px; }
 
     /* The filename only earns its space in list view; in thumbnail view it
@@ -63368,6 +63333,7 @@ function sp_render_album_edit_page(): void {
     .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-img   { width: 40px; height: 40px; flex: 0 0 40px; }
     .sp-album-edit-photos-grid.sp-view-list .sp-album-photo-name       { display: block; flex: 1 1 40%; font-family: monospace; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-caption-input { width: auto; flex: 1 1 40%; margin-top: 0; font-size: 0.85rem; padding: 4px 6px; }
+    .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-credit-input  { width: auto; flex: 1 1 25%; margin-top: 0; font-size: 0.85rem; padding: 4px 6px; }
     .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-remove-btn  { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); }
     .sp-album-edit-photos-grid.sp-view-list .sp-album-edit-photo-tile  { position: relative; }
     </style>
@@ -63385,7 +63351,25 @@ function sp_render_album_edit_page(): void {
                 </tr>
                 <tr>
                     <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
-                    <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $album->description ?? '' ); ?></textarea></td>
+                    <td><?php
+                        // WHY wp_editor() rather than a textarea: album blurbs are
+                        // real prose — donor credits, provenance, several
+                        // paragraphs of history — and the volunteer writing them
+                        // needs the same editor they already know from pages,
+                        // with paragraphs, links and emphasis that survive to the
+                        // public album page.
+                        wp_editor(
+                            (string) ( $album->description ?? '' ),
+                            'description',
+                            [
+                                'textarea_name' => 'description',
+                                'textarea_rows' => 8,
+                                'media_buttons' => false,
+                                'teeny'         => true,
+                                'quicktags'     => true,
+                            ]
+                        );
+                    ?></td>
                 </tr>
                 <tr>
                     <th scope="col"><?php esc_html_e( 'Cover Image', 'societypress' ); ?></th>
@@ -63408,16 +63392,6 @@ function sp_render_album_edit_page(): void {
                             <option value="public" <?php selected( $album->visibility ?? 'public', 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
                             <option value="members_only" <?php selected( $album->visibility ?? '', 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
                         </select>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="col"><?php esc_html_e( 'Photo Downloads', 'societypress' ); ?></th>
-                    <td>
-                        <label for="allow_downloads">
-                            <input type="checkbox" name="allow_downloads" id="allow_downloads" value="1" <?php checked( ! empty( $album->allow_downloads ) ); ?>>
-                            <?php esc_html_e( 'Let visitors download the full-size photos in this album', 'societypress' ); ?>
-                        </label>
-                        <p class="description"><?php esc_html_e( 'Off by default. Leave it off for scanned documents, purchased images, or anything the society does not want copied. Turn it on for event photos you want people to keep and share.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -63450,6 +63424,7 @@ function sp_render_album_edit_page(): void {
                         <img src="<?php echo esc_url( $thumb ); ?>" class="sp-album-edit-photo-img">
                         <span class="sp-album-photo-name" title="<?php echo esc_attr( $photo_name ); ?>"><?php echo esc_html( $photo_name ); ?></span>
                         <input type="text" name="photo_captions[<?php echo $photo->attachment_id; ?>]" value="<?php echo esc_attr( $photo->caption ); ?>" placeholder="<?php echo esc_attr__( 'Caption', 'societypress' ); ?>" class="sp-album-edit-caption-input">
+                        <input type="text" name="photo_credits[<?php echo $photo->attachment_id; ?>]" value="<?php echo esc_attr( $photo->credit ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'Credit', 'societypress' ); ?>" class="sp-album-edit-credit-input">
                         <button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="<?php echo $photo->attachment_id; ?>" aria-label="<?php esc_attr_e( 'Remove photo', 'societypress' ); ?>">&times;</button>
                     </div>
                 <?php endforeach; ?>
@@ -63534,6 +63509,7 @@ function sp_render_album_edit_page(): void {
                             + '<img src="' + thumb + '" class="sp-album-edit-photo-img">'
                             + '<span class="sp-album-photo-name" title="' + esc(fname) + '">' + esc(fname) + '</span>'
                             + '<input type="text" name="photo_captions[' + att.id + ']" value="' + esc(seed) + '" placeholder="<?php echo esc_js( __( 'Caption', 'societypress' ) ); ?>" class="sp-album-edit-caption-input">'
+                            + '<input type="text" name="photo_credits[' + att.id + ']" value="" placeholder="<?php echo esc_js( __( 'Credit', 'societypress' ) ); ?>" class="sp-album-edit-credit-input">'
                             + '<button type="button" class="sp-remove-photo sp-album-edit-remove-btn" data-id="' + att.id + '" aria-label="<?php echo esc_js( __( 'Remove photo', 'societypress' ) ); ?>">&times;</button>'
                             + '</div>';
                         if (albumPhotos) albumPhotos.insertAdjacentHTML('beforeend', html);
@@ -91441,7 +91417,6 @@ function sp_rest_health_check(): WP_REST_Response {
         'member_research_areas', 'member_surnames', 'members',
         'membership_tiers', 'newsletters', 'order_items', 'orders',
         'pending_profile_changes', 'photo_album_items', 'photo_albums',
-        'photo_comments', 'photo_likes',
         'record_collection_fields', 'record_collections', 'record_values',
         'records', 'renewal_reminders', 'resource_categories', 'resources',
         'volunteer_hours', 'volunteer_opportunities', 'volunteer_roles',
@@ -96440,36 +96415,31 @@ add_action( 'admin_init', function () {
  *
  * WHY a dedicated migration rather than leaving it to the activation-time
  * dbDelta: the schema builder only runs on activation, and an install that
- * updated in place never re-activates. Without this, likes and comments
- * would fail silently on every site that predates the feature.
+ * updated in place never re-activates.
  *
  * WHY this one runs on the frontend too, unlike the submission-column
  * migrations above: those columns are only ever read, so a missing one is a
- * cosmetic notice. These are written. A missing allow_downloads makes the
- * whole album-save UPDATE fail, and a missing photo_likes table makes every
- * gallery page emit a database error. admin_init never fires on a public
- * request, so an in-place update whose admin nobody has opened yet would ship
- * a broken gallery to visitors. The shared transient keeps the common case to
- * a single cache read.
+ * cosmetic notice. This one is written, so a missing column would make the
+ * album-save UPDATE fail outright. admin_init never fires on a public request,
+ * so an in-place update whose admin nobody has opened yet would ship a broken
+ * gallery to visitors. The shared transient keeps the common case to a single
+ * cache read.
  */
-function sp_migrate_photo_engagement_tables(): void {
+function sp_migrate_photo_schema(): void {
     if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
         return;
     }
     global $wpdb;
 
-    $charset_collate = $wpdb->get_charset_collate();
-    $prefix          = $wpdb->prefix . 'sp_';
+    $prefix = $wpdb->prefix . 'sp_';
 
     // ---- Columns on the two existing photo tables ----
     $column_sets = [
         'photo_albums' => [
-            'allow_downloads' => 'ADD COLUMN allow_downloads TINYINT(1) NOT NULL DEFAULT 0 AFTER visibility',
         ],
         'photo_album_items' => [
-            'view_count'    => 'ADD COLUMN view_count BIGINT(20) UNSIGNED NOT NULL DEFAULT 0',
-            'like_count'    => 'ADD COLUMN like_count BIGINT(20) UNSIGNED NOT NULL DEFAULT 0',
-            'comment_count' => 'ADD COLUMN comment_count BIGINT(20) UNSIGNED NOT NULL DEFAULT 0',
+            'view_count' => 'ADD COLUMN view_count BIGINT(20) UNSIGNED NOT NULL DEFAULT 0',
+            'credit'     => 'ADD COLUMN credit VARCHAR(255) NULL AFTER caption',
         ],
     ];
 
@@ -96486,50 +96456,9 @@ function sp_migrate_photo_engagement_tables(): void {
         }
     }
 
-    // ---- The two new engagement tables ----
-    $needed = [ 'photo_likes', 'photo_comments' ];
-
-    foreach ( $needed as $short ) {
-        $table = $prefix . $short;
-        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) === $table ) {
-            continue;
-        }
-
-        if ( ! function_exists( 'dbDelta' ) ) {
-            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        }
-
-        if ( $short === 'photo_likes' ) {
-            dbDelta( "CREATE TABLE {$table} (
-                id           BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-                item_id      BIGINT(20) UNSIGNED NOT NULL,
-                user_id      BIGINT(20) UNSIGNED NULL,
-                visitor_hash VARCHAR(64)         NULL,
-                created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY item_id (item_id),
-                KEY user_id (user_id),
-                UNIQUE KEY item_member (item_id, user_id),
-                UNIQUE KEY item_visitor (item_id, visitor_hash)
-            ) {$charset_collate};" );
-        } else {
-            dbDelta( "CREATE TABLE {$table} (
-                id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-                item_id     BIGINT(20) UNSIGNED NOT NULL,
-                user_id     BIGINT(20) UNSIGNED NULL,
-                author_name VARCHAR(255)        NOT NULL,
-                content     TEXT                NOT NULL,
-                created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY item_id (item_id),
-                KEY user_id (user_id),
-                KEY created_at (created_at)
-            ) {$charset_collate};" );
-        }
-    }
 }
-add_action( 'admin_init', 'sp_migrate_photo_engagement_tables' );
-add_action( 'init', 'sp_migrate_photo_engagement_tables' );
+add_action( 'admin_init', 'sp_migrate_photo_schema' );
+add_action( 'init', 'sp_migrate_photo_schema' );
 
 
 /**
@@ -107899,6 +107828,25 @@ function sp_gallery_import_create_album( string $title, string $description, str
     $title = sanitize_text_field( $title );
     if ( $title === '' ) return 0;
 
+    // Reuse an album that already carries this title instead of starting a
+    // second one. A volunteer who imports the rest of a collection next week
+    // types the same album name again and expects the photos to land where the
+    // first batch went — the old behaviour split them across "Hemisfair 1968"
+    // and "Hemisfair 1968" twice over, which then shows up as duplicate
+    // entries in every album picker on the site. Column collation is
+    // case-insensitive, so a stray capital ("HemisFair") matches too.
+    //
+    // Description and visibility are deliberately NOT overwritten on reuse:
+    // an admin may have tuned them after the first import, and an import form
+    // left at its defaults should not quietly undo that.
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$table} WHERE title = %s ORDER BY id LIMIT 1",
+        $title
+    ) );
+    if ( $existing > 0 ) {
+        return $existing;
+    }
+
     $slug = sanitize_title( $title ) ?: 'album-' . wp_generate_password( 6, false, false );
     $base = $slug;
     $i    = 1;
@@ -108088,10 +108036,13 @@ function sp_ajax_gallery_import_batch(): void {
 
     $album_id = absint( $_POST['album_id'] ?? 0 );
     if ( ! $album_id ) {
+        // wp_unslash before sanitizing: WordPress slashes everything in $_POST,
+        // so an apostrophe arrives as \' and was being stored that way. That is
+        // how "HemisFair \'68" ended up in a live album description.
         $album_id = sp_gallery_import_create_album(
-            (string) ( $_POST['album_title'] ?? '' ),
-            (string) ( $_POST['album_description'] ?? '' ),
-            (string) ( $_POST['album_visibility'] ?? 'public' )
+            (string) wp_unslash( $_POST['album_title'] ?? '' ),
+            (string) wp_unslash( $_POST['album_description'] ?? '' ),
+            (string) wp_unslash( $_POST['album_visibility'] ?? 'public' )
         );
         if ( ! $album_id ) {
             wp_send_json_error( [ 'message' => __( 'Album title is required.', 'societypress' ) ] );
@@ -108194,10 +108145,12 @@ function sp_render_import_gallery_page(): void {
     if ( $action === 'upload' ) {
         check_admin_referer( 'sp_gal_import' );
 
+        // See the note on the AJAX importer: $_POST arrives slashed, and
+        // sanitizing without unslashing first bakes the backslashes in.
         $album_id = sp_gallery_import_create_album(
-            (string) ( $_POST['album_title'] ?? '' ),
-            (string) ( $_POST['album_description'] ?? '' ),
-            (string) ( $_POST['album_visibility'] ?? 'public' )
+            (string) wp_unslash( $_POST['album_title'] ?? '' ),
+            (string) wp_unslash( $_POST['album_description'] ?? '' ),
+            (string) wp_unslash( $_POST['album_visibility'] ?? 'public' )
         );
         if ( ! $album_id ) {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Album title is required.', 'societypress' ) . '</p></div>';
@@ -108208,10 +108161,19 @@ function sp_render_import_gallery_page(): void {
 
         $added  = 0;
         $errors = [];
+
+        // Pick up numbering where the album left off. Importing into an album
+        // that already holds photos is now the normal case, and restarting at
+        // zero would shuffle the new batch in among the old ones.
+        global $wpdb;
+        $sort = 1 + (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE( MAX( sort_order ), -1 ) FROM {$wpdb->prefix}sp_photo_album_items WHERE album_id = %d",
+            $album_id
+        ) );
+
         $files  = $_FILES['gal_images'] ?? null;
         if ( $files && ! empty( $files['name'][0] ) ) {
             $count = count( $files['name'] );
-            $sort  = 0;
             for ( $i = 0; $i < $count; $i++ ) {
                 $name = $files['name'][ $i ] ?? '';
                 if ( $name === '' ) continue;
@@ -108237,7 +108199,6 @@ function sp_render_import_gallery_page(): void {
 
         $urls = trim( (string) ( $_POST['gal_urls'] ?? '' ) );
         if ( $urls !== '' ) {
-            $sort = $added;
             foreach ( preg_split( '/\r?\n/', $urls ) as $url ) {
                 $url = trim( $url );
                 if ( $url === '' ) continue;
@@ -108252,14 +108213,21 @@ function sp_render_import_gallery_page(): void {
             }
         }
 
-        // Set first attachment as cover if no cover was set.
-        global $wpdb;
-        $first = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT attachment_id FROM {$wpdb->prefix}sp_photo_album_items WHERE album_id = %d ORDER BY sort_order ASC LIMIT 1",
+        // Set first attachment as cover, but only when the album has none.
+        // Importing a second batch into an existing album must not replace a
+        // cover the admin picked by hand.
+        $current_cover = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT cover_image_id FROM {$wpdb->prefix}sp_photo_albums WHERE id = %d",
             $album_id
         ) );
-        if ( $first ) {
-            $wpdb->update( $wpdb->prefix . 'sp_photo_albums', [ 'cover_image_id' => $first ], [ 'id' => $album_id ] );
+        if ( ! $current_cover ) {
+            $first = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT attachment_id FROM {$wpdb->prefix}sp_photo_album_items WHERE album_id = %d ORDER BY sort_order ASC LIMIT 1",
+                $album_id
+            ) );
+            if ( $first ) {
+                $wpdb->update( $wpdb->prefix . 'sp_photo_albums', [ 'cover_image_id' => $first ], [ 'id' => $album_id ] );
+            }
         }
 
         echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';

@@ -3,7 +3,7 @@
  *
  * Replaces the pure-CSS :target lightbox with a real viewer: swipe, pinch
  * and wheel zoom, a thumbnail filmstrip, fullscreen, deep-linkable photos,
- * likes, view counts, comments and sharing.
+ * view counts and sharing.
  *
  * WHY progressive enhancement rather than a rewrite: the :target lightbox
  * still ships inside a <noscript> block as the no-JS fallback. When this
@@ -45,7 +45,6 @@
 	var pushedHistory = false;
 	var suppressPopstate = false;
 	var viewedPhotos = {};      // photo id -> true, so a view counts once per page
-	var commentsOpen = false;
 	var pointers = {};          // pointerId -> { x, y }
 	var pointerCount = 0;
 	var gesture = null;
@@ -76,10 +75,7 @@
 		zoomIn:     svg( '<circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M16.5 16.5L21 21"/>' ),
 		zoomOut:    svg( '<circle cx="11" cy="11" r="7"/><path d="M8 11h6M16.5 16.5L21 21"/>' ),
 		expand:     svg( '<path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/>' ),
-		download:   svg( '<path d="M12 3v12M7 11l5 5 5-5M4 21h16"/>' ),
-		heart:      svg( '<path d="M12 20s-7-4.6-7-9.6A4.4 4.4 0 0 1 12 7a4.4 4.4 0 0 1 7 3.4c0 5-7 9.6-7 9.6z"/>' ),
 		eye:        svg( '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6z"/><circle cx="12" cy="12" r="2.6"/>' ),
-		comment:    svg( '<path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.4-4.4A8 8 0 1 1 21 12z"/>' ),
 		facebook:   svg( '<path d="M14 9h3V6h-3a3.5 3.5 0 0 0-3.5 3.5V12H8v3h2.5v6h3v-6H16l.5-3h-3v-2a1 1 0 0 1 1-1z"/>' ),
 		x:          svg( '<path d="M4 4l16 16M20 4L4 20"/>' ),
 		pinterest:  svg( '<circle cx="12" cy="12" r="9"/><path d="M10 20l2.2-7M9.6 11.2c0-1.9 1.5-3.4 3.4-3.4s3 1.3 3 3.1c0 2.2-1.2 3.8-2.8 3.8-.9 0-1.6-.7-1.4-1.6"/>' ),
@@ -148,7 +144,6 @@
 						'<button type="button" class="sp-pv-btn" data-pv-zoom-out aria-label="' + escapeAttr( t( 'zoomOut' ) ) + '">' + ICONS.zoomOut + '</button>' +
 						'<button type="button" class="sp-pv-btn" data-pv-zoom-in aria-label="' + escapeAttr( t( 'zoomIn' ) ) + '">' + ICONS.zoomIn + '</button>' +
 						'<button type="button" class="sp-pv-btn" data-pv-fullscreen aria-label="' + escapeAttr( t( 'fullscreen' ) ) + '">' + ICONS.expand + '</button>' +
-						'<a class="sp-pv-btn" data-pv-download hidden download>' + ICONS.download + '</a>' +
 						'<button type="button" class="sp-pv-btn" data-pv-close aria-label="' + escapeAttr( t( 'close' ) ) + '">' + ICONS.close + '</button>' +
 					'</div>' +
 				'</header>' +
@@ -160,10 +155,9 @@
 				'</div>' +
 				'<footer class="sp-pv-foot">' +
 					'<p class="sp-pv-caption" data-pv-caption></p>' +
+					'<p class="sp-pv-credit" data-pv-credit></p>' +
 					'<div class="sp-pv-meta">' +
-						'<button type="button" class="sp-pv-btn sp-pv-like" data-pv-like aria-pressed="false">' + ICONS.heart + '<span data-pv-like-count></span></button>' +
 						'<span class="sp-pv-stat" data-pv-views-wrap>' + ICONS.eye + '<span data-pv-view-count></span></span>' +
-						'<button type="button" class="sp-pv-btn" data-pv-comments-toggle aria-expanded="false">' + ICONS.comment + '<span data-pv-comment-count></span></button>' +
 						'<span class="sp-pv-share">' +
 							'<button type="button" class="sp-pv-btn" data-pv-share="facebook" aria-label="' + escapeAttr( t( 'shareFacebook' ) ) + '">' + ICONS.facebook + '</button>' +
 							'<button type="button" class="sp-pv-btn" data-pv-share="x" aria-label="' + escapeAttr( t( 'shareX' ) ) + '">' + ICONS.x + '</button>' +
@@ -175,14 +169,6 @@
 					'</div>' +
 					'<div class="sp-pv-film" data-pv-film></div>' +
 				'</footer>' +
-				'<aside class="sp-pv-comments" data-pv-comments hidden>' +
-					'<div class="sp-pv-comments-head">' +
-						'<h2 class="sp-pv-comments-title">' + escapeHTML( t( 'comments' ) ) + '</h2>' +
-						'<button type="button" class="sp-pv-btn" data-pv-comments-close aria-label="' + escapeAttr( t( 'closeComments' ) ) + '">' + ICONS.close + '</button>' +
-					'</div>' +
-					'<ul class="sp-pv-comments-list" data-pv-comments-list></ul>' +
-					'<div data-pv-comments-foot></div>' +
-				'</aside>' +
 			'</div>';
 
 		document.body.appendChild( viewer );
@@ -194,19 +180,12 @@
 			spinner:      viewer.querySelector( '[data-pv-spinner]' ),
 			counter:      viewer.querySelector( '[data-pv-counter]' ),
 			caption:      viewer.querySelector( '[data-pv-caption]' ),
+			credit:       viewer.querySelector( '[data-pv-credit]' ),
 			prev:         viewer.querySelector( '[data-pv-prev]' ),
 			next:         viewer.querySelector( '[data-pv-next]' ),
 			film:         viewer.querySelector( '[data-pv-film]' ),
-			download:     viewer.querySelector( '[data-pv-download]' ),
-			like:         viewer.querySelector( '[data-pv-like]' ),
-			likeCount:    viewer.querySelector( '[data-pv-like-count]' ),
 			viewsWrap:    viewer.querySelector( '[data-pv-views-wrap]' ),
 			viewCount:    viewer.querySelector( '[data-pv-view-count]' ),
-			commentBtn:   viewer.querySelector( '[data-pv-comments-toggle]' ),
-			commentCount: viewer.querySelector( '[data-pv-comment-count]' ),
-			comments:     viewer.querySelector( '[data-pv-comments]' ),
-			commentsList: viewer.querySelector( '[data-pv-comments-list]' ),
-			commentsFoot: viewer.querySelector( '[data-pv-comments-foot]' ),
 			shareNative:  viewer.querySelector( '[data-pv-share="native"]' ),
 			shareCopy:    viewer.querySelector( '[data-pv-share="copy"]' ),
 			toast:        viewer.querySelector( '[data-pv-toast]' )
@@ -279,7 +258,6 @@
 			return;
 		}
 
-		closeComments();
 		viewer.hidden = true;
 		document.documentElement.style.overflow = '';
 		resetZoom( false );
@@ -329,6 +307,7 @@
 		}
 
 		els.caption.textContent = photo.caption || '';
+		els.credit.textContent = photo.credit || '';
 		els.counter.textContent = format(
 			format( t( 'counter' ), index + 1 ).replace( '%d', photos.length ),
 			photos.length
@@ -339,23 +318,10 @@
 		els.prev.hidden = ! many;
 		els.next.hidden = ! many;
 
-		if ( photo.download ) {
-			els.download.hidden = false;
-			els.download.href = photo.full;
-			els.download.setAttribute( 'aria-label', t( 'download' ) );
-		} else {
-			els.download.hidden = true;
-			els.download.removeAttribute( 'href' );
-		}
-
 		renderStats( photo );
 		markFilmstrip();
 		preloadNeighbours();
 		countView( photo );
-
-		if ( commentsOpen ) {
-			loadComments();
-		}
 
 		if ( pushedHistory ) {
 			try {
@@ -365,17 +331,7 @@
 	}
 
 	function renderStats( photo ) {
-		els.likeCount.textContent = photo.likes > 0 ? photo.likes : '';
-		els.like.setAttribute( 'aria-pressed', photo.liked ? 'true' : 'false' );
-		els.like.setAttribute( 'aria-label', photo.liked ? t( 'unlike' ) : t( 'like' ) );
-
 		els.viewCount.textContent = format( t( 'views' ), photo.views || 0 );
-
-		els.commentCount.textContent = photo.comments > 0 ? photo.comments : '';
-		els.commentBtn.setAttribute(
-			'aria-label',
-			format( t( 'commentCount' ), photo.comments || 0 )
-		);
 	}
 
 	function buildFilmstrip() {
@@ -580,6 +536,14 @@
 
 	function onPointerUp( e ) {
 		if ( ! pointers[ e.pointerId ] ) {
+			// A release we never saw the press for — the button came up outside
+			// the window, or pointercancel arrived after pointerup and the id
+			// was already dropped. Returning bare used to strand the drag
+			// preview transform from onPointerMove, leaving the photograph
+			// parked half off the stage until the next navigation. Settle it.
+			if ( scale <= 1 && els.image.style.transform ) {
+				resetZoom( true );
+			}
 			return;
 		}
 
@@ -671,37 +635,6 @@
 		}
 	}
 
-	/* -------------------------------------------------------------- likes */
-
-	function toggleLike() {
-		var photo = photos[ index ];
-		var wasLiked = !! photo.liked;
-
-		// Optimistic: the heart responds on tap, and rolls back if the
-		// request fails. A like is low-stakes enough to be worth the risk.
-		photo.liked = ! wasLiked;
-		photo.likes = Math.max( 0, ( photo.likes || 0 ) + ( wasLiked ? -1 : 1 ) );
-		renderStats( photo );
-
-		els.like.classList.add( 'is-busy' );
-
-		post( 'sp_photo_like', { item_id: photo.id }, function ( data ) {
-			els.like.classList.remove( 'is-busy' );
-
-			if ( ! data ) {
-				photo.liked = wasLiked;
-				photo.likes = Math.max( 0, ( photo.likes || 0 ) + ( wasLiked ? 1 : -1 ) );
-			} else {
-				photo.liked = !! data.liked;
-				photo.likes = data.likes;
-			}
-
-			if ( photos[ index ] === photo ) {
-				renderStats( photo );
-			}
-		} );
-	}
-
 	/* -------------------------------------------------------------- views */
 
 	function countView( photo ) {
@@ -717,189 +650,6 @@
 					renderStats( photo );
 				}
 			}
-		} );
-	}
-
-	/* ----------------------------------------------------------- comments */
-
-	function openComments() {
-		commentsOpen = true;
-		els.comments.hidden = false;
-		els.commentBtn.setAttribute( 'aria-expanded', 'true' );
-		loadComments();
-	}
-
-	function closeComments() {
-		commentsOpen = false;
-		if ( els.comments ) {
-			els.comments.hidden = true;
-			els.commentBtn.setAttribute( 'aria-expanded', 'false' );
-		}
-	}
-
-	function renderCommentForm() {
-		els.commentsFoot.textContent = '';
-
-		if ( ! config.canComment ) {
-			var locked = document.createElement( 'p' );
-			locked.className = 'sp-pv-comments-locked';
-			locked.textContent = t( 'commentsMembersOnly' ) + ' ';
-
-			var link = document.createElement( 'a' );
-			link.href = config.loginUrl;
-			link.textContent = t( 'logIn' );
-			locked.appendChild( link );
-
-			els.commentsFoot.appendChild( locked );
-			return;
-		}
-
-		var form = document.createElement( 'form' );
-		form.className = 'sp-pv-comment-form';
-
-		var label = document.createElement( 'label' );
-		label.className = 'screen-reader-text';
-		label.setAttribute( 'for', 'sp-pv-comment-input' );
-		label.textContent = t( 'yourComment' );
-
-		var input = document.createElement( 'textarea' );
-		input.className = 'sp-pv-comment-input';
-		input.id = 'sp-pv-comment-input';
-		input.maxLength = 2000;
-		input.placeholder = t( 'commentPlaceholder' );
-		input.required = true;
-
-		var submit = document.createElement( 'button' );
-		submit.type = 'submit';
-		submit.className = 'sp-pv-comment-submit';
-		submit.textContent = t( 'postComment' );
-
-		var error = document.createElement( 'p' );
-		error.className = 'sp-pv-comment-error';
-		error.setAttribute( 'role', 'alert' );
-
-		form.appendChild( label );
-		form.appendChild( input );
-		form.appendChild( submit );
-		form.appendChild( error );
-
-		form.addEventListener( 'submit', function ( e ) {
-			e.preventDefault();
-
-			var content = input.value.trim();
-			if ( ! content ) {
-				return;
-			}
-
-			submit.disabled = true;
-			error.textContent = '';
-			var photo = photos[ index ];
-
-			post( 'sp_photo_comment_add', { item_id: photo.id, content: content }, function ( data ) {
-				submit.disabled = false;
-
-				if ( ! data ) {
-					error.textContent = t( 'commentFailed' );
-					return;
-				}
-
-				input.value = '';
-				photo.comments = data.total;
-				renderStats( photo );
-				drawComments( data.comments );
-			} );
-		} );
-
-		els.commentsFoot.appendChild( form );
-	}
-
-	function loadComments() {
-		var photo = photos[ index ];
-
-		els.commentsList.textContent = '';
-		var loading = document.createElement( 'li' );
-		loading.className = 'sp-pv-comments-empty';
-		loading.textContent = t( 'loading' );
-		els.commentsList.appendChild( loading );
-
-		renderCommentForm();
-
-		post( 'sp_photo_comments_get', { item_id: photo.id }, function ( data ) {
-			// The user may have paged on while this was in flight.
-			if ( ! photos[ index ] || photos[ index ].id !== photo.id ) {
-				return;
-			}
-			if ( ! data ) {
-				loading.textContent = t( 'commentsFailed' );
-				return;
-			}
-			photo.comments = data.total;
-			renderStats( photo );
-			drawComments( data.comments );
-		} );
-	}
-
-	function drawComments( list ) {
-		els.commentsList.textContent = '';
-
-		if ( ! list || ! list.length ) {
-			var empty = document.createElement( 'li' );
-			empty.className = 'sp-pv-comments-empty';
-			empty.textContent = t( 'noComments' );
-			els.commentsList.appendChild( empty );
-			return;
-		}
-
-		list.forEach( function ( comment ) {
-			var li = document.createElement( 'li' );
-			li.className = 'sp-pv-comment';
-
-			var head = document.createElement( 'div' );
-			head.className = 'sp-pv-comment-head';
-
-			var author = document.createElement( 'span' );
-			author.className = 'sp-pv-comment-author';
-			// textContent throughout: comment bodies and display names are
-			// visitor-supplied and must never be parsed as HTML.
-			author.textContent = comment.author;
-
-			var date = document.createElement( 'time' );
-			date.className = 'sp-pv-comment-date';
-			date.dateTime = comment.iso;
-			date.textContent = comment.date;
-
-			head.appendChild( author );
-			head.appendChild( date );
-
-			var body = document.createElement( 'p' );
-			body.className = 'sp-pv-comment-body';
-			body.textContent = comment.content;
-
-			li.appendChild( head );
-			li.appendChild( body );
-
-			if ( comment.can_delete ) {
-				var del = document.createElement( 'button' );
-				del.type = 'button';
-				del.className = 'sp-pv-comment-delete';
-				del.textContent = t( 'deleteComment' );
-				del.addEventListener( 'click', function () {
-					del.disabled = true;
-					post( 'sp_photo_comment_delete', { comment_id: comment.id }, function ( data ) {
-						if ( ! data ) {
-							del.disabled = false;
-							return;
-						}
-						var photo = photos[ index ];
-						photo.comments = data.total;
-						renderStats( photo );
-						drawComments( data.comments );
-					} );
-				} );
-				li.appendChild( del );
-			}
-
-			els.commentsList.appendChild( li );
 		} );
 	}
 
@@ -931,23 +681,6 @@
 			}
 			if ( target.closest( '[data-pv-fullscreen]' ) ) {
 				toggleFullscreen();
-				return;
-			}
-			if ( target.closest( '[data-pv-like]' ) ) {
-				toggleLike();
-				return;
-			}
-			if ( target.closest( '[data-pv-comments-toggle]' ) ) {
-				if ( commentsOpen ) {
-					closeComments();
-				} else {
-					openComments();
-				}
-				return;
-			}
-			if ( target.closest( '[data-pv-comments-close]' ) ) {
-				closeComments();
-				els.commentBtn.focus();
 				return;
 			}
 
@@ -989,8 +722,8 @@
 		els.stage.addEventListener( 'pointerup', onPointerUp );
 		els.stage.addEventListener( 'pointercancel', onPointerUp );
 
-		// Dragging the photograph to the desktop would bypass the per-album
-		// download setting, so suppress the native drag.
+		// Dragging the photograph onto the desktop is a download by another
+		// name, so suppress the native drag.
 		els.image.addEventListener( 'dragstart', function ( e ) {
 			e.preventDefault();
 		} );
@@ -1009,7 +742,7 @@
 			return;
 		}
 
-		// Typing a comment must not page the gallery out from under you.
+		// Typing in a field must not page the gallery out from under you.
 		var typing = e.target && (
 			e.target.tagName === 'TEXTAREA' ||
 			e.target.tagName === 'INPUT'
@@ -1017,12 +750,7 @@
 
 		if ( e.key === 'Escape' ) {
 			e.preventDefault();
-			if ( commentsOpen ) {
-				closeComments();
-				els.commentBtn.focus();
-			} else {
-				close();
-			}
+			close();
 			return;
 		}
 
@@ -1074,10 +802,7 @@
 	}
 
 	function trapFocus( e ) {
-		// When the comments drawer is open it is the effective dialog, so the
-		// trap tightens to it rather than letting Tab wander back to the
-		// controls hidden behind it.
-		var scope = commentsOpen ? els.comments : els.shell;
+		var scope = els.shell;
 		var focusable = scope.querySelectorAll(
 			'a[href], button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])'
 		);

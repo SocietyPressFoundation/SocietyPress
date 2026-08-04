@@ -4,8 +4,24 @@
  * Loaded inside the TinyMCE editor (via the mce_css filter) and on the front end
  * for any page whose content contains an sp-content-table, so the table reads
  * the same while editing and when published.
+ *
+ * WHY named presets rather than the colour and border pickers this used to
+ * offer: every volunteer styling a table by hand meant no two tables on a
+ * society's site matched. A preset is one decision, it is reversible, and a
+ * hundred pages using "Stripes" all change together if the look is ever
+ * revised. Inline styles could do none of that.
+ *
+ * Each preset sets four custom properties and the shared rules below do the
+ * work, so adding a colourway is four lines and never a new rule.
  */
+
 .sp-content-table {
+	/* Neutral defaults; every preset overrides these. */
+	--sp-tbl-line: #c3c4c7;
+	--sp-tbl-head-bg: #f0f0f1;
+	--sp-tbl-head-fg: #1d2327;
+	--sp-tbl-stripe: transparent;
+
 	border-collapse: collapse;
 	width: 100%;
 	margin: 1em 0;
@@ -13,26 +29,300 @@
 
 .sp-content-table td,
 .sp-content-table th {
-	border: 1px solid #767676;
+	border: 1px solid var( --sp-tbl-line );
 	padding: 8px 10px;
 	text-align: left;
 	vertical-align: top;
 }
 
 .sp-content-table th {
-	background: #f0f0f1;
+	background: var( --sp-tbl-head-bg );
+	color: var( --sp-tbl-head-fg );
 	font-weight: 600;
 }
 
+/* Zebra rows. tbody tr:nth-of-type keeps the count off the header row whether
+   or not the table has a thead, which hand-built tables often do not. */
+.sp-content-table tbody tr:nth-of-type( even ) td {
+	background: var( --sp-tbl-stripe );
+}
+
 /*
- * A row given its own colour with Table → Row background color has to win over
- * the default header grey.
+ * With no header row, the banding starts on the very first row instead of the
+ * second. A headerless table otherwise opens on an unshaded row and reads as
+ * though the striping is off by one — there is no header above it to explain
+ * why the top row is bare.
  *
- * WHY this rule is needed at all: in CSS table painting, cell backgrounds sit
- * ON TOP of row backgrounds. So a coloured header row was covered by the th
- * grey and looked as though the colour picker had done nothing — on the header
- * row, which is the first one anyone tries to colour.
+ * WHY :has() rather than a class the editor sets: the table answers the
+ * question itself. A class would have to be kept in step by every path that
+ * adds or removes a header — the insert dialog, the toggle, a paste, a table
+ * someone edited by hand in the Text tab — and any one of those getting out of
+ * step would show up as wrong shading on a live page.
  */
-.sp-content-table tr[style*="background"] th {
+.sp-content-table:not( :has( th ) ) tbody tr:nth-of-type( odd ) td {
+	background: var( --sp-tbl-stripe );
+}
+
+.sp-content-table:not( :has( th ) ) tbody tr:nth-of-type( even ) td {
 	background: transparent;
+}
+
+/*
+ * A row given its own colour by the old Row background color control has to win
+ * over the header fill.
+ *
+ * WHY this rule survives the retirement of that control: pages saved before the
+ * change still carry those inline styles, and they must keep rendering the way
+ * their author left them.
+ *
+ * WHY it is needed at all: in CSS table painting, cell backgrounds sit ON TOP
+ * of row backgrounds. So a coloured header row was covered by the th fill and
+ * looked as though the colour picker had done nothing — on the header row,
+ * which is the first one anyone tries to colour.
+ */
+.sp-content-table tr[style*="background"] th,
+.sp-content-table tr[style*="background"] td {
+	background: transparent;
+}
+
+/* Wide tables scroll inside themselves instead of pushing the page sideways.
+   A society's officer list has a way of growing a column at a time. */
+@media ( max-width: 600px ) {
+	.sp-content-table {
+		display: block;
+		overflow-x: auto;
+	}
+}
+
+/* ------------------------------------------------------------------ presets */
+
+/* Plain — horizontal rules only. Reads as a document, not a spreadsheet. */
+.sp-tbl-plain {
+	--sp-tbl-head-bg: transparent;
+}
+
+.sp-content-table.sp-tbl-plain td,
+.sp-content-table.sp-tbl-plain th {
+	border-width: 0 0 1px;
+}
+
+/* Grid — the neutral default: full rules, grey header. */
+.sp-tbl-grid {
+	--sp-tbl-line: #c3c4c7;
+	--sp-tbl-head-bg: #f0f0f1;
+	--sp-tbl-head-fg: #1d2327;
+}
+
+/* Stripes — grey banding, dark header. The workhorse for long lists. */
+.sp-tbl-stripe {
+	--sp-tbl-line: #c3c4c7;
+	--sp-tbl-head-bg: #3c434a;
+	--sp-tbl-head-fg: #ffffff;
+	--sp-tbl-stripe: #f6f7f7;
+}
+
+/*
+ * Theme — takes the society's own palette. WHY this one exists and why it is
+ * offered first: switching child themes is meant to change the whole identity
+ * of a site, and a table hard-coded to navy would survive a move to a green
+ * theme looking wrong. This one follows the theme wherever it goes. The
+ * fallbacks are the SocietyPress defaults for a theme that sets neither.
+ */
+.sp-tbl-theme {
+	--sp-tbl-line: var( --sp-color-border, #c3c4c7 );
+	--sp-tbl-head-bg: var( --sp-color-primary, #0d1f3c );
+	--sp-tbl-head-fg: var( --sp-color-nav-text, #ffffff );
+	--sp-tbl-stripe: var( --sp-color-surface-alt, #f6f7f7 );
+}
+
+.sp-tbl-navy {
+	--sp-tbl-line: #b8c4d4;
+	--sp-tbl-head-bg: #1e3a5f;
+	--sp-tbl-head-fg: #ffffff;
+	--sp-tbl-stripe: #eef2f7;
+}
+
+.sp-tbl-green {
+	--sp-tbl-line: #b7cdb7;
+	--sp-tbl-head-bg: #2f5d3a;
+	--sp-tbl-head-fg: #ffffff;
+	--sp-tbl-stripe: #eef4ef;
+}
+
+.sp-tbl-burgundy {
+	--sp-tbl-line: #d6b8bd;
+	--sp-tbl-head-bg: #6e1f2e;
+	--sp-tbl-head-fg: #ffffff;
+	--sp-tbl-stripe: #f8eef0;
+}
+
+.sp-tbl-gold {
+	--sp-tbl-line: #ddc79a;
+	--sp-tbl-head-bg: #8a6414;
+	--sp-tbl-head-fg: #ffffff;
+	--sp-tbl-stripe: #faf4e8;
+}
+
+.sp-tbl-plum {
+	--sp-tbl-line: #cbb8d4;
+	--sp-tbl-head-bg: #532a63;
+	--sp-tbl-head-fg: #ffffff;
+	--sp-tbl-stripe: #f5eff8;
+}
+
+/*
+ * Once a table carries explicit column widths, those widths are the authority.
+ *
+ * WHY table-layout: fixed comes with the colgroup and not before it: in the
+ * default auto layout a browser re-measures every column against its contents,
+ * so typing one long word into a cell shoves the whole table around and undoes
+ * the width the volunteer just dragged. Fixed layout holds the widths still.
+ * Tables that have never been resized keep the automatic behaviour, which is
+ * the better default when nobody has expressed an opinion.
+ */
+.sp-content-table:has( col ) {
+	table-layout: fixed;
+}
+
+/* A long unbroken string — an email address, a URL — must wrap rather than
+   burst a column it has been told to stay inside. */
+.sp-content-table:has( col ) td,
+.sp-content-table:has( col ) th {
+	overflow-wrap: break-word;
+}
+
+/*
+ * Row height, expressed as cell padding.
+ *
+ * WHY padding and not a height on the row: a height in a web table is a
+ * minimum, not a fixed value — put more text in a cell than fits and the row
+ * grows regardless. Padding is what actually decides how tall a row of ordinary
+ * content sits, and it keeps every row in the table in step with the others.
+ *
+ * Normal is the absence of a class, so the commonest case adds no markup.
+ */
+.sp-content-table.sp-tbl-compact td,
+.sp-content-table.sp-tbl-compact th {
+	padding: 4px 10px;
+}
+
+.sp-content-table.sp-tbl-roomy td,
+.sp-content-table.sp-tbl-roomy th {
+	padding: 14px 10px;
+}
+
+/*
+ * Borders off. A separate class rather than a tenth style: borderless is
+ * orthogonal to colour — someone may well want Navy without rules — and folding
+ * it into the gallery would have doubled the swatches to say one thing.
+ *
+ * It sits after the presets deliberately. Plain sets a bottom rule at the same
+ * specificity, so this has to come later to win.
+ */
+.sp-content-table.sp-tbl-noborders,
+.sp-content-table.sp-tbl-noborders td,
+.sp-content-table.sp-tbl-noborders th {
+	border: 0;
+}
+
+/* --------------------------------------------------- style picker (editor) */
+
+/*
+ * The picker is rendered as raw markup inside a TinyMCE dialog, so its styles
+ * ship here rather than in the admin stylesheet — the dialog is not part of the
+ * page the admin CSS covers.
+ */
+.sp-tbl-picker {
+	/* Defaults for the miniatures, set here rather than on .sp-tbl-swatch:
+	   custom properties inherit, and a rule on the swatch itself would have the
+	   same specificity as the preset classes while sitting later in the file —
+	   so it would win, and every swatch would look identical. */
+	--sp-tbl-line: #c3c4c7;
+	--sp-tbl-head-bg: #f0f0f1;
+	--sp-tbl-head-fg: #1d2327;
+	--sp-tbl-stripe: transparent;
+
+	display: grid;
+	grid-template-columns: repeat( 3, 1fr );
+	gap: 10px;
+	padding: 4px;
+	width: 430px;
+	max-width: 100%;
+}
+
+.sp-tbl-swatch {
+	display: block;
+	padding: 6px;
+	border: 2px solid transparent;
+	border-radius: 5px;
+	background: #fff;
+	cursor: pointer;
+	text-align: center;
+	font: inherit;
+	font-size: 12px;
+	color: #1d2327;
+}
+
+.sp-tbl-swatch:hover {
+	border-color: #8c8f94;
+}
+
+.sp-tbl-swatch[aria-pressed="true"] {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+}
+
+.sp-tbl-swatch:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 1px;
+}
+
+/* The miniature. Rows are plain <i> elements so the preview cannot inherit
+   anything from the real table rules above. */
+.sp-tbl-mini {
+	display: block;
+	border: 1px solid var( --sp-tbl-line );
+	margin-bottom: 5px;
+	background: #fff;
+}
+
+.sp-tbl-mini i {
+	display: block;
+	height: 7px;
+	border-top: 1px solid var( --sp-tbl-line );
+}
+
+.sp-tbl-mini i:first-child {
+	height: 9px;
+	border-top: 0;
+	background: var( --sp-tbl-head-bg );
+}
+
+.sp-tbl-mini i:nth-child( odd ):not( :first-child ) {
+	background: var( --sp-tbl-stripe );
+}
+
+.sp-tbl-swatch-name {
+	display: block;
+	line-height: 1.3;
+}
+
+/* ------------------------------------------------------------- font choices */
+
+/*
+ * The three font options in the editor's Formats menu. They are classes, not
+ * inline font-family declarations, so the text follows the society's theme
+ * instead of freezing a typeface into the page — see the note on style_formats
+ * in the plugin. The fallbacks match the parent theme's own.
+ */
+.sp-font-body {
+	font-family: var( --sp-font-body, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif );
+}
+
+.sp-font-heading {
+	font-family: var( --sp-font-heading, 'Playfair Display', Georgia, serif );
+}
+
+.sp-font-mono {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }

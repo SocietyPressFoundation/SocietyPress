@@ -113,6 +113,57 @@ matching the other SocietyPress page templates.
 
 ### Fixed
 
+**Members were sent to a WordPress error screen when they logged in**
+
+Signing in dropped every member on "Sorry, you are not allowed to access this
+page." SocietyPress sent everyone who logged in to the admin dashboard without
+first checking whether they were allowed there, and ordinary members are not.
+On a site migrated from another system, where every imported member arrives as
+a Subscriber, that was the entire membership.
+
+Where you land after signing in now depends on who you are. Officers and
+volunteers with SocietyPress duties go to the dashboard, exactly as before. A
+member arriving for the first time after setting or resetting their password
+goes to the Member Portal, so their first view of the site is the page that
+explains what is there for them. Every other member goes to the home page. If
+you clicked a members-only link and were asked to sign in first, you still
+finish the trip to the page you wanted.
+
+**"Require Login" hid the site from your own members**
+
+The Require Login setting on Settings → Website was supposed to make the site
+private — visible to members, closed to the public. It was checking for
+administrator rights instead of simply being signed in, so members were bounced
+back to the login screen on every page, including the member pages the setting
+exists to protect. Signing in again just returned them to the login screen. The
+setting now means what it says: members in, public out.
+
+**Members who reached a backend page were sent in a circle**
+
+A member who typed a `/wp-admin/` address, or followed an old bookmark to one,
+was redirected to the login screen — where, being signed in already, there was
+nothing to do but sign in again and arrive back where they started. Members are
+now returned to the site itself, and a backend page a member is not allowed to
+open shows them the site rather than a stark WordPress error page.
+
+**The sign-in box looked like it only accepted a username**
+
+The field on the sign-in screen was labelled "Login Name", so members with a
+forgotten username assumed they were stuck. WordPress has always accepted the
+email address there too, and the help text below the field said so — the label
+was the only thing claiming otherwise. It now reads "Username or Email".
+
+**A dismissed pop-up could leave the page unable to be typed in**
+
+Every SocietyPress pop-up — the confirmation prompts, alerts, the member detail
+panel, the design builder — freezes the page behind it while it is open, so a
+stray click can't reach whatever is underneath. Each unfroze only the parts it
+had frozen itself, which is correct when one pop-up opens on top of another,
+but meant a pop-up that failed part-way through left a piece of the page frozen
+with nothing left to thaw it. A frozen area gives no sign at all: boxes look
+completely normal and silently ignore every click and keystroke. Opening any
+pop-up now clears anything an earlier one abandoned.
+
 **Editor screens filled the debug log with warnings**
 
 If your site has WordPress debugging switched on, every visit to an editor

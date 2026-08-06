@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.3
+ * Version:     1.1.4
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.3' );
+define( 'SOCIETYPRESS_VERSION', '1.1.4' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5227,19 +5227,64 @@ function sp_user_can( string $area ): bool {
  * WHY: Used to determine if a user should see the SocietyPress menu at all.
  *      A user with zero access areas shouldn't see the top-level menu item.
  *
+ * WHY the optional $user_id: the login_redirect filter has to decide where to
+ *      send someone at a moment when WordPress has NOT yet populated the
+ *      current user. wp_signon() sets the auth cookie and fires wp_login, but
+ *      it never calls wp_set_current_user(), so get_current_user_id() is still
+ *      0 while login_redirect runs. Asking about a specific user ID is the only
+ *      way to get a correct answer there. Callers that pass nothing keep the
+ *      original current-user behavior.
+ *
+ * @param int|null $user_id User to test, or null for the current user.
  * @return bool True if the user has at least one access area (or is admin).
  */
-function sp_user_can_access_admin(): bool {
-    if ( current_user_can( 'manage_options' ) ) {
+function sp_user_can_access_admin( ?int $user_id = null ): bool {
+    if ( null === $user_id ) {
+        $user_id = get_current_user_id();
+    }
+
+    // No user at all (logged out) can never reach the admin. Returning early
+    // also keeps user_can() from being handed a 0 it would have to reject.
+    if ( ! $user_id ) {
+        return false;
+    }
+
+    if ( user_can( $user_id, 'manage_options' ) ) {
         return true;
     }
 
-    $user_areas = get_user_meta( get_current_user_id(), 'sp_access_areas', true );
+    $user_areas = get_user_meta( $user_id, 'sp_access_areas', true );
     if ( is_array( $user_areas ) && ! empty( $user_areas ) ) {
         return true;
     }
 
-    return sp_user_is_chair();
+    return sp_user_is_chair( $user_id );
+}
+
+/**
+ * URL of the Member Portal page — the hub a member lands on after logging in.
+ *
+ * WHY by slug: the plugin plants a 'member-portal' page on activation (see the
+ *      activation handler), but unlike My Account it is an ordinary WordPress
+ *      page with no SP template meta to look it up by. The slug is the only
+ *      stable handle we have. A society that deletes or renames the page gets
+ *      the home page instead, which is a reasonable landing spot and never a
+ *      broken link.
+ *
+ * @return string Permalink to the portal, or the site home as a fallback.
+ */
+function sp_get_member_portal_url(): string {
+    static $url = null;
+    if ( null !== $url ) {
+        return $url;
+    }
+
+    $portal = get_page_by_path( 'member-portal' );
+    $url    = ( $portal && 'publish' === $portal->post_status )
+        ? get_permalink( $portal->ID )
+        : home_url( '/' );
+
+    return $url;
 }
 
 /**
@@ -11845,18 +11890,68 @@ add_action( 'admin_init', function () {
 });
 
 /**
- * After login, go straight to SocietyPress dashboard.
+ * After login, send each person to the place that is actually useful to them.
  *
- * WHY: The login form defaults to redirecting to /wp-admin/. We override
- *      that so the user lands on our dashboard immediately after signing in.
+ * WHY this is not one destination: this filter used to return the SocietyPress
+ *      admin dashboard for EVERY successful login, with no capability check at
+ *      all. Ordinary members are Subscribers — they hold no SP access area and
+ *      no manage_options — so WordPress refused them the admin page and killed
+ *      the request with a bare "Sorry, you are not allowed to access this
+ *      page." Members logged in and got a raw WordPress error screen. On a site
+ *      migrated from another system, where every imported member is a
+ *      Subscriber, that is the entire membership.
+ *
+ *      Three destinations now:
+ *
+ *      1. Staff (admins, and non-admin SP staff such as a Treasurer or
+ *         Librarian) → the SocietyPress dashboard, exactly as before.
+ *      2. A member whose FIRST sign-in follows a password reset or the
+ *         migration password setup → the Member Portal, so their first view of
+ *         the new site is the hub that explains what they can do here.
+ *      3. Any other member → the site home page.
+ *
+ * WHY we test $user rather than the current user: see the note on
+ *      sp_user_can_access_admin() — WordPress has not populated the current
+ *      user yet at this point in the login, so current_user_can() would answer
+ *      for nobody and every member would be treated as staff.
  */
 add_filter( 'login_redirect', function ( $redirect_to, $requested_redirect_to, $user ) {
-    // Only override if they weren't trying to go somewhere specific
-    // (e.g., they clicked a direct link that required login first)
-    if ( empty( $requested_redirect_to ) || $requested_redirect_to === admin_url() ) {
+    // A failed login hands us a WP_Error here. Nothing to route.
+    if ( ! $user instanceof WP_User ) {
+        return $redirect_to;
+    }
+
+    $is_staff = sp_user_can_access_admin( $user->ID );
+
+    // Honor a specific destination the visitor was already headed for — they
+    // clicked a members-only link and got bounced to the login form first, and
+    // finishing that trip is the whole point.
+    //
+    // WHY the wp-admin exclusion: auth_redirect() fills requested_redirect_to
+    // with whatever admin URL was attempted, so a member who simply typed
+    // /wp-admin/ would be handed straight back to the page that just refused
+    // them — the exact loop this rewrite exists to end. Staff are unaffected;
+    // for them the admin URL is a legitimate destination.
+    $requested   = trim( (string) $requested_redirect_to );
+    $wants_admin = '' !== $requested && false !== strpos( $requested, '/wp-admin' );
+
+    if ( '' !== $requested && $requested !== admin_url() && ! ( $wants_admin && ! $is_staff ) ) {
+        return $redirect_to;
+    }
+
+    // Staff keep the SocietyPress dashboard.
+    if ( $is_staff ) {
         return admin_url( 'admin.php?page=societypress' );
     }
-    return $redirect_to;
+
+    // A member arriving for the first time after setting a password. The flag
+    // is consumed here so this only ever happens once per reset.
+    if ( get_user_meta( $user->ID, 'sp_show_portal_next_login', true ) ) {
+        delete_user_meta( $user->ID, 'sp_show_portal_next_login' );
+        return sp_get_member_portal_url();
+    }
+
+    return home_url( '/' );
 }, 10, 3 );
 
 
@@ -11894,8 +11989,13 @@ add_action( 'template_redirect', function () {
         return;
     }
 
-    // Require login AND administrator role to see any frontend page
-    if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
+    // WHY logged-in and not administrator: this check used to demand
+    // manage_options, which made "Require Login" mean "administrators only."
+    // Every member of the society — the people the private site exists to
+    // serve — was bounced back to the login screen on every page, including
+    // the member portal they had just been sent to. The setting says Require
+    // Login, so require login: members in, the public out.
+    if ( ! is_user_logged_in() ) {
         auth_redirect();
     }
 } );
@@ -12085,10 +12185,40 @@ add_action( 'admin_init', function () {
     // sp_access_admin without manage_options. A bare manage_options check here
     // bounces every one of them straight back to login, locking them out of the
     // dashboard the login_redirect filter just sent them to.
+    //
+    // WHY the frontend and not wp_login_url(): sending an already-logged-in
+    // member to the login form is a dead end. They are signed in, so the form
+    // has nothing to ask them; they log in again and arrive right back here.
+    // The site itself is where a member belongs, so that is where they go.
     if ( ! sp_user_can_access_admin() && ! wp_doing_ajax() ) {
-        wp_safe_redirect( wp_login_url() );
+        wp_safe_redirect( is_user_logged_in() ? home_url( '/' ) : wp_login_url() );
         exit;
     }
+} );
+
+/**
+ * Catch a member who reaches a backend page they may not see, and show them the
+ * site instead of a WordPress error.
+ *
+ * WHY this exists alongside the admin_init guard above: WordPress builds the
+ *      admin menu and runs its own capability check in wp-admin/includes/menu.php
+ *      BEFORE admin_init fires. When that check fails it calls wp_die() with a
+ *      403 — the guard above never gets a turn, and the member sees a stark
+ *      "WordPress › Error / Sorry, you are not allowed to access this page."
+ *      complete with the WordPress branding this plugin otherwise hides.
+ *
+ *      admin_page_access_denied fires immediately before that wp_die(), which
+ *      makes it the one place we can intercept. Staff still get the normal
+ *      error — for them a denied page is a genuine permissions problem worth
+ *      seeing, not a wrong turn.
+ */
+add_action( 'admin_page_access_denied', function () {
+    if ( wp_doing_ajax() || ! is_user_logged_in() || sp_user_can_access_admin() ) {
+        return;
+    }
+
+    wp_safe_redirect( home_url( '/' ) );
+    exit;
 } );
 
 
@@ -12399,12 +12529,17 @@ add_filter( 'login_message', function ( $message ) {
 } );
 
 /**
- * Change the "Username or Email Address" label to "Login Name".
+ * Shorten the "Username or Email Address" label to "Username or Email".
  * Also add help text below the form.
  *
- * WHY: "Username or Email Address" is WordPress jargon. Society members
- *      know their "login name" — that's what they were given. We also add
- *      help text explaining what to do if they've forgotten their credentials.
+ * WHY: WordPress's own label is a mouthful. We trim it, but we deliberately
+ *      keep BOTH words. This label used to read "Login Name", which was worse
+ *      than jargon — it was wrong. WordPress accepts either the username or
+ *      the email address at sign-in and always has, and the "Login Problem?"
+ *      help text directly below this field says so. Members read "Login Name",
+ *      concluded their email would not work, and never tried it — the one
+ *      credential a member is certain to remember.
+ *
  *      Injected via login_footer because WordPress doesn't have a filter
  *      for individual form field labels — we use JavaScript to swap it.
  */
@@ -12416,7 +12551,7 @@ add_action( 'login_footer', function () {
     ?>
     <div class="sp-login-help" id="sp-login-help" style="display:none;">
         <strong><?php esc_html_e( 'Login Problem?', 'societypress' ); ?></strong><br>
-        <?php esc_html_e( 'Click the "Lost your password?" link above if you have forgotten your password. Enter your login name or email address and password reset instructions will be sent to the email address associated with your membership profile.', 'societypress' ); ?>
+        <?php esc_html_e( 'You can sign in with either your username or your email address. Click the "Lost your password?" link above if you have forgotten your password. Enter your username or email address and password reset instructions will be sent to the email address associated with your membership profile.', 'societypress' ); ?>
     </div>
     <script>
         (function() {
@@ -12434,7 +12569,7 @@ add_action( 'login_footer', function () {
             if (label) {
                 var firstText = label.childNodes[0];
                 if (firstText && firstText.nodeType === 3) {
-                    firstText.textContent = <?php echo wp_json_encode( __( 'Login Name', 'societypress' ) ); ?>;
+                    firstText.textContent = <?php echo wp_json_encode( __( 'Username or Email', 'societypress' ) ); ?>;
                 }
             }
 
@@ -12692,14 +12827,8 @@ add_action( 'admin_footer', function () {
                 document.body.appendChild(overlay);
             }
 
-            var sibs    = [];
-            for (var i = 0; i < document.body.children.length; i++) {
-                var child = document.body.children[i];
-                if (child !== overlay && !child.inert) {
-                    child.inert = true;
-                    sibs.push(child);
-                }
-            }
+            <?php echo sp_modal_inert_js(); ?>
+            var sibs = window.spModalFreeze(overlay);
 
             function trapKey(e) {
                 // Tab: keep focus on the single button.
@@ -12719,7 +12848,7 @@ add_action( 'admin_footer', function () {
 
             btn.addEventListener('click', function() {
                 document.removeEventListener('keydown', trapKey);
-                sibs.forEach(function (s) { s.inert = false; });
+                window.spModalRelease(sibs);
                 overlay.remove();
                 if (trigger && typeof trigger.focus === 'function') {
                     try { trigger.focus(); } catch (e) {}
@@ -12733,6 +12862,78 @@ add_action( 'admin_footer', function () {
     </script>
     <?php
 } );
+
+
+/**
+ * JavaScript shared by every SocietyPress modal for freezing the page behind
+ * itself. Echo this inside any inline <script> that opens a dialog.
+ *
+ * WHY a dialog freezes the page at all: aria-modal="true" tells modern screen
+ *      readers to ignore whatever is behind the dialog, but older ones (NVDA
+ *      before 2024, JAWS before 2023) don't honor it. Marking the rest of the
+ *      page `inert` works everywhere, and also stops a sighted keyboard user
+ *      from tabbing out of the dialog into the page underneath.
+ *
+ * WHY this is shared rather than written six times: six dialogs in this file —
+ *      the login acknowledgment, the member-detail modal, the design-builder,
+ *      the surname-contact modal, spConfirm and spAlert — each carried its own
+ *      copy of the same two loops. Every copy recorded only the elements IT
+ *      froze and released only those. That much is correct, and deliberately
+ *      so: it is what lets one dialog open on top of another without the inner
+ *      one thawing the page while the outer is still up.
+ *
+ *      The gap is what happens when a dialog never reaches its close path — a
+ *      JavaScript error part-way through a handler, markup replaced underneath
+ *      it, a close button that got cloned away. The list of frozen elements
+ *      dies with the closure that owned it, and nothing else knows they are
+ *      frozen. An inert element gives no visual sign whatsoever: it looks
+ *      completely normal and silently swallows every click and keystroke. The
+ *      page appears fine and simply refuses to be typed in.
+ *
+ *      The depth counter closes that gap. When no dialog is open, nothing on
+ *      the page has any business being inert — so the next dialog to open
+ *      sweeps away whatever an earlier one abandoned before freezing anew.
+ *      Stacked dialogs are unaffected, because the sweep only runs at depth
+ *      zero.
+ *
+ * WHY the guarded assignment: these script blocks are printed independently on
+ *      different screens and in either order. Whichever one runs first defines
+ *      the pair; the rest reuse it. Emitting this more than once on a page is
+ *      harmless by design.
+ *
+ * @return string JavaScript, no <script> wrapper.
+ */
+function sp_modal_inert_js(): string {
+    return <<<'JS'
+window.spModalDepth  = window.spModalDepth || 0;
+window.spModalFreeze = window.spModalFreeze || function (overlay) {
+    if (!window.spModalDepth) {
+        // Depth zero means no dialog is open, so anything still inert is
+        // debris from one that failed to clean up after itself. Clear it,
+        // otherwise those elements stay dead for the rest of the visit.
+        window.spModalDepth = 0;
+        for (var j = 0; j < document.body.children.length; j++) {
+            document.body.children[j].inert = false;
+        }
+    }
+    window.spModalDepth++;
+
+    var frozen = [];
+    for (var i = 0; i < document.body.children.length; i++) {
+        var child = document.body.children[i];
+        if (child !== overlay && !child.inert) {
+            child.inert = true;
+            frozen.push(child);
+        }
+    }
+    return frozen;
+};
+window.spModalRelease = window.spModalRelease || function (frozen) {
+    (frozen || []).forEach(function (el) { el.inert = false; });
+    window.spModalDepth = Math.max(0, (window.spModalDepth || 1) - 1);
+};
+JS;
+}
 
 
 // ============================================================================
@@ -34196,6 +34397,7 @@ function sp_render_themes_page(): void {
 
         // ---- Modal accessibility: trigger focus return, background inert, Tab
         //      trap. The modal had aria-modal but no focus management at all. ----
+        <?php echo sp_modal_inert_js(); ?>
         var spBuilderTrigger = null;
         var spBuilderInert   = [];
         var spBuilderDialog  = modal ? modal.querySelector('.sp-themes-modal-dialog') : null;
@@ -34203,13 +34405,7 @@ function sp_render_themes_page(): void {
         function spBuilderActivate() {
             spBuilderTrigger = document.activeElement;
             if (modal && modal.parentNode !== document.body) { document.body.appendChild(modal); }
-            spBuilderInert = [];
-            if (modal) {
-                for (var i = 0; i < document.body.children.length; i++) {
-                    var sib = document.body.children[i];
-                    if (sib !== modal && !sib.inert) { sib.inert = true; spBuilderInert.push(sib); }
-                }
-            }
+            spBuilderInert = modal ? window.spModalFreeze(modal) : [];
             if (spBuilderDialog) { try { spBuilderDialog.focus(); } catch (e) {} }
         }
 
@@ -34294,7 +34490,7 @@ function sp_render_themes_page(): void {
         function closeBuilder() {
             modal.style.display = 'none';
             document.body.style.overflow = '';
-            spBuilderInert.forEach(function (s) { s.inert = false; });
+            window.spModalRelease(spBuilderInert);
             spBuilderInert = [];
             if (spBuilderTrigger && typeof spBuilderTrigger.focus === 'function') {
                 try { spBuilderTrigger.focus(); } catch (e) {}
@@ -38331,12 +38527,13 @@ function sp_directory_detail_script(): void {
         // WHY inert: aria-modal="true" alone isn't honored by older AT, so we
         // mark every sibling of the overlay inert while the modal is open —
         // matching the confirm/acknowledgment dialogs elsewhere in the plugin.
+        <?php echo sp_modal_inert_js(); ?>
         var modalInertSibs = [];
 
         function closeModal() {
             overlay.style.display = 'none';
             document.body.style.overflow = '';
-            modalInertSibs.forEach(function (s) { s.inert = false; });
+            window.spModalRelease(modalInertSibs);
             modalInertSibs = [];
             if (modalTrigger && typeof modalTrigger.focus === 'function') {
                 try { modalTrigger.focus(); } catch (e) {}
@@ -38347,14 +38544,7 @@ function sp_directory_detail_script(): void {
             modalTrigger = document.activeElement;
             overlay.style.display = 'flex';
             document.body.style.overflow = 'hidden';
-            modalInertSibs = [];
-            for (var i = 0; i < document.body.children.length; i++) {
-                var child = document.body.children[i];
-                if (child !== overlay && !child.inert) {
-                    child.inert = true;
-                    modalInertSibs.push(child);
-                }
-            }
+            modalInertSibs = window.spModalFreeze(overlay);
             if (modalDialog) modalDialog.focus();
         }
 
@@ -41973,13 +42163,14 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                 (function(){
                     // WHY: Event delegation from the parent container so buttons
                     //      added dynamically (unlikely here, but defensive) still work.
+                    <?php echo sp_modal_inert_js(); ?>
                     var spSurnameOpener = null;  // for focus return
                     var spSurnameInert = [];     // siblings made inert while open
                     function spCloseSurnameModal() {
                         var m = document.getElementById('sp-surname-contact-modal');
                         if (!m) return;
                         m.style.display = 'none';
-                        spSurnameInert.forEach(function (s) { s.inert = false; });
+                        window.spModalRelease(spSurnameInert);
                         spSurnameInert = [];
                         if (spSurnameOpener && typeof spSurnameOpener.focus === 'function') {
                             try { spSurnameOpener.focus(); } catch (e) {}
@@ -42003,11 +42194,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                         // can't reach the background. The modal must be a body-level
                         // element for sibling-inert to be correct.
                         if (modal.parentNode !== document.body) { document.body.appendChild(modal); }
-                        spSurnameInert = [];
-                        for (var si = 0; si < document.body.children.length; si++) {
-                            var sib = document.body.children[si];
-                            if (sib !== modal && !sib.inert) { sib.inert = true; spSurnameInert.push(sib); }
-                        }
+                        spSurnameInert = window.spModalFreeze(modal);
                         // Move focus into the modal so keyboard users can type
                         // immediately and Escape is reachable.
                         var firstField = modal.querySelector('textarea, input:not([type="hidden"]), button');
@@ -56524,6 +56711,13 @@ add_action( 'login_footer', function () {
 add_action( 'after_password_reset', function ( $user ) {
     if ( $user instanceof WP_User ) {
         delete_user_meta( $user->ID, 'sp_needs_password_setup' );
+
+        // Mark the next sign-in as the member's first on the new password, so
+        // login_redirect lands them on the Member Portal rather than the home
+        // page. For an imported member finishing the migration setup link this
+        // is their true first visit, and the portal is the page that tells them
+        // what the site is for. The flag is consumed on that one login.
+        update_user_meta( $user->ID, 'sp_show_portal_next_login', 1 );
     }
 } );
 add_action( 'wp_login', function ( $user_login, $user ) {
@@ -94214,6 +94408,7 @@ function sp_render_modal_module(): void {
         }
     </style>
     <script>
+    <?php echo sp_modal_inert_js(); ?>
     /**
      * Custom confirmation modal.
      *
@@ -94272,14 +94467,7 @@ function sp_render_modal_module(): void {
          * overlay tells modern AT to ignore content behind it, but older
          * AT (NVDA pre-2024, JAWS pre-2023) doesn't honor that. inert is
          * widely supported as of 2023 and works for everyone. */
-        var sibs = [];
-        for (var i = 0; i < document.body.children.length; i++) {
-            var child = document.body.children[i];
-            if (child !== overlay && !child.inert) {
-                child.inert = true;
-                sibs.push(child);
-            }
-        }
+        var sibs = window.spModalFreeze(overlay);
 
         /* Clone buttons to remove any prior listeners */
         var freshYes = yesBtn.cloneNode(true);
@@ -94290,7 +94478,7 @@ function sp_render_modal_module(): void {
         function close() {
             overlay.style.display = 'none';
             document.removeEventListener('keydown', keyHandler);
-            sibs.forEach(function (s) { s.inert = false; });
+            window.spModalRelease(sibs);
             if (trigger && typeof trigger.focus === 'function') {
                 try { trigger.focus(); } catch (e) { /* element may have been removed */ }
             }
@@ -94422,6 +94610,7 @@ function sp_render_modal_module(): void {
         </div>
     </div>
     <script>
+    <?php echo sp_modal_inert_js(); ?>
     /**
      * Custom alert modal — drop-in replacement for native window.alert().
      *
@@ -94462,14 +94651,7 @@ function sp_render_modal_module(): void {
         overlay.style.display = 'flex';
 
         // Inert siblings — same belt-and-suspenders pattern as spConfirm.
-        var sibs = [];
-        for (var i = 0; i < document.body.children.length; i++) {
-            var child = document.body.children[i];
-            if (child !== overlay && !child.inert) {
-                child.inert = true;
-                sibs.push(child);
-            }
-        }
+        var sibs = window.spModalFreeze(overlay);
 
         // Clone to drop any prior listeners.
         var freshOk = okBtn.cloneNode(true);
@@ -94478,7 +94660,7 @@ function sp_render_modal_module(): void {
         function close() {
             overlay.style.display = 'none';
             document.removeEventListener('keydown', keyHandler);
-            sibs.forEach(function (s) { s.inert = false; });
+            window.spModalRelease(sibs);
             if (trigger && typeof trigger.focus === 'function') {
                 try { trigger.focus(); } catch (e) {}
             }

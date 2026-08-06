@@ -69,11 +69,20 @@ deploy_plugin_to() {
         return 1
     fi
 
-    # Optional POT file — not required for deploy success (suppress errors)
+    # Optional POT file — not required for deploy success (suppress errors).
+    #
+    # WHY the mkdir: scp will not create a missing destination directory, and
+    # this copy suppresses its own errors, so on a site whose plugin folder has
+    # no languages/ subdirectory the POT silently never arrived and the deploy
+    # still reported OK. Demo was in exactly that state — running a translation
+    # catalogue months out of date with nothing to indicate it. Create the
+    # directory first so the copy has somewhere to land.
+    ssh "$host" "mkdir -p $target_base/plugins/societypress/languages" 2>/dev/null || true
     scp "$LOCAL_BASE/Code/plugin/languages/societypress.pot" "$host:$target_base/plugins/societypress/languages/societypress.pot" 2>/dev/null || true
 
     # Optional assets directory — same (suppress errors)
     if [ -d "$LOCAL_BASE/Code/plugin/assets" ]; then
+        ssh "$host" "mkdir -p $target_base/plugins/societypress/assets" 2>/dev/null || true
         scp -r "$LOCAL_BASE/Code/plugin/assets/"* "$host:$target_base/plugins/societypress/assets/" 2>/dev/null || true
     fi
 

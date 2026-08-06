@@ -113,6 +113,16 @@ matching the other SocietyPress page templates.
 
 ### Fixed
 
+**Editor screens filled the debug log with warnings**
+
+If your site has WordPress debugging switched on, every visit to an editor
+screen — adding a member, editing an event, writing up a document — wrote a
+"Deprecated" warning into `debug.log`. Nothing was broken and nothing appeared
+on screen, but over a working day the file filled with hundreds of identical
+lines and buried anything that genuinely needed attention. The editor screens
+are deliberately kept out of the sidebar, and WordPress was asking them for a
+page title they had no way to give it.
+
 **Apostrophes and quotation marks collected stray backslashes**
 
 Anything typed with an apostrophe or a quotation mark came back with a

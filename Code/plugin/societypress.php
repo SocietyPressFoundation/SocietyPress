@@ -7106,6 +7106,65 @@ add_action( 'admin_menu', function () {
 
 
 // ============================================================================
+// ADMIN PAGE TITLE FLOOR — Silence strip_tags(null) on hidden admin pages
+// ============================================================================
+//
+// WHY: 34 of our admin screens are registered with add_submenu_page( null, ... )
+//      so they're reachable by URL but never appear in the sidebar — the
+//      editors (sp-member-edit, sp-event-edit, sp-document-edit, and so on).
+//      WordPress's get_admin_page_title() finds a page's title by walking the
+//      $menu and $submenu arrays. A page registered with a null parent is in
+//      neither, so the function falls through without setting the $title
+//      global, and wp-admin/admin-header.php line 41 then runs:
+//
+//          $title = strip_tags( $title );   // $title is null
+//
+//      On PHP 8.1+ that emits "Deprecated: strip_tags(): Passing null to
+//      parameter #1 ($string) of type string is deprecated" on EVERY load of
+//      those 34 screens. On a site with WP_DEBUG_LOG on it fills debug.log
+//      steadily and buries real errors.
+//
+// WHY a floor of '' rather than a real title: setting $title to an empty
+//      string satisfies strip_tags() without changing behavior. It runs before
+//      get_admin_page_title(), and that function's own guard is
+//      `if ( ! empty( $title ) ) return $title;` — an empty string is empty, so
+//      the normal lookup still proceeds and any page that DOES have a
+//      discoverable title still gets it. We are adding a type floor, not
+//      overriding titles.
+//
+// WHY scoped to our own pages: this is our bug, caused by our hidden-page
+//      registrations. Blanket-setting the global would paper over the same
+//      mistake in other plugins and make their bugs harder to find.
+//
+// WHY admin_init: wp-admin/admin.php fires admin_init (line ~180) well before
+//      it requires admin-header.php (line ~244), so this lands in time.
+// ============================================================================
+add_action( 'admin_init', function () {
+
+    // Nonce check intentionally omitted: this reads $_GET['page'] only to
+    // decide whether the current screen is ours, and performs no action,
+    // no write, and no output. There is nothing to forge.
+    if ( empty( $_GET['page'] ) ) {
+        return;
+    }
+
+    $page = sanitize_key( wp_unslash( $_GET['page'] ) );
+
+    // Our screens are the dashboard slug plus everything namespaced sp-.
+    if ( 'societypress' !== $page && 0 !== strpos( $page, 'sp-' ) ) {
+        return;
+    }
+
+    // Covers both "declared but null" and "never set at all" — either state
+    // reaches strip_tags() as null and triggers the deprecation.
+    if ( ! isset( $GLOBALS['title'] ) || null === $GLOBALS['title'] ) {
+        $GLOBALS['title'] = '';
+    }
+
+} );
+
+
+// ============================================================================
 // ADMIN BAR (TOOLBAR) — Replace default items with SocietyPress
 // ============================================================================
 

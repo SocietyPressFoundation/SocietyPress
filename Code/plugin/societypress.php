@@ -55037,6 +55037,16 @@ add_action( 'init', function () {
     }
     $has_joint = ! empty( $joint_first );
 
+    // Volunteering / preferences captured on the join form.
+    // WHY: These four fields are near-universal for society sign-ups —
+    //      willing-to-volunteer + associated skills, and preference for the
+    //      printed journal/newsletter. Skills are kept whether or not the
+    //      volunteer box is checked, since some people list interests they
+    //      want the society to know about without formally opting in.
+    $wants_volunteer = ! empty( $_POST['volunteer'] );
+    $volunteer_skills = sanitize_textarea_field( $_POST['skills'] ?? '' );
+    $wants_print      = ! empty( $_POST['receive_print'] );
+
     // Create the member record
     // WHY: Build the data array first so we can encrypt sensitive fields
     // before the insert. cell, address_1, address_2 are encrypted at rest.
@@ -55065,6 +55075,9 @@ add_action( 'init', function () {
         'country'         => sanitize_text_field( wp_unslash( $_POST['country'] ?? 'US' ) ),
         'join_date'       => $join_date,
         'expiration_date' => $exp_date,
+        'volunteer'       => $wants_volunteer ? 1 : 0,
+        'skills'          => $volunteer_skills ?: null,
+        'receive_print'   => $wants_print ? 1 : 0,
         // Email-preference defaults are society-configurable (Settings → Privacy).
         'pref_email_notices'     => $sp_pref_email_defaults['pref_email_notices'],
         'pref_email_events'      => $sp_pref_email_defaults['pref_email_events'],
@@ -55081,6 +55094,29 @@ add_action( 'init', function () {
     ];
     sp_member_encrypt_fields( $join_member_data );
     $wpdb->insert( $prefix . 'members', $join_member_data );
+
+    // Capture "how did you hear about us?" into member_meta. Kept out of the
+    // members table because it's optional referral analytics, not core member
+    // data, and there may be a free-text "other" companion answer that only
+    // makes sense alongside a select value of 'other'.
+    $referral_source = sanitize_key( $_POST['referral_source'] ?? '' );
+    if ( $referral_source !== '' ) {
+        $wpdb->insert( $prefix . 'member_meta', [
+            'user_id'    => $user_id,
+            'meta_key'   => 'referral_source',
+            'meta_value' => $referral_source,
+        ] );
+        if ( $referral_source === 'other' ) {
+            $referral_other = sanitize_text_field( $_POST['referral_source_other'] ?? '' );
+            if ( $referral_other !== '' ) {
+                $wpdb->insert( $prefix . 'member_meta', [
+                    'user_id'    => $user_id,
+                    'meta_key'   => 'referral_source_other',
+                    'meta_value' => $referral_other,
+                ] );
+            }
+        }
+    }
 
     // Capture researched surnames entered on the join form. WHY: surnames are
     // the heart of a genealogy society — grabbing them while the new member is
@@ -55314,6 +55350,10 @@ function sp_render_join_form(): string {
         .sp-join-field-zip { max-width: 120px; }
         /* State input — uppercase display only (value remains as typed) */
         .sp-join-state-input { text-transform: uppercase; }
+        /* Checkbox rows for Volunteering / Preferences */
+        .sp-join-form .sp-join-checkbox { display: flex; align-items: flex-start; gap: 8px; font-weight: normal; cursor: pointer; }
+        .sp-join-form .sp-join-checkbox input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+        .sp-join-form .sp-field-help { font-size: 12px; color: #666; margin: 4px 0 0; }
     </style>
 
     <form method="post" class="sp-join-form">
@@ -55505,6 +55545,58 @@ function sp_render_join_form(): string {
             </div>
         </fieldset>
 
+        <!-- Volunteering interest -->
+        <fieldset>
+            <legend><?php esc_html_e( 'Volunteering', 'societypress' ); ?></legend>
+            <div class="sp-field">
+                <label class="sp-join-checkbox">
+                    <input type="checkbox" name="volunteer" id="sp-volunteer" value="1"
+                           <?php checked( ! empty( $_POST['volunteer'] ) ); ?>>
+                    <span><?php esc_html_e( 'Yes, I would be willing to volunteer my time to help the Society.', 'societypress' ); ?></span>
+                </label>
+            </div>
+            <div class="sp-field" id="sp-volunteer-skills-wrap" style="display: none;">
+                <label for="sp-volunteer-skills"><?php esc_html_e( 'What skills, talents, or interests would you like to share?', 'societypress' ); ?></label>
+                <textarea id="sp-volunteer-skills" name="skills" rows="3"><?php echo esc_textarea( $_POST['skills'] ?? '' ); ?></textarea>
+                <p class="sp-field-help"><?php esc_html_e( 'Optional. Examples: research assistance, cemetery documentation, indexing, hospitality, board service, tech help.', 'societypress' ); ?></p>
+            </div>
+        </fieldset>
+
+        <!-- Preferences -->
+        <fieldset>
+            <legend><?php esc_html_e( 'Preferences', 'societypress' ); ?></legend>
+            <div class="sp-field">
+                <label class="sp-join-checkbox">
+                    <input type="checkbox" name="receive_print" value="1"
+                           <?php checked( ! empty( $_POST['receive_print'] ) ); ?>>
+                    <span><?php esc_html_e( 'I would like to receive the society\'s printed journal and newsletter by mail.', 'societypress' ); ?></span>
+                </label>
+            </div>
+        </fieldset>
+
+        <!-- Referral tracking -->
+        <fieldset>
+            <legend><?php esc_html_e( 'How Did You Hear About Us?', 'societypress' ); ?></legend>
+            <div class="sp-field">
+                <label for="sp-referral-source"><?php esc_html_e( 'How did you learn about our society?', 'societypress' ); ?></label>
+                <select id="sp-referral-source" name="referral_source">
+                    <option value=""><?php esc_html_e( '— Select an option —', 'societypress' ); ?></option>
+                    <option value="search" <?php selected( $_POST['referral_source'] ?? '', 'search' ); ?>><?php esc_html_e( 'Search engine (Google, Bing, etc.)', 'societypress' ); ?></option>
+                    <option value="word_of_mouth" <?php selected( $_POST['referral_source'] ?? '', 'word_of_mouth' ); ?>><?php esc_html_e( 'Word of mouth / member referral', 'societypress' ); ?></option>
+                    <option value="event" <?php selected( $_POST['referral_source'] ?? '', 'event' ); ?>><?php esc_html_e( 'Attended a society event', 'societypress' ); ?></option>
+                    <option value="social_media" <?php selected( $_POST['referral_source'] ?? '', 'social_media' ); ?>><?php esc_html_e( 'Social media', 'societypress' ); ?></option>
+                    <option value="library" <?php selected( $_POST['referral_source'] ?? '', 'library' ); ?>><?php esc_html_e( 'Library or research center', 'societypress' ); ?></option>
+                    <option value="publication" <?php selected( $_POST['referral_source'] ?? '', 'publication' ); ?>><?php esc_html_e( 'Newspaper, magazine, or publication', 'societypress' ); ?></option>
+                    <option value="other" <?php selected( $_POST['referral_source'] ?? '', 'other' ); ?>><?php esc_html_e( 'Other', 'societypress' ); ?></option>
+                </select>
+            </div>
+            <div class="sp-field" id="sp-referral-other-wrap" style="display: none;">
+                <label for="sp-referral-other"><?php esc_html_e( 'Please tell us more', 'societypress' ); ?></label>
+                <input type="text" id="sp-referral-other" name="referral_source_other"
+                       value="<?php echo esc_attr( $_POST['referral_source_other'] ?? '' ); ?>">
+            </div>
+        </fieldset>
+
         <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
     </form>
 
@@ -55535,6 +55627,28 @@ function sp_render_join_form(): string {
 
         // Run on load in case a tier is pre-selected (form resubmit)
         updateJointVisibility();
+    })();
+
+    // Volunteer checkbox → conditional skills textarea
+    (function() {
+        'use strict';
+        var cb   = document.getElementById('sp-volunteer');
+        var wrap = document.getElementById('sp-volunteer-skills-wrap');
+        if (!cb || !wrap) return;
+        function sync() { wrap.style.display = cb.checked ? '' : 'none'; }
+        cb.addEventListener('change', sync);
+        sync();
+    })();
+
+    // Referral source select → conditional "Other" text input
+    (function() {
+        'use strict';
+        var sel  = document.getElementById('sp-referral-source');
+        var wrap = document.getElementById('sp-referral-other-wrap');
+        if (!sel || !wrap) return;
+        function sync() { wrap.style.display = sel.value === 'other' ? '' : 'none'; }
+        sel.addEventListener('change', sync);
+        sync();
     })();
     </script>
 

@@ -324,6 +324,24 @@ handle overlapping memberships), and a rollback plan.
 
 New capabilities for the software itself.
 
+### Admin-to-admin notes in the backend
+
+**Motivation:** Societies are run by teams of volunteers who rarely sit
+down together and often hand tasks off between shifts — the membership
+chair updates dues on Tuesday, the webmaster fixes an event on Thursday.
+Today there's nowhere in the admin to leave a short note for whoever
+logs in next ("waiting on the treasurer to confirm the refund," "don't
+publish the newsletter until Friday"). Those hand-offs happen over email
+or text, off-platform and easy to lose.
+**Scope:** A lightweight internal notes board visible only to logged-in
+staff in wp-admin — post a note, see who wrote it and when, and mark it
+resolved or delete it. Surface the most recent open notes as a dashboard
+widget so they're seen without hunting. Notes are strictly back-office:
+never shown on the public site and gated behind an admin capability so a
+read-only role can't see them. Keep it deliberately simple — a shared
+sticky-note wall, not a ticketing system or threaded discussion.
+**Blockers:** None.
+
 ### Events recurring-series improvements
 
 **Motivation:** The monthly-nth-day recurring logic is correct but

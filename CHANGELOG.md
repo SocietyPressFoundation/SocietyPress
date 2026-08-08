@@ -17,6 +17,33 @@ Pre-1.0 development iterations are archived in
 
 ### Added
 
+**A Menus screen built for the person who actually maintains the site**
+
+SocietyPress now has its own Menus screen, at **Website → Menus**, and it
+replaces WordPress's Appearance → Menus in the sidebar. The whole menu is on
+one page and nothing takes effect until you press Save Changes.
+
+Reordering is an **up/down button on each row** — not drag-and-drop, and not a
+column of sort numbers to work out. One click moves an item one place, and
+anything nested underneath travels with it. Actions are written out as words —
+*Edit page*, *Remove* — instead of a row of small unlabelled icons.
+
+Removing an item is reversible right up until you save: the row greys out and
+the button changes to *Keep*, so you can change your mind. After any save,
+an **Undo last change** button puts the menu back the way it was.
+
+Each item can be hidden from visitors who aren't logged in, using a single
+**Members only** checkbox. Hiding a heading hides everything under it too, so
+you never end up with orphaned links pointing at a login wall. Societies that
+have set up roles can open **Advanced** on any row and restrict an item to one
+of the ten access areas instead; the menu then matches what the permission
+system will actually allow, rather than advertising a page that then refuses
+the visitor.
+
+You can also add a page to the menu from the same screen — pick one you already
+have, or type a name and SocietyPress will create the page and link it in one
+step. "I made a page and it isn't in the menu" no longer needs two screens.
+
 **A Records page is created for you**
 
 New sites now get a Records page, in the main menu alongside Library, showing

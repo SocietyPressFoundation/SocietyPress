@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.4
+ * Version:     1.1.5
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.4' );
+define( 'SOCIETYPRESS_VERSION', '1.1.5' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2909,6 +2909,47 @@ function sp_create_tables(): void {
         KEY status (status),
         KEY confirm_token (confirm_token),
         KEY unsubscribe_token (unsubscribe_token)
+    ) {$charset_collate};" );
+
+
+    // ========================================================================
+    // sp_menu_meta — Per-nav-item visibility (decorates WP nav menu items)
+    //
+    // WHY a decorator table and not a full sp_menus table: the menu STRUCTURE
+    //      (label, parent, order) already lives in WordPress nav menus, and
+    //      twelve theme files render it — Code/theme/header.php:124,
+    //      footer.php:55 and :69, plus header/footer/sidebar across the
+    //      Coastline, Ledger, Parlor and Prairie child themes. Owning the
+    //      structure ourselves would mean rewriting every one of those, plus
+    //      the ENS importer, and any hand-rolled child theme that calls
+    //      wp_nav_menu() would silently render a stale menu forever after.
+    //      So WordPress keeps the structure and we store only the thing it
+    //      has no concept of: who is allowed to SEE each item.
+    //
+    // WHY a table rather than post meta: "show me every members-only link" is
+    //      one indexed SELECT here versus a meta_query across every nav item.
+    //      It also rides along in the sp_* full-site export for free, which
+    //      post meta on nav items does not.
+    //
+    // visibility holds one of:
+    //      'public'  — everyone, including logged-out visitors (the default)
+    //      'members' — any logged-in user
+    //      <area>    — one of the ten sp_get_access_areas() slugs, gated
+    //                  through sp_user_can() so the nav matches real
+    //                  permissions instead of approximating them
+    //
+    // WHY no foreign key: WordPress deletes nav menu items as posts without
+    //      firing anything we can reliably hook on every host, so rows can
+    //      outlive their item. sp_menu_visibility_map() only ever reads rows
+    //      whose ID is in the current menu, and sp_prune_menu_meta() sweeps
+    //      orphans on save. An orphan row is inert, not a bug.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}menu_meta (
+        menu_item_id  BIGINT(20) UNSIGNED NOT NULL,
+        visibility    VARCHAR(32)         NOT NULL DEFAULT 'public',
+        updated_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (menu_item_id),
+        KEY visibility (visibility)
     ) {$charset_collate};" );
 
 
@@ -6985,6 +7026,7 @@ function sp_get_menu_capability_map(): array {
         'sp-pages'                 => 'sp_manage_content',
         'sp-page-edit'             => 'sp_manage_content',
         'upload.php'               => 'sp_manage_content',
+        'sp-menus'                 => 'sp_manage_content',
         'nav-menus.php'            => 'sp_manage_settings',
         'widgets.php'              => 'sp_manage_settings',
         'customize.php'            => 'sp_manage_settings',
@@ -10954,7 +10996,13 @@ function sp_default_menu_config(): array {
             // screens sit below a divider so the sharp tools stay out of the way
             // without being hidden.
             [ 'id' => 'appearance', 'label' => __( 'Website', 'societypress' ), 'icon' => 'dashicons-admin-site',
-              'items' => [ 'sp-pages', 'sp-forms', 'sp-gallery', 'upload.php', 'nav-menus.php', 'widgets.php', 'sp-short-links',
+              // WHY sp-menus and not nav-menus.php: the SocietyPress Menus screen
+              // supersedes WordPress's Appearance -> Menus for everyday editing —
+              // same underlying data, but arrow buttons instead of drag-and-drop,
+              // worded actions instead of icons, and a visibility control. Showing
+              // both would put two doors on one room and let a volunteer make a
+              // change on the WordPress screen that the SP screen never explains.
+              'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'upload.php', 'widgets.php', 'sp-short-links',
                            [ 'heading' => __( 'How it looks', 'societypress' ) ],
                            'sp-themes', 'sp-theme-presets', 'sp-settings-design', 'customize.php', 'sp-menu-layout',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
@@ -111721,4 +111769,1328 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
 
         WP_CLI::error( 'Usage: wp sp people <migrate|verify>' );
     } );
+}
+
+
+// ============================================================================
+// MENUS — SOCIETYPRESS NAVIGATION EDITOR
+//
+// WHY this screen exists: societies migrating from EasyNetSites arrive with a
+//      "Menu / Page Maintenance" screen they have used for fifteen years —
+//      every nav item on one page, edit several, press Save once. WordPress's
+//      Appearance -> Menus replaces that with drag-and-drop, which is the
+//      single worst input for the person who actually maintains a society
+//      website: an eighty-year-old volunteer. Click-hold-move-release held
+//      steady defeats arthritis and tremor, it is miserable on a tablet, and a
+//      drop that saves instantly gives no moment to reconsider.
+//
+//      So this screen keeps what ENS got right and fixes what it got wrong:
+//
+//      KEPT   — the whole menu on one page, one Save button.
+//      FIXED  — reordering is an up/down button per row, not drag and not a
+//               typed sort number. One click, one position, nothing to learn.
+//               Sort numbers stay in the database where nobody has to see the
+//               convention of leaving gaps of ten.
+//      FIXED  — actions are words (Edit page, Remove), not five unlabelled
+//               fourteen-pixel icons.
+//      FIXED  — visibility is a checkbox, not a column of jargon. The ten
+//               access areas are still reachable, behind an Advanced toggle
+//               that most societies will never open.
+//      ADDED  — Undo. The thing that actually frightens a volunteer is not
+//               being able to get back, so the last save is restorable for as
+//               long as they stay on the screen.
+//
+// WHY it edits WordPress nav menus in place: see the sp_menu_meta table
+//      comment in sp_create_tables(). Structure stays WordPress's, so all
+//      twelve theme render sites, the ENS importer and the existing
+//      wp_nav_menu_objects filters keep working untouched. This module adds
+//      only visibility, which WordPress has no concept of.
+// ============================================================================
+
+/**
+ * The visibility choices offered for a single nav item.
+ *
+ * WHY 'public' and 'members' sit above the access areas: those two cover
+ *      essentially every society menu. The ten areas below them exist for the
+ *      society that has actually configured roles and wants "Leadership" shown
+ *      only to people who can manage governance. Ordering matters — Harold
+ *      reads the first two, recognises his answer, and stops.
+ *
+ * @return array<string,string> visibility key => human label
+ */
+function sp_menu_visibility_options(): array {
+    $options = [
+        'public'    => __( 'Everyone', 'societypress' ),
+        'logged_in' => __( 'Logged-in members only', 'societypress' ),
+    ];
+
+    // WHY the area keys are prefixed: sp_get_access_areas() has its own
+    // 'members' area, meaning "may administer the membership list". Dropping
+    // the raw slugs into this array let that key collide with the plain-English
+    // 'members' option above and silently overwrite it, so the checkbox read
+    // "Logged-in members only" while storing a value that meant something else
+    // entirely. Namespacing the areas makes the collision impossible rather
+    // than merely fixed once.
+    foreach ( sp_get_access_areas() as $slug => $area ) {
+        /* translators: %s: name of a SocietyPress access area, e.g. "Events" */
+        $options[ 'area_' . $slug ] = sprintf( __( 'Only people who manage %s', 'societypress' ), $area['name'] );
+    }
+
+    return $options;
+}
+
+/**
+ * Make sure sp_menu_meta exists, creating it if it does not.
+ *
+ * WHY this is not left to sp_create_tables(): that function only runs when
+ *      societypress_db_version differs from SOCIETYPRESS_VERSION. A feature
+ *      added without a version bump — which is every SCP deploy between
+ *      releases — would therefore ship code that queries a table that was
+ *      never created, and the first front-end page load would throw a database
+ *      error into the nav. Gating on a table-specific option instead means the
+ *      table appears the first time an administrator loads any admin page,
+ *      whatever the plugin version says.
+ *
+ * WHY the option is checked before every read: a front-end visitor can arrive
+ *      before any administrator has loaded an admin page since the deploy. One
+ *      autoloaded option read is cheaper than a query against a table that may
+ *      not exist, and it fails closed — no table means no restrictions, which
+ *      shows the menu exactly as it behaved before this feature existed.
+ *
+ * @return bool True when the table is known to exist.
+ */
+function sp_menu_meta_ready(): bool {
+    if ( get_option( 'sp_menu_meta_version' ) ) {
+        return true;
+    }
+
+    // Only ever attempt creation from the admin side. A front-end request
+    // should never be the thing that runs a schema migration.
+    if ( ! is_admin() ) {
+        return false;
+    }
+
+    global $wpdb;
+    $charset_collate = $wpdb->get_charset_collate();
+    $table           = $wpdb->prefix . 'sp_menu_meta';
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    dbDelta( "CREATE TABLE {$table} (
+        menu_item_id  BIGINT(20) UNSIGNED NOT NULL,
+        visibility    VARCHAR(32)         NOT NULL DEFAULT 'public',
+        updated_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (menu_item_id),
+        KEY visibility (visibility)
+    ) {$charset_collate};" );
+
+    update_option( 'sp_menu_meta_version', '1', true );
+
+    return true;
+}
+add_action( 'admin_init', 'sp_menu_meta_ready' );
+
+/**
+ * Load visibility for a set of nav item IDs in one query.
+ *
+ * WHY bulk and not a per-item getter: this runs inside a wp_nav_menu_objects
+ *      filter on every single front-end page load. A per-item lookup would be
+ *      one query per link — forty queries on a society homepage. One IN()
+ *      against the primary key costs the same as one row.
+ *
+ * @param int[] $ids Nav menu item post IDs.
+ * @return array<int,string> item ID => visibility key (only rows that exist)
+ */
+function sp_menu_visibility_map( array $ids ): array {
+    global $wpdb;
+
+    $ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+    if ( ! $ids || ! sp_menu_meta_ready() ) {
+        return [];
+    }
+
+    $table = $wpdb->prefix . 'sp_menu_meta';
+
+    // WHY build placeholders rather than interpolate: the IDs are already cast
+    // to int above, but prepare() is the standard this codebase holds to and
+    // costs nothing. %d per element keeps that true for a variable-length IN().
+    $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+    $rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT menu_item_id, visibility FROM {$table} WHERE menu_item_id IN ({$placeholders})", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+            $ids
+        )
+    );
+
+    $map = [];
+    foreach ( (array) $rows as $row ) {
+        $map[ (int) $row->menu_item_id ] = (string) $row->visibility;
+    }
+
+    return $map;
+}
+
+/**
+ * Store one nav item's visibility.
+ *
+ * WHY delete-on-public instead of storing 'public' rows: public is the default
+ *      and the overwhelming majority. Not storing it keeps the table roughly
+ *      the size of the restricted set rather than the size of the whole menu,
+ *      and makes "which links are restricted?" a table scan of a few rows.
+ *
+ * @param int    $menu_item_id Nav menu item post ID.
+ * @param string $visibility   One of sp_menu_visibility_options() keys.
+ * @return bool True if the value was accepted.
+ */
+function sp_set_menu_visibility( int $menu_item_id, string $visibility ): bool {
+    global $wpdb;
+
+    if ( $menu_item_id <= 0 ) {
+        return false;
+    }
+
+    // Reject anything not on the known list. An unrecognised value would fall
+    // through sp_nav_item_is_visible() as "not public, not members, not an
+    // area the user has" and silently hide the link from everybody.
+    if ( ! array_key_exists( $visibility, sp_menu_visibility_options() ) ) {
+        return false;
+    }
+
+    if ( ! sp_menu_meta_ready() ) {
+        return false;
+    }
+
+    $table = $wpdb->prefix . 'sp_menu_meta';
+
+    if ( 'public' === $visibility ) {
+        $wpdb->delete( $table, [ 'menu_item_id' => $menu_item_id ], [ '%d' ] );
+        return true;
+    }
+
+    $wpdb->replace(
+        $table,
+        [
+            'menu_item_id' => $menu_item_id,
+            'visibility'   => $visibility,
+            'updated_at'   => current_time( 'mysql' ),
+        ],
+        [ '%d', '%s', '%s' ]
+    );
+
+    return true;
+}
+
+/**
+ * Delete visibility rows whose nav item no longer exists.
+ *
+ * WHY on save rather than on a cron: menu items are deleted by WordPress core
+ *      as posts, on screens this plugin does not own, so there is no reliable
+ *      moment to clean up. Sweeping the current menu whenever it is saved
+ *      keeps the table honest without a scheduled job, and an orphan that
+ *      survives until the next save is inert either way.
+ */
+function sp_prune_menu_meta(): void {
+    global $wpdb;
+
+    if ( ! sp_menu_meta_ready() ) {
+        return;
+    }
+
+    $table = $wpdb->prefix . 'sp_menu_meta';
+    $posts = $wpdb->posts;
+
+    $wpdb->query(
+        "DELETE m FROM {$table} m
+         LEFT JOIN {$posts} p
+                ON p.ID = m.menu_item_id
+               AND p.post_type = 'nav_menu_item'
+         WHERE p.ID IS NULL" // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+    );
+}
+
+/**
+ * Decide whether the current visitor may see a nav item.
+ *
+ * @param string $visibility One of sp_menu_visibility_options() keys.
+ * @return bool
+ */
+function sp_nav_item_is_visible( string $visibility ): bool {
+    if ( 'public' === $visibility ) {
+        return true;
+    }
+
+    if ( ! is_user_logged_in() ) {
+        return false;
+    }
+
+    if ( 'logged_in' === $visibility ) {
+        return true;
+    }
+
+    // Anything else is a namespaced access area ('area_events'). sp_user_can()
+    // is the same gate the admin screens use, so a link can never promise
+    // something the permission system will then refuse.
+    if ( 0 === strpos( $visibility, 'area_' ) ) {
+        return sp_user_can( substr( $visibility, 5 ) );
+    }
+
+    // An unrecognised value should hide the link rather than expose it —
+    // failing closed is the right default for anything access-related.
+    return false;
+}
+
+/**
+ * Remove nav items the current visitor is not allowed to see.
+ *
+ * WHY priority 11: the theme's own conditional-class filter and the plugin's
+ *      members-only template filter both run at 10. Running after them means
+ *      this operates on the list they already trimmed rather than racing it.
+ *
+ * WHY children go with the parent: hiding "Members Only" while leaving "Your
+ *      Profile" and "Membership List" behind it in the menu produces a set of
+ *      orphaned links that dump the visitor at a login wall with no context.
+ *
+ * @param array $items Nav menu objects.
+ * @return array
+ */
+function sp_filter_nav_by_visibility( $items ) {
+    if ( empty( $items ) || ! is_array( $items ) ) {
+        return $items;
+    }
+
+    // WHY there is no is_admin() escape hatch here: an earlier draft bailed out
+    // on is_admin() so that "an administrator editing the site sees what they
+    // are editing". That was wrong twice over. is_admin() means the request is
+    // for an admin-area URL, not that the current user is an administrator, so
+    // it granted nothing to the person it was meant for and silently disabled
+    // the gate on every admin-ajax.php request — which is a front-end code path
+    // in everything but name. And it was unnecessary: the Menus screen renders
+    // its own table showing every item regardless of visibility, so there is
+    // nowhere an administrator needs wp_nav_menu() to lie to them. The gate now
+    // applies uniformly, which is the only way it can be trusted.
+    $ids = [];
+    foreach ( $items as $item ) {
+        $ids[] = (int) $item->ID;
+    }
+
+    $map = sp_menu_visibility_map( $ids );
+    if ( ! $map ) {
+        return $items; // Nothing restricted — the common case, no further work.
+    }
+
+    $hidden = [];
+    foreach ( $items as $item ) {
+        $id         = (int) $item->ID;
+        $visibility = $map[ $id ] ?? 'public';
+
+        if ( ! sp_nav_item_is_visible( $visibility ) ) {
+            $hidden[ $id ] = true;
+        }
+    }
+
+    if ( ! $hidden ) {
+        return $items;
+    }
+
+    // Sweep repeatedly so a hidden grandparent takes its grandchildren too.
+    // The loop terminates because each pass either adds to $hidden or stops.
+    do {
+        $added = false;
+        foreach ( $items as $item ) {
+            $parent = (int) $item->menu_item_parent;
+            $id     = (int) $item->ID;
+            if ( $parent && isset( $hidden[ $parent ] ) && ! isset( $hidden[ $id ] ) ) {
+                $hidden[ $id ] = true;
+                $added         = true;
+            }
+        }
+    } while ( $added );
+
+    return array_values(
+        array_filter(
+            $items,
+            static function ( $item ) use ( $hidden ) {
+                return ! isset( $hidden[ (int) $item->ID ] );
+            }
+        )
+    );
+}
+add_filter( 'wp_nav_menu_objects', 'sp_filter_nav_by_visibility', 11 );
+
+
+/**
+ * Register the Menus screen.
+ *
+ * WHY 'manage_options' here and not the real capability: this file registers
+ *      every SP screen at manage_options and then remaps them in one pass
+ *      through sp_get_menu_capability_map() — see the WHY block above that
+ *      function. This screen's real capability, 'sp_manage_content', is the
+ *      entry added to that map, which is what lets a society hand menu editing
+ *      to a content volunteer without also handing over the theme customiser.
+ */
+add_action( 'admin_menu', function () {
+    add_submenu_page(
+        'societypress',
+        __( 'Menus — SocietyPress', 'societypress' ),
+        __( 'Menus', 'societypress' ),
+        'manage_options',
+        'sp-menus',
+        'sp_render_menus_page'
+    );
+}, 25 );
+
+/**
+ * Capture a menu's full state so the last save can be undone.
+ *
+ * WHY user meta and not a transient: two volunteers editing on different days
+ *      should not be able to undo each other's work. Keying the snapshot to
+ *      the person who made the change means Undo always means "undo what I
+ *      just did", which is the only meaning anyone expects.
+ *
+ * @param int $menu_id Nav menu term ID.
+ * @return array<int,array> Snapshot rows keyed by nav item ID.
+ */
+function sp_menus_snapshot( int $menu_id ): array {
+    $items = wp_get_nav_menu_items( $menu_id, [ 'update_post_term_cache' => false ] );
+    if ( ! $items ) {
+        return [];
+    }
+
+    $ids = wp_list_pluck( $items, 'ID' );
+    $map = sp_menu_visibility_map( $ids );
+
+    $snapshot = [];
+    foreach ( $items as $item ) {
+        $id              = (int) $item->ID;
+        $snapshot[ $id ] = [
+            'title'      => (string) $item->title,
+            'parent'     => (int) $item->menu_item_parent,
+            'order'      => (int) $item->menu_order,
+            'visibility' => $map[ $id ] ?? 'public',
+        ];
+    }
+
+    return $snapshot;
+}
+
+/**
+ * Restore a snapshot taken by sp_menus_snapshot().
+ *
+ * WHY items missing from the snapshot are left alone rather than deleted:
+ *      Undo is a safety net, not a time machine. Reversing an addition is one
+ *      Remove click; silently deleting something the volunteer may have added
+ *      deliberately after the save would be a worse surprise than the one
+ *      Undo exists to fix.
+ *
+ * WHY deleted items are not recreated: a removed nav item's post is gone, and
+ *      recreating it would mint a new ID that no longer matches its visibility
+ *      row or anything else that referenced it. The screen warns before a
+ *      removal is applied for exactly this reason.
+ *
+ * @param array<int,array> $snapshot
+ * @return int Number of items restored.
+ */
+function sp_menus_restore( array $snapshot ): int {
+    $restored = 0;
+
+    foreach ( $snapshot as $id => $state ) {
+        $id = (int) $id;
+        if ( 'nav_menu_item' !== get_post_type( $id ) ) {
+            continue; // Item was deleted since the snapshot; nothing to restore.
+        }
+
+        // Title and menu_order live on the post; the parent lives in post meta.
+        // wp_update_nav_menu_item() would rebuild the item from POST-shaped
+        // input and drop everything not passed, so we touch the fields directly
+        // exactly as sp_alphabetize_nav_menu() does.
+        wp_update_post(
+            [
+                'ID'         => $id,
+                'post_title' => $state['title'],
+                'menu_order' => (int) $state['order'],
+            ]
+        );
+        update_post_meta( $id, '_menu_item_menu_item_parent', (string) (int) $state['parent'] );
+        sp_set_menu_visibility( $id, (string) $state['visibility'] );
+        $restored++;
+    }
+
+    return $restored;
+}
+
+/**
+ * Build the display-ordered, depth-annotated list of items in a menu.
+ *
+ * WHY compute depth here rather than in the template: the template indents by
+ *      class name and needs to know how far, and the save handler needs the
+ *      same tree walk to work out which siblings an arrow button may swap
+ *      with. One walk, one source of truth.
+ *
+ * @param int $menu_id Nav menu term ID.
+ * @return array<int,array> Ordered rows: [ 'item' => WP_Post, 'depth' => int ]
+ */
+function sp_menus_ordered_items( int $menu_id ): array {
+    $items = wp_get_nav_menu_items( $menu_id, [ 'update_post_term_cache' => false ] );
+    if ( ! $items ) {
+        return [];
+    }
+
+    $by_parent = [];
+    foreach ( $items as $item ) {
+        $by_parent[ (int) $item->menu_item_parent ][] = $item;
+    }
+
+    foreach ( $by_parent as &$group ) {
+        usort(
+            $group,
+            static function ( $a, $b ) {
+                return (int) $a->menu_order <=> (int) $b->menu_order;
+            }
+        );
+    }
+    unset( $group );
+
+    $ordered = [];
+
+    // WHY a depth cap of 5: SocietyPress nav supports five levels (the ENS
+    // importer assumes the same), and a cap makes a corrupted parent chain
+    // fail as a flat list rather than as an infinite recursion that white-
+    // screens the admin.
+    $walk = static function ( int $parent, int $depth ) use ( &$walk, &$by_parent, &$ordered ): void {
+        if ( $depth > 5 || empty( $by_parent[ $parent ] ) ) {
+            return;
+        }
+        foreach ( $by_parent[ $parent ] as $item ) {
+            $ordered[] = [ 'item' => $item, 'depth' => $depth ];
+            $walk( (int) $item->ID, $depth + 1 );
+        }
+    };
+
+    $walk( 0, 0 );
+
+    // An item whose parent was deleted elsewhere never gets reached by the
+    // walk. Append it at top level rather than dropping it from the screen —
+    // an invisible row is a row Harold cannot fix.
+    $seen = wp_list_pluck( wp_list_pluck( $ordered, 'item' ), 'ID' );
+    foreach ( $items as $item ) {
+        if ( ! in_array( (int) $item->ID, array_map( 'intval', $seen ), true ) ) {
+            $ordered[] = [ 'item' => $item, 'depth' => 0 ];
+        }
+    }
+
+    return $ordered;
+}
+
+
+/**
+ * Apply a submitted Menus form.
+ *
+ * WHY everything lands in one submit: the volunteer this screen is built for
+ *      is not editing one link, they are working down a printed list making
+ *      six corrections. Saving on every keystroke or every arrow click turns
+ *      that into six irreversible events instead of one reviewable one, and
+ *      removes the moment where they can still change their mind.
+ *
+ * @param int $menu_id Nav menu term ID.
+ * @return array{updated:int,removed:int,reordered:bool} Counts for the notice.
+ */
+function sp_menus_handle_save( int $menu_id ): array {
+    check_admin_referer( 'sp_menus_save_' . $menu_id );
+
+    $result = [ 'updated' => 0, 'removed' => 0, 'reordered' => false ];
+
+    // Snapshot BEFORE any write, so Undo restores the state the volunteer saw
+    // when they pressed Save rather than the state halfway through applying.
+    $snapshot = sp_menus_snapshot( $menu_id );
+
+    // The order the page was rendered in, captured before anything is written.
+    // Comparing the submitted order against THIS is what tells us an arrow was
+    // used; comparing against the order after saving would always match.
+    $rendered = [];
+    foreach ( sp_menus_ordered_items( $menu_id ) as $rendered_row ) {
+        $rendered[] = (int) $rendered_row['item']->ID;
+    }
+
+    $order = isset( $_POST['sp_order'] ) ? sanitize_text_field( wp_unslash( $_POST['sp_order'] ) ) : '';
+    $order = array_values( array_filter( array_map( 'intval', explode( ',', $order ) ) ) );
+
+    $submitted = isset( $_POST['sp_item'] ) && is_array( $_POST['sp_item'] ) ? wp_unslash( $_POST['sp_item'] ) : [];
+
+    // Only ever touch items that genuinely belong to the menu being edited.
+    // Without this check a crafted POST could retitle or delete a nav item in
+    // a different menu, since the IDs are just post IDs.
+    $valid = [];
+    foreach ( (array) wp_get_nav_menu_items( $menu_id, [ 'update_post_term_cache' => false ] ) as $item ) {
+        $valid[ (int) $item->ID ] = (int) $item->menu_item_parent;
+    }
+
+    // ---- Work out removals first -------------------------------------------
+    $removing = [];
+    foreach ( $submitted as $id => $fields ) {
+        $id = (int) $id;
+        if ( ! isset( $valid[ $id ] ) ) {
+            continue;
+        }
+        if ( ! empty( $fields['remove'] ) ) {
+            $removing[ $id ] = true;
+        }
+    }
+
+    // A removed item's children are re-filed under its parent rather than
+    // deleted with it or orphaned at the top. Deleting a "Galleries" heading
+    // should not silently take eight gallery links with it.
+    $reparent = [];
+    if ( $removing ) {
+        foreach ( $valid as $id => $parent ) {
+            if ( isset( $removing[ $id ] ) || ! isset( $removing[ $parent ] ) ) {
+                continue;
+            }
+            // Walk up until we find an ancestor that survives.
+            $new_parent = $parent;
+            $guard      = 0;
+            while ( isset( $removing[ $new_parent ] ) && $guard++ < 10 ) {
+                $new_parent = $valid[ $new_parent ] ?? 0;
+            }
+            $reparent[ $id ] = (int) $new_parent;
+        }
+    }
+
+    // ---- Apply field edits --------------------------------------------------
+    foreach ( $submitted as $id => $fields ) {
+        $id = (int) $id;
+        if ( ! isset( $valid[ $id ] ) || isset( $removing[ $id ] ) ) {
+            continue;
+        }
+
+        $label = isset( $fields['label'] ) ? sanitize_text_field( $fields['label'] ) : '';
+        $parent = isset( $reparent[ $id ] )
+            ? $reparent[ $id ]
+            : ( isset( $fields['parent'] ) ? (int) $fields['parent'] : 0 );
+
+        // A row cannot be its own parent, and a parent being removed in this
+        // same save is not a parent any more.
+        if ( $parent === $id || isset( $removing[ $parent ] ) || ! isset( $valid[ $parent ] ) ) {
+            if ( $parent !== 0 ) {
+                $parent = 0;
+            }
+        }
+
+        $visibility = isset( $fields['visibility'] ) ? sanitize_key( $fields['visibility'] ) : 'public';
+
+        $post_update = [ 'ID' => $id ];
+        $write       = false; // Something needs writing to the database.
+        $noticed     = false; // ...and the volunteer would recognise it as their edit.
+
+        // An empty label would render as a blank, unclickable gap in the nav.
+        // Keeping the previous title is friendlier than rejecting the save.
+        if ( '' !== $label && $label !== ( $snapshot[ $id ]['title'] ?? '' ) ) {
+            $post_update['post_title'] = $label;
+            $write                     = true;
+            $noticed                   = true;
+        }
+
+        // WHY position changes are written but NOT counted: menu_order is
+        // whatever it happened to be before — an ENS import leaves gaps of ten
+        // (0, 2, 50, 100, 101...) and WordPress itself never renumbers. This
+        // screen stores the row's index instead, so on the very first save
+        // almost every item's stored number changes while nothing the
+        // volunteer can see has moved. Counting those would report "47 items
+        // changed" to somebody who retyped one label, and a count that
+        // disagrees with what you did is worse than no count. The arrows set
+        // $noticed themselves via the order they produce being different from
+        // the order that was rendered.
+        $position = array_search( $id, $order, true );
+        if ( false !== $position && (int) $position !== (int) ( $snapshot[ $id ]['order'] ?? -1 ) ) {
+            $post_update['menu_order'] = (int) $position;
+            $write                     = true;
+        }
+
+        if ( $write ) {
+            wp_update_post( $post_update );
+        }
+
+        if ( $parent !== (int) ( $snapshot[ $id ]['parent'] ?? 0 ) ) {
+            update_post_meta( $id, '_menu_item_menu_item_parent', (string) $parent );
+            $noticed = true;
+        }
+
+        if ( $visibility !== ( $snapshot[ $id ]['visibility'] ?? 'public' ) ) {
+            sp_set_menu_visibility( $id, $visibility );
+            $noticed = true;
+        }
+
+        if ( $noticed ) {
+            $result['updated']++;
+        }
+    }
+
+    // Reordering is a property of the list, not of any one row, so it is
+    // reported once here rather than per item. Items being removed in this
+    // same save are excluded from both sides, otherwise removing an item from
+    // the middle would always read as a reorder too.
+    $submitted_order = array_values( array_diff( $order, array_keys( $removing ) ) );
+    $rendered_order  = array_values( array_diff( $rendered, array_keys( $removing ) ) );
+    if ( $submitted_order !== $rendered_order ) {
+        $result['reordered'] = true;
+    }
+
+    // ---- Apply removals last ------------------------------------------------
+    // Last, so the re-parenting above reads a tree that still contains the
+    // items it is walking.
+    foreach ( array_keys( $removing ) as $id ) {
+        wp_delete_post( (int) $id, true );
+        $result['removed']++;
+    }
+
+    sp_prune_menu_meta();
+
+    // Keep the snapshot only when something actually changed, so the Undo
+    // button never offers to undo a save that did nothing.
+    if ( $result['updated'] || $result['removed'] ) {
+        $undo               = (array) get_user_meta( get_current_user_id(), 'sp_menu_undo', true );
+        $undo[ $menu_id ]   = $snapshot;
+        update_user_meta( get_current_user_id(), 'sp_menu_undo', $undo );
+    }
+
+    return $result;
+}
+
+/**
+ * Add an item to a menu — either an existing page or a brand-new one.
+ *
+ * WHY this lives on the Menus screen at all: "I made a page and it isn't in
+ *      the menu" is the single most common thing that stops a society
+ *      volunteer cold. WordPress treats pages and nav items as separate jobs
+ *      on separate screens; for the person maintaining the site they are one
+ *      job, so this screen does both.
+ *
+ * @param int $menu_id Nav menu term ID.
+ * @return string Human-readable result notice, empty on no-op.
+ */
+function sp_menus_handle_add( int $menu_id ): string {
+    check_admin_referer( 'sp_menus_add_' . $menu_id );
+
+    $page_id  = isset( $_POST['sp_add_page'] ) ? (int) $_POST['sp_add_page'] : 0;
+    $new_name = isset( $_POST['sp_add_new_page'] ) ? sanitize_text_field( wp_unslash( $_POST['sp_add_new_page'] ) ) : '';
+
+    // A typed name wins over the dropdown: if the volunteer filled in both,
+    // the thing they typed is the thing they were thinking about.
+    if ( '' !== $new_name ) {
+        $page_id = wp_insert_post(
+            [
+                'post_title'   => $new_name,
+                'post_type'    => 'page',
+                'post_status'  => 'publish',
+                'post_content' => '',
+            ]
+        );
+
+        if ( is_wp_error( $page_id ) || ! $page_id ) {
+            return __( 'That page could not be created. Please try again.', 'societypress' );
+        }
+    }
+
+    if ( ! $page_id || 'page' !== get_post_type( $page_id ) ) {
+        return __( 'Choose a page from the list, or type a name for a new one.', 'societypress' );
+    }
+
+    $item_id = wp_update_nav_menu_item(
+        $menu_id,
+        0,
+        [
+            'menu-item-object-id' => $page_id,
+            'menu-item-object'    => 'page',
+            'menu-item-type'      => 'post_type',
+            'menu-item-title'     => get_the_title( $page_id ),
+            'menu-item-status'    => 'publish',
+        ]
+    );
+
+    if ( is_wp_error( $item_id ) || ! $item_id ) {
+        return __( 'That page could not be added to the menu. Please try again.', 'societypress' );
+    }
+
+    return sprintf(
+        /* translators: %s: the page title that was added to the menu */
+        __( '"%s" was added to the bottom of the menu.', 'societypress' ),
+        get_the_title( $page_id )
+    );
+}
+
+
+/**
+ * Render the Menus screen.
+ */
+function sp_render_menus_page(): void {
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to edit menus.', 'societypress' ) );
+    }
+
+    $menus = wp_get_nav_menus();
+
+    // ---- No menu yet --------------------------------------------------------
+    if ( empty( $menus ) ) {
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__( 'Menus', 'societypress' ) . '</h1>';
+        echo '<p>' . esc_html__( 'This site does not have a navigation menu yet. Create one and SocietyPress will show it here.', 'societypress' ) . '</p>';
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'nav-menus.php?action=edit&menu=0' ) ) . '">' . esc_html__( 'Create a menu', 'societypress' ) . '</a></p>';
+        echo '</div>';
+        return;
+    }
+
+    $menu_id = isset( $_REQUEST['menu_id'] ) ? (int) $_REQUEST['menu_id'] : 0;
+    if ( ! $menu_id || ! wp_get_nav_menu_object( $menu_id ) ) {
+        $menu_id = (int) $menus[0]->term_id;
+    }
+
+    // ---- Actions ------------------------------------------------------------
+    $notice  = '';
+    $action  = isset( $_POST['sp_menus_action'] ) ? sanitize_key( $_POST['sp_menus_action'] ) : '';
+
+    if ( 'save' === $action ) {
+        $counts = sp_menus_handle_save( $menu_id );
+        if ( $counts['updated'] || $counts['removed'] || $counts['reordered'] ) {
+            $parts = [];
+            if ( $counts['updated'] ) {
+                /* translators: %d: number of menu items changed */
+                $parts[] = sprintf( _n( '%d item changed.', '%d items changed.', $counts['updated'], 'societypress' ), $counts['updated'] );
+            }
+            if ( $counts['reordered'] ) {
+                $parts[] = __( 'The order was updated.', 'societypress' );
+            }
+            if ( $counts['removed'] ) {
+                /* translators: %d: number of menu items removed */
+                $parts[] = sprintf( _n( '%d item removed from the menu.', '%d items removed from the menu.', $counts['removed'], 'societypress' ), $counts['removed'] );
+            }
+            $notice = __( 'Your menu was saved.', 'societypress' ) . ' ' . implode( ' ', $parts );
+        } else {
+            $notice = __( 'Nothing had changed, so nothing was saved.', 'societypress' );
+        }
+    } elseif ( 'add' === $action ) {
+        $notice = sp_menus_handle_add( $menu_id );
+    } elseif ( 'undo' === $action ) {
+        check_admin_referer( 'sp_menus_undo_' . $menu_id );
+        $undo = (array) get_user_meta( get_current_user_id(), 'sp_menu_undo', true );
+        if ( ! empty( $undo[ $menu_id ] ) ) {
+            $restored = sp_menus_restore( $undo[ $menu_id ] );
+            unset( $undo[ $menu_id ] );
+            update_user_meta( get_current_user_id(), 'sp_menu_undo', $undo );
+            /* translators: %d: number of menu items put back */
+            $notice = sprintf( _n( 'Undone. %d item was put back the way it was.', 'Undone. %d items were put back the way they were.', $restored, 'societypress' ), $restored );
+        } else {
+            $notice = __( 'There is nothing to undo.', 'societypress' );
+        }
+    }
+
+    $rows        = sp_menus_ordered_items( $menu_id );
+    $ids         = [];
+    foreach ( $rows as $row ) {
+        $ids[] = (int) $row['item']->ID;
+    }
+    $visibility  = sp_menu_visibility_map( $ids );
+    $options     = sp_menu_visibility_options();
+    $undo_store  = (array) get_user_meta( get_current_user_id(), 'sp_menu_undo', true );
+    $can_undo    = ! empty( $undo_store[ $menu_id ] );
+
+    // Pages not already in this menu, offered in the Add control. A page that
+    // is already linked is left off the list so nobody adds it twice by
+    // accident and then wonders why it appears in the nav in two places.
+    $linked = [];
+    foreach ( $rows as $row ) {
+        if ( 'post_type' === $row['item']->type && 'page' === $row['item']->object ) {
+            $linked[] = (int) $row['item']->object_id;
+        }
+    }
+    $available = get_posts(
+        [
+            'post_type'        => 'page',
+            'post_status'      => 'publish',
+            'numberposts'      => 200,
+            'orderby'          => 'title',
+            'order'            => 'ASC',
+            'exclude'          => $linked,
+            'suppress_filters' => false,
+        ]
+    );
+    ?>
+    <style id="sp-menus-css">
+        /* WHY generous row height and 15px inputs: the person maintaining a
+           society website is very often in their seventies or eighties. The
+           WordPress admin default of 13px in a 28px row is genuinely hard to
+           read and hard to hit. Nothing here is decorative. */
+        .sp-menus-table { margin-top: 12px; }
+        .sp-menus-table th { font-size: 14px; padding: 12px 10px; }
+        .sp-menus-table td { padding: 10px; vertical-align: middle; }
+        .sp-menus-table tbody tr:nth-child(even) { background: #f6f7f7; }
+        .sp-menus-table input[type="text"],
+        .sp-menus-table select { font-size: 15px; padding: 6px 8px; }
+        .sp-menu-label-input { width: 100%; max-width: 320px; }
+
+        /* Indentation carries the hierarchy. Depth is capped at 5 to match the
+           nav itself, so five rules is the whole set. */
+        .sp-menu-indent { display: inline-block; }
+        .sp-menu-depth-1 .sp-menu-indent { width: 28px; }
+        .sp-menu-depth-2 .sp-menu-indent { width: 56px; }
+        .sp-menu-depth-3 .sp-menu-indent { width: 84px; }
+        .sp-menu-depth-4 .sp-menu-indent { width: 112px; }
+        .sp-menu-depth-5 .sp-menu-indent { width: 140px; }
+
+        /* Arrow buttons: 34px square is comfortably above the 24px minimum
+           touch target, which matters more here than anywhere else on the
+           screen because these are the controls used most often. */
+        .sp-menu-move { width: 34px; height: 34px; line-height: 1; font-size: 16px; padding: 0; cursor: pointer; }
+        .sp-menu-move[disabled] { opacity: .35; cursor: default; }
+        .sp-menu-move-cell { white-space: nowrap; width: 84px; }
+
+        .sp-menu-target { display: block; margin-top: 4px; font-size: 12px; color: #646970; }
+        .sp-menu-actions { white-space: nowrap; }
+        .sp-menu-actions .button-link { text-decoration: underline; }
+        .sp-menu-remove-link { color: #b32d2e; }
+
+        /* A row marked for removal stays visible and reversible until Save.
+           Hiding it would remove the chance to change your mind, which is the
+           whole reason removal waits for the Save button. */
+        .sp-menu-row--removing { opacity: .55; }
+        .sp-menu-row--removing .sp-menu-label-input { text-decoration: line-through; }
+        .sp-menu-removing-flag { display: none; color: #b32d2e; font-weight: 600; font-size: 12px; }
+        .sp-menu-row--removing .sp-menu-removing-flag { display: inline; }
+
+        .sp-menu-advanced-select { display: none; margin-top: 6px; }
+        .sp-menu-vis--advanced .sp-menu-advanced-select { display: block; }
+        .sp-menu-vis--advanced .sp-menu-simple-toggle { display: none; }
+
+        .sp-menus-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+        .sp-menus-add { background: #fff; border: 1px solid #c3c4c7; padding: 16px; margin-top: 24px; max-width: 720px; }
+        .sp-menus-add h2 { margin-top: 0; font-size: 15px; }
+        .sp-menus-add-fields { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        .sp-menus-hint { color: #646970; font-size: 13px; margin: 4px 0 0; }
+
+        @media screen and (max-width: 782px) {
+            .sp-menus-table th, .sp-menus-table td { padding: 8px 6px; }
+            .sp-menu-label-input { max-width: none; }
+        }
+    </style>
+
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Menus', 'societypress' ); ?></h1>
+        <p class="sp-menus-hint">
+            <?php esc_html_e( 'This is the navigation your visitors see. Change anything you like, then press Save Changes at the bottom. Nothing takes effect until you do.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( $notice ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $notice ); ?></p></div>
+        <?php endif; ?>
+
+        <div class="sp-menus-bar">
+            <?php if ( count( $menus ) > 1 ) : ?>
+                <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>">
+                    <input type="hidden" name="page" value="sp-menus">
+                    <label for="sp-menu-picker"><strong><?php esc_html_e( 'Menu:', 'societypress' ); ?></strong></label>
+                    <select name="menu_id" id="sp-menu-picker" onchange="this.form.submit()">
+                        <?php foreach ( $menus as $menu ) : ?>
+                            <option value="<?php echo esc_attr( $menu->term_id ); ?>" <?php selected( $menu_id, $menu->term_id ); ?>>
+                                <?php echo esc_html( $menu->name ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <noscript><button type="submit" class="button"><?php esc_html_e( 'Show', 'societypress' ); ?></button></noscript>
+                </form>
+            <?php endif; ?>
+
+            <?php if ( $can_undo ) : ?>
+                <form method="post">
+                    <?php wp_nonce_field( 'sp_menus_undo_' . $menu_id ); ?>
+                    <input type="hidden" name="sp_menus_action" value="undo">
+                    <input type="hidden" name="menu_id" value="<?php echo esc_attr( $menu_id ); ?>">
+                    <button type="submit" class="button">
+                        <?php esc_html_e( 'Undo last change', 'societypress' ); ?>
+                    </button>
+                </form>
+            <?php endif; ?>
+        </div>
+
+        <?php if ( ! $rows ) : ?>
+            <p><?php esc_html_e( 'This menu is empty. Add your first page below.', 'societypress' ); ?></p>
+        <?php else : ?>
+        <form method="post" id="sp-menus-form">
+            <?php wp_nonce_field( 'sp_menus_save_' . $menu_id ); ?>
+            <input type="hidden" name="sp_menus_action" value="save">
+            <input type="hidden" name="menu_id" value="<?php echo esc_attr( $menu_id ); ?>">
+            <input type="hidden" name="sp_order" id="sp-menu-order" value="<?php echo esc_attr( implode( ',', $ids ) ); ?>">
+
+            <table class="widefat striped sp-menus-table">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e( 'Move', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Menu wording', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Goes under', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Who can see it', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody id="sp-menus-body">
+                <?php foreach ( $rows as $row ) :
+                    $item  = $row['item'];
+                    $id    = (int) $item->ID;
+                    $depth = (int) $row['depth'];
+                    $vis   = $visibility[ $id ] ?? 'public';
+                    // "Advanced" means a visibility that the simple checkbox
+                    // cannot express. Those rows open with the full list showing
+                    // so the setting is never silently misrepresented.
+                    $is_advanced = ( 'public' !== $vis && 'logged_in' !== $vis );
+                    ?>
+                    <tr class="sp-menu-row sp-menu-depth-<?php echo esc_attr( $depth ); ?>"
+                        data-id="<?php echo esc_attr( $id ); ?>"
+                        data-depth="<?php echo esc_attr( $depth ); ?>"
+                        data-label="<?php echo esc_attr( $item->title ); ?>">
+
+                        <td class="sp-menu-move-cell">
+                            <button type="button" class="button sp-menu-move sp-menu-up"
+                                aria-label="<?php echo esc_attr( sprintf( /* translators: %s: menu item name */ __( 'Move %s up', 'societypress' ), $item->title ) ); ?>">&uarr;</button>
+                            <button type="button" class="button sp-menu-move sp-menu-down"
+                                aria-label="<?php echo esc_attr( sprintf( /* translators: %s: menu item name */ __( 'Move %s down', 'societypress' ), $item->title ) ); ?>">&darr;</button>
+                        </td>
+
+                        <td>
+                            <span class="sp-menu-indent"></span>
+                            <label class="screen-reader-text" for="sp-label-<?php echo esc_attr( $id ); ?>">
+                                <?php esc_html_e( 'Menu wording', 'societypress' ); ?>
+                            </label>
+                            <input type="text" class="sp-menu-label-input"
+                                id="sp-label-<?php echo esc_attr( $id ); ?>"
+                                name="sp_item[<?php echo esc_attr( $id ); ?>][label]"
+                                value="<?php echo esc_attr( $item->title ); ?>">
+                            <span class="sp-menu-removing-flag"><?php esc_html_e( 'Will be removed when you save', 'societypress' ); ?></span>
+                            <span class="sp-menu-target">
+                                <?php
+                                if ( 'post_type' === $item->type && $item->object_id ) {
+                                    echo esc_html( sprintf( /* translators: %s: page title this menu item points to */ __( 'Goes to the page: %s', 'societypress' ), get_the_title( (int) $item->object_id ) ) );
+                                } elseif ( 'custom' === $item->type ) {
+                                    echo esc_html( sprintf( /* translators: %s: web address */ __( 'Goes to: %s', 'societypress' ), $item->url ) );
+                                } else {
+                                    echo esc_html__( 'Goes to a list of posts', 'societypress' );
+                                }
+                                ?>
+                            </span>
+                        </td>
+
+                        <td>
+                            <label class="screen-reader-text" for="sp-parent-<?php echo esc_attr( $id ); ?>">
+                                <?php esc_html_e( 'Goes under', 'societypress' ); ?>
+                            </label>
+                            <select id="sp-parent-<?php echo esc_attr( $id ); ?>" name="sp_item[<?php echo esc_attr( $id ); ?>][parent]">
+                                <option value="0"><?php esc_html_e( '— Top level —', 'societypress' ); ?></option>
+                                <?php foreach ( $rows as $candidate ) :
+                                    $cid = (int) $candidate['item']->ID;
+                                    if ( $cid === $id ) {
+                                        continue; // An item cannot go under itself.
+                                    }
+                                    ?>
+                                    <option value="<?php echo esc_attr( $cid ); ?>" <?php selected( (int) $item->menu_item_parent, $cid ); ?>>
+                                        <?php echo esc_html( str_repeat( '– ', (int) $candidate['depth'] ) . $candidate['item']->title ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+
+                        <td class="sp-menu-vis <?php echo $is_advanced ? 'sp-menu-vis--advanced' : ''; ?>">
+                            <label class="sp-menu-simple-toggle">
+                                <input type="checkbox" class="sp-menu-members-only" <?php checked( 'logged_in', $vis ); ?>>
+                                <?php esc_html_e( 'Members only', 'societypress' ); ?>
+                            </label>
+
+                            <label class="screen-reader-text" for="sp-vis-<?php echo esc_attr( $id ); ?>">
+                                <?php esc_html_e( 'Who can see it', 'societypress' ); ?>
+                            </label>
+                            <select id="sp-vis-<?php echo esc_attr( $id ); ?>"
+                                class="sp-menu-advanced-select"
+                                name="sp_item[<?php echo esc_attr( $id ); ?>][visibility]">
+                                <?php foreach ( $options as $key => $label ) : ?>
+                                    <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $vis, $key ); ?>>
+                                        <?php echo esc_html( $label ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+
+                            <?php if ( ! $is_advanced ) : ?>
+                                <button type="button" class="button-link sp-menu-advanced-toggle">
+                                    <?php esc_html_e( 'Advanced', 'societypress' ); ?>
+                                </button>
+                            <?php endif; ?>
+                        </td>
+
+                        <td class="sp-menu-actions">
+                            <?php if ( 'post_type' === $item->type && $item->object_id ) : ?>
+                                <a class="button-link" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-page-edit&post_id=' . (int) $item->object_id ) ); ?>">
+                                    <?php esc_html_e( 'Edit page', 'societypress' ); ?>
+                                </a>
+                                <span aria-hidden="true"> | </span>
+                            <?php endif; ?>
+                            <button type="button" class="button-link sp-menu-remove-link sp-menu-remove">
+                                <?php esc_html_e( 'Remove', 'societypress' ); ?>
+                            </button>
+                            <input type="hidden" class="sp-menu-remove-flag"
+                                name="sp_item[<?php echo esc_attr( $id ); ?>][remove]" value="0">
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <p class="sp-menus-hint">
+                <?php esc_html_e( 'Removing an item takes the link out of the menu. The page itself is kept, and you can add it back at any time.', 'societypress' ); ?>
+            </p>
+
+            <p class="submit">
+                <button type="submit" class="button button-primary button-hero" id="sp-menus-save">
+                    <?php esc_html_e( 'Save Changes', 'societypress' ); ?>
+                </button>
+            </p>
+        </form>
+        <?php endif; ?>
+
+        <div class="sp-menus-add">
+            <h2><?php esc_html_e( 'Add a page to this menu', 'societypress' ); ?></h2>
+            <form method="post">
+                <?php wp_nonce_field( 'sp_menus_add_' . $menu_id ); ?>
+                <input type="hidden" name="sp_menus_action" value="add">
+                <input type="hidden" name="menu_id" value="<?php echo esc_attr( $menu_id ); ?>">
+
+                <div class="sp-menus-add-fields">
+                    <div>
+                        <label for="sp-add-page"><strong><?php esc_html_e( 'Choose a page you already have', 'societypress' ); ?></strong></label><br>
+                        <select name="sp_add_page" id="sp-add-page">
+                            <option value="0"><?php esc_html_e( '— Choose a page —', 'societypress' ); ?></option>
+                            <?php foreach ( $available as $page ) : ?>
+                                <option value="<?php echo esc_attr( $page->ID ); ?>"><?php echo esc_html( $page->post_title ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="sp-add-new-page"><strong><?php esc_html_e( 'Or make a brand-new page', 'societypress' ); ?></strong></label><br>
+                        <input type="text" name="sp_add_new_page" id="sp-add-new-page"
+                            placeholder="<?php esc_attr_e( 'Name of the new page', 'societypress' ); ?>">
+                    </div>
+
+                    <div>
+                        <button type="submit" class="button button-secondary"><?php esc_html_e( 'Add to menu', 'societypress' ); ?></button>
+                    </div>
+                </div>
+                <p class="sp-menus-hint">
+                    <?php esc_html_e( 'The new item is added at the bottom of the menu. Use the arrows to move it where you want it.', 'societypress' ); ?>
+                </p>
+            </form>
+        </div>
+    </div>
+    <?php
+    sp_render_menus_page_script();
+}
+
+/**
+ * The Menus screen's behaviour.
+ *
+ * WHY vanilla and inline: the plugin ships as a single file with no build step
+ *      and no jQuery (except where WordPress forces it), and this screen is the
+ *      only consumer of this code. Splitting it into an enqueued asset would
+ *      add a deploy artefact for no benefit.
+ *
+ * WHY the DOM is the source of truth for order: the arrows move rows, and the
+ *      hidden sp_order field is rewritten from the resulting row order on every
+ *      move. There is no separate model to drift out of sync with what the
+ *      volunteer can see, which is the failure mode that makes reordering
+ *      interfaces untrustworthy.
+ */
+function sp_render_menus_page_script(): void {
+    ?>
+    <script>
+    (function () {
+        var form = document.getElementById('sp-menus-form');
+        if (!form) return;
+
+        var body     = document.getElementById('sp-menus-body');
+        var orderIn  = document.getElementById('sp-menu-order');
+        var dirty    = false;
+
+        function rows() {
+            return Array.prototype.slice.call(body.querySelectorAll('tr.sp-menu-row'));
+        }
+
+        function depthOf(row) {
+            return parseInt(row.getAttribute('data-depth'), 10) || 0;
+        }
+
+        /* A row and everything nested beneath it. Children always travel with
+           their parent — moving "Galleries" without its eight gallery links
+           would scatter them into whatever section happened to be above. */
+        function blockOf(row) {
+            var all   = rows();
+            var start = all.indexOf(row);
+            var d     = depthOf(row);
+            var block = [row];
+            for (var i = start + 1; i < all.length; i++) {
+                if (depthOf(all[i]) > d) { block.push(all[i]); } else { break; }
+            }
+            return block;
+        }
+
+        function prevSibling(row) {
+            var all = rows();
+            var d   = depthOf(row);
+            for (var i = all.indexOf(row) - 1; i >= 0; i--) {
+                var rd = depthOf(all[i]);
+                if (rd === d) return all[i];
+                if (rd < d)   return null; /* left the parent — no sibling above */
+            }
+            return null;
+        }
+
+        function nextSibling(row) {
+            var all   = rows();
+            var block = blockOf(row);
+            var after = all.indexOf(block[block.length - 1]) + 1;
+            if (after >= all.length) return null;
+            return depthOf(all[after]) === depthOf(row) ? all[after] : null;
+        }
+
+        function syncOrder() {
+            orderIn.value = rows().map(function (r) { return r.getAttribute('data-id'); }).join(',');
+        }
+
+        /* Disable an arrow that would do nothing rather than letting it click
+           silently. A button that responds to nothing reads as a broken screen. */
+        function refreshArrows() {
+            rows().forEach(function (row) {
+                var up   = row.querySelector('.sp-menu-up');
+                var down = row.querySelector('.sp-menu-down');
+                if (up)   up.disabled   = !prevSibling(row);
+                if (down) down.disabled = !nextSibling(row);
+            });
+        }
+
+        function move(row, direction) {
+            var block = blockOf(row);
+            var i;
+
+            if (direction === 'up') {
+                var above = prevSibling(row);
+                if (!above) return;
+                for (i = 0; i < block.length; i++) { body.insertBefore(block[i], above); }
+            } else {
+                var below = nextSibling(row);
+                if (!below) return;
+                var belowBlock = blockOf(below);
+                var anchor     = belowBlock[belowBlock.length - 1].nextSibling;
+                for (i = 0; i < block.length; i++) { body.insertBefore(block[i], anchor); }
+            }
+
+            syncOrder();
+            refreshArrows();
+            dirty = true;
+        }
+
+        body.addEventListener('click', function (e) {
+            var btn = e.target.closest ? e.target.closest('button') : null;
+            if (!btn) return;
+            var row = btn.closest('tr.sp-menu-row');
+            if (!row) return;
+
+            /* ---- Move -------------------------------------------------- */
+            if (btn.classList.contains('sp-menu-move')) {
+                var dir = btn.classList.contains('sp-menu-up') ? 'up' : 'down';
+                move(row, dir);
+                /* Moving a node can drop focus. Put it back on the same button
+                   so a keyboard user can press again without re-navigating,
+                   and so repeated clicks land where the mouse already is. */
+                var again = row.querySelector(dir === 'up' ? '.sp-menu-up' : '.sp-menu-down');
+                if (again && !again.disabled) { again.focus(); }
+                else {
+                    var other = row.querySelector(dir === 'up' ? '.sp-menu-down' : '.sp-menu-up');
+                    if (other) other.focus();
+                }
+                return;
+            }
+
+            /* ---- Remove / undo remove ---------------------------------- */
+            if (btn.classList.contains('sp-menu-remove')) {
+                var flag = row.querySelector('.sp-menu-remove-flag');
+                var removing = flag.value === '1';
+                flag.value = removing ? '0' : '1';
+                row.classList.toggle('sp-menu-row--removing', !removing);
+                btn.textContent = removing
+                    ? <?php echo wp_json_encode( __( 'Remove', 'societypress' ) ); ?>
+                    : <?php echo wp_json_encode( __( 'Keep', 'societypress' ) ); ?>;
+                dirty = true;
+                return;
+            }
+
+            /* ---- Advanced visibility ----------------------------------- */
+            if (btn.classList.contains('sp-menu-advanced-toggle')) {
+                btn.closest('.sp-menu-vis').classList.add('sp-menu-vis--advanced');
+                btn.remove();
+                return;
+            }
+        });
+
+        /* The simple checkbox and the advanced dropdown are the same setting.
+           Only the dropdown has a name, so only it is ever submitted — the
+           checkbox just drives it. That way the two can never disagree about
+           what was saved. */
+        body.addEventListener('change', function (e) {
+            if (e.target.classList.contains('sp-menu-members-only')) {
+                var sel = e.target.closest('.sp-menu-vis').querySelector('.sp-menu-advanced-select');
+                sel.value = e.target.checked ? 'logged_in' : 'public';
+            }
+            dirty = true;
+        });
+
+        body.addEventListener('input', function () { dirty = true; });
+
+        /* WHY warn on leaving: one Save button means unsaved work is the normal
+           state of this screen while it is being used. Losing twenty minutes of
+           corrections to a stray Back click is the exact failure this design is
+           supposed to prevent. */
+        window.addEventListener('beforeunload', function (e) {
+            if (!dirty) return;
+            e.preventDefault();
+            e.returnValue = '';
+        });
+
+        form.addEventListener('submit', function (e) {
+            var pending = rows().filter(function (r) {
+                var f = r.querySelector('.sp-menu-remove-flag');
+                return f && f.value === '1';
+            });
+
+            if (!pending.length) { dirty = false; return; }
+
+            /* Removal is the one thing on this screen Undo cannot put back, so
+               it gets the one confirmation. Everything else is reversible. */
+            e.preventDefault();
+
+            var names = pending.map(function (r) { return r.getAttribute('data-label'); });
+            var msg = pending.length === 1
+                ? <?php echo wp_json_encode( __( 'Remove "%s" from the menu? The page itself is kept.', 'societypress' ) ); ?>.replace('%s', names[0])
+                : <?php echo wp_json_encode( __( 'Remove %d items from the menu? The pages themselves are kept.', 'societypress' ) ); ?>.replace('%d', pending.length);
+
+            if (typeof spConfirm === 'function') {
+                spConfirm(msg, function () {
+                    dirty = false;
+                    form.submit();
+                }, { type: 'danger', cancelText: <?php echo wp_json_encode( __( 'Go back', 'societypress' ) ); ?> });
+            } else {
+                /* spConfirm loads on every sp- screen, so this branch should be
+                   unreachable. Submitting anyway is better than a Save button
+                   that does nothing if it ever is reached. */
+                dirty = false;
+                form.submit();
+            }
+        });
+
+        syncOrder();
+        refreshArrows();
+    })();
+    </script>
+    <?php
 }

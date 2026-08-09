@@ -8111,7 +8111,8 @@ add_action( 'wp_head', function () {
 
 // WHY: The admin bar is handy during development but Harold doesn't need it.
 // Controlled by Settings → Website → "Admin Toolbar" checkbox.
-// When off (default), the bar is hidden on the frontend for everyone.
+// When off (default), the bar is hidden everywhere — the public site and the
+// admin screens both.
 add_filter( 'show_admin_bar', function ( $show ) {
     $sp = sp_settings();
     if ( empty( $sp['website_show_admin_bar'] ) ) {
@@ -8119,6 +8120,53 @@ add_filter( 'show_admin_bar', function ( $show ) {
     }
     return $show;
 } );
+
+/**
+ * Whether the toolbar has been switched off in Settings → Website.
+ *
+ * A named helper because three separate hooks below have to agree about it,
+ * and an unchecked box that only takes effect in two of the three places is
+ * worse than no setting at all.
+ */
+function sp_admin_bar_hidden(): bool {
+    $sp = sp_settings();
+
+    return empty( $sp['website_show_admin_bar'] );
+}
+
+/*
+ * WHY the filter above cannot do this on its own: core's is_admin_bar_showing()
+ * returns true for any admin screen and returns BEFORE show_admin_bar is
+ * applied, so that filter never reaches the back of house at all. Unchecking
+ * the box hid the toolbar out on the site and left it sitting there behind the
+ * scenes, which reads as a setting that half works. Taking the render action
+ * off is what actually removes it in the admin.
+ */
+function sp_hide_admin_bar_in_admin(): void {
+    if ( ! sp_admin_bar_hidden() ) {
+        return;
+    }
+
+    remove_action( 'in_admin_header', 'wp_admin_bar_render', 0 );
+}
+add_action( 'admin_init', 'sp_hide_admin_bar_in_admin' );
+
+/*
+ * The <html> element carries the wp-toolbar class on admin screens, and its
+ * padding-top is what reserves the strip the toolbar sits in. Removing the
+ * toolbar without clearing that leaves an empty band across the top of every
+ * admin page — the setting would look like it had half worked in a different
+ * way. The #wpadminbar rule is belt and braces for any screen that prints the
+ * markup by another route.
+ */
+function sp_hide_admin_bar_styles(): void {
+    if ( ! sp_admin_bar_hidden() ) {
+        return;
+    }
+
+    echo '<style id="sp-hide-admin-bar">html.wp-toolbar { padding-top: 0 !important; } #wpadminbar { display: none !important; }</style>' . "\n";
+}
+add_action( 'admin_head', 'sp_hide_admin_bar_styles' );
 
 // WHY: Dashicons are only needed for logged-in users (admin bar, My Account
 //      icons). Loading them for anonymous visitors wastes ~46KB of CSS + font.
@@ -24049,10 +24097,10 @@ add_action( 'admin_init', function () {
             echo '<input type="hidden" name="societypress_settings[website_show_admin_bar]" value="0">';
             printf(
                 '<label><input type="checkbox" name="societypress_settings[website_show_admin_bar]" value="1" %s> '
-                . esc_html__( 'Show the admin toolbar when viewing the site', 'societypress' ) . '</label>',
+                . esc_html__( 'Show the admin toolbar', 'societypress' ) . '</label>',
                 checked( $checked, true, false )
             );
-            echo '<p class="description">' . esc_html__( 'The toolbar across the top of the page with quick links back to the admin area. Only visible to administrators.', 'societypress' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'The dark strip across the very top of the screen, with quick links back to the admin area. Only people who are signed in ever see it. Unticking this hides it in both places it appears — out on the site and on the admin screens.', 'societypress' ) . '</p>';
         },
         'sp-settings-website',
         'sp_website_section'
@@ -29641,7 +29689,9 @@ add_action( 'wp_ajax_sp_quick_edit_page', 'sp_handle_quick_edit_page' );
  */
 function sp_page_editor_enable_table(): void {
     add_filter( 'mce_external_plugins', 'sp_page_editor_table_plugin' );
+    add_filter( 'mce_external_plugins', 'sp_page_editor_image_plugin' );
     add_filter( 'mce_buttons', 'sp_page_editor_table_button' );
+    add_filter( 'mce_buttons', 'sp_page_editor_image_button' );
     add_filter( 'mce_buttons', 'sp_page_editor_text_buttons' );
     add_filter( 'mce_buttons_2', 'sp_page_editor_second_row' );
     add_filter( 'tiny_mce_before_init', 'sp_page_editor_font_sizes' );
@@ -29692,6 +29742,29 @@ function sp_asset_url( string $relative ): string {
 
 function sp_page_editor_table_button( array $buttons ): array {
     $buttons[] = 'sp_table';
+    return $buttons;
+}
+
+/**
+ * Point TinyMCE at the picture menu, cache-busted the same way as the table.
+ */
+function sp_page_editor_image_plugin( array $plugins ): array {
+    $plugins['sp_image'] = sp_asset_url( 'assets/js/sp-editor-image.js' );
+    return $plugins;
+}
+
+/**
+ * Put the Picture menu next to the Table menu.
+ *
+ * WHY a named menu rather than relying on the buttons WordPress already ships:
+ * everything needed to place a picture was present but unfindable — alignment
+ * sat behind a dropdown inside the media dialog, and the only controls that say
+ * anything about the picture itself appear as bare icons after you happen to
+ * click it. A volunteer laying out a page went looking for the word "picture",
+ * found nothing, and built a two-column table instead.
+ */
+function sp_page_editor_image_button( array $buttons ): array {
+    $buttons[] = 'sp_image';
     return $buttons;
 }
 
@@ -40031,6 +40104,19 @@ function sp_builder_fields_volunteer_stats( $index, array $settings ): void {
 
 
 /**
+ * The "Max items" choices offered by the Photo Gallery widget.
+ *
+ * WHY this is a function rather than a literal in two places: the settings
+ * form and the sanitiser have to agree exactly, and when they drifted apart
+ * an administrator could pick a number the sanitiser then threw away without
+ * saying so. Zero is the "all photos" sentinel.
+ */
+function sp_photo_gallery_count_choices(): array {
+    return [ 6, 12, 24, 48, 96, 0 ];
+}
+
+
+/**
  * Photo Gallery widget settings.
  */
 function sp_builder_fields_photo_gallery( $index, array $settings ): void {
@@ -40074,8 +40160,20 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
         <div class="sp-flex-1">
             <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Max items', 'societypress' ); ?></label>
             <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][count]" id="sp-w-<?php echo esc_attr( $index ); ?>-count" class="sp-full-width">
-                <?php foreach ( [ 6, 12, 24, 48 ] as $c ) : ?>
-                    <option value="<?php echo $c; ?>" <?php selected( $count, $c ); ?>><?php echo $c; ?></option>
+                <?php
+                /*
+                 * WHY zero means "show them all": an album is a finished thing —
+                 * a society that scanned ninety photographs of one event wants
+                 * ninety on the page, and picking a number just to have the tail
+                 * silently disappear is the sort of surprise this product cannot
+                 * afford. The fixed steps stay for anyone using the widget as a
+                 * teaser on a landing page.
+                 */
+                foreach ( sp_photo_gallery_count_choices() as $c ) :
+                    ?>
+                    <option value="<?php echo esc_attr( $c ); ?>" <?php selected( $count, $c ); ?>>
+                        <?php echo 0 === $c ? esc_html__( 'All photos', 'societypress' ) : esc_html( $c ); ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -40770,7 +40868,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'album_id'       => absint( $settings['album_id'] ?? 0 ),
                 'columns'        => in_array( (int) ( $settings['columns'] ?? -1 ), [ 2, 3, 4, 5 ], true )
                                     ? (int) $settings['columns'] : 3,
-                'count'          => in_array( (int) ( $settings['count'] ?? -1 ), [ 6, 12, 24, 48 ], true )
+                'count'          => in_array( (int) ( $settings['count'] ?? -1 ), sp_photo_gallery_count_choices(), true )
                                     ? (int) $settings['count'] : 12,
                 'login_required' => ! empty( $settings['login_required'] ),
             ];
@@ -61624,7 +61722,11 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
     $display_mode = $s['display_mode'] ?? 'albums';
     $album_id     = absint( $s['album_id'] ?? 0 );
     $columns      = max( 2, min( 6, (int) ( $s['columns'] ?? 3 ) ) );
-    $count        = max( 1, (int) ( $s['count'] ?? 12 ) );
+
+    // Zero is the "all photos" sentinel, so this cannot be clamped with a
+    // minimum of 1 the way the column count is.
+    $count        = (int) ( $s['count'] ?? 12 );
+    $count        = in_array( $count, sp_photo_gallery_count_choices(), true ) ? $count : 12;
 
     /*
      * WHY a <style> block here: All static presentational rules for this widget
@@ -61719,12 +61821,16 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         // submission_status filter: a member-submitted photo still awaiting
         // review must not appear on the public page. Without this clause the
         // grid rendered the whole moderation queue.
+        // A count of zero means every approved photo, so the LIMIT clause is
+        // left off entirely rather than being given some arbitrary ceiling.
+        $limit_sql = $count > 0 ? $wpdb->prepare( ' LIMIT %d', $count ) : '';
+
         $items = $wpdb->get_results( $wpdb->prepare(
             "SELECT * FROM {$prefix}photo_album_items
              WHERE album_id = %d AND submission_status = 'approved'
-             ORDER BY sort_order ASC LIMIT %d",
-            $album_id, $count
-        ) );
+             ORDER BY sort_order ASC",
+            $album_id
+        ) . $limit_sql );
 
         if ( empty( $items ) ) {
             echo '<p class="sp-gallery-empty">' . esc_html__( 'No photos in this album yet.', 'societypress' ) . '</p>';
@@ -63870,6 +63976,38 @@ function sp_render_album_edit_page(): void {
         // except replacing the one remaining jQuery call for photo_ids update.
         if (albumPhotos) {
             var dragSrc = null;
+
+            /*
+             * WHY the caption boxes need drag switched off while they are in
+             * use: each tile carries draggable="true", and a browser reads a
+             * press-and-move anywhere inside a draggable element as the start
+             * of a drag. That cancels the text selection a double-click is
+             * making, so double-clicking a word in the caption box put the
+             * caret back at the start of the field instead of selecting
+             * anything — the field looked broken and could only be edited one
+             * keystroke at a time. Suspending the tile's draggability while
+             * the caret is in one of its fields gives the box ordinary text
+             * behaviour back; dragging returns the moment focus leaves.
+             *
+             * mousedown is captured rather than bubbled so this runs before
+             * the browser decides a drag has begun.
+             */
+            function tileFieldOf(e) {
+                var field = e.target.closest ? e.target.closest('input, textarea, select') : null;
+                return field ? field.closest('.sp-album-photo') : null;
+            }
+            function suspendTileDrag(e) {
+                var tile = tileFieldOf(e);
+                if (tile) tile.draggable = false;
+            }
+            function restoreTileDrag(e) {
+                var tile = tileFieldOf(e);
+                if (tile) tile.draggable = true;
+            }
+            albumPhotos.addEventListener('mousedown', suspendTileDrag, true);
+            albumPhotos.addEventListener('focusin',  suspendTileDrag);
+            albumPhotos.addEventListener('focusout', restoreTileDrag);
+
             albumPhotos.addEventListener('dragstart', function(e) {
                 dragSrc = e.target.closest('.sp-album-photo');
                 if (dragSrc) e.dataTransfer.effectAllowed = 'move';
@@ -108147,7 +108285,11 @@ function sp_gallery_import_create_album( string $title, string $description, str
     $wpdb->insert( $table, [
         'title'       => $title,
         'slug'        => $slug,
-        'description' => sanitize_textarea_field( $description ),
+        // wp_kses_post, not sanitize_textarea_field: the import form uses the
+        // same rich-text editor as the album edit screen, so the paragraphs and
+        // links it produces have to survive the save. kses still strips anything
+        // a post body would not allow.
+        'description' => wp_kses_post( $description ),
         'visibility'  => in_array( $visibility, [ 'public', 'members_only' ], true ) ? $visibility : 'public',
         'created_by'  => (int) get_current_user_id(),
     ] );
@@ -108527,7 +108669,12 @@ function sp_render_import_gallery_page(): void {
             foreach ( $errors as $e ) echo '<li>' . esc_html( $e ) . '</li>';
             echo '</ul></div>';
         }
-        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-gallery-albums' ) ) . '">' . esc_html__( 'Go to Photo Albums', 'societypress' ) . '</a> &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-gallery' ) ) . '">' . esc_html__( 'Import another album', 'societypress' ) . '</a></p>';
+        // sp-gallery is the album list screen. An earlier slug, sp-gallery-albums,
+        // was never registered as a page, so this button dropped the volunteer on
+        // "Sorry, you are not allowed to access this page" at the exact moment the
+        // import succeeded — and with no other link out, the albums it had just
+        // built looked unreachable.
+        echo '<p><a class="button button-primary" href="' . esc_url( admin_url( 'admin.php?page=sp-gallery' ) ) . '">' . esc_html__( 'Go to Photo Albums', 'societypress' ) . '</a> &nbsp; <a class="button" href="' . esc_url( admin_url( 'admin.php?page=sp-import-gallery' ) ) . '">' . esc_html__( 'Import another album', 'societypress' ) . '</a></p>';
         echo '</div>';
         return;
     }
@@ -108548,8 +108695,25 @@ function sp_render_import_gallery_form(): void {
     echo '<tr><th scope="row"><label for="album_title">' . esc_html__( 'Album title', 'societypress' ) . '</label></th><td>';
     echo '<input type="text" id="album_title" name="album_title" class="regular-text" required></td></tr>';
 
+    // WHY the same editor as the album edit screen rather than a bare textarea:
+    // this description prints above the thumbnails on the public album page, so
+    // it is the one place a volunteer writes real prose about the collection.
+    // A plain box meant the paragraphs, links and emphasis they typed were
+    // stripped on the way in, and the only way to get them back was to import
+    // first and then go and rewrite the description somewhere else.
     echo '<tr><th scope="row"><label for="album_description">' . esc_html__( 'Description (optional)', 'societypress' ) . '</label></th><td>';
-    echo '<textarea id="album_description" name="album_description" class="large-text" rows="3"></textarea></td></tr>';
+    wp_editor(
+        '',
+        'album_description',
+        [
+            'textarea_name' => 'album_description',
+            'textarea_rows' => 8,
+            'media_buttons' => false,
+            'teeny'         => true,
+            'quicktags'     => true,
+        ]
+    );
+    echo '</td></tr>';
 
     echo '<tr><th scope="row"><label for="album_visibility">' . esc_html__( 'Visibility', 'societypress' ) . '</label></th><td>';
     echo '<select id="album_visibility" name="album_visibility">';
@@ -108616,7 +108780,7 @@ function sp_render_import_gallery_form(): void {
 
         var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
         var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_gal_import_batch' ) ); ?>;
-        var ALBUM_URL = <?php echo wp_json_encode( admin_url( 'admin.php?page=sp-gallery-albums' ) ); ?>;
+        var ALBUM_URL = <?php echo wp_json_encode( admin_url( 'admin.php?page=sp-gallery' ) ); ?>;
 
         function fmt(tpl, a, b) {
             return tpl.replace('%1$d', a).replace('%2$d', b).replace('%d', a);
@@ -108665,6 +108829,19 @@ function sp_render_import_gallery_form(): void {
                 });
             }
 
+            /* The description is a TinyMCE editor now. While the Visual tab is
+               showing, what the volunteer typed lives in an iframe and the
+               underlying textarea is still empty until TinyMCE is told to write
+               back — so reading .value straight off the form would send an empty
+               description for anyone who did not switch to the Text tab first. */
+            function albumDescription() {
+                if (window.tinymce) {
+                    var ed = window.tinymce.get('album_description');
+                    if (ed && !ed.isHidden()) return ed.getContent();
+                }
+                return form.album_description ? form.album_description.value : '';
+            }
+
             function finish(ok) {
                 bar.style.width = '100%';
                 statusEl.textContent = ok ? fmt(STR.done, added) : fmt(STR.failed, added);
@@ -108688,7 +108865,7 @@ function sp_render_import_gallery_form(): void {
                 data.append('nonce', NONCE);
                 data.append('album_id', albumId);
                 data.append('album_title', form.album_title.value);
-                data.append('album_description', form.album_description ? form.album_description.value : '');
+                data.append('album_description', albumDescription());
                 data.append('album_visibility', form.album_visibility ? form.album_visibility.value : 'public');
 
                 if (job.files) {

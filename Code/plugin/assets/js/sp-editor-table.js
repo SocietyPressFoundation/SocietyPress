@@ -188,6 +188,23 @@
 		}
 
 		// Rules on or off, independent of which style is applied.
+		/*
+		 * Let the first column be exactly as wide as its own text.
+		 *
+		 * WHY this is needed even though columns can already be dragged: a
+		 * dragged width is a percentage, and a percentage of the published page
+		 * is not a percentage of this editor — the page is far wider, so a
+		 * column that looked generous while it was being set can still be too
+		 * narrow for a name once it is live, and a row heading that wraps onto
+		 * two lines wrecks the look of a roster. Sizing the column to its
+		 * longest entry takes the guesswork out: it is right at every width, on
+		 * every screen, without anyone having to measure anything.
+		 */
+		function toggleFitFirstColumn() {
+			if ( ! needTable() ) { return; }
+			editor.dom.toggleClass( currentTable(), 'sp-tbl-fit-first' );
+		}
+
 		function toggleBorders() {
 			if ( ! needTable() ) { return; }
 			var table = currentTable();
@@ -488,6 +505,7 @@
 				] },
 				{ text: t( 'Equal columns' ),       onclick: equalColumns },
 				{ text: t( 'Reset column widths' ), onclick: resetColumnWidths },
+				{ text: t( 'First column on one line on/off' ), onclick: toggleFitFirstColumn },
 				{ text: '-' },
 				{ text: t( 'Insert row above' ),    onclick: function () { addRow( false ); } },
 				{ text: t( 'Insert row below' ),    onclick: function () { addRow( true ); } },

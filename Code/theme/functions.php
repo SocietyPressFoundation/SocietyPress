@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // the parent theme safe against child theme copies. If a child theme wants
 // its own version it should define a differently-named constant.
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.1.5' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.1.7' );
 }
 
 
@@ -220,6 +220,18 @@ add_action( 'wp_enqueue_scripts', function () {
         [],
         SOCIETYPRESS_THEME_VERSION,
         true
+    );
+
+    // The drop down caret buttons are built in JavaScript, so their screen
+    // reader labels cannot be wrapped in __() where they are written. Passing
+    // the pattern through here keeps them translatable with everything else.
+    wp_localize_script(
+        'societypress-theme',
+        'SocietyPressTheme',
+        [
+            /* translators: %s: the name of the menu item the drop down belongs to. */
+            'submenuLabel' => __( 'Show the drop down menu for %s', 'societypress' ),
+        ]
     );
 });
 

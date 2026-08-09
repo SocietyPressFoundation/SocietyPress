@@ -192,6 +192,37 @@
 }
 
 /*
+ * First column sized to its own text, never wrapped.
+ *
+ * WHY a column sometimes has to opt out of the widths beside it: a dragged
+ * column width is a percentage, and the published page is much wider than the
+ * editor it was dragged in, so the same percentage is a different number of
+ * pixels in the two places. A roster whose first column holds names has one
+ * job — keep each name on one line — and no percentage can promise that at
+ * every screen width. Hugging the content can.
+ *
+ * WHY table-layout returns to auto here: under fixed layout the colgroup is
+ * the final word and a width on the cell is ignored, so the column could never
+ * shrink to its text. The width: 1% is the long-standing way of saying "as
+ * narrow as this column's content allows"; nowrap is what stops that content
+ * from being a wrapped two-line name.
+ */
+.sp-content-table.sp-tbl-fit-first {
+	table-layout: auto;
+}
+
+.sp-content-table.sp-tbl-fit-first col:first-child {
+	width: auto;
+}
+
+.sp-content-table.sp-tbl-fit-first td:first-child,
+.sp-content-table.sp-tbl-fit-first th:first-child {
+	width: 1%;
+	white-space: nowrap;
+	overflow-wrap: normal;
+}
+
+/*
  * Row height, expressed as cell padding.
  *
  * WHY padding and not a height on the row: a height in a web table is a

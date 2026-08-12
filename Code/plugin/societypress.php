@@ -10342,6 +10342,32 @@ add_action( 'admin_init', function () {
 }, 0 );
 
 /**
+ * Run a screen's form handling before WordPress prints anything.
+ *
+ * WHY: `load-{$page_hook}` fires after the menu is built and the current user is
+ * known, but before wp-admin/admin-header.php writes a single byte. A handler
+ * registered here can save, redirect and exit the way post/redirect/get is meant
+ * to work, instead of racing the output that has already started by the time a
+ * render function runs. See docs/KNOWN-ISSUES.md for the wider cleanup this is
+ * the first step of.
+ *
+ * Every SocietyPress screen hangs off the 'societypress' parent, so its hook is
+ * always societypress_page_{slug}. Keeping that string in one place stops the
+ * next screen from being wired up with a hook name that silently never fires.
+ *
+ * @param string   $slug    Submenu slug, e.g. 'sp-settings-modules'.
+ * @param callable $handler Runs before output; expected to redirect and exit.
+ */
+function sp_handle_screen_post( string $slug, callable $handler ): void {
+    add_action( 'load-societypress_page_' . $slug, static function () use ( $handler ) {
+        if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'POST' ) {
+            return;
+        }
+        $handler();
+    } );
+}
+
+/**
  * Inject utility CSS classes used throughout admin pages.
  *
  * WHY: The plugin originally used inline style= attributes for common patterns
@@ -36337,29 +36363,42 @@ function sp_render_settings_design_page(): void {
 //
 // ============================================================================
 
-function sp_render_settings_modules_page(): void {
-    // ---- Handle form submission ----
-    // WHY we handle save here instead of using register_setting: The module
-    // toggle is stored in its own option (sp_enabled_modules), not inside the
-    // societypress_settings array. Processing the POST ourselves keeps it
-    // simple — one nonce check, one update_option call, done.
-    if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['_sp_modules_nonce'] ) ) {
-        if ( wp_verify_nonce( $_POST['_sp_modules_nonce'], 'sp_save_modules' ) && current_user_can( 'sp_manage_settings' ) ) {
-            $all_module_slugs = array_keys( sp_get_modules() );
-            $enabled = [];
-            foreach ( $all_module_slugs as $slug ) {
-                if ( ! empty( $_POST[ 'sp_module_' . $slug ] ) ) {
-                    $enabled[] = $slug;
-                }
-            }
-            update_option( 'sp_enabled_modules', $enabled );
-
-            // Redirect to avoid form resubmission on refresh
-            wp_safe_redirect( admin_url( 'admin.php?page=sp-settings-modules&saved=1' ) );
-            exit;
-        }
+/**
+ * Save the module toggles.
+ *
+ * WHY this is not register_setting(): the toggle lives in its own option
+ * (sp_enabled_modules), not inside the societypress_settings array. One nonce
+ * check and one update_option is simpler than bending the Settings API around it.
+ *
+ * WHY it is hooked rather than sitting at the top of the render function: it runs
+ * before any output, so the redirect that prevents a refresh re-submitting the
+ * form can actually set its header.
+ */
+function sp_handle_settings_modules_post(): void {
+    if ( ! isset( $_POST['_sp_modules_nonce'] ) ) {
+        return;
+    }
+    if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_sp_modules_nonce'] ) ), 'sp_save_modules' ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        return;
     }
 
+    $enabled = [];
+    foreach ( array_keys( sp_get_modules() ) as $slug ) {
+        if ( ! empty( $_POST[ 'sp_module_' . $slug ] ) ) {
+            $enabled[] = $slug;
+        }
+    }
+    update_option( 'sp_enabled_modules', $enabled );
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-settings-modules&saved=1' ) );
+    exit;
+}
+sp_handle_screen_post( 'sp-settings-modules', 'sp_handle_settings_modules_post' );
+
+function sp_render_settings_modules_page(): void {
     $modules = sp_get_modules();
     $enabled = sp_get_enabled_modules();
     ?>

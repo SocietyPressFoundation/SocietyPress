@@ -10296,6 +10296,52 @@ add_action( 'admin_init', function (): void {
 }, 0 );
 
 /**
+ * Hold the response open on SocietyPress admin screens that are handling a
+ * form submission, so the redirect after a save can still set its header.
+ *
+ * THE PROBLEM: this plugin processes POSTs inside its page render functions,
+ * and a page callback runs after wp-admin/admin-header.php has already begun
+ * the document. Most hosts (this one included) run PHP with output_buffering
+ * set to about 4KB, so the response is held only until that much has been
+ * written — in practice partway through the sp-admin-utilities style block
+ * below, which is why the warnings named this file rather than admin-header.php
+ * and sent an earlier diagnosis chasing the wrong culprit. Once the buffer
+ * spills, the headers are gone, and the wp_redirect() that follows a save can
+ * do nothing but warn. The save itself had already been written, so this showed
+ * up as a screen that failed to move on after saving, and a browser reload that
+ * offered to submit the form again.
+ *
+ * WHY buffering here rather than moving 78 redirect calls: the redirects sit in
+ * about thirty render functions with their POST handling threaded through the
+ * markup they print. Lifting each one onto load-{$page_hook} is the right shape
+ * and is still worth doing — docs/KNOWN-ISSUES.md keeps that open — but it
+ * rewrites most of the admin at once, and a bug that stops a redirect firing
+ * does not justify that risk in a single change.
+ *
+ * This is NOT the blanket ob_start() that entry warns against. It is deliberately
+ * narrow: only SocietyPress screens, and only when the request is a POST, which
+ * is the only time one of these redirects runs. Ordinary page views are left
+ * exactly as they were. Nothing in this plugin streams output — there is not a
+ * single flush() or ob_flush() call — so there is no progressive rendering for a
+ * buffer to interfere with. PHP releases the buffer at shutdown on its own.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'POST' ) {
+        return;
+    }
+
+    $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+    // Settings API forms post to options.php, which redirects before any output
+    // and needs no help; those requests carry no page parameter and fall out here.
+    if ( 'societypress' !== $page && 0 !== strpos( $page, 'sp-' ) ) {
+        return;
+    }
+
+    ob_start();
+}, 0 );
+
+/**
  * Inject utility CSS classes used throughout admin pages.
  *
  * WHY: The plugin originally used inline style= attributes for common patterns

@@ -6,11 +6,11 @@ which is byte-identical to `origin/main` (md5 `0ca98e1f`).
 
 ---
 
-## Status — five of six defects fixed, 2026-08-12
+## Status — all defects fixed, 2026-08-12
 
-Fixed in the same session the audit was written. §3, §4, §5, §6, §7 and §10 are done. **§8 —
-consolidating Themes / Design / Presets into one tabbed Appearance screen — is NOT done** and
-remains the one substantial piece of work outstanding. §9 was a false finding; see below.
+**Every defect in this audit is now fixed.** §3, §4, §5, §6, §7, §8 and §10 are done. §9 was a
+false finding and is withdrawn. §2 recorded a clean bill of health on permissions that turned out
+to be wrong — the defect it missed was found later, is described in place, and is also fixed.
 
 | § | Defect | Status |
 |---|---|---|
@@ -21,10 +21,11 @@ remains the one substantial piece of work outstanding. §9 was a false finding; 
 | 7 | "Website" naming two things | ✅ Settings screen renamed **Site Basics** |
 | 4 | `sp-record-payment` placed but hidden | ✅ Removed from group config |
 | 10 | "Add Images" mislabelled | ✅ Renamed **Photos & Albums** |
-| 8 | "How it looks" split across four doors | ❌ **Outstanding** — own session |
+| 8 | "How it looks" split across four doors | ✅ One **Appearance** screen, three tabs |
 
-Menu integrity after the changes: **78 visible screens, 78 placed in groups, zero orphans, zero
-ghosts** (was 80 visible, 1 orphan, 1 ghost). Two screens were removed outright, not relocated.
+Menu integrity after the changes: **76 visible screens, zero orphans, zero ghosts** (was 80
+visible, 1 orphan, 1 ghost). Two screens were removed outright; three more were absorbed into the
+single Appearance screen and stay reachable by their old URLs through a redirect.
 
 Everything below is the audit as originally written, preserved as the record of what was found.
 

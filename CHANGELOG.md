@@ -138,6 +138,23 @@ The Events page now shows whatever you type into its page editor above the
 list of events, so you can add a welcome, meeting location, or directions —
 matching the other SocietyPress page templates.
 
+### Changed
+
+**One Appearance screen instead of three**
+
+Choosing a theme, changing your colours and fonts, and saving or loading a
+preset are three parts of one job, but they were three separate items in the
+sidebar. To change a colour you had to already know that Themes is not where
+colours live, that Design is, and that Theme Presets is a different thing
+again.
+
+They are now one screen — **Website → Appearance** — with three tabs: *Theme*,
+*Colours & Fonts*, and *Presets*. Nothing inside them changed, so everything
+works exactly as it did; there is just one door now instead of three.
+
+Old bookmarks still work. The three previous addresses each land on the right
+tab rather than going nowhere.
+
 ### Added
 
 **Show the organisations your society belongs to**

@@ -6617,10 +6617,25 @@ add_action( 'admin_menu', function () {
     //      need to live here.
     // -----------------------------------------------------------------
 
+    // Appearance — the single door to how the site looks. Theme, colours and
+    // fonts, and presets are tabs on this one screen.
     add_submenu_page(
         'societypress',
+        __( 'Appearance — SocietyPress', 'societypress' ),
+        __( 'Appearance', 'societypress' ),
+        'manage_options',
+        'sp-appearance',
+        'sp_render_appearance_page'
+    );
+
+    // The three screens Appearance absorbed stay registered with a null parent:
+    // off the menu, but still valid pages, so the admin_init redirect that sends
+    // their old URLs to the right tab has something to redirect FROM rather than
+    // WordPress refusing the page before the redirect runs.
+    add_submenu_page(
+        null,
         __( 'Themes — SocietyPress', 'societypress' ),
-        __( 'Themes', 'societypress' ),
+        '',
         'manage_options',
         'sp-themes',
         'sp_render_themes_page'
@@ -6820,9 +6835,9 @@ add_action( 'admin_menu', function () {
     );
 
     add_submenu_page(
-        'societypress',
+        null,
         __( 'Design — SocietyPress', 'societypress' ),
-        __( 'Design', 'societypress' ),
+        '',
         'manage_options',
         'sp-settings-design',
         'sp_render_settings_design_page'
@@ -7049,6 +7064,7 @@ function sp_get_menu_capability_map(): array {
         'sp-store-product-edit'    => 'sp_manage_finances',
 
         // Content / Appearance
+        'sp-appearance'            => 'sp_manage_settings',
         'sp-themes'                => 'sp_manage_settings',
         'sp-pages'                 => 'sp_manage_content',
         'sp-page-edit'             => 'sp_manage_content',
@@ -11270,7 +11286,7 @@ function sp_default_menu_config(): array {
               // block — nothing SocietyPress ships populates the Customizer.
               'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'sp-affiliations', 'upload.php', 'widgets.php', 'sp-short-links',
                            [ 'heading' => __( 'How it looks', 'societypress' ) ],
-                           'sp-themes', 'sp-theme-presets', 'sp-settings-design',
+                           'sp-appearance',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
                            'sp-import-ens-pages', 'sp-import-gallery' ] ],
 
@@ -104108,9 +104124,9 @@ function sp_theme_preset_apply( array $payload ) {
  */
 add_action( 'admin_menu', function () {
     add_submenu_page(
-        'societypress',
+        null,
         __( 'Theme Presets — SocietyPress', 'societypress' ),
-        __( 'Theme Presets', 'societypress' ),
+        '',
         'manage_options',
         'sp-theme-presets',
         'sp_render_theme_presets_page'
@@ -104129,8 +104145,8 @@ add_filter( 'sp_admin_capability_map', function ( array $map ): array {
  * Builds a preset payload and forces a JSON download.
  */
 add_action( 'admin_post_sp_theme_preset_export', function () {
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    if ( ! sp_user_can( 'settings' ) ) {
+        wp_die( esc_html__( 'Insufficient permissions.', 'societypress' ) );
     }
     check_admin_referer( 'sp_theme_preset_export' );
 
@@ -104589,6 +104605,106 @@ add_action( 'admin_post_sp_spchildtheme_import', function () {
     exit;
 } );
 
+
+/**
+ * Appearance — one screen for everything that decides how the site looks.
+ *
+ * WHY this exists: picking a theme, changing its colours and fonts, and saving
+ * or loading a preset are three parts of one job, but they were three separate
+ * items sitting under a "How it looks" heading. Someone who wanted to change a
+ * colour had to already know that "Themes" is not where colours live, that
+ * "Design" is, and that "Theme Presets" is a different thing again. Three doors
+ * to one room is a guess, and the guess is what made this feel hard.
+ *
+ * WHY tabs delegating to the original render functions rather than a rewrite:
+ * those three functions are about 2,700 lines of working, tested screen. The
+ * problem was never their contents — it was that you had to know which one to
+ * open. Wrapping them costs nothing and risks nothing; rewriting them would
+ * risk plenty for no gain the user can see.
+ *
+ * The old slugs still work: each redirects to its tab, so bookmarks, the setup
+ * wizard's links and anything a society has written in its own notes keep
+ * working.
+ */
+function sp_render_appearance_page(): void {
+    if ( ! sp_user_can( 'settings' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    $tabs = [
+        'theme'   => __( 'Theme', 'societypress' ),
+        'design'  => __( 'Colours & Fonts', 'societypress' ),
+        'presets' => __( 'Presets', 'societypress' ),
+    ];
+
+    $active = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'theme';
+    if ( ! isset( $tabs[ $active ] ) ) {
+        $active = 'theme';
+    }
+    ?>
+    <div class="wrap sp-appearance-wrap">
+        <h1><?php esc_html_e( 'Appearance', 'societypress' ); ?></h1>
+        <p class="description">
+            <?php esc_html_e( 'Everything that decides how your website looks — which theme you are using, your colours and fonts, and saved looks you can reuse.', 'societypress' ); ?>
+        </p>
+        <nav class="nav-tab-wrapper sp-appearance-tabs">
+            <?php foreach ( $tabs as $slug => $label ) : ?>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-appearance&tab=' . $slug ) ); ?>"
+                   class="nav-tab<?php echo $active === $slug ? ' nav-tab-active' : ''; ?>">
+                    <?php echo esc_html( $label ); ?>
+                </a>
+            <?php endforeach; ?>
+        </nav>
+    </div>
+    <?php
+
+    // Each of these opens its own .wrap and prints its own heading, which under
+    // the tab strip reads as the name of the section you are in.
+    switch ( $active ) {
+        case 'design':
+            sp_render_settings_design_page();
+            break;
+        case 'presets':
+            sp_render_theme_presets_page();
+            break;
+        default:
+            sp_render_themes_page();
+            break;
+    }
+}
+
+/**
+ * Send the three retired slugs to their tab on the Appearance screen.
+ *
+ * WHY a redirect rather than simply removing them: these slugs appear in
+ * bookmarks, in the setup wizard, and in whatever a society has written down
+ * for its volunteers. A page that quietly stops existing is a broken link; a
+ * page that takes you where the thing now lives teaches the new location.
+ */
+add_action( 'admin_init', function () {
+    $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+    $moved = [
+        'sp-themes'          => 'theme',
+        'sp-settings-design' => 'design',
+        'sp-theme-presets'   => 'presets',
+    ];
+
+    if ( ! isset( $moved[ $page ] ) ) {
+        return;
+    }
+
+    // The Design screen posts to options.php and WordPress sends the user back
+    // via _wp_http_referer, so a save landing here must keep its notice rather
+    // than be bounced somewhere that drops it.
+    $args = [ 'page' => 'sp-appearance', 'tab' => $moved[ $page ] ];
+    if ( isset( $_GET['settings-updated'] ) ) {
+        $args['settings-updated'] = sanitize_key( wp_unslash( $_GET['settings-updated'] ) );
+    }
+
+    wp_safe_redirect( add_query_arg( $args, admin_url( 'admin.php' ) ) );
+    exit;
+} );
 
 /**
  * The Affiliations admin page — Website -> Affiliations.

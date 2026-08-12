@@ -138,6 +138,16 @@ The Events page now shows whatever you type into its page editor above the
 list of events, so you can add a welcome, meeting location, or directions —
 matching the other SocietyPress page templates.
 
+### Fixed
+
+**Saving a page left you sitting on the same screen**
+
+You pressed Save, it saved, and nothing else happened — no move to a fresh
+page, and a refresh asking whether to send the form again. Saves are now
+finished before the page starts being drawn, so the screen moves on the way it
+always should have. The Modules screen has been rebuilt properly on top of
+that; the rest follow the same route in a later release.
+
 ### Changed
 
 **One Appearance screen instead of three**

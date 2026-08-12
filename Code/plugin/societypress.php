@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.5
+ * Version:     1.1.8
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.5' );
+define( 'SOCIETYPRESS_VERSION', '1.1.8' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6724,6 +6724,19 @@ add_action( 'admin_menu', function () {
     //      topics he doesn't care about right now.
     // -----------------------------------------------------------------
 
+    // Affiliations — logos of the bodies the society belongs to, shown in the
+    // footer. Registered next to the other website-content screens because
+    // that is where somebody goes looking for something that appears on every
+    // page of their site.
+    add_submenu_page(
+        'societypress',
+        __( 'Affiliations — SocietyPress', 'societypress' ),
+        __( 'Affiliations', 'societypress' ),
+        'manage_options',
+        'sp-affiliations',
+        'sp_render_affiliations_page'
+    );
+
     // WHY "Site Basics" and not "Website": the sidebar already has a group
     // called Website, so "check the website settings" pointed at two different
     // places. This screen holds the site's title, tagline, admin email,
@@ -7041,6 +7054,7 @@ function sp_get_menu_capability_map(): array {
         'sp-page-edit'             => 'sp_manage_content',
         'upload.php'               => 'sp_manage_content',
         'sp-menus'                 => 'sp_manage_content',
+        'sp-affiliations'          => 'sp_manage_content',
         'widgets.php'              => 'sp_manage_settings',
         // nav-menus.php and customize.php are deliberately absent: neither is
         // registered as a submenu any more (see the WHY blocks in the menu
@@ -7143,7 +7157,23 @@ add_action( 'admin_menu', function () {
         unset( $item );
     }
 
-}, 998 ); // Priority 998 = after all menus registered (999) but before module filter (1000)
+// WHY 1001 and not 998: the comment here used to claim 998 ran "after all menus
+// registered (999)", which is backwards — a lower priority runs FIRST. The
+// remap fired before the main menu block at 999 had registered anything, so the
+// ~75 screens in that block were never remapped and kept the placeholder
+// manage_options they register with. Only the handful of screens registered in
+// their own earlier callbacks (Menus, Theme Presets, Insights, the audit logs)
+// were picked up, which is why the capability map looked like it was working.
+//
+// The effect was that the ten access areas did almost nothing for the sidebar:
+// a Treasurer or Librarian with sp_manage_finances or sp_manage_library saw an
+// almost empty menu, because every screen still demanded a WordPress
+// administrator's manage_options.
+//
+// 1001 puts this after the menu block (999) and after the module filter (1000).
+// Running after the module filter is harmless — that pass only removes items,
+// and remapping what survives is exactly the intent.
+}, 1001 );
 
 
 // ============================================================================
@@ -8413,6 +8443,162 @@ function sp_social_icons(): void {
             $network['svg'] // Already hardcoded SVG — safe
         );
     }
+    echo '</div>';
+}
+
+
+// ============================================================================
+// AFFILIATIONS — Logos of the bodies a society belongs to
+//
+// WHY this exists as its own feature rather than "add an image widget":
+//      Nearly every society belongs to something — a national body, a state
+//      body, a lineage organisation — and showing those logos in the footer is
+//      one of the first things an administrator wants to do. Before this, the
+//      only route was Widgets: work out which footer column, add an Image
+//      widget, upload, then hand-write the link. Nothing on that screen said
+//      it was where affiliation logos went, so people reasonably concluded it
+//      could not be done. A screen named "Affiliations", holding a logo, a
+//      name and a link, is findable by someone who has never seen this admin
+//      before — which is the whole point.
+//
+// WHY its own option and not a table: this is a short ordered list — a society
+//      has two or three of these, not two hundred.
+//
+// WHY its own option and not the societypress_settings array: that option is
+//      registered through the Settings API, so update_option() on it runs
+//      sp_sanitize_settings(), which rebuilds the array from the saved copy and
+//      applies only the keys belonging to the submitting settings page. Any key
+//      written from outside that flow is dropped on the floor — the save would
+//      appear to work and change nothing. It also demands sp_manage_settings,
+//      while this screen is for whoever looks after site content. A standalone
+//      sp_* option sidesteps both, matching sp_menu_layout and sp_saved_presets.
+// ============================================================================
+
+/**
+ * Everything stored for affiliations: the optional heading and the rows.
+ *
+ * @return array{heading:string, rows:array}
+ */
+function sp_get_affiliations_option(): array {
+    $stored = get_option( 'sp_affiliations', [] );
+
+    return [
+        'heading' => is_array( $stored ) ? (string) ( $stored['heading'] ?? '' ) : '',
+        'rows'    => is_array( $stored ) && isset( $stored['rows'] ) && is_array( $stored['rows'] ) ? $stored['rows'] : [],
+    ];
+}
+
+/**
+ * The society's affiliations, in display order.
+ *
+ * Stored rows are normalised on read so a hand-edited or partially-saved
+ * option can never reach the front of the site as a broken <img>.
+ *
+ * @return array<int, array{attachment_id:int, name:string, url:string}>
+ */
+function sp_get_affiliations(): array {
+    $rows = sp_get_affiliations_option()['rows'];
+
+    if ( ! is_array( $rows ) ) {
+        return [];
+    }
+
+    $out = [];
+    foreach ( $rows as $row ) {
+        if ( ! is_array( $row ) ) {
+            continue;
+        }
+
+        $id = (int) ( $row['attachment_id'] ?? 0 );
+
+        // A row without a picture has nothing to render. Dropping it here
+        // rather than at save time means an administrator who uploads later
+        // does not lose the name and link they already typed.
+        if ( $id <= 0 ) {
+            continue;
+        }
+
+        $out[] = [
+            'attachment_id' => $id,
+            'name'          => (string) ( $row['name'] ?? '' ),
+            'url'           => (string) ( $row['url'] ?? '' ),
+        ];
+    }
+
+    return $out;
+}
+
+/**
+ * Render the affiliation logos. Called from the footer of every SocietyPress
+ * theme, parent and child alike.
+ *
+ * WHY a plugin function called by the themes rather than a wp_footer hook:
+ * wp_footer fires at the very end of <body>, outside the <footer> element, so
+ * the logos would land beneath the footer's background instead of inside it.
+ * Each theme calls this where its own design wants the row to sit.
+ */
+function sp_affiliation_logos(): void {
+    $rows = sp_get_affiliations();
+
+    // Nothing configured — print nothing at all, not an empty container that
+    // would still take up vertical space in the footer.
+    if ( empty( $rows ) ) {
+        return;
+    }
+
+    $heading = trim( sp_get_affiliations_option()['heading'] );
+
+    echo '<div class="sp-affiliations">';
+
+    if ( $heading !== '' ) {
+        echo '<p class="sp-affiliations-heading">' . esc_html( $heading ) . '</p>';
+    }
+
+    echo '<ul class="sp-affiliations-list">';
+
+    foreach ( $rows as $row ) {
+        // WHY the name is the alt text: for a logo that links somewhere, what a
+        // screen reader needs to announce is where the link goes, not a
+        // description of the artwork. An administrator who fills in "National
+        // Genealogical Society" has already written the correct alt text
+        // without being asked to think about alt text.
+        $alt = $row['name'] !== '' ? $row['name'] : '';
+
+        $img = wp_get_attachment_image(
+            $row['attachment_id'],
+            'medium',
+            false,
+            [
+                'alt'     => $alt,
+                'class'   => 'sp-affiliation-logo',
+                'loading' => 'lazy',
+            ]
+        );
+
+        // The attachment could have been deleted from the media library after
+        // it was chosen here. Skip the row rather than emitting a broken image.
+        if ( ! $img ) {
+            continue;
+        }
+
+        echo '<li class="sp-affiliation">';
+
+        $url = $row['url'] !== '' ? esc_url( $row['url'] ) : '';
+
+        if ( $url !== '' ) {
+            printf(
+                '<a href="%s" class="sp-affiliation-link" target="_blank" rel="noopener noreferrer">%s</a>',
+                $url,
+                $img // wp_get_attachment_image() output is already escaped.
+            );
+        } else {
+            echo $img; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- core-escaped markup.
+        }
+
+        echo '</li>';
+    }
+
+    echo '</ul>';
     echo '</div>';
 }
 
@@ -11082,7 +11268,7 @@ function sp_default_menu_config(): array {
               // Settings under "Back office", named for what it actually edits.
               // WHY customize.php is gone entirely: see the menu registration
               // block — nothing SocietyPress ships populates the Customizer.
-              'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'upload.php', 'widgets.php', 'sp-short-links',
+              'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'sp-affiliations', 'upload.php', 'widgets.php', 'sp-short-links',
                            [ 'heading' => __( 'How it looks', 'societypress' ) ],
                            'sp-themes', 'sp-theme-presets', 'sp-settings-design',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
@@ -104403,6 +104589,302 @@ add_action( 'admin_post_sp_spchildtheme_import', function () {
     exit;
 } );
 
+
+/**
+ * The Affiliations admin page — Website -> Affiliations.
+ *
+ * WHY the whole list saves as one form rather than row-by-row AJAX: an
+ * administrator adding three logos thinks of it as one job, and a Save button
+ * they can see is easier to trust than rows that silently save themselves.
+ * The only JavaScript here opens the media library and adds or removes a row
+ * in the page; nothing is stored until Save is pressed.
+ */
+function sp_render_affiliations_page(): void {
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    $saved = false;
+
+    if ( isset( $_POST['sp_affiliations_submit'] ) ) {
+        check_admin_referer( 'sp_save_affiliations' );
+
+        $rows_in  = isset( $_POST['sp_affiliation'] ) && is_array( $_POST['sp_affiliation'] )
+            ? wp_unslash( $_POST['sp_affiliation'] )
+            : [];
+        $rows_out = [];
+
+        foreach ( $rows_in as $row ) {
+            if ( ! is_array( $row ) ) {
+                continue;
+            }
+
+            $id = (int) ( $row['attachment_id'] ?? 0 );
+
+            // A row with no picture chosen is an empty row the administrator
+            // added and then left alone. Dropping it silently is kinder than
+            // an error message about a row they were not using.
+            if ( $id <= 0 ) {
+                continue;
+            }
+
+            $rows_out[] = [
+                'attachment_id' => $id,
+                'name'          => sanitize_text_field( $row['name'] ?? '' ),
+                'url'           => esc_url_raw( trim( (string) ( $row['url'] ?? '' ) ) ),
+            ];
+        }
+
+        update_option( 'sp_affiliations', [
+            'heading' => sanitize_text_field( wp_unslash( $_POST['sp_affiliations_heading'] ?? '' ) ),
+            'rows'    => $rows_out,
+        ] );
+
+        sp_audit( 'settings_updated', 'Affiliations saved.', 'settings' );
+
+        $saved = true;
+    }
+
+    $stored  = sp_get_affiliations_option();
+    $rows    = sp_get_affiliations();
+    $heading = $stored['heading'];
+
+    wp_enqueue_media();
+    ?>
+    <style id="sp-affiliations-css">
+        .sp-affiliation-row { padding: 12px 16px; margin: 0 0 12px; }
+        .sp-affiliation-grid { display: flex; gap: 20px; align-items: flex-start; }
+        .sp-affiliation-preview { width: 110px; flex-shrink: 0; min-height: 60px; display: flex; align-items: center; justify-content: center; background: #f6f7f7; border: 1px dashed #c3c4c7; border-radius: 4px; }
+        .sp-affiliation-preview img { max-width: 100%; height: auto; display: block; }
+        .sp-affiliation-fields { flex: 1; min-width: 0; }
+        .sp-affiliation-fields p { margin: 0 0 10px; }
+        .sp-affiliation-label { display: block; font-weight: 600; margin-bottom: 3px; }
+        .sp-affiliation-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; width: 150px; flex-shrink: 0; }
+        .sp-affiliation-actions .sp-affiliation-up,
+        .sp-affiliation-actions .sp-affiliation-down { width: 100%; }
+        @media screen and (max-width: 782px) {
+            .sp-affiliation-grid { flex-direction: column; }
+            .sp-affiliation-actions { width: 100%; }
+        }
+    </style>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Affiliations', 'societypress' ); ?></h1>
+        <p class="description">
+            <?php esc_html_e( 'Show the logos of the organisations your society belongs to — a national body, a state society, a lineage organisation — at the bottom of every page. Add the logo, type the organisation\'s name, and paste a link to their website. The name is what a screen reader reads out, so it is worth filling in.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( $saved ) : ?>
+            <div class="notice notice-success is-dismissible">
+                <p><?php esc_html_e( 'Affiliations saved. They appear in your footer straight away.', 'societypress' ); ?></p>
+            </div>
+        <?php endif; ?>
+
+        <form method="post">
+            <?php wp_nonce_field( 'sp_save_affiliations' ); ?>
+
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row">
+                        <label for="sp_affiliations_heading"><?php esc_html_e( 'Wording above the logos', 'societypress' ); ?></label>
+                    </th>
+                    <td>
+                        <input type="text" id="sp_affiliations_heading" name="sp_affiliations_heading"
+                               class="regular-text" value="<?php echo esc_attr( $heading ); ?>"
+                               placeholder="<?php esc_attr_e( 'Proud member of', 'societypress' ); ?>">
+                        <p class="description"><?php esc_html_e( 'Optional. Leave this empty to show the logos on their own.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+            </table>
+
+            <h2><?php esc_html_e( 'Organisations', 'societypress' ); ?></h2>
+
+            <div id="sp-affiliations-rows">
+                <?php foreach ( $rows as $i => $row ) : ?>
+                    <?php sp_affiliation_row_markup( (int) $i, $row ); ?>
+                <?php endforeach; ?>
+            </div>
+
+            <p>
+                <button type="button" class="button" id="sp-affiliation-add">
+                    <?php esc_html_e( '+ Add an organisation', 'societypress' ); ?>
+                </button>
+            </p>
+
+            <p class="description" id="sp-affiliations-empty" <?php echo $rows ? 'hidden' : ''; ?>>
+                <?php esc_html_e( 'No organisations yet. Add one and it will appear in your footer.', 'societypress' ); ?>
+            </p>
+
+            <?php submit_button( __( 'Save Affiliations', 'societypress' ), 'primary', 'sp_affiliations_submit' ); ?>
+        </form>
+
+        <template id="sp-affiliation-template">
+            <?php sp_affiliation_row_markup( 0, [ 'attachment_id' => 0, 'name' => '', 'url' => '' ], true ); ?>
+        </template>
+    </div>
+
+    <script>
+    (function () {
+        var rows     = document.getElementById('sp-affiliations-rows');
+        var addBtn   = document.getElementById('sp-affiliation-add');
+        var template = document.getElementById('sp-affiliation-template');
+        var empty    = document.getElementById('sp-affiliations-empty');
+        if (!rows || !addBtn || !template) return;
+
+        /* Row names carry an index so PHP receives an ordered array. Renumbering
+           after every add or remove keeps the indexes contiguous, which is what
+           lets a removed middle row not leave a hole in the saved order. */
+        function renumber() {
+            Array.prototype.forEach.call(rows.children, function (row, i) {
+                row.querySelectorAll('[name]').forEach(function (field) {
+                    field.name = field.name.replace(/sp_affiliation\[\d*\]/, 'sp_affiliation[' + i + ']');
+                });
+            });
+            if (empty) empty.hidden = rows.children.length > 0;
+        }
+
+        function wire(row) {
+            var chooseBtn = row.querySelector('.sp-affiliation-choose');
+            var removeBtn = row.querySelector('.sp-affiliation-remove');
+            var upBtn     = row.querySelector('.sp-affiliation-up');
+            var downBtn   = row.querySelector('.sp-affiliation-down');
+            var idField   = row.querySelector('.sp-affiliation-id');
+            var preview   = row.querySelector('.sp-affiliation-preview');
+
+            if (chooseBtn) {
+                chooseBtn.addEventListener('click', function () {
+                    var frame = wp.media({
+                        title: <?php echo wp_json_encode( __( 'Choose a logo', 'societypress' ) ); ?>,
+                        button: { text: <?php echo wp_json_encode( __( 'Use this logo', 'societypress' ) ); ?> },
+                        library: { type: 'image' },
+                        multiple: false
+                    });
+                    frame.on('select', function () {
+                        var att = frame.state().get('selection').first().toJSON();
+                        idField.value = att.id;
+                        var src = (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url;
+                        preview.innerHTML = '';
+                        var img = document.createElement('img');
+                        img.src = src;
+                        img.alt = '';
+                        preview.appendChild(img);
+                        chooseBtn.textContent = <?php echo wp_json_encode( __( 'Change logo', 'societypress' ) ); ?>;
+                    });
+                    frame.open();
+                });
+            }
+
+            if (removeBtn) {
+                removeBtn.addEventListener('click', function () {
+                    row.remove();
+                    renumber();
+                });
+            }
+
+            /* Arrow buttons rather than drag-and-drop, matching the Menus screen:
+               one click moves one place, and it works with a keyboard. */
+            if (upBtn) {
+                upBtn.addEventListener('click', function () {
+                    if (row.previousElementSibling) {
+                        rows.insertBefore(row, row.previousElementSibling);
+                        renumber();
+                        upBtn.focus();
+                    }
+                });
+            }
+            if (downBtn) {
+                downBtn.addEventListener('click', function () {
+                    if (row.nextElementSibling) {
+                        rows.insertBefore(row.nextElementSibling, row);
+                        renumber();
+                        downBtn.focus();
+                    }
+                });
+            }
+        }
+
+        Array.prototype.forEach.call(rows.children, wire);
+
+        addBtn.addEventListener('click', function () {
+            var frag = template.content.cloneNode(true);
+            var row  = frag.querySelector('.sp-affiliation-row');
+            rows.appendChild(frag);
+            wire(row);
+            renumber();
+            var nameField = row.querySelector('input[type="text"]');
+            if (nameField) nameField.focus();
+        });
+
+        renumber();
+    })();
+    </script>
+    <?php
+}
+
+/**
+ * One editable affiliation row, used for both saved rows and the blank
+ * template the Add button clones.
+ *
+ * @param int   $index    Position in the list.
+ * @param array $row      attachment_id / name / url.
+ * @param bool  $template True when rendering the hidden <template> copy.
+ */
+function sp_affiliation_row_markup( int $index, array $row, bool $template = false ): void {
+    $id   = (int) ( $row['attachment_id'] ?? 0 );
+    $name = (string) ( $row['name'] ?? '' );
+    $url  = (string) ( $row['url'] ?? '' );
+
+    // The template copy must not carry a real index, or the first added row
+    // would collide with the row already sitting at position 0.
+    $key = $template ? '' : (string) $index;
+    ?>
+    <div class="sp-affiliation-row card">
+        <div class="sp-affiliation-grid">
+            <div class="sp-affiliation-preview">
+                <?php
+                if ( $id > 0 ) {
+                    echo wp_get_attachment_image( $id, 'thumbnail', false, [ 'alt' => '' ] );
+                }
+                ?>
+            </div>
+
+            <div class="sp-affiliation-fields">
+                <p>
+                    <label class="sp-affiliation-label" for="sp-aff-name-<?php echo esc_attr( $key ); ?>">
+                        <?php esc_html_e( 'Organisation name', 'societypress' ); ?>
+                    </label>
+                    <input type="text" id="sp-aff-name-<?php echo esc_attr( $key ); ?>"
+                           name="sp_affiliation[<?php echo esc_attr( $key ); ?>][name]"
+                           class="regular-text" value="<?php echo esc_attr( $name ); ?>"
+                           placeholder="<?php esc_attr_e( 'National Genealogical Society', 'societypress' ); ?>">
+                </p>
+                <p>
+                    <label class="sp-affiliation-label" for="sp-aff-url-<?php echo esc_attr( $key ); ?>">
+                        <?php esc_html_e( 'Their website', 'societypress' ); ?>
+                    </label>
+                    <input type="url" id="sp-aff-url-<?php echo esc_attr( $key ); ?>"
+                           name="sp_affiliation[<?php echo esc_attr( $key ); ?>][url]"
+                           class="regular-text" value="<?php echo esc_attr( $url ); ?>"
+                           placeholder="https://example.org">
+                </p>
+            </div>
+
+            <div class="sp-affiliation-actions">
+                <input type="hidden" class="sp-affiliation-id"
+                       name="sp_affiliation[<?php echo esc_attr( $key ); ?>][attachment_id]"
+                       value="<?php echo esc_attr( (string) $id ); ?>">
+                <button type="button" class="button sp-affiliation-choose">
+                    <?php echo $id > 0 ? esc_html__( 'Change logo', 'societypress' ) : esc_html__( 'Choose logo', 'societypress' ); ?>
+                </button>
+                <button type="button" class="button sp-affiliation-up" aria-label="<?php esc_attr_e( 'Move up', 'societypress' ); ?>">&uarr;</button>
+                <button type="button" class="button sp-affiliation-down" aria-label="<?php esc_attr_e( 'Move down', 'societypress' ); ?>">&darr;</button>
+                <button type="button" class="button-link delete sp-affiliation-remove">
+                    <?php esc_html_e( 'Remove', 'societypress' ); ?>
+                </button>
+            </div>
+        </div>
+    </div>
+    <?php
+}
 
 /**
  * The Theme Presets admin page.

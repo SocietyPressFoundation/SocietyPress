@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // the parent theme safe against child theme copies. If a child theme wants
 // its own version it should define a differently-named constant.
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.1.7' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.1.8' );
 }
 
 
@@ -262,4 +262,41 @@ add_action( 'widgets_init', function () {
         'before_title'  => '<h2 class="widget-title">',
         'after_title'   => '</h2>',
     ]);
+
+    /*
+     * Footer columns.
+     *
+     * WHY the parent theme has these at all: every child theme already
+     * registered its own three footer columns, so a society running the plain
+     * SocietyPress theme was the only one with no way to put anything of its
+     * own in the footer — the three columns were fixed in the template. That
+     * asymmetry meant advice that worked on Heritage was simply wrong on the
+     * parent.
+     *
+     * WHY the footer still shows its built-in content: leaving a column empty
+     * keeps the organisation details, quick links and social icons exactly as
+     * they were. A column only gives way once a widget is put in it, so a site
+     * that never opens this screen looks no different, and a site that does
+     * gets the column without losing anything it did not choose to replace.
+     */
+    $footer_columns = [
+        1 => esc_html__( 'Footer Column 1', 'societypress' ),
+        2 => esc_html__( 'Footer Column 2', 'societypress' ),
+        3 => esc_html__( 'Footer Column 3', 'societypress' ),
+    ];
+
+    foreach ( $footer_columns as $number => $label ) {
+        register_sidebar([
+            'name'          => $label,
+            'id'            => 'sp-footer-' . $number,
+            'description'   => esc_html__( 'Widgets here replace this column of the footer. Leave it empty to keep what the footer already shows. To add logos of organisations you belong to, use Website → Affiliations instead.', 'societypress' ),
+            'before_widget' => '<div id="%1$s" class="widget %2$s">',
+            'after_widget'  => '</div>',
+            // <h3> matches the .footer-heading level the built-in columns use,
+            // so a widgetised column does not jump heading levels next to a
+            // column that is still showing the default content.
+            'before_title'  => '<h3 class="footer-heading">',
+            'after_title'   => '</h3>',
+        ]);
+    }
 });

@@ -92,12 +92,35 @@ Worth stating plainly so none of it gets "fixed" during cleanup:
 - **Retired-group folding works** (`sp_retired_menu_groups()`, `sp_fold_retired_menu_groups()`).
   A society that customised its layout gets an upgrade that reads as a rearrangement rather than
   duplicated screens. It is read-only until the admin next saves. This is careful work.
-- **The capability layer is coherent.** 75 of 80 screens register with `manage_options`, which
-  looks alarming in isolation, but an `admin_menu` pass at priority 998 (line 7086) remaps every
-  item from a 107-entry map. The registered capability is vestigial; the map is the real gate.
-  The four screens absent from the map (`sp-insights`, `sp-import-newsletters`,
-  `sp-import-records-bulk`, `sp-menu-layout`) already register their own correct capability.
-  **No permissions defect found.** The IA problem is not a permissions problem.
+- ~~**The capability layer is coherent.**~~ **WRONG — see the correction below.** The audit
+  originally recorded that the 75 screens registering with `manage_options` were harmlessly
+  remapped by an `admin_menu` pass, and concluded "no permissions defect found". The map existed
+  and was correct; the pass that applies it did not run in time.
+
+  **What was actually happening:** the remap was hooked at priority **998**, and the block that
+  registers the ~75 main screens runs at priority **999**. A lower priority runs *first*, so the
+  remap fired before those menus existed and silently did nothing to them. Only the handful of
+  screens registered in their own earlier callbacks — Menus, Theme Presets, Insights, the audit
+  logs — were ever remapped, which is exactly why spot-checking the map looked reassuring. The
+  in-code comment asserted the opposite ("Priority 998 = after all menus registered (999)"), and
+  the audit took it at face value instead of testing it.
+
+  **The effect:** the ten access areas did almost nothing for the sidebar. A Treasurer holding
+  `sp_manage_finances`, or a Librarian holding `sp_manage_library`, still faced screens demanding
+  a WordPress administrator's `manage_options`, so they saw an all-but-empty menu. The role
+  templates were real, granted correctly, and then overruled by the menu.
+
+  **Fixed 2026-08-12** by moving the remap to priority 1001 — after the menu block at 999 and
+  after the module filter at 1000, which only removes items. Verified live on demo: screens
+  registering `manage_options` fell from 75 to 2 (`sp-menu-layout` and `sp-user-access`, both
+  correctly administrator-only), with the rest spread across `sp_manage_content` (18),
+  `sp_manage_settings` (15), `sp_manage_members` (7), `sp_manage_governance` (7),
+  `sp_manage_communications` (6), `sp_manage_library` (5), `sp_manage_events` (5),
+  `sp_manage_finances` (5), `sp_view_reports` (4) and `sp_manage_records` (3).
+
+  **The lesson:** a comment asserting an invariant is not evidence the invariant holds. This one
+  was confidently worded, wrong, and load-bearing for a whole permissions feature. Test the
+  behaviour, especially when the claim is what lets you skip testing it.
 - **Placement coverage is near-total.** One orphan, one ghost, no duplicates, nothing registered
   twice.
 

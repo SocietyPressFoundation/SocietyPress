@@ -27,6 +27,9 @@ $org_email   = $sp['organization_email']   ?? '';
 
             <!-- Column 1: Organization info -->
             <div class="footer-col footer-col-info">
+                <?php if ( is_active_sidebar( 'sp-footer-1' ) ) : ?>
+                    <?php dynamic_sidebar( 'sp-footer-1' ); ?>
+                <?php else : ?>
                 <h3 class="footer-heading"><?php echo esc_html( $org_name ); ?></h3>
                 <?php if ( $org_address ) : ?>
                     <p class="footer-text"><?php echo nl2br( esc_html( $org_address ) ); ?></p>
@@ -45,11 +48,14 @@ $org_email   = $sp['organization_email']   ?? '';
                         </a>
                     </p>
                 <?php endif; ?>
+                <?php endif; ?>
             </div>
 
             <!-- Column 2: Footer navigation menu -->
             <div class="footer-col footer-col-nav">
-                <?php if ( has_nav_menu( 'footer' ) ) : ?>
+                <?php if ( is_active_sidebar( 'sp-footer-2' ) ) : ?>
+                    <?php dynamic_sidebar( 'sp-footer-2' ); ?>
+                <?php elseif ( has_nav_menu( 'footer' ) ) : ?>
                     <h3 class="footer-heading"><?php esc_html_e( 'Quick Links', 'societypress' ); ?></h3>
                     <?php
                     wp_nav_menu([
@@ -79,6 +85,9 @@ $org_email   = $sp['organization_email']   ?? '';
 
             <!-- Column 3: Social media & connect -->
             <div class="footer-col footer-col-social">
+                <?php if ( is_active_sidebar( 'sp-footer-3' ) ) : ?>
+                    <?php dynamic_sidebar( 'sp-footer-3' ); ?>
+                <?php else : ?>
                 <h3 class="footer-heading"><?php esc_html_e( 'Connect', 'societypress' ); ?></h3>
                 <?php if ( function_exists( 'sp_social_icons' ) ) : ?>
                     <?php sp_social_icons( 'footer' ); ?>
@@ -86,9 +95,23 @@ $org_email   = $sp['organization_email']   ?? '';
                 <p class="footer-text footer-tagline">
                     <?php echo esc_html( get_bloginfo( 'description' ) ?: '' ); ?>
                 </p>
+                <?php endif; ?>
             </div>
 
         </div>
+
+        <?php
+        /*
+         * Affiliation logos — the organisations this society belongs to, set at
+         * Website → Affiliations. Placed below the columns and above the
+         * copyright line because that is where a badge row reads as belonging
+         * to the whole site rather than to one column of it. Prints nothing at
+         * all when none are configured.
+         */
+        if ( function_exists( 'sp_affiliation_logos' ) ) {
+            sp_affiliation_logos();
+        }
+        ?>
 
         <!-- Bottom bar: copyright + powered-by -->
         <div class="footer-bottom">

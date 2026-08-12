@@ -74,6 +74,17 @@
 
         </div>
 
+        <?php
+        /*
+         * Affiliation logos — set at Website → Affiliations in the admin.
+         * Sits above the bottom bar so the badges read as belonging to the
+         * whole site. Prints nothing when none are configured.
+         */
+        if ( function_exists( 'sp_affiliation_logos' ) ) {
+            sp_affiliation_logos();
+        }
+        ?>
+
         <!-- Bottom bar: copyright.
              WHY separate bar: Visually anchors the page and gives a clear
              "end of page" signal. Standard pattern for organizational sites. -->

@@ -138,7 +138,54 @@ The Events page now shows whatever you type into its page editor above the
 list of events, so you can add a welcome, meeting location, or directions —
 matching the other SocietyPress page templates.
 
+### Added
+
+**Show the organisations your society belongs to**
+
+There is now a screen at **Website → Affiliations** for the logos of the bodies
+your society is a member of — a national organisation, a state society, a
+lineage group. Add the logo, type the organisation's name, paste a link to
+their website, and it appears in the footer of every page.
+
+Rows can be reordered with up and down buttons, and there is an optional line
+of wording above them — "Proud member of", or whatever suits. Nothing appears
+in the footer until you add something, so a society that does not use this sees
+no change at all.
+
+Before this there was no supported way to do it. The footer's three columns
+were fixed in the theme, so the only route was the Widgets screen, which said
+nothing about logos and did not exist on the plain SocietyPress theme at all.
+
+The organisation's name doubles as the image's alt text, so screen readers
+announce where the link goes without anyone having to think about alt text.
+
+**Footer columns on the SocietyPress theme**
+
+The five child themes each let you put widgets in three footer columns; the
+plain SocietyPress theme did not, so advice that worked on Heritage was simply
+wrong on the parent. It now has the same three columns.
+
+Leaving a column empty keeps the footer exactly as it was — your organisation's
+details, quick links and social icons. A column only gives way once you put a
+widget in it, so nothing changes underneath a society that never opens the
+screen.
+
 ### Fixed
+
+**Staff with limited roles could barely see the admin menu**
+
+A Treasurer, Librarian or Archivist signed in and found an almost empty
+sidebar, even with their role correctly granted. The ten access areas were
+being worked out properly and then overruled: the code that applies them to the
+menu ran a step too early, before most screens had been registered, so around
+75 of them went on demanding full administrator access.
+
+Every screen now enforces the access area it was meant to. Screens requiring
+full administrator rights are down to two — the Admin Sidebar editor and User
+Access — which are the two that genuinely should.
+
+If you set up roles and concluded they did not work, they did. This was the
+menu ignoring them.
 
 **Two menus called "Menus", and a screen that changed the wrong thing entirely**
 

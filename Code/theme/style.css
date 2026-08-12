@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.7
+Version: 1.1.8
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -1316,6 +1316,93 @@ article.post:last-child {
 
 .footer-nav a:hover {
     color: #fff;
+}
+
+/* Affiliation logos — the bodies the society belongs to.
+
+   WHY the logos get a white pill behind them: affiliation marks arrive as
+   whatever file the parent organisation publishes, and most are dark artwork
+   on a transparent background. Dropped straight onto a navy footer, half of
+   them vanish. A light plate means an administrator can use the file they were
+   given without opening an image editor, which is the difference between this
+   feature working and not.
+
+   Sizing is by max-height rather than width so logos of wildly different
+   proportions — a tall crest next to a wide wordmark — end up looking like
+   they belong on the same row. */
+.sp-affiliations {
+    padding: 24px 20px 4px;
+    text-align: center;
+}
+
+.sp-affiliations-heading {
+    margin: 0 0 14px;
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.75;
+}
+
+.sp-affiliations-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+}
+
+.sp-affiliation {
+    margin: 0;
+    padding: 0;
+}
+
+.sp-affiliation img {
+    display: block;
+    max-height: 56px;
+    width: auto;
+    max-width: 190px;
+    background: #fff;
+    border-radius: 4px;
+    padding: 8px 12px;
+}
+
+/* The link is the only interactive thing in this row, so it carries the hover
+   and focus treatment rather than the image inside it. */
+.sp-affiliation-link {
+    display: block;
+    text-decoration: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.sp-affiliation-link:hover,
+.sp-affiliation-link:focus-visible {
+    opacity: 0.85;
+    transform: translateY(-2px);
+}
+
+.sp-affiliation-link:focus-visible {
+    outline: 2px solid var(--sp-color-footer-link, #fff);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sp-affiliation-link {
+        transition: none;
+    }
+    .sp-affiliation-link:hover,
+    .sp-affiliation-link:focus-visible {
+        transform: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .sp-affiliation img {
+        max-height: 44px;
+        max-width: 140px;
+    }
 }
 
 /* Footer bottom bar — copyright line */

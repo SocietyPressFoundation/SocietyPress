@@ -140,6 +140,41 @@ matching the other SocietyPress page templates.
 
 ### Fixed
 
+**Two menus called "Menus", and a screen that changed the wrong thing entirely**
+
+The sidebar had grown two entries both labelled **Menus** — the SocietyPress
+one, and WordPress's own, sitting loose at the bottom. Only the SocietyPress
+screen explains what it does, so a volunteer had a 50/50 chance of making a
+change nothing would ever walk them through. WordPress's version is no longer
+in the sidebar.
+
+Worse, **Menu Layout** sat under *Website → How it looks*, in among Themes and
+Design. It does not touch your website. It arranges the sidebar that staff see
+after signing in, for everyone in the society. Somebody looking for their site's
+appearance could rearrange the back office for the whole committee without
+realising. It is now called **Admin Sidebar**, it lives in *Settings* under a
+new **Back office** heading, and the page says plainly that it does not affect
+what visitors see.
+
+**Customize** has been removed. It opened WordPress's Customizer, which nothing
+in SocietyPress fills in — so it offered a handful of WordPress's own controls
+that either repeated *Website → Design* or quietly disagreed with it. Everything
+it appeared to offer is on the Design screen.
+
+Three things have been renamed to say what they are:
+
+- **Settings → Website** is now **Settings → Site Basics**. There was already a
+  *Website* group in the sidebar, so "check the website settings" pointed at two
+  different places. This screen holds the site's title, tagline, admin email,
+  timezone, date and time formats, homepage and visibility — basics, not the
+  look.
+- **Add Images** is now **Photos & Albums**. It manages albums; adding images is
+  one thing you do there, so anyone looking for photos already uploaded had no
+  reason to think this was the place.
+- **Record Payment** no longer appears in the Money list. It never actually did
+  — it was named there but could not show up, because it is a screen you reach
+  from the button on Payment History.
+
 **Members were sent to a WordPress error screen when they logged in**
 
 Signing in dropped every member on "Sorry, you are not allowed to access this

@@ -5697,7 +5697,7 @@ add_action( 'admin_init', function () {
  * Board, Volunteers, Library, Research, Newsletters & Email, Website, Reports,
  * Settings — each opening a flyout panel of its screens.
  * That function is the source of truth for the arrangement; an administrator
- * can override it from Appearance → Menu Layout. Anything registered but not
+ * can override it from Settings → Admin Sidebar. Anything registered but not
  * listed there is appended below the groups rather than lost.
  */
 // ---- SocietyPress = Dashboard (parent menu) — registered EARLY ----
@@ -5809,10 +5809,16 @@ add_action( 'admin_menu', function () {
     //      site-wide change, so it's limited to full administrators rather
     //      than every delegated SP staffer.
     // -----------------------------------------------------------------
+    // WHY "Admin Sidebar" and not "Menu Layout": this screen arranges the
+    // back-office sidebar, but "Menu Layout" sat one line from the Menus screen
+    // that edits the PUBLIC navigation, and the two names gave a volunteer
+    // nothing to tell them apart. Naming it for the thing it edits removes the
+    // guess. It also moved out of the Website group for the same reason — see
+    // sp_default_menu_config().
     add_submenu_page(
         'societypress',
-        __( 'Menu Layout — SocietyPress', 'societypress' ),
-        __( 'Menu Layout', 'societypress' ),
+        __( 'Admin Sidebar — SocietyPress', 'societypress' ),
+        __( 'Admin Sidebar', 'societypress' ),
         'manage_options',
         'sp-menu-layout',
         'sp_render_menu_layout_page'
@@ -6115,10 +6121,14 @@ add_action( 'admin_menu', function () {
     // WHY: Societies take photos at every event. Albums organize them.
     // -----------------------------------------------------------------
 
+    // WHY "Photos & Albums" and not "Add Images": the screen manages albums and
+    // their contents. "Add Images" named one action taken on it, so a volunteer
+    // looking for photos they had already uploaded had no reason to think this
+    // was the place.
     add_submenu_page(
         'societypress',
-        __( 'Add Images — SocietyPress', 'societypress' ),
-        __( 'Add Images', 'societypress' ),
+        __( 'Photos & Albums — SocietyPress', 'societypress' ),
+        __( 'Photos & Albums', 'societypress' ),
         'manage_options',
         'sp-gallery',
         'sp_render_gallery_page'
@@ -6643,13 +6653,17 @@ add_action( 'admin_menu', function () {
         'upload.php'
     );
 
-    add_submenu_page(
-        'societypress',
-        __( 'Menus', 'societypress' ),
-        __( 'Menus', 'societypress' ),
-        'manage_options',
-        'nav-menus.php'
-    );
+    // WHY WordPress's own Menus screen is NOT registered here: the SocietyPress
+    // Menus screen (sp-menus) supersedes Appearance -> Menus for everyday
+    // editing — same underlying data, but arrow buttons instead of
+    // drag-and-drop, worded actions instead of icons, and a visibility control.
+    // sp_default_menu_config() has always listed sp-menus and deliberately
+    // omitted nav-menus.php, but the registration below it was left in place,
+    // so core's screen came back as an unplaced item appended beneath the
+    // groups. The result was two entries both called "Menus", which is the
+    // exact "two doors on one room" the config comment warns about. Core's
+    // screen stays reachable by direct link for the importer redirect and the
+    // "create a menu" buttons; it just no longer sits in the sidebar.
 
     add_submenu_page(
         'societypress',
@@ -6659,20 +6673,15 @@ add_action( 'admin_menu', function () {
         'widgets.php'
     );
 
-    // Customize — links to the WordPress Customizer (themes register front-end
-    // editing surfaces here). WHY: SocietyPress strips the default WP
-    // Appearance menu and the front-end admin-bar "Customize" was previously
-    // removed, so without an explicit entry there is no path for a volunteer
-    // to find theme-level editing. Themes (parent + child) extend the
-    // Customizer with their own panels, so this entry stays useful no matter
-    // which theme is active.
-    add_submenu_page(
-        'societypress',
-        __( 'Customize', 'societypress' ),
-        __( 'Customize', 'societypress' ),
-        'edit_theme_options',
-        'customize.php'
-    );
+    // WHY the WordPress Customizer is NOT registered here: nothing SocietyPress
+    // ships populates it. The plugin contains no wp_customize calls, and
+    // neither does the parent theme or any of the five child themes — the only
+    // Customizer code in the repository belongs to the getsocietypress.org
+    // marketing theme, which is never installed on a society's site. The entry
+    // therefore opened a WordPress-branded screen offering core-only controls
+    // (site identity, homepage) that duplicate or contradict Settings -> Design,
+    // and it punched a hole through the rule that WP branding stays hidden in
+    // the admin. Everything it appeared to offer is on the Design screen.
 
     // -----------------------------------------------------------------
     // REPORTS GROUP — Dashboard + Annual Report
@@ -6715,10 +6724,15 @@ add_action( 'admin_menu', function () {
     //      topics he doesn't care about right now.
     // -----------------------------------------------------------------
 
+    // WHY "Site Basics" and not "Website": the sidebar already has a group
+    // called Website, so "check the website settings" pointed at two different
+    // places. This screen holds the site's title, tagline, admin email,
+    // timezone, date and time formats, homepage and visibility — basics, not
+    // the look, which is Website -> Design.
     add_submenu_page(
         'societypress',
-        __( 'Website Settings — SocietyPress', 'societypress' ),
-        __( 'Website', 'societypress' ),
+        __( 'Site Basics — SocietyPress', 'societypress' ),
+        __( 'Site Basics', 'societypress' ),
         'manage_options',
         'sp-settings-website',
         'sp_render_settings_website_page'
@@ -7027,9 +7041,13 @@ function sp_get_menu_capability_map(): array {
         'sp-page-edit'             => 'sp_manage_content',
         'upload.php'               => 'sp_manage_content',
         'sp-menus'                 => 'sp_manage_content',
-        'nav-menus.php'            => 'sp_manage_settings',
         'widgets.php'              => 'sp_manage_settings',
-        'customize.php'            => 'sp_manage_settings',
+        // nav-menus.php and customize.php are deliberately absent: neither is
+        // registered as a submenu any more (see the WHY blocks in the menu
+        // block above), and this map is only ever consulted for items that are.
+        // Leaving stale entries here is what let the duplicate "Menus" survive
+        // unnoticed. Core still guards nav-menus.php with edit_theme_options on
+        // its own, so the direct links to it are unaffected by this removal.
 
         // Reports
         'sp-reports'               => 'sp_view_reports',
@@ -8063,7 +8081,7 @@ add_action( 'wp_head', function () {
 // WHY: Most societies want page view tracking for grant applications, board
 //      reports, or general curiosity. Rather than requiring a separate plugin,
 //      we output the official gtag.js snippet when a GA4 Measurement ID is
-//      configured in Settings → Website. Admin traffic can be excluded so
+//      configured in Settings → Site Basics. Admin traffic can be excluded so
 //      Harold's own browsing doesn't skew the numbers.
 
 add_action( 'wp_head', function () {
@@ -8110,7 +8128,7 @@ add_action( 'wp_head', function () {
 // ============================================================================
 
 // WHY: The admin bar is handy during development but Harold doesn't need it.
-// Controlled by Settings → Website → "Admin Toolbar" checkbox.
+// Controlled by Settings → Site Basics → "Admin Toolbar" checkbox.
 // When off (default), the bar is hidden everywhere — the public site and the
 // admin screens both.
 add_filter( 'show_admin_bar', function ( $show ) {
@@ -8122,7 +8140,7 @@ add_filter( 'show_admin_bar', function ( $show ) {
 } );
 
 /**
- * Whether the toolbar has been switched off in Settings → Website.
+ * Whether the toolbar has been switched off in Settings → Site Basics.
  *
  * A named helper because three separate hooks below have to agree about it,
  * and an unchecked box that only takes effect in two of the three places is
@@ -8321,7 +8339,7 @@ add_action( 'wp_footer', function () {
 //      icons without duplicating the SVG markup or settings lookup.
 
 /**
- * Outputs social media icon links based on Settings → Website values.
+ * Outputs social media icon links based on Settings → Site Basics values.
  *
  * WHY inline SVGs: No external icon library dependency, no font loading,
  *     no FOUT. Each icon is a tiny inline SVG — clean, crisp at any size,
@@ -10534,7 +10552,7 @@ add_action( 'admin_head', function () {
 }
 
 /* Sub-heading — a labelled divider inside a drop down (admin-added via
-   Appearance → Menu Layout). Not clickable; it just groups the items below. */
+   Settings → Admin Sidebar). Not clickable; it just groups the items below. */
 .sp-flyout-subheading {
     display: block;
     padding: 9px 16px 4px;
@@ -10639,7 +10657,7 @@ add_action( 'admin_head', function () {
  * flyout group. Items not listed in any group stay as standalone entries.
  */
 // WHY PHP-generated now: the group order, labels, visibility, and which items
-// live in which drop down are admin-editable via Appearance → Menu Layout.
+// live in which drop down are admin-editable via Settings → Admin Sidebar.
 // sp_get_effective_menu_config() merges the saved layout over the code defaults
 // (sp_default_menu_config()) so a feature shipped later still appears even after
 // an admin has customised their menu. `hidden` lists items to pull entirely.
@@ -10712,7 +10730,7 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
 
         // --- Remove admin-hidden items entirely ---
         // WHY: a hidden item must not linger as a standalone sidebar entry, so we
-        //      drop its <li> before grouping. Driven by the saved Menu Layout.
+        //      drop its <li> before grouping. Driven by the saved Admin Sidebar layout.
         if (config.hidden && config.hidden.length) {
             items = items.filter(function(it) {
                 if (config.hidden.indexOf(it.slug) !== -1) {
@@ -10957,7 +10975,7 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
 //
 // WHY: The sidebar's drop down groups and their order used to be a hardcoded
 //      JS map. Societies differ in what they emphasise, so this makes the whole
-//      arrangement editable from Appearance → Menu Layout: reorder groups,
+//      arrangement editable from Settings → Admin Sidebar: reorder groups,
 //      reorder items, drag an item into a different drop down, rename a group,
 //      hide what you don't use, or add your own group. One global layout for
 //      everyone (the access-area system already hides items a person can't use).
@@ -10995,7 +11013,12 @@ function sp_default_menu_config(): array {
                            'sp-import', 'sp-export' ] ],
 
             [ 'id' => 'finances', 'label' => __( 'Money', 'societypress' ), 'icon' => 'dashicons-money-alt',
-              'items' => [ 'sp-finances', 'sp-record-payment', 'sp-donations', 'sp-campaigns',
+              // sp-record-payment is deliberately absent: it registers with a null
+              // parent (a hidden screen reached from the button on Payment
+              // History) so listing it here was a silent no-op — the group asked
+              // for a screen that can never render in it. It is an action taken
+              // from Payment History, not a place of its own.
+              'items' => [ 'sp-finances', 'sp-donations', 'sp-campaigns',
                            [ 'heading' => __( 'Store', 'societypress' ) ],
                            'sp-store-products', 'sp-orders' ] ],
 
@@ -11050,9 +11073,18 @@ function sp_default_menu_config(): array {
               // worded actions instead of icons, and a visibility control. Showing
               // both would put two doors on one room and let a volunteer make a
               // change on the WordPress screen that the SP screen never explains.
+              // WHY sp-menu-layout is NOT on the "How it looks" shelf: it edits
+              // the back-office sidebar, not the public site. Sitting between
+              // Design and the theme screens, under a heading promising "how it
+              // looks", it read as a way to change the website — so a volunteer
+              // looking for their own site's appearance could rearrange the
+              // admin menu for every member of staff instead. It now lives in
+              // Settings under "Back office", named for what it actually edits.
+              // WHY customize.php is gone entirely: see the menu registration
+              // block — nothing SocietyPress ships populates the Customizer.
               'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'upload.php', 'widgets.php', 'sp-short-links',
                            [ 'heading' => __( 'How it looks', 'societypress' ) ],
-                           'sp-themes', 'sp-theme-presets', 'sp-settings-design', 'customize.php', 'sp-menu-layout',
+                           'sp-themes', 'sp-theme-presets', 'sp-settings-design',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
                            'sp-import-ens-pages', 'sp-import-gallery' ] ],
 
@@ -11061,6 +11093,11 @@ function sp_default_menu_config(): array {
 
             [ 'id' => 'settings', 'label' => __( 'Settings', 'societypress' ), 'icon' => 'dashicons-admin-generic',
               'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access',
+                           // Screens that change the admin itself rather than the
+                           // public site. Kept apart from the Website group so the
+                           // two kinds of "appearance" never sit side by side again.
+                           [ 'heading' => __( 'Back office', 'societypress' ) ],
+                           'sp-menu-layout',
                            [ 'heading' => __( 'History', 'societypress' ) ],
                            'sp-audit-log', 'sp-access-log' ] ],
         ],
@@ -11094,7 +11131,7 @@ function sp_retired_menu_groups(): array {
  * keeping the admin's own item order and their hidden flags.
  *
  * INVARIANT: read-only. The stored option is left alone until the admin next
- *            saves from the Menu Layout screen, so nothing is rewritten under
+ *            saves from the Admin Sidebar screen, so nothing is rewritten under
  *            a society that only ever looked at its menu.
  *
  * @param array $saved The stored layout.
@@ -11229,7 +11266,7 @@ function sp_get_effective_menu_config(): array {
     // in the defaults when the layout was last saved. The stored data cannot
     // tell those apart, and treating both as deliberate froze every item the
     // defaults later adopted, permanently, on any site that had ever saved a
-    // layout. It also disagreed with the Menu Layout editor, which claims an
+    // layout. It also disagreed with the Admin Sidebar editor, which claims an
     // item for its default group before it reads the ungrouped bucket, so the
     // sidebar and the screen that edits the sidebar showed different menus.
     // Items with no default home still stay ungrouped; nothing claims them.
@@ -11346,7 +11383,7 @@ function sp_get_effective_menu_config(): array {
 }
 
 /**
- * Build the editable model for the Menu Layout screen: the current arrangement
+ * Build the editable model for the Admin Sidebar screen: the current arrangement
  * reconciled against the live, capability-and-module-aware submenu so every
  * real item shows up exactly once, with its real display label.
  *
@@ -11482,7 +11519,7 @@ function sp_menu_layout_editor_model(): array {
 }
 
 /**
- * Render the Menu Layout editor page.
+ * Render the Admin Sidebar editor page.
  */
 function sp_render_menu_layout_page(): void {
     if ( ! current_user_can( 'manage_options' ) ) {
@@ -11493,9 +11530,9 @@ function sp_render_menu_layout_page(): void {
     $nonce = wp_create_nonce( 'sp_menu_layout_nonce' );
     ?>
     <div class="wrap sp-ml">
-        <h1><?php esc_html_e( 'Menu Layout', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Admin Sidebar', 'societypress' ); ?></h1>
         <p class="description sp-ml-intro">
-            <?php esc_html_e( 'Design your SocietyPress menu. Drag a group or an item by its handle to reorder it, drag an item from one group into another, rename a group, or hide anything you don\'t use. This sets the menu for everyone who signs in to the back office.', 'societypress' ); ?>
+            <?php esc_html_e( 'Arrange the sidebar people see after they sign in to run the society. Drag a group or an item by its handle to reorder it, drag an item from one group into another, rename a group, or hide anything you don\'t use. This changes the back office only — it does not affect what visitors see on your website.', 'societypress' ); ?>
         </p>
 
         <style>
@@ -12063,7 +12100,7 @@ add_filter( 'login_redirect', function ( $redirect_to, $requested_redirect_to, $
  *      visitors get bounced to the login page. This keeps the site private
  *      while data is being imported and configured.
  *
- *      Controlled by Settings → Website → "Require Login" checkbox.
+ *      Controlled by Settings → Site Basics → "Require Login" checkbox.
  *      The login page itself, admin-ajax, cron, and REST API are excluded
  *      so WordPress internals keep working normally.
  */
@@ -31159,7 +31196,7 @@ function sp_render_record_payment_page(): void {
 function sp_render_settings_website_page(): void {
     ?>
     <div class="wrap">
-        <h1 class="wp-heading-inline"><?php esc_html_e( 'Settings: Website', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Settings: Site Basics', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_settings_json&nonce=' . wp_create_nonce( 'sp_export_settings_json' ) ) ); ?>" class="page-title-action">
             <?php esc_html_e( 'Export Settings (JSON)', 'societypress' ); ?>
         </a>

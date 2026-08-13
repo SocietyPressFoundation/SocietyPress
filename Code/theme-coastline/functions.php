@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'COASTLINE_THEME_VERSION' ) ) {
-    define( 'COASTLINE_THEME_VERSION', '1.1.9' );
+    define( 'COASTLINE_THEME_VERSION', '1.1.10' );
 }
 
 

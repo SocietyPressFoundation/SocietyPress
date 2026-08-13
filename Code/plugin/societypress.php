@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.9
+ * Version:     1.1.10
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.9' );
+define( 'SOCIETYPRESS_VERSION', '1.1.10' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2099,6 +2099,7 @@ function sp_create_tables(): void {
         slug            VARCHAR(255)        NOT NULL,
         description     TEXT                NULL,
         toc             TEXT                NULL,
+        toc_auto        TINYINT(1)          NOT NULL DEFAULT 0,
         pub_date        DATE                NULL,
         volume          SMALLINT UNSIGNED   NULL,
         issue_number    SMALLINT UNSIGNED   NULL,
@@ -3701,6 +3702,17 @@ add_action( 'admin_init', function () {
     if ( empty( $col ) ) {
         $wpdb->query( "ALTER TABLE {$table} ADD COLUMN toc TEXT NULL AFTER description" );
     }
+
+    // toc_auto — was this contents list written by the PDF reader, or typed by
+    // a person? WHY it matters: the reader refuses to overwrite an existing
+    // list, which is right for anything an editor typed and wrong for its own
+    // earlier attempt. Without a way to tell the two apart, every improvement
+    // to the parser stopped at the archive's door — the issues that most needed
+    // re-reading were exactly the ones already holding a short, bad list.
+    $auto_col = $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'toc_auto'" );
+    if ( empty( $auto_col ) ) {
+        $wpdb->query( "ALTER TABLE {$table} ADD COLUMN toc_auto TINYINT(1) NOT NULL DEFAULT 0 AFTER toc" );
+    }
 } );
 
 
@@ -4645,7 +4657,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Library Catalog', 'societypress' ),
             'description' => __( 'Manage your society\'s book and media collection. Members can browse and search the catalog online.', 'societypress' ),
             'icon'        => 'dashicons-book-alt',
-            'menu_slugs'  => [ 'sp-library-catalog', 'sp-library-categories', 'sp-import-library', 'sp-library-enrich', 'sp-library-item-edit' ],
+            'menu_slugs'  => [ 'sp-library-catalog', 'sp-library-categories', 'sp-library-lists', 'sp-import-library', 'sp-library-enrich', 'sp-library-item-edit' ],
         ],
         'newsletters' => [
             'name'        => __( 'Newsletter Archive', 'societypress' ),
@@ -6185,6 +6197,17 @@ add_action( 'admin_menu', function () {
         'sp_render_library_categories_page'
     );
 
+    // Catalog Options — the Media Type / Subject / Location lists catalogers
+    // pick from, and which columns the public results table shows.
+    add_submenu_page(
+        'societypress',
+        __( 'Catalog Options — SocietyPress', 'societypress' ),
+        __( 'Catalog Options', 'societypress' ),
+        'manage_options',
+        'sp-library-lists',
+        'sp_render_library_lists_page'
+    );
+
     add_submenu_page(
         'societypress',
         __( 'Import Library — SocietyPress', 'societypress' ),
@@ -7004,6 +7027,7 @@ function sp_get_menu_capability_map(): array {
 
         // Library
         'sp-library-catalog'       => 'sp_manage_library',
+        'sp-library-lists'         => 'sp_manage_library',
         'sp-library-categories'    => 'sp_manage_library',
         'sp-import-library'        => 'sp_manage_library',
         'sp-library-enrich'        => 'sp_manage_library',
@@ -8491,16 +8515,66 @@ function sp_social_icons(): void {
 // ============================================================================
 
 /**
- * Everything stored for affiliations: the optional heading and the rows.
+ * How tall the logos are allowed to be, in pixels.
  *
- * @return array{heading:string, rows:array}
+ * WHY a height and not a width: logos arrive in wildly different shapes — a
+ * tall crest next to a wide wordmark. Matching their heights is what makes a
+ * row of them look deliberate; matching their widths makes the tall one huge.
+ */
+const SP_AFFILIATION_LOGO_HEIGHT_DEFAULT = 56;
+const SP_AFFILIATION_LOGO_HEIGHT_MIN     = 24;
+const SP_AFFILIATION_LOGO_HEIGHT_MAX     = 200;
+
+/**
+ * The named sizes offered on the Affiliations screen.
+ *
+ * WHY named sizes and not just a number box: most administrators want "a bit
+ * bigger", not a pixel value. The presets answer that in one click; the number
+ * box is there for the person who does have an exact size in mind.
+ *
+ * @return array<string, array{label:string, height:int}>
+ */
+function sp_affiliation_logo_presets(): array {
+    return [
+        'small'  => [ 'label' => __( 'Small', 'societypress' ),  'height' => 40 ],
+        'medium' => [ 'label' => __( 'Medium', 'societypress' ), 'height' => SP_AFFILIATION_LOGO_HEIGHT_DEFAULT ],
+        'large'  => [ 'label' => __( 'Large', 'societypress' ),  'height' => 80 ],
+    ];
+}
+
+/**
+ * Force a stored or submitted logo height into the supported range.
+ *
+ * WHY clamp rather than reject: a hand-edited option or a typo'd number should
+ * produce a sane footer, not a logo the height of the page or one pixel tall.
+ */
+function sp_clamp_affiliation_logo_height( $value ): int {
+    $height = (int) $value;
+
+    if ( $height <= 0 ) {
+        return SP_AFFILIATION_LOGO_HEIGHT_DEFAULT;
+    }
+
+    return max( SP_AFFILIATION_LOGO_HEIGHT_MIN, min( SP_AFFILIATION_LOGO_HEIGHT_MAX, $height ) );
+}
+
+/**
+ * Everything stored for affiliations: the optional heading, the logo size and
+ * backdrop, and the rows.
+ *
+ * @return array{heading:string, logo_height:int, logo_plate:string, rows:array}
  */
 function sp_get_affiliations_option(): array {
     $stored = get_option( 'sp_affiliations', [] );
+    $plate  = is_array( $stored ) ? (string) ( $stored['logo_plate'] ?? '' ) : '';
 
     return [
-        'heading' => is_array( $stored ) ? (string) ( $stored['heading'] ?? '' ) : '',
-        'rows'    => is_array( $stored ) && isset( $stored['rows'] ) && is_array( $stored['rows'] ) ? $stored['rows'] : [],
+        'heading'     => is_array( $stored ) ? (string) ( $stored['heading'] ?? '' ) : '',
+        // Installs that saved affiliations before these controls existed have
+        // no stored values; they keep the look their footer already had.
+        'logo_height' => sp_clamp_affiliation_logo_height( is_array( $stored ) ? ( $stored['logo_height'] ?? 0 ) : 0 ),
+        'logo_plate'  => $plate === 'none' ? 'none' : 'plate',
+        'rows'        => is_array( $stored ) && isset( $stored['rows'] ) && is_array( $stored['rows'] ) ? $stored['rows'] : [],
     ];
 }
 
@@ -8543,6 +8617,59 @@ function sp_get_affiliations(): array {
 
     return $out;
 }
+
+/**
+ * Print the chosen logo size as a stylesheet rule in <head>.
+ *
+ * WHY here and not in the themes: the size is a setting an administrator can
+ * change at any moment, and the themes ship a fixed pair of caps in their
+ * stylesheet. Emitting the rule from the plugin means the setting works on the
+ * parent theme, all five child themes, and any private child theme, with no
+ * theme file to keep in step.
+ *
+ * WHY a <style> in <head> rather than a style="" on the element: a rule in the
+ * head is one line of CSS for the whole row instead of the same inline
+ * declaration repeated on every logo, and it keeps presentation out of the
+ * markup the way the rest of the plugin does.
+ *
+ * WHY the selector carries .sp-affiliations: it outranks the themes' plain
+ * `.sp-affiliation img` cap on specificity, so this wins wherever the theme
+ * stylesheet happens to sit in the cascade — no !important needed.
+ *
+ * The width cap tracks the height at the themes' own 190:56 ratio, so raising
+ * the height doesn't leave wide wordmarks squeezed by a cap meant for a
+ * smaller row.
+ */
+add_action( 'wp_head', function () {
+    if ( is_admin() ) {
+        return;
+    }
+
+    // No logos configured means no footer row to size.
+    if ( empty( sp_get_affiliations() ) ) {
+        return;
+    }
+
+    $stored = sp_get_affiliations_option();
+    $height = $stored['logo_height'];
+    $width  = (int) round( $height * ( 190 / 56 ) );
+
+    $css = sprintf(
+        '.sp-affiliations .sp-affiliation img{max-height:%dpx;max-width:%dpx;}',
+        $height,
+        $width
+    );
+
+    // Backdrop off: strip the themes' white plate so a logo saved with a
+    // transparent background shows the footer colour through it. The padding
+    // and rounded corner go with it — they exist to shape the plate, and left
+    // behind they only pad the logo away from its neighbours.
+    if ( $stored['logo_plate'] === 'none' ) {
+        $css .= '.sp-affiliations .sp-affiliation img{background:none;padding:0;border-radius:0;}';
+    }
+
+    printf( '<style id="sp-affiliations-size">%s</style>' . "\n", $css );
+} );
 
 /**
  * Render the affiliation logos. Called from the footer of every SocietyPress
@@ -10803,13 +10930,45 @@ add_action( 'admin_head', function () {
     margin: 0;
     list-style: none;
     z-index: 99999;
+
+    /* WHY: A long drop down (Website carries a dozen-plus screens) is taller
+       than a laptop screen. Without a scroll container the bottom items sit
+       below the edge of the window with no way to reach them — the panel is
+       position:fixed, so scrolling the page doesn't bring them back. The JS
+       sets an exact max-height for the space actually available below the
+       admin bar; this makes the overflow scrollable instead of unreachable.
+       overscroll-behavior keeps the wheel inside the panel so the page
+       underneath doesn't scroll once the list bottoms out. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #6c7781 #2c3338;
+}
+
+/* Scrollbar styling for WebKit/Blink — Firefox uses the scrollbar-* properties
+   above. WHY: the default light scrollbar is jarring on the dark panel. */
+.sp-menu-flyout::-webkit-scrollbar {
+    width: 10px;
+}
+.sp-menu-flyout::-webkit-scrollbar-track {
+    background: #2c3338;
+}
+.sp-menu-flyout::-webkit-scrollbar-thumb {
+    background: #6c7781;
+    border-radius: 5px;
+    border: 2px solid #2c3338;
+}
+.sp-menu-flyout::-webkit-scrollbar-thumb:hover {
+    background: #8c8f94;
 }
 
 /* WHY: Flyout panels are appended to <body> (not inside the sidebar) so
    they escape #adminmenuwrap's stacking context (z-index: 9990). Show/hide
    is managed directly in JS via style.display. */
 
-/* Title bar at the top of each flyout panel */
+/* Title bar at the top of each flyout panel.
+   WHY sticky: when a long panel scrolls, the title stays visible so you can
+   always see which drop down you're in. */
 .sp-flyout-heading {
     display: block;
     padding: 10px 16px;
@@ -10820,6 +10979,9 @@ add_action( 'admin_head', function () {
     background: #1d2327;
     border-bottom: 1px solid rgba(255,255,255,0.08);
     margin-bottom: 4px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 .sp-flyout-heading.sp-heading-hidden {
     display: none;
@@ -11020,6 +11182,48 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
         scrim.className = 'sp-flyout-scrim';
         document.body.appendChild(scrim);
 
+        // --- Helper: place a panel beside its header and keep it on screen ---
+        // WHY: The panel is position:fixed, so anything below the bottom of the
+        //      window is simply unreachable — you can't scroll the page to get
+        //      to it. Three cases, in order:
+        //        1. It fits where the header is → put it there.
+        //        2. It fits on screen but not that far down → slide it up until
+        //           its bottom clears the window edge.
+        //        3. It's taller than the window (Website has a dozen-plus
+        //           screens) → pin it under the admin bar and cap its height so
+        //           the overflow scrolls inside the panel.
+        //      The admin bar height is read live rather than hardcoded to 32,
+        //      because it's 46 on small screens and 0 when it isn't showing.
+        function positionFlyout(header, flyout) {
+            var GAP = 12;                       // Breathing room at the window edge
+            var adminBar = document.getElementById('wpadminbar');
+            var minTop = adminBar ? Math.max(0, adminBar.getBoundingClientRect().bottom) : 0;
+            var sidebar = document.getElementById('adminmenuback') || document.getElementById('adminmenuwrap');
+            var sidebarWidth = sidebar ? sidebar.getBoundingClientRect().right : 160;
+
+            flyout.style.left = sidebarWidth + 'px';
+
+            // Measure at natural height — a max-height left over from a previous
+            // open would otherwise make a short panel look tall enough to clamp.
+            flyout.style.maxHeight = '';
+            flyout.style.top = header.getBoundingClientRect().top + 'px';
+
+            var available = window.innerHeight - minTop - GAP;
+            var height = flyout.offsetHeight;
+            var top = header.getBoundingClientRect().top;
+
+            if (height > available) {
+                top = minTop;
+                flyout.style.maxHeight = available + 'px';
+            } else if (top + height > window.innerHeight - GAP) {
+                top = window.innerHeight - GAP - height;
+            }
+            if (top < minTop) {
+                top = minTop;
+            }
+            flyout.style.top = top + 'px';
+        }
+
         // --- Helper: close all open panels ---
         // WHY: Flyout panels live on <body> (to escape #adminmenuwrap's stacking
         //      context), so we hide them directly via style.display rather than
@@ -11196,18 +11400,9 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
                     //      because the flyout isn't a child of the group anymore.
                     var flyout = group._flyout;
                     if (flyout) {
-                        var rect = header.getBoundingClientRect();
-                        var sidebar = document.getElementById('adminmenuback') || document.getElementById('adminmenuwrap');
-                        var sidebarWidth = sidebar ? sidebar.getBoundingClientRect().right : 160;
-                        flyout.style.left = sidebarWidth + 'px';
-                        flyout.style.top = rect.top + 'px';
                         flyout.style.display = 'block';
-
-                        // Keep panel on screen if it would go below the viewport
-                        var flyoutRect = flyout.getBoundingClientRect();
-                        if (flyoutRect.bottom > window.innerHeight) {
-                            flyout.style.top = Math.max(32, window.innerHeight - flyoutRect.height) + 'px';
-                        }
+                        flyout.scrollTop = 0;   // Always open at the top of the list
+                        positionFlyout(header, flyout);
                     }
                     group.classList.add('sp-flyout-open');
                     header.setAttribute('aria-expanded', 'true');
@@ -11223,6 +11418,19 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
 
         // Scrim click closes everything
         scrim.addEventListener('click', closeAll);
+
+        // Re-place an open panel when the window changes size.
+        // WHY: the panel is fixed and was measured against the old window. Shrink
+        //      the window (or collapse the sidebar, which fires a resize) and it
+        //      would hang off the bottom again until the next click.
+        window.addEventListener('resize', function() {
+            var group = document.querySelector('.sp-menu-group.sp-flyout-open');
+            if (!group || !group._flyout) return;
+            var header = group.querySelector('.sp-menu-group-header');
+            if (header) {
+                positionFlyout(header, group._flyout);
+            }
+        });
 
         // Keyboard support
         document.addEventListener('keydown', function(e) {
@@ -11311,7 +11519,7 @@ function sp_default_menu_config(): array {
               'items' => [ 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities' ] ],
 
             [ 'id' => 'library', 'label' => __( 'Library', 'societypress' ), 'icon' => 'dashicons-book-alt',
-              'items' => [ 'sp-library-catalog', 'sp-library-categories', 'sp-database-subscriptions',
+              'items' => [ 'sp-library-catalog', 'sp-library-categories', 'sp-library-lists', 'sp-database-subscriptions',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
                            'sp-import-library', 'sp-library-enrich' ] ],
 
@@ -29696,6 +29904,7 @@ function sp_get_page_type_labels(): array {
         'sp-events'          => __( 'Events', 'societypress' ),
         'sp-directory'       => __( 'Membership Directory', 'societypress' ),
         'sp-library-catalog' => __( 'Library Catalog', 'societypress' ),
+        'sp-vertical-files'  => __( 'Vertical Files', 'societypress' ),
         'sp-groups'          => __( 'Interest Groups', 'societypress' ),
         'sp-help-requests'   => __( 'Research Help Requests', 'societypress' ),
         'sp-resources'       => __( 'Resource Links Directory', 'societypress' ),
@@ -29704,6 +29913,25 @@ function sp_get_page_type_labels(): array {
         'sp-search'          => __( 'Site Search', 'societypress' ),
         'sp-calendar'        => __( 'Calendar', 'societypress' ),
         'sp-documents'       => __( 'Documents', 'societypress' ),
+
+        /*
+         * These three render perfectly well but were missing from this list, so
+         * the only way to reach them was WordPress's own Page Attributes box —
+         * which the SocietyPress admin hides. The effect was a Store module you
+         * could stock from the admin and then not put anywhere: the products
+         * existed, the template existed, and the page type that joins them was
+         * not on offer.
+         *
+         * The test for belonging here is a template_include handler that
+         * renders the slug. My Account is deliberately absent: its slug is a
+         * marker the plugin reads, and the page itself is drawn by the theme's
+         * page-my-account.php, which WordPress matches on the page's slug. Offer
+         * it here and choosing it on a page named anything else would produce a
+         * blank page with no hint why.
+         */
+        'sp-store'           => __( 'Store', 'societypress' ),
+        'sp-cart'            => __( 'Shopping Cart', 'societypress' ),
+        'sp-records'         => __( 'Genealogical Records Search', 'societypress' ),
     ];
 }
 
@@ -62834,7 +63062,14 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-table tbody tr:hover { background: #f8f9fa; }
         .sp-catalog-table .sp-item-title { color: var(--sp-color-primary, #2271b1); cursor: pointer; font-weight: 600; text-decoration: none; }
         .sp-catalog-table .sp-item-title:hover { text-decoration: underline; }
-        .sp-catalog-table .sp-item-condition { font-size: 0.75rem; font-weight: 500; }
+        /* Condition is only printed when it is not the everyday "good", so each
+           of these is a warning of some kind and carries its own colour. */
+        .sp-catalog-table .sp-item-condition { font-size: 0.75rem; font-weight: 500; color: #666; }
+        .sp-catalog-table .sp-item-condition-excellent { color: #0a6b2e; }
+        .sp-catalog-table .sp-item-condition-fair      { color: #92400e; }
+        .sp-catalog-table .sp-item-condition-poor      { color: #b32d2e; }
+        .sp-catalog-table .sp-item-condition-damaged   { color: #b32d2e; }
+        .sp-catalog-table .sp-item-condition-reference { color: #2271b1; }
         .sp-catalog-table .sp-item-media-type { font-size: 12px; color: #666; background: #f0f0f0; padding: 2px 8px; border-radius: 10px; display: inline-block; }
 
         /* Expandable detail row */
@@ -63145,14 +63380,24 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         echo '<table class="sp-catalog-table">';
         echo '<thead><tr>';
 
-        $columns = [
-            'title'       => __( 'Title', 'societypress' ),
-            'author'      => __( 'Author', 'societypress' ),
-            'media_type'  => __( 'Type', 'societypress' ),
-            'call_number' => __( 'Call #', 'societypress' ),
-            'pub_year'    => __( 'Year', 'societypress' ),
-        ];
-        foreach ( $columns as $col_key => $col_label ) {
+        // Which columns, and in what order, is set at Library → Catalog Options.
+        // WHY it is a setting rather than a fixed list: a catalog imported from
+        // an older system often has nothing in Type, Subject or Year, and a
+        // column of dashes tells a researcher nothing while pushing the columns
+        // that do carry information off a phone screen.
+        $column_defs = sp_library_catalog_column_defs();
+        $columns     = sp_get_library_catalog_columns();
+
+        foreach ( $columns as $col_key ) {
+            $col_label = $column_defs[ $col_key ]['label'];
+
+            // Status is a state, not an ordering anyone asks for, and Subject
+            // is not in the query's sort whitelist — neither gets a sort link.
+            if ( ! $column_defs[ $col_key ]['sortable'] ) {
+                echo '<th scope="col" class="sp-text-center">' . esc_html( $col_label ) . '</th>';
+                continue;
+            }
+
             $is_sorted = ( $sort_by === $col_key ) ? ' sorted' : '';
             $arrow     = ( $sort_by === $col_key ) ? ( $col_key === 'pub_year' ? '&#9660;' : '&#9650;' ) : '&#9650;';
             $col_url   = add_query_arg( 'sp_lib_sort', $col_key, $sort_url_base );
@@ -63165,43 +63410,61 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             echo esc_html( $col_label ) . ' <span class="sp-sort-arrow" aria-hidden="true">' . $arrow . '</span>';
             echo '</a></th>';
         }
-        echo '<th class="sp-text-center">' . esc_html__( 'Status', 'societypress' ) . '</th>';
         echo '</tr></thead><tbody>';
 
         foreach ( $items as $item ) {
-            $condition_colors = [
-                'good'      => '#0a6b2e',
-                'fair'      => '#92400e',
-                'poor'      => '#b32d2e',
-                'reference' => '#2271b1',
-            ];
-            $cond_color = $condition_colors[ $item->item_condition ] ?? '#666';
-
             echo '<tr class="sp-catalog-item-row" data-item-id="' . esc_attr( $item->id ) . '">';
 
-            // Title cell — clickable to expand detail
-            echo '<td data-label="' . esc_attr__( 'Title', 'societypress' ) . '">';
-            echo '<a class="sp-item-title" role="button" tabindex="0" aria-expanded="false" data-item-id="' . esc_attr( $item->id ) . '">' . esc_html( $item->title ) . '</a>';
-            if ( $item->item_condition ) {
-                echo ' <span class="sp-item-condition" style="color:' . esc_attr( $cond_color ) . ';">(' . esc_html( sp_localized_status( $item->item_condition, 'condition' ) ) . ')</span>';
-            }
-            echo '</td>';
+            foreach ( $columns as $col_key ) {
+                $label = $column_defs[ $col_key ]['label'];
 
-            echo '<td data-label="' . esc_attr__( 'Author', 'societypress' ) . '">' . esc_html( $item->author ?: '—' ) . '</td>';
-            echo '<td data-label="' . esc_attr__( 'Type', 'societypress' ) . '">';
-            if ( $item->media_type ) {
-                echo '<span class="sp-item-media-type">' . esc_html( $item->media_type ) . '</span>';
-            } else {
-                echo '—';
+                switch ( $col_key ) {
+                    case 'title':
+                        // The title is the handle for the row: clicking it opens
+                        // the detail panel, so it stays a control wherever the
+                        // column happens to sit.
+                        echo '<td data-label="' . esc_attr( $label ) . '">';
+                        echo '<a class="sp-item-title" role="button" tabindex="0" aria-expanded="false" data-item-id="' . esc_attr( $item->id ) . '">' . esc_html( $item->title ) . '</a>';
+
+                        /*
+                         * Condition is only worth a researcher's attention when
+                         * it is a warning. It defaults to "good" on every row —
+                         * an imported catalog has 20,000 of them — so printing
+                         * it after every title was pure noise that buried the
+                         * few items that genuinely are fragile or non-circulating.
+                         */
+                        if ( $item->item_condition && $item->item_condition !== 'good' ) {
+                            printf(
+                                ' <span class="sp-item-condition sp-item-condition-%s">(%s)</span>',
+                                esc_attr( $item->item_condition ),
+                                esc_html( sp_localized_status( $item->item_condition, 'condition' ) )
+                            );
+                        }
+                        echo '</td>';
+                        break;
+
+                    case 'media_type':
+                        echo '<td data-label="' . esc_attr( $label ) . '">';
+                        echo $item->media_type
+                            ? '<span class="sp-item-media-type">' . esc_html( $item->media_type ) . '</span>'
+                            : '—';
+                        echo '</td>';
+                        break;
+
+                    case 'available':
+                        echo '<td data-label="' . esc_attr( $label ) . '" class="sp-text-center">';
+                        echo $item->available
+                            ? '<span class="sp-text-success sp-catalog-available">' . esc_html__( 'Available', 'societypress' ) . '</span>'
+                            : '<span class="sp-text-danger">' . esc_html__( 'Checked Out', 'societypress' ) . '</span>';
+                        echo '</td>';
+                        break;
+
+                    default:
+                        echo '<td data-label="' . esc_attr( $label ) . '">' . esc_html( $item->{$col_key} ?: '—' ) . '</td>';
+                        break;
+                }
             }
-            echo '</td>';
-            echo '<td data-label="' . esc_attr__( 'Call #', 'societypress' ) . '">' . esc_html( $item->call_number ?: '—' ) . '</td>';
-            echo '<td data-label="' . esc_attr__( 'Year', 'societypress' ) . '">' . esc_html( $item->pub_year ?: '—' ) . '</td>';
-            echo '<td data-label="' . esc_attr__( 'Status', 'societypress' ) . '" class="sp-text-center">';
-            echo $item->available
-                ? '<span class="sp-text-success sp-catalog-available">' . esc_html__( 'Available', 'societypress' ) . '</span>'
-                : '<span class="sp-text-danger">' . esc_html__( 'Checked Out', 'societypress' ) . '</span>';
-            echo '</td>';
+
             echo '</tr>';
         }
         echo '</tbody></table>';
@@ -63327,7 +63590,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             var detailRow = document.createElement('tr');
             detailRow.className = 'sp-catalog-detail-row';
             var detailCell = document.createElement('td');
-            detailCell.setAttribute('colspan', '6');
+            /* Span whatever the row actually has. The column set is an admin
+               choice now, so a hardcoded 6 would leave the detail panel short
+               or overhanging depending on how many columns are switched on. */
+            detailCell.setAttribute('colspan', String(parentRow.cells.length || 1));
             detailCell.innerHTML = '<div class="sp-catalog-detail" style="text-align:center; padding:30px;"><?php echo esc_js( __( 'Loading...', 'societypress' ) ); ?></div>';
             detailRow.appendChild(detailCell);
             parentRow.after(detailRow);
@@ -65779,6 +66045,7 @@ add_filter( 'theme_page_templates', function( $templates ) {
     $templates['sp-help-requests']   = __( 'Research Help Requests', 'societypress' );
     $templates['sp-resources']       = __( 'Resource Links Directory', 'societypress' );
     $templates['sp-library-catalog'] = __( 'Library Catalog', 'societypress' );
+    $templates['sp-vertical-files']  = __( 'Vertical Files', 'societypress' );
     $templates['sp-records']         = __( 'Genealogical Records Search', 'societypress' );
     $templates['sp-store']           = __( 'Store', 'societypress' );
     $templates['sp-cart']            = __( 'Shopping Cart', 'societypress' );
@@ -65790,14 +66057,14 @@ add_filter( 'template_include', function( $template ) {
     if ( ! is_page() ) return $template;
 
     $page_template = get_page_template_slug();
-    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) ) {
+    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) ) {
         return $template;
     }
 
     // Most templates require login. Records, Store, and Documents handle their
     // own access (records: per-collection, store: public storefront, documents:
     // per-document access_level). Cart requires login to purchase.
-    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) && ! is_user_logged_in() ) {
+    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files' ], true ) && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -65836,6 +66103,11 @@ add_filter( 'template_include', function( $template ) {
             // sections, expandable detail rows, sort options, and media type
             // filtering. Empty array = use widget defaults.
             sp_render_builder_widget_library_catalog( [] );
+            break;
+        case 'sp-vertical-files':
+            // Public, like the records search: a researcher finding their
+            // surname in this list is how the society gets found at all.
+            sp_render_vertical_files_frontend();
             break;
         case 'sp-records':
             sp_render_records_frontend();
@@ -66618,6 +66890,1174 @@ function sp_frontend_resources_directory(): void {
 // WHY: Feature 7 — admin interface for managing the society's physical
 //      library collection (books, periodicals, maps, microfilm, etc.).
 
+// ============================================================================
+// LIBRARY: VERTICAL FILES
+// ============================================================================
+//
+// WHY its own page rather than a link into the catalog: the vertical files are
+//      a surname collection — 1,300+ folders filed by family name — and that is
+//      how members look for them. On the old EasyNetSites site they had their
+//      own page, and members were told for years to "look on the vertical files
+//      page". Sending them to a general catalog search with a filter applied
+//      does not answer the question they arrived with.
+//
+// WHY the layout mirrors the old site: Actions / Call Number / Title / Author,
+//      50 to a page, a field-picker search, a rows-per-page control and a jump
+//      box. Members who have used the old page for a decade should not have to
+//      relearn anything to use this one.
+// ============================================================================
+
+/**
+ * Which catalog items count as vertical files.
+ *
+ * WHY matched rather than flagged: nothing in the schema marks a vertical file,
+ * and a legacy import carries the distinction in the call number ("Digitized
+ * Vertical Files") or the media type ("Vertical File"). Matching both means the
+ * page works on an imported collection with no cataloging work first. A society
+ * that files them differently can point the filter somewhere else.
+ *
+ * @return array{where:string, params:array}
+ */
+function sp_vertical_files_filter(): array {
+    $filter = [
+        'where'  => "( call_number LIKE %s OR media_type = %s )",
+        'params' => [ '%Vertical File%', 'Vertical File' ],
+    ];
+
+    /**
+     * Filter which items the Vertical Files page lists.
+     *
+     * @param array $filter WHERE fragment and its prepare() parameters.
+     */
+    return apply_filters( 'sp_vertical_files_filter', $filter );
+}
+
+/**
+ * The Vertical Files page.
+ *
+ * Public: the whole point of the collection is that a researcher who has never
+ * heard of the society can find their surname in it and get in touch.
+ */
+function sp_render_vertical_files_frontend(): void {
+    global $wpdb;
+
+    $table  = $wpdb->prefix . 'sp_library_items';
+    $filter = sp_vertical_files_filter();
+
+    // ---- Request ----
+    $allowed_per_page = [ 25, 50, 75, 100, 150, 200 ];
+    $per_page         = absint( $_GET['sp_vf_rows'] ?? 50 );
+    if ( ! in_array( $per_page, $allowed_per_page, true ) ) {
+        $per_page = 50;
+    }
+
+    $search_fields = [
+        'title'       => __( 'Title', 'societypress' ),
+        'author'      => __( 'Author', 'societypress' ),
+        'call_number' => __( 'Call Number', 'societypress' ),
+        'description' => __( 'Description', 'societypress' ),
+        'county'      => __( 'County', 'societypress' ),
+        'state'       => __( 'State', 'societypress' ),
+        'surname'     => __( 'Surname', 'societypress' ),
+        'all'         => __( 'All Listed Fields', 'societypress' ),
+    ];
+
+    $search_field = sanitize_key( $_GET['sp_vf_field'] ?? 'title' );
+    if ( ! isset( $search_fields[ $search_field ] ) ) {
+        $search_field = 'title';
+    }
+
+    $search   = isset( $_GET['sp_vf_q'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_vf_q'] ) ) : '';
+    $page_num = max( 1, absint( $_GET['sp_vf_pg'] ?? 1 ) );
+
+    // ---- Query ----
+    $where  = [ $filter['where'] ];
+    $params = $filter['params'];
+
+    if ( $search !== '' ) {
+        $like = '%' . $wpdb->esc_like( $search ) . '%';
+
+        if ( $search_field === 'all' ) {
+            // The same columns the field picker offers, searched together —
+            // "All Listed Fields" on the old site meant exactly that list.
+            $where[]  = '( title LIKE %s OR author LIKE %s OR call_number LIKE %s OR description LIKE %s OR county LIKE %s OR state LIKE %s OR surname LIKE %s )';
+            $params   = array_merge( $params, array_fill( 0, 7, $like ) );
+        } else {
+            $where[]  = "`{$search_field}` LIKE %s";
+            $params[] = $like;
+        }
+    }
+
+    $where_sql = implode( ' AND ', $where );
+
+    $total = (int) $wpdb->get_var(
+        $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}", $params ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+    );
+
+    $total_pages = max( 1, (int) ceil( $total / $per_page ) );
+    if ( $page_num > $total_pages ) {
+        $page_num = $total_pages;
+    }
+    $offset = ( $page_num - 1 ) * $per_page;
+
+    $items = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT id, call_number, title, author FROM {$table}
+             WHERE {$where_sql}
+             ORDER BY title ASC, call_number ASC
+             LIMIT %d OFFSET %d", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            array_merge( $params, [ $per_page, $offset ] )
+        )
+    );
+
+    // Base URL for every control on the page, minus the argument that control owns.
+    $base = remove_query_arg( [ 'sp_vf_pg' ] );
+    ?>
+    <style id="sp-vertical-files-css">
+        .sp-vf-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 16px; }
+        .sp-vf-control { display: flex; flex-direction: column; gap: 4px; }
+        .sp-vf-control label { font-size: 0.8rem; font-weight: 600; }
+        .sp-vf-search-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        .sp-vf-count { margin: 0 0 12px; font-size: 0.9rem; }
+        .sp-vf-table { width: 100%; border-collapse: collapse; }
+        .sp-vf-table th, .sp-vf-table td { padding: 8px 10px; border-bottom: 1px solid #e0e0e0; text-align: left; }
+        .sp-vf-table th { background: #f6f7f7; font-size: 0.85rem; }
+        .sp-vf-actions-cell { width: 70px; text-align: center; }
+        .sp-vf-open { background: none; border: 0; cursor: pointer; font-size: 1rem; line-height: 1; padding: 4px 8px; color: var(--sp-color-primary, #2271b1); }
+        .sp-vf-open:hover, .sp-vf-open:focus { text-decoration: underline; }
+        .sp-vf-detail-cell { background: #fafbfc; }
+        .sp-vf-detail { padding: 14px 18px; }
+        .sp-vf-detail dl { margin: 0 0 8px; }
+        .sp-vf-detail dt { font-weight: 600; font-size: 0.8rem; color: #555; }
+        .sp-vf-detail dd { margin: 0 0 8px; }
+        .sp-vf-pagination { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 18px 0; }
+        .sp-vf-pagination a, .sp-vf-pagination span { padding: 6px 10px; border: 1px solid #ddd; border-radius: 3px; text-decoration: none; }
+        .sp-vf-pagination .sp-vf-current { background: var(--sp-color-primary, #2271b1); color: #fff; border-color: var(--sp-color-primary, #2271b1); }
+        .sp-vf-empty { padding: 20px 0; }
+        @media (max-width: 600px) {
+            .sp-vf-table thead { display: none; }
+            .sp-vf-table tr { display: block; border-bottom: 2px solid #e0e0e0; padding: 8px 0; }
+            .sp-vf-table td { display: block; border: 0; padding: 4px 0; }
+            .sp-vf-table td::before { content: attr(data-label) ": "; font-weight: 600; }
+            .sp-vf-actions-cell { width: auto; text-align: left; }
+        }
+    </style>
+
+    <div class="sp-vertical-files">
+        <form method="get" class="sp-vf-controls">
+            <?php
+            // Carry any query args the page itself needs (page id on a plain
+            // permalink setup, for one) through the form as hidden fields.
+            foreach ( $_GET as $key => $value ) {
+                $key = sanitize_key( $key );
+                if ( strpos( $key, 'sp_vf_' ) === 0 || is_array( $value ) ) {
+                    continue;
+                }
+                printf(
+                    '<input type="hidden" name="%s" value="%s">',
+                    esc_attr( $key ),
+                    esc_attr( sanitize_text_field( wp_unslash( $value ) ) )
+                );
+            }
+            ?>
+            <div class="sp-vf-control">
+                <label for="sp-vf-field"><?php esc_html_e( 'Search:', 'societypress' ); ?></label>
+                <select name="sp_vf_field" id="sp-vf-field">
+                    <?php foreach ( $search_fields as $key => $label ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $search_field, $key ); ?>>
+                            <?php echo esc_html( $label ); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="sp-vf-control">
+                <label for="sp-vf-q"><?php esc_html_e( 'For:', 'societypress' ); ?></label>
+                <input type="search" name="sp_vf_q" id="sp-vf-q" value="<?php echo esc_attr( $search ); ?>"
+                       placeholder="<?php esc_attr_e( 'Surname…', 'societypress' ); ?>">
+            </div>
+
+            <div class="sp-vf-control">
+                <label for="sp-vf-rows"><?php esc_html_e( 'Results Per Page:', 'societypress' ); ?></label>
+                <select name="sp_vf_rows" id="sp-vf-rows">
+                    <?php foreach ( $allowed_per_page as $option ) : ?>
+                        <option value="<?php echo esc_attr( (string) $option ); ?>" <?php selected( $per_page, $option ); ?>>
+                            <?php echo esc_html( (string) $option ); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="sp-vf-control">
+                <button type="submit" class="button sp-vf-submit"><?php esc_html_e( 'Search', 'societypress' ); ?></button>
+            </div>
+
+            <?php if ( $search !== '' ) : ?>
+                <div class="sp-vf-control">
+                    <a href="<?php echo esc_url( remove_query_arg( [ 'sp_vf_q', 'sp_vf_field', 'sp_vf_pg' ] ) ); ?>">
+                        <?php esc_html_e( 'Show all', 'societypress' ); ?>
+                    </a>
+                </div>
+            <?php endif; ?>
+        </form>
+
+        <p class="sp-vf-count">
+            <?php
+            printf(
+                /* translators: 1: how many files matched. 2: current page. 3: total pages. */
+                esc_html( _n( '%1$s file — page %2$d of %3$d', '%1$s files — page %2$d of %3$d', $total, 'societypress' ) ),
+                esc_html( number_format_i18n( $total ) ),
+                (int) $page_num,
+                (int) $total_pages
+            );
+            ?>
+        </p>
+
+        <?php if ( empty( $items ) ) : ?>
+            <p class="sp-vf-empty">
+                <?php
+                echo $search !== ''
+                    ? esc_html__( 'No vertical files match that search. Try a shorter spelling, or search All Listed Fields.', 'societypress' )
+                    : esc_html__( 'No vertical files have been cataloged yet.', 'societypress' );
+                ?>
+            </p>
+        <?php else : ?>
+            <table class="sp-vf-table">
+                <thead>
+                    <tr>
+                        <th scope="col" class="sp-vf-actions-cell"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Call Number', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Author', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $items as $item ) : ?>
+                        <tr class="sp-vf-row" data-item-id="<?php echo esc_attr( (string) $item->id ); ?>">
+                            <td class="sp-vf-actions-cell" data-label="<?php esc_attr_e( 'Actions', 'societypress' ); ?>">
+                                <button type="button" class="sp-vf-open" aria-expanded="false"
+                                        data-item-id="<?php echo esc_attr( (string) $item->id ); ?>"
+                                        aria-label="<?php
+                                        /* translators: %s: the file's title, usually a surname. */
+                                        echo esc_attr( sprintf( __( 'Show details for %s', 'societypress' ), $item->title ) );
+                                        ?>">&rarr;</button>
+                            </td>
+                            <td data-label="<?php esc_attr_e( 'Call Number', 'societypress' ); ?>"><?php echo esc_html( $item->call_number ?: '—' ); ?></td>
+                            <td data-label="<?php esc_attr_e( 'Title', 'societypress' ); ?>"><?php echo esc_html( $item->title ); ?></td>
+                            <td data-label="<?php esc_attr_e( 'Author', 'societypress' ); ?>"><?php echo esc_html( $item->author ?: '' ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <?php if ( $total_pages > 1 ) : ?>
+                <?php
+                // A window around the current page. WHY not every page: 1,356
+                // files at 25 a page is 55 links, which on a phone is a wall.
+                $window_start = max( 1, $page_num - 4 );
+                $window_end   = min( $total_pages, $window_start + 9 );
+                $window_start = max( 1, $window_end - 9 );
+                ?>
+                <nav class="sp-vf-pagination" aria-label="<?php esc_attr_e( 'Vertical files pages', 'societypress' ); ?>">
+                    <?php if ( $page_num > 1 ) : ?>
+                        <a href="<?php echo esc_url( add_query_arg( 'sp_vf_pg', $page_num - 1, $base ) ); ?>">&laquo; <?php esc_html_e( 'Prev', 'societypress' ); ?></a>
+                    <?php endif; ?>
+
+                    <?php if ( $window_start > 1 ) : ?>
+                        <a href="<?php echo esc_url( add_query_arg( 'sp_vf_pg', 1, $base ) ); ?>">1</a>
+                        <span aria-hidden="true">…</span>
+                    <?php endif; ?>
+
+                    <?php for ( $i = $window_start; $i <= $window_end; $i++ ) : ?>
+                        <?php if ( $i === $page_num ) : ?>
+                            <span class="sp-vf-current" aria-current="page"><?php echo esc_html( (string) $i ); ?></span>
+                        <?php else : ?>
+                            <a href="<?php echo esc_url( add_query_arg( 'sp_vf_pg', $i, $base ) ); ?>"><?php echo esc_html( (string) $i ); ?></a>
+                        <?php endif; ?>
+                    <?php endfor; ?>
+
+                    <?php if ( $window_end < $total_pages ) : ?>
+                        <span aria-hidden="true">…</span>
+                        <a href="<?php echo esc_url( add_query_arg( 'sp_vf_pg', $total_pages, $base ) ); ?>"><?php echo esc_html( (string) $total_pages ); ?></a>
+                    <?php endif; ?>
+
+                    <?php if ( $page_num < $total_pages ) : ?>
+                        <a href="<?php echo esc_url( add_query_arg( 'sp_vf_pg', $page_num + 1, $base ) ); ?>"><?php esc_html_e( 'Next', 'societypress' ); ?> &raquo;</a>
+                    <?php endif; ?>
+                </nav>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+
+    <script>
+    (function () {
+        /* The arrow in the Actions column opens the full record underneath the
+           row, reusing the catalog's own detail endpoint. WHY inline rather
+           than a link to another page: the old site's arrow opened the record,
+           and a researcher scanning surnames should not lose their place in a
+           1,300-row list to read four fields. */
+        var ajaxUrl = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var openRow = null;
+
+        function escHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.sp-vf-open');
+            if (!btn) return;
+
+            var row = btn.closest('tr');
+            var wasOpenHere = openRow && openRow.previousElementSibling === row;
+
+            if (openRow) {
+                var prevBtn = openRow.previousElementSibling.querySelector('.sp-vf-open');
+                if (prevBtn) prevBtn.setAttribute('aria-expanded', 'false');
+                openRow.remove();
+                openRow = null;
+            }
+
+            if (wasOpenHere) return;
+
+            var detailRow = document.createElement('tr');
+            var cell = document.createElement('td');
+            cell.className = 'sp-vf-detail-cell';
+            cell.setAttribute('colspan', String(row.cells.length || 1));
+            cell.innerHTML = '<div class="sp-vf-detail">' + <?php echo wp_json_encode( __( 'Loading…', 'societypress' ) ); ?> + '</div>';
+            detailRow.appendChild(cell);
+            row.after(detailRow);
+            openRow = detailRow;
+            btn.setAttribute('aria-expanded', 'true');
+
+            fetch(ajaxUrl + '?action=sp_library_item_detail&item_id=' + encodeURIComponent(btn.getAttribute('data-item-id')), { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (resp) {
+                    if (!resp.success || !resp.data) {
+                        cell.innerHTML = '<div class="sp-vf-detail">' + <?php echo wp_json_encode( __( 'Unable to load this record.', 'societypress' ) ); ?> + '</div>';
+                        return;
+                    }
+
+                    var d = resp.data;
+                    var fields = [
+                        [<?php echo wp_json_encode( __( 'Title', 'societypress' ) ); ?>, d.title],
+                        [<?php echo wp_json_encode( __( 'Author', 'societypress' ) ); ?>, d.author],
+                        [<?php echo wp_json_encode( __( 'Call Number', 'societypress' ) ); ?>, d.call_number],
+                        [<?php echo wp_json_encode( __( 'Description', 'societypress' ) ); ?>, d.description],
+                        [<?php echo wp_json_encode( __( 'Surname', 'societypress' ) ); ?>, d.surname],
+                        [<?php echo wp_json_encode( __( 'County', 'societypress' ) ); ?>, d.county],
+                        [<?php echo wp_json_encode( __( 'State', 'societypress' ) ); ?>, d.state]
+                    ];
+
+                    var html = '<div class="sp-vf-detail">';
+                    var printed = 0;
+                    fields.forEach(function (f) {
+                        if (!f[1]) return;
+                        printed++;
+                        html += '<dl><dt>' + escHtml(f[0]) + '</dt><dd>' + escHtml(f[1]) + '</dd></dl>';
+                    });
+                    if (!printed) {
+                        html += escHtml(<?php echo wp_json_encode( __( 'This file has no further details recorded. Contact the library to ask what is in the folder.', 'societypress' ) ); ?>);
+                    }
+                    html += '</div>';
+                    cell.innerHTML = html;
+                })
+                .catch(function () {
+                    cell.innerHTML = '<div class="sp-vf-detail">' + <?php echo wp_json_encode( __( 'Unable to load this record.', 'societypress' ) ); ?> + '</div>';
+                });
+        });
+    })();
+    </script>
+    <?php
+}
+
+// ============================================================================
+// LIBRARY: CONTROLLED LISTS AND CATALOG COLUMNS
+// ============================================================================
+//
+// WHY: Media Type, Subject and Location started as free-text boxes on the item
+//      form. With one cataloger that is fine. With a rota of volunteers it is
+//      not: "Periodicals", "Periodical" and "periodicals" all get typed, and
+//      the public catalog's browse-by-subject facets fracture into near
+//      duplicates that a researcher has to guess between. A short list the
+//      library owns — add, rename, delete — keeps the vocabulary steady while
+//      still letting a cataloger add a value the moment they need it.
+//
+// WHY an option and not a table: these are three short word lists, edited a
+//      handful of times a year. sp_menu_layout and sp_affiliations set the
+//      precedent for that shape.
+//
+// WHY the defaults are populated rather than empty: a society migrating from
+//      EasyNetSites already had these exact lists, and an empty screen reads
+//      as a feature that does not work yet. The shipped vocabulary is the
+//      standard genealogy-library one, so it is a reasonable start for a
+//      society that has never had a list at all.
+// ============================================================================
+
+/**
+ * The three catalog lists, and the item column each one fills.
+ *
+ * @return array<string, array{label:string, column:string, description:string}>
+ */
+function sp_library_list_kinds(): array {
+    return [
+        'media_type' => [
+            'label'       => __( 'Media Type', 'societypress' ),
+            'column'      => 'media_type',
+            'description' => __( 'What the item physically is — a book, a map, a roll of microfilm.', 'societypress' ),
+        ],
+        'subject' => [
+            'label'       => __( 'Subject', 'societypress' ),
+            'column'      => 'subject',
+            'description' => __( 'What the item is about. This is what a researcher browses by.', 'societypress' ),
+        ],
+        'geographic_location' => [
+            'label'       => __( 'Location', 'societypress' ),
+            'column'      => 'geographic_location',
+            'description' => __( 'The place the item covers — a state, a country, a region.', 'societypress' ),
+        ],
+    ];
+}
+
+/**
+ * The vocabulary a brand-new install starts with.
+ *
+ * @return array<string, string[]>
+ */
+function sp_default_library_lists(): array {
+    return [
+        'media_type' => [
+            'Audio & Video',
+            'Book',
+            'eBook',
+            'Map',
+            'Microfilm/fiche',
+            'Periodicals',
+            'Rare Books',
+            'Vertical File',
+        ],
+        'subject' => [
+            'Acadians',
+            'Addresses, Lectures & Essays',
+            'Adoption',
+            'African Americans',
+            'Alamo, The',
+            'Almanacs',
+            'American Colonies',
+            'American Revolution',
+            'Atlas & Gazeetter',
+            'Bible Records',
+            'Bibliography',
+            'Biography',
+            'Business & Industry',
+            'Canary Islanders',
+            'Catalogs',
+            'Cemeteries',
+            'Census',
+            'Church History & Records',
+            'Cities & Towns',
+            'Civil War',
+            'Cold War',
+            'Colleges & Universities',
+            'Colonial Period',
+            'Court & County Records',
+            'Crime & Criminals',
+            'DAR',
+            'Dictionaries & Encyclopedias',
+            'Directories',
+            'DNA',
+            'Emigration & Immigration',
+            'Ethnic Research',
+            'Exploration & Discovery',
+            'Family History',
+            'Folklore & Tales',
+            'Genealogy Resources',
+            'Geography',
+            'Government & Politics',
+            'Handbooks, Manuals, Etc.',
+            'Handwriting',
+            'Heraldry, Clans, Tartans',
+            'Hispanic',
+            'Historic Sites',
+            'Historical Maps',
+            'History',
+            'Huguenots',
+            'Indentured & Apprentices',
+            'Indexes',
+            'Indian Wars',
+            'Journals, Letters & Memoirs',
+            'Korean War, 1950-1953',
+            'Land & Property',
+            'Libraries & Archives',
+            'Maps',
+            'Mayflower',
+            'Migration',
+            'Military',
+            'Monarchs & Nobility',
+            'Mortality Schedules',
+            'Names',
+            'Native Americans',
+            'Naturalization & Citizenship',
+            'Newspapers',
+            'Obituaries',
+            'Orphans & Indigents',
+            'Passenger Lists & Ships',
+            'Pedigree Charts',
+            'Pensions',
+            'Persian Gulf War',
+            'Personal Narratives',
+            'Photography',
+            'Pioneers & Early Settlers',
+            'Place Names',
+            'Plantations',
+            'Preservation & Restoration',
+            'Probate Records',
+            'Puritans',
+            'Quakers',
+            'Schools',
+            'Social Life & Customs',
+            'Societies',
+            'Surnames',
+            'Taxation',
+            'Texas Republic',
+            'Texas Revolution',
+            'Travel & Description',
+            'Vietnam War, 1961-1975',
+            'Vital Records',
+            'War of 1812',
+            'Wars, Other',
+            'Women',
+            'World War I',
+            'World War II',
+            'Yearbooks',
+        ],
+        'geographic_location' => [
+            'Africa',
+            'Alabama',
+            'Alaska',
+            'Alberta',
+            'Arab Countries',
+            'Argentina',
+            'Arizona',
+            'Arkansas',
+            'Asia',
+            'Australia',
+            'Austria',
+            'Barbados',
+            'Belgium',
+            'Bermuda',
+            'Brazil',
+            'California',
+            'Canada',
+            'Canary Islands',
+            'Caribbean',
+            'Central America',
+            'Chihuahua',
+            'China',
+            'Coahuila',
+            'Colorado',
+            'Connecticut',
+            'Croatia',
+            'Czech Republic',
+            'Delaware',
+            'Denmark',
+            'Egypt',
+            'England',
+            'Europe',
+            'Finland',
+            'Florida',
+            'France',
+            'Georgia',
+            'Germany',
+            'Greece',
+            'Hawaii',
+            'Idaho',
+            'Illinois',
+            'Indiana',
+            'Iowa',
+            'Ireland',
+            'Italy',
+            'Jalisco',
+            'Kansas',
+            'Kentucky',
+            'Korea',
+            'Labrador',
+            'Latin America',
+            'Lebanon',
+            'Louisiana',
+            'Maine',
+            'Maryland',
+            'Massachusetts',
+            'Mexico',
+            'Michigan',
+            'Minnesota',
+            'Mississippi',
+            'Missouri',
+            'Montana',
+            'Montenegro',
+            'Nebraska',
+            'Netherlands',
+            'Nevada',
+            'New Brunswick',
+            'New England',
+            'New Hampshire',
+            'New Jersey',
+            'New Mexico',
+            'New York',
+            'New Zealand',
+            'Newfoundland',
+            'North America',
+            'North Carolina',
+            'North Dakota',
+            'Northern Ireland',
+            'Norway',
+            'Nova Scotia',
+            'Nuevo Leon',
+            'Ohio',
+            'Oklahoma',
+            'Ontario',
+            'Oregon',
+            'Panama Canal',
+            'Pennsylvania',
+            'Peru',
+            'Philippines',
+            'Poland',
+            'Polynesia',
+            'Portugal',
+            'Puerto Rico',
+            'Quebec',
+            'Rhode Island',
+            'Russia',
+            'San Antonio',
+            'Scandinavia',
+            'Scotland',
+            'Serbia',
+            'Sinaloa',
+            'South Carolina',
+            'South Dakota',
+            'South, The',
+            'Southwest, The',
+            'Spain',
+            'Sweden',
+            'Switzerland',
+            'Syria',
+            'Tennessee',
+            'Texas',
+            'United States',
+            'Utah',
+            'Vermont',
+            'Virgin Islands',
+            'Virginia',
+            'Wales',
+            'Washington',
+            'Washington, D.C.',
+            'West Indies',
+            'West Virginia',
+            'West, The',
+            'Wisconsin',
+            'World',
+            'Wyoming',
+            'Yugoslavia',
+            'Zacatecas',
+        ],
+    ];
+}
+
+/**
+ * The saved lists, one array of values per kind.
+ *
+ * Values are trimmed, de-duplicated case-insensitively and sorted, so the
+ * dropdowns a cataloger sees are always in the order they would look for.
+ *
+ * @return array<string, string[]>
+ */
+function sp_get_library_lists(): array {
+    $stored   = get_option( 'sp_library_lists', null );
+    $defaults = sp_default_library_lists();
+
+    // Never saved: hand back the shipped vocabulary. WHY not write it to the
+    // option on activation — a society that empties a list on purpose would
+    // find it refilled on the next upgrade.
+    if ( ! is_array( $stored ) ) {
+        return $defaults;
+    }
+
+    $out = [];
+    foreach ( array_keys( sp_library_list_kinds() ) as $kind ) {
+        $values = isset( $stored[ $kind ] ) && is_array( $stored[ $kind ] ) ? $stored[ $kind ] : [];
+        $out[ $kind ] = sp_clean_library_list( $values );
+    }
+
+    return $out;
+}
+
+/**
+ * Tidy one list: trim, drop blanks, drop case-insensitive duplicates, sort.
+ *
+ * @param array $values Raw values.
+ * @return string[]
+ */
+function sp_clean_library_list( array $values ): array {
+    $clean = [];
+    $seen  = [];
+
+    foreach ( $values as $value ) {
+        $value = trim( wp_strip_all_tags( (string) $value ) );
+        if ( $value === '' ) {
+            continue;
+        }
+
+        $key = strtolower( $value );
+        if ( isset( $seen[ $key ] ) ) {
+            continue;
+        }
+
+        $seen[ $key ] = true;
+        $clean[]      = $value;
+    }
+
+    natcasesort( $clean );
+
+    return array_values( $clean );
+}
+
+/**
+ * The choices to offer for one field on the item form.
+ *
+ * WHY it merges values already in the catalog: an imported collection carries
+ * whatever vocabulary the old system used. If the dropdown only offered the
+ * managed list, opening an imported item and saving it would silently blank a
+ * value the library had been using for twenty years.
+ *
+ * @param string $kind One of sp_library_list_kinds().
+ * @param string $current The value on the item being edited, if any.
+ * @return string[]
+ */
+function sp_library_list_choices( string $kind, string $current = '' ): array {
+    global $wpdb;
+
+    $kinds = sp_library_list_kinds();
+    if ( ! isset( $kinds[ $kind ] ) ) {
+        return [];
+    }
+
+    $lists  = sp_get_library_lists();
+    $values = $lists[ $kind ] ?? [];
+
+    // Values in use that nobody has added to the list yet. Cached because the
+    // item form is opened one record at a time and this scans the whole table.
+    $cache_key = 'sp_library_inuse_' . $kind;
+    $in_use    = get_transient( $cache_key );
+
+    if ( ! is_array( $in_use ) ) {
+        $column = $kinds[ $kind ]['column'];
+        $in_use = $wpdb->get_col(
+            "SELECT DISTINCT `{$column}` FROM {$wpdb->prefix}sp_library_items
+             WHERE `{$column}` IS NOT NULL AND `{$column}` <> '' LIMIT 500"
+        );
+        set_transient( $cache_key, is_array( $in_use ) ? $in_use : [], HOUR_IN_SECONDS );
+    }
+
+    if ( $current !== '' ) {
+        $in_use[] = $current;
+    }
+
+    return sp_clean_library_list( array_merge( $values, (array) $in_use ) );
+}
+
+/**
+ * Add one value to a list if it is not already there.
+ *
+ * Called when a cataloger types a new value into the "Add new" box on the item
+ * form, so the next person to catalog gets it as a ready-made choice.
+ */
+function sp_library_list_add( string $kind, string $value ): void {
+    $value = trim( wp_strip_all_tags( $value ) );
+    if ( $value === '' || ! isset( sp_library_list_kinds()[ $kind ] ) ) {
+        return;
+    }
+
+    $lists = sp_get_library_lists();
+
+    foreach ( $lists[ $kind ] as $existing ) {
+        if ( strcasecmp( $existing, $value ) === 0 ) {
+            return;
+        }
+    }
+
+    $lists[ $kind ][] = $value;
+    $lists[ $kind ]   = sp_clean_library_list( $lists[ $kind ] );
+
+    update_option( 'sp_library_lists', $lists );
+    delete_transient( 'sp_library_inuse_' . $kind );
+}
+
+/**
+ * Render one controlled-list field on the item edit form.
+ *
+ * A dropdown of the managed values, plus an "Add new" choice that opens a box
+ * right there. WHY not send the cataloger to the list screen first: they are
+ * mid-record with a book in their hand, and a trip to another screen to add
+ * one word is how free-typed near-duplicates got into the catalog in the first
+ * place. Anything typed here joins the list for everyone on save.
+ *
+ * @param string $kind    One of sp_library_list_kinds().
+ * @param string $current The value currently on the item.
+ */
+function sp_library_list_field( string $kind, string $current ): void {
+    static $script_printed = false;
+
+    $kinds = sp_library_list_kinds();
+    if ( ! isset( $kinds[ $kind ] ) ) {
+        return;
+    }
+
+    $choices = sp_library_list_choices( $kind, $current );
+    ?>
+    <select name="<?php echo esc_attr( $kind ); ?>" id="<?php echo esc_attr( $kind ); ?>" class="sp-liblist-select">
+        <option value=""><?php esc_html_e( '— Not set —', 'societypress' ); ?></option>
+        <?php foreach ( $choices as $choice ) : ?>
+            <option value="<?php echo esc_attr( $choice ); ?>" <?php selected( $current, $choice ); ?>>
+                <?php echo esc_html( $choice ); ?>
+            </option>
+        <?php endforeach; ?>
+        <option value="__sp_new__"><?php esc_html_e( '— Add new… —', 'societypress' ); ?></option>
+    </select>
+    <span class="sp-liblist-new" hidden>
+        <label class="screen-reader-text" for="<?php echo esc_attr( $kind ); ?>__new">
+            <?php
+            printf(
+                /* translators: %s: the name of the list, e.g. Subject. */
+                esc_html__( 'New %s', 'societypress' ),
+                esc_html( $kinds[ $kind ]['label'] )
+            );
+            ?>
+        </label>
+        <input type="text" name="<?php echo esc_attr( $kind ); ?>__new"
+               id="<?php echo esc_attr( $kind ); ?>__new" class="regular-text"
+               placeholder="<?php esc_attr_e( 'Type it here and save', 'societypress' ); ?>">
+    </span>
+    <?php
+
+    // One copy of the behaviour for however many of these fields the form has.
+    if ( $script_printed ) {
+        return;
+    }
+    $script_printed = true;
+    ?>
+    <script>
+    (function () {
+        document.addEventListener('change', function (e) {
+            if (!e.target.matches('.sp-liblist-select')) return;
+            var box = e.target.parentNode.querySelector('.sp-liblist-new');
+            if (!box) return;
+            box.hidden = e.target.value !== '__sp_new__';
+            if (!box.hidden) {
+                var field = box.querySelector('input');
+                if (field) field.focus();
+            }
+        });
+    })();
+    </script>
+    <?php
+}
+
+/**
+ * Work out what to store for a controlled-list field on save.
+ *
+ * Returns the chosen value, or the newly typed one — which it also adds to the
+ * list so the next cataloger finds it waiting.
+ *
+ * @param string $kind One of sp_library_list_kinds().
+ * @return string
+ */
+function sp_library_list_posted_value( string $kind ): string {
+    // phpcs:disable WordPress.Security.NonceVerification.Missing -- callers verify.
+    $chosen = sanitize_text_field( wp_unslash( $_POST[ $kind ] ?? '' ) );
+
+    if ( $chosen !== '__sp_new__' ) {
+        return $chosen;
+    }
+
+    $new = sanitize_text_field( wp_unslash( $_POST[ $kind . '__new' ] ?? '' ) );
+    $new = trim( $new );
+
+    // "Add new" chosen but nothing typed: store nothing rather than the marker.
+    if ( $new === '' ) {
+        return '';
+    }
+
+    sp_library_list_add( $kind, $new );
+
+    return $new;
+    // phpcs:enable WordPress.Security.NonceVerification.Missing
+}
+
+/**
+ * Every column the public catalog table can show, in a fixed canonical order.
+ *
+ * The 'sortable' flag marks the columns the results table can be ordered by —
+ * it matches the catalog query's own whitelist, so a column that cannot be
+ * sorted safely never grows a sort link.
+ *
+ * @return array<string, array{label:string, sortable:bool}>
+ */
+function sp_library_catalog_column_defs(): array {
+    return [
+        'call_number' => [ 'label' => __( 'Call #', 'societypress' ),  'sortable' => true ],
+        'title'       => [ 'label' => __( 'Title', 'societypress' ),   'sortable' => true ],
+        'author'      => [ 'label' => __( 'Author', 'societypress' ),  'sortable' => true ],
+        'media_type'  => [ 'label' => __( 'Type', 'societypress' ),    'sortable' => true ],
+        'subject'     => [ 'label' => __( 'Subject', 'societypress' ), 'sortable' => false ],
+        'pub_year'    => [ 'label' => __( 'Year', 'societypress' ),    'sortable' => true ],
+        'available'   => [ 'label' => __( 'Status', 'societypress' ),  'sortable' => false ],
+    ];
+}
+
+/**
+ * The columns the public catalog shows, in the admin's chosen order.
+ *
+ * WHY the fallback is the historical set rather than everything: an install
+ * upgrading into this feature must see the table it saw yesterday.
+ *
+ * @return string[]
+ */
+function sp_get_library_catalog_columns(): array {
+    $stored = get_option( 'sp_library_catalog_columns', null );
+    $defs   = sp_library_catalog_column_defs();
+
+    if ( ! is_array( $stored ) ) {
+        return [ 'title', 'author', 'media_type', 'call_number', 'pub_year', 'available' ];
+    }
+
+    $out = [];
+    foreach ( $stored as $key ) {
+        $key = (string) $key;
+        if ( isset( $defs[ $key ] ) && ! in_array( $key, $out, true ) ) {
+            $out[] = $key;
+        }
+    }
+
+    // Every column switched off would leave a table of empty rows. Title is the
+    // one column a catalog cannot be read without, so it stands in.
+    return $out ?: [ 'title' ];
+}
+
+/**
+ * The Catalog Options admin screen — the three lists and the public columns.
+ */
+function sp_render_library_lists_page(): void {
+    if ( ! sp_user_can( 'library' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    $kinds   = sp_library_list_kinds();
+    $defs    = sp_library_catalog_column_defs();
+    $saved   = false;
+    $restored = false;
+
+    if ( isset( $_POST['sp_library_lists_submit'] ) ) {
+        check_admin_referer( 'sp_save_library_lists' );
+
+        // Restore: put the shipped vocabulary back for one list without
+        // touching the other two or the column choice.
+        $restore_kind = sanitize_key( wp_unslash( $_POST['sp_library_list_restore'] ?? '' ) );
+
+        $lists = [];
+        foreach ( array_keys( $kinds ) as $kind ) {
+            $raw = wp_unslash( $_POST[ 'sp_library_list_' . $kind ] ?? '' );
+            $lists[ $kind ] = sp_clean_library_list( preg_split( '/\r\n|\r|\n/', (string) $raw ) ?: [] );
+        }
+
+        if ( isset( $kinds[ $restore_kind ] ) ) {
+            $lists[ $restore_kind ] = sp_clean_library_list( sp_default_library_lists()[ $restore_kind ] );
+            $restored               = true;
+        }
+
+        update_option( 'sp_library_lists', $lists );
+
+        foreach ( array_keys( $kinds ) as $kind ) {
+            delete_transient( 'sp_library_inuse_' . $kind );
+        }
+
+        // Columns arrive in the order the arrows left them in; only the ticked
+        // ones are shown.
+        $order   = array_map( 'sanitize_key', (array) ( wp_unslash( $_POST['sp_library_column_order'] ?? [] ) ) );
+        $enabled = array_map( 'sanitize_key', (array) ( wp_unslash( $_POST['sp_library_column_on'] ?? [] ) ) );
+        $columns = [];
+
+        foreach ( $order as $key ) {
+            if ( isset( $defs[ $key ] ) && in_array( $key, $enabled, true ) ) {
+                $columns[] = $key;
+            }
+        }
+
+        update_option( 'sp_library_catalog_columns', $columns );
+        delete_transient( 'sp_library_catalog_stats' );
+
+        sp_audit( 'settings_updated', 'Library catalog lists and columns saved.', 'settings' );
+
+        $saved = true;
+    }
+
+    $lists   = sp_get_library_lists();
+    $columns = sp_get_library_catalog_columns();
+
+    // Chosen columns first in their saved order, then the rest switched off.
+    $ordered = $columns;
+    foreach ( array_keys( $defs ) as $key ) {
+        if ( ! in_array( $key, $ordered, true ) ) {
+            $ordered[] = $key;
+        }
+    }
+    ?>
+    <style id="sp-library-lists-css">
+        .sp-liblist-grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+        .sp-liblist-card { flex: 1 1 300px; min-width: 280px; padding: 12px 16px; }
+        .sp-liblist-card h3 { margin-top: 0; }
+        .sp-liblist-card textarea { width: 100%; font-family: Consolas, Monaco, monospace; font-size: 12px; }
+        .sp-liblist-count { color: #646970; font-size: 12px; }
+        .sp-libcol-list { margin: 0; padding: 0; list-style: none; max-width: 460px; }
+        .sp-libcol-list li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 0 0 6px; background: #fff; border: 1px solid #dcdcde; border-radius: 4px; }
+        .sp-libcol-name { flex: 1; }
+        .sp-libcol-list li.sp-libcol-off .sp-libcol-name { color: #8c8f94; }
+        .sp-libcol-note { color: #646970; font-size: 12px; }
+    </style>
+
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Catalog Options', 'societypress' ); ?></h1>
+        <p class="description sp-max-w-780">
+            <?php esc_html_e( 'The word lists your catalogers pick from, and the columns a visitor sees when they search the catalog.', 'societypress' ); ?>
+        </p>
+
+        <?php if ( $saved ) : ?>
+            <div class="notice notice-success is-dismissible">
+                <p>
+                    <?php
+                    echo $restored
+                        ? esc_html__( 'Saved, and the list you asked for was put back the way it ships.', 'societypress' )
+                        : esc_html__( 'Saved. Catalogers see the new lists straight away.', 'societypress' );
+                    ?>
+                </p>
+            </div>
+        <?php endif; ?>
+
+        <form method="post">
+            <?php wp_nonce_field( 'sp_save_library_lists' ); ?>
+            <input type="hidden" name="sp_library_list_restore" id="sp-library-list-restore" value="">
+            <?php /* WHY a hidden field and not the submit button's name: the restore
+                     button submits the form from JS, and a button's name is only sent
+                     when the button itself is clicked. */ ?>
+            <input type="hidden" name="sp_library_lists_submit" value="1">
+
+            <h2><?php esc_html_e( 'What a visitor sees in search results', 'societypress' ); ?></h2>
+            <p class="description">
+                <?php esc_html_e( 'Untick anything your catalog does not fill in — a column of dashes tells a researcher nothing. Use the arrows to put them in the order you want them read.', 'societypress' ); ?>
+            </p>
+
+            <ul class="sp-libcol-list" id="sp-libcol-list">
+                <?php foreach ( $ordered as $key ) : ?>
+                    <?php $on = in_array( $key, $columns, true ); ?>
+                    <li class="<?php echo $on ? '' : 'sp-libcol-off'; ?>" data-col="<?php echo esc_attr( $key ); ?>">
+                        <input type="hidden" name="sp_library_column_order[]" value="<?php echo esc_attr( $key ); ?>">
+                        <label class="sp-libcol-name">
+                            <input type="checkbox" name="sp_library_column_on[]"
+                                   value="<?php echo esc_attr( $key ); ?>" <?php checked( $on ); ?>>
+                            <?php echo esc_html( $defs[ $key ]['label'] ); ?>
+                            <?php if ( ! $defs[ $key ]['sortable'] ) : ?>
+                                <span class="sp-libcol-note"><?php esc_html_e( '(not sortable)', 'societypress' ); ?></span>
+                            <?php endif; ?>
+                        </label>
+                        <button type="button" class="button sp-libcol-up" aria-label="<?php esc_attr_e( 'Move up', 'societypress' ); ?>">&uarr;</button>
+                        <button type="button" class="button sp-libcol-down" aria-label="<?php esc_attr_e( 'Move down', 'societypress' ); ?>">&darr;</button>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+
+            <h2><?php esc_html_e( 'The lists catalogers pick from', 'societypress' ); ?></h2>
+            <p class="description">
+                <?php esc_html_e( 'One entry per line. Delete a line to remove it from the dropdown — items already using it keep it until someone edits them.', 'societypress' ); ?>
+            </p>
+
+            <div class="sp-liblist-grid">
+                <?php foreach ( $kinds as $kind => $meta ) : ?>
+                    <div class="sp-liblist-card card">
+                        <h3><?php echo esc_html( $meta['label'] ); ?></h3>
+                        <p class="description"><?php echo esc_html( $meta['description'] ); ?></p>
+                        <textarea name="sp_library_list_<?php echo esc_attr( $kind ); ?>" rows="14"
+                                  id="sp-library-list-<?php echo esc_attr( $kind ); ?>"><?php
+                            echo esc_textarea( implode( "\n", $lists[ $kind ] ) );
+                        ?></textarea>
+                        <p class="sp-liblist-count">
+                            <?php
+                            printf(
+                                /* translators: %d: how many entries are in the list. */
+                                esc_html( _n( '%d entry', '%d entries', count( $lists[ $kind ] ), 'societypress' ) ),
+                                count( $lists[ $kind ] )
+                            );
+                            ?>
+                            &nbsp;
+                            <button type="button" class="button-link sp-liblist-restore"
+                                    data-kind="<?php echo esc_attr( $kind ); ?>">
+                                <?php esc_html_e( 'Put back the standard list', 'societypress' ); ?>
+                            </button>
+                        </p>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <?php submit_button( __( 'Save Catalog Options', 'societypress' ), 'primary', false ); ?>
+        </form>
+    </div>
+
+    <script>
+    (function () {
+        /* Column reordering. The hidden inputs move with their row, so the
+           order PHP receives is the order on screen — no index bookkeeping. */
+        var list = document.getElementById('sp-libcol-list');
+        if (list) {
+            list.addEventListener('click', function (e) {
+                var up = e.target.closest('.sp-libcol-up');
+                var down = e.target.closest('.sp-libcol-down');
+                if (!up && !down) return;
+                var row = e.target.closest('li');
+                if (!row) return;
+                if (up && row.previousElementSibling) {
+                    row.parentNode.insertBefore(row, row.previousElementSibling);
+                } else if (down && row.nextElementSibling) {
+                    row.parentNode.insertBefore(row.nextElementSibling, row);
+                }
+                e.target.focus();
+            });
+
+            list.addEventListener('change', function (e) {
+                if (!e.target.matches('input[type="checkbox"]')) return;
+                var row = e.target.closest('li');
+                if (row) row.classList.toggle('sp-libcol-off', !e.target.checked);
+            });
+        }
+
+        /* "Put back the standard list" — fills the box from the server copy on
+           the next save rather than shipping the whole vocabulary to the page. */
+        var restoreField = document.getElementById('sp-library-list-restore');
+        document.querySelectorAll('.sp-liblist-restore').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                spConfirm(
+                    <?php echo wp_json_encode( __( 'Replace this list with the one SocietyPress ships? Anything you have added to it will be lost.', 'societypress' ) ); ?>,
+                    function () {
+                        restoreField.value = btn.getAttribute('data-kind');
+                        btn.closest('form').submit();
+                    }
+                );
+            });
+        });
+    })();
+    </script>
+    <?php
+}
+
+
 /**
  * Render: Library Catalog Admin Page
  *
@@ -67022,14 +68462,17 @@ function sp_render_library_item_edit_page(): void {
             'pub_year'            => $parse_int( $_POST['pub_year'] ?? '' ),
             'pub_month'           => $parse_int( $_POST['pub_month'] ?? '' ),
             'pub_day'             => $parse_int( $_POST['pub_day'] ?? '' ),
-            'media_type'          => sanitize_text_field( wp_unslash( $_POST['media_type'] ?? '' ) ) ?: null,
+            // The three controlled lists: the posted value is either a pick
+            // from the list or a brand-new entry typed into the "Add new" box,
+            // which sp_library_list_posted_value() also files into the list.
+            'media_type'          => sp_library_list_posted_value( 'media_type' ) ?: null,
             'use_serials'         => ! empty( $_POST['use_serials'] ) ? 1 : 0,
             'isbn'                => sanitize_text_field( wp_unslash( $_POST['isbn'] ?? '' ) ) ?: null,
             'call_number'         => sanitize_text_field( wp_unslash( $_POST['call_number'] ?? '' ) ) ?: null,
             'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
             'category_id'         => absint( $_POST['category_id'] ?? 0 ) ?: null,
             'shelf_location'      => sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ?: null,
-            'geographic_location' => sanitize_text_field( wp_unslash( $_POST['geographic_location'] ?? '' ) ) ?: null,
+            'geographic_location' => sp_library_list_posted_value( 'geographic_location' ) ?: null,
             'acquisition_number'  => $parse_int( $_POST['acquisition_number'] ?? '' ),
             'acq_year'            => $parse_int( $_POST['acq_year'] ?? '' ),
             'acq_month'           => $parse_int( $_POST['acq_month'] ?? '' ),
@@ -67041,7 +68484,7 @@ function sp_render_library_item_edit_page(): void {
             'county'              => sanitize_text_field( wp_unslash( $_POST['county'] ?? '' ) ) ?: null,
             'state'               => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ) ?: null,
             'surname'             => sanitize_text_field( wp_unslash( $_POST['surname'] ?? '' ) ) ?: null,
-            'subject'             => sanitize_text_field( wp_unslash( $_POST['subject'] ?? '' ) ) ?: null,
+            'subject'             => sp_library_list_posted_value( 'subject' ) ?: null,
             'librarian_notes'     => sanitize_textarea_field( wp_unslash( $_POST['librarian_notes'] ?? '' ) ) ?: null,
             'item_condition'      => sanitize_text_field( wp_unslash( $_POST['item_condition'] ?? 'good' ) ),
             'available'           => ! empty( $_POST['available'] ) ? 1 : 0,
@@ -67166,7 +68609,8 @@ function sp_render_library_item_edit_page(): void {
                 </tr>
                 <tr>
                     <th scope="col"><label for="media_type"><?php esc_html_e( 'Media Type', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="media_type" id="media_type" value="<?php echo esc_attr( $item->media_type ?? '' ); ?>" class="sp-lib-edit-medium-input" placeholder="<?php echo esc_attr__( 'Book, Map, Periodicals…', 'societypress' ); ?>"></td>
+                    <td><?php sp_library_list_field( 'media_type', (string) ( $item->media_type ?? '' ) ); ?>
+                    <p class="description"><?php esc_html_e( 'Managed at Library → Catalog Options.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
                     <th scope="col"><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
@@ -67181,7 +68625,7 @@ function sp_render_library_item_edit_page(): void {
                 </tr>
                 <tr>
                     <th scope="col"><label for="subject"><?php esc_html_e( 'Subject Tags', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="subject" id="subject" class="large-text" value="<?php echo esc_attr( $item->subject ?? '' ); ?>" placeholder="<?php echo esc_attr__( 'History, Family History, Vital Records…', 'societypress' ); ?>">
+                    <td><?php sp_library_list_field( 'subject', (string) ( $item->subject ?? '' ) ); ?>
                     <p class="description"><?php esc_html_e( 'Comma-separated subject tags.', 'societypress' ); ?></p></td>
                 </tr>
             </table>
@@ -67242,7 +68686,7 @@ function sp_render_library_item_edit_page(): void {
                 </tr>
                 <tr>
                     <th scope="col"><label for="geographic_location"><?php esc_html_e( 'Geographic Coverage', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="geographic_location" id="geographic_location" class="regular-text" value="<?php echo esc_attr( $item->geographic_location ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., Texas, England, Virginia', 'societypress' ); ?>">
+                    <td><?php sp_library_list_field( 'geographic_location', (string) ( $item->geographic_location ?? '' ) ); ?>
                     <p class="description"><?php esc_html_e( 'Region(s) this item covers.', 'societypress' ); ?></p></td>
                 </tr>
                 <tr>
@@ -80188,6 +81632,15 @@ add_action( 'admin_init', function () {
         'cover_image_id' => absint( $_POST['cover_image_id'] ?? 0 ) ?: null,
         'visibility'     => sanitize_text_field( wp_unslash( $_POST['visibility'] ?? 'members_only' ) ),
     ];
+
+    /*
+     * Saving this screen hands ownership of the contents list to the person who
+     * pressed the button. From here on the PDF reader leaves it alone, even if
+     * a later re-read would find more entries — an editor who trimmed the list
+     * on purpose should not have to fight the indexer over it. Clearing the box
+     * hands it back, so the reader may fill it again.
+     */
+    $data['toc_auto'] = ( '' === trim( $data['toc'] ) ) ? 1 : 0;
 
     if ( $newsletter_id ) {
         $wpdb->update( $prefix . 'newsletters', $data, [ 'id' => $newsletter_id ] );
@@ -104836,9 +106289,27 @@ function sp_render_affiliations_page(): void {
             ];
         }
 
+        // Logo size: a named preset, or "custom" plus the number typed into the
+        // pixel box. Anything unrecognised falls back to the shipped default
+        // rather than failing the save — the size is not worth an error page.
+        $presets     = sp_affiliation_logo_presets();
+        $size_choice = sanitize_key( wp_unslash( $_POST['sp_affiliations_logo_size'] ?? '' ) );
+
+        if ( isset( $presets[ $size_choice ] ) ) {
+            $logo_height = $presets[ $size_choice ]['height'];
+        } elseif ( $size_choice === 'custom' ) {
+            $logo_height = sp_clamp_affiliation_logo_height( wp_unslash( $_POST['sp_affiliations_logo_height'] ?? '' ) );
+        } else {
+            $logo_height = SP_AFFILIATION_LOGO_HEIGHT_DEFAULT;
+        }
+
+        $logo_plate = sanitize_key( wp_unslash( $_POST['sp_affiliations_logo_plate'] ?? '' ) ) === 'none' ? 'none' : 'plate';
+
         update_option( 'sp_affiliations', [
-            'heading' => sanitize_text_field( wp_unslash( $_POST['sp_affiliations_heading'] ?? '' ) ),
-            'rows'    => $rows_out,
+            'heading'     => sanitize_text_field( wp_unslash( $_POST['sp_affiliations_heading'] ?? '' ) ),
+            'logo_height' => $logo_height,
+            'logo_plate'  => $logo_plate,
+            'rows'        => $rows_out,
         ] );
 
         sp_audit( 'settings_updated', 'Affiliations saved.', 'settings' );
@@ -104846,20 +106317,45 @@ function sp_render_affiliations_page(): void {
         $saved = true;
     }
 
-    $stored  = sp_get_affiliations_option();
-    $rows    = sp_get_affiliations();
-    $heading = $stored['heading'];
+    $stored      = sp_get_affiliations_option();
+    $rows        = sp_get_affiliations();
+    $heading     = $stored['heading'];
+    $logo_height = $stored['logo_height'];
+    $logo_plate  = $stored['logo_plate'];
+
+    // Which radio starts selected: the preset whose height matches what is
+    // stored, or Custom when the number came from the pixel box.
+    $presets      = sp_affiliation_logo_presets();
+    $size_choice  = 'custom';
+    foreach ( $presets as $preset_key => $preset ) {
+        if ( $preset['height'] === $logo_height ) {
+            $size_choice = $preset_key;
+            break;
+        }
+    }
 
     wp_enqueue_media();
     ?>
     <style id="sp-affiliations-css">
+        .sp-affiliation-flat-note { flex: 1 1 100%; order: 99; margin: 4px 0 0; font-size: 12px; color: #646970; }
+        .sp-affiliation-size-choice { display: block; margin: 0 0 6px; }
+        .sp-affiliation-size-custom { margin: 4px 0 0 24px; }
+        .sp-affiliation-size-custom[hidden] { display: none; }
         .sp-affiliation-row { padding: 12px 16px; margin: 0 0 12px; }
-        .sp-affiliation-grid { display: flex; gap: 20px; align-items: flex-start; }
+        .sp-affiliation-grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
         .sp-affiliation-preview { width: 110px; flex-shrink: 0; min-height: 60px; display: flex; align-items: center; justify-content: center; background: #f6f7f7; border: 1px dashed #c3c4c7; border-radius: 4px; }
         .sp-affiliation-preview img { max-width: 100%; height: auto; display: block; }
-        .sp-affiliation-fields { flex: 1; min-width: 0; }
+        /* flex-wrap: the three columns need ~110 + 260 + 150 plus gaps. Below
+           that the buttons drop under the fields instead of being crushed. */
+        .sp-affiliation-fields { flex: 1 1 260px; min-width: 0; }
         .sp-affiliation-fields p { margin: 0 0 10px; }
         .sp-affiliation-label { display: block; font-weight: 600; margin-bottom: 3px; }
+        /* WHY 100%: WordPress's .regular-text is a fixed 25em. In a column
+           narrower than that the input doesn't shrink — it spills out over the
+           button column, so "Choose logo" ends up sitting behind the name
+           field. Filling the column instead keeps the row honest at any width. */
+        .sp-affiliation-fields input[type="text"],
+        .sp-affiliation-fields input[type="url"] { width: 100%; max-width: 100%; box-sizing: border-box; }
         .sp-affiliation-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; width: 150px; flex-shrink: 0; }
         .sp-affiliation-actions .sp-affiliation-up,
         .sp-affiliation-actions .sp-affiliation-down { width: 100%; }
@@ -104895,6 +106391,82 @@ function sp_render_affiliations_page(): void {
                         <p class="description"><?php esc_html_e( 'Optional. Leave this empty to show the logos on their own.', 'societypress' ); ?></p>
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'How big the logos are', 'societypress' ); ?></th>
+                    <td>
+                        <fieldset id="sp-affiliation-size">
+                            <legend class="screen-reader-text">
+                                <?php esc_html_e( 'How big the logos are', 'societypress' ); ?>
+                            </legend>
+                            <?php foreach ( $presets as $preset_key => $preset ) : ?>
+                                <label class="sp-affiliation-size-choice">
+                                    <input type="radio" name="sp_affiliations_logo_size"
+                                           value="<?php echo esc_attr( $preset_key ); ?>"
+                                           <?php checked( $size_choice, $preset_key ); ?>>
+                                    <?php
+                                    printf(
+                                        /* translators: 1: size name, e.g. Medium. 2: height in pixels. */
+                                        esc_html__( '%1$s — %2$dpx tall', 'societypress' ),
+                                        esc_html( $preset['label'] ),
+                                        (int) $preset['height']
+                                    );
+                                    ?>
+                                </label>
+                            <?php endforeach; ?>
+                            <label class="sp-affiliation-size-choice">
+                                <input type="radio" name="sp_affiliations_logo_size" value="custom"
+                                       <?php checked( $size_choice, 'custom' ); ?>>
+                                <?php esc_html_e( 'A size of my own', 'societypress' ); ?>
+                            </label>
+                            <p class="sp-affiliation-size-custom" <?php echo $size_choice === 'custom' ? '' : 'hidden'; ?>>
+                                <label for="sp_affiliations_logo_height">
+                                    <?php esc_html_e( 'Height in pixels', 'societypress' ); ?>
+                                </label>
+                                <input type="number" id="sp_affiliations_logo_height"
+                                       name="sp_affiliations_logo_height" class="small-text"
+                                       min="<?php echo esc_attr( (string) SP_AFFILIATION_LOGO_HEIGHT_MIN ); ?>"
+                                       max="<?php echo esc_attr( (string) SP_AFFILIATION_LOGO_HEIGHT_MAX ); ?>"
+                                       step="1" value="<?php echo esc_attr( (string) $logo_height ); ?>">
+                            </p>
+                        </fieldset>
+                        <p class="description">
+                            <?php
+                            printf(
+                                /* translators: 1: smallest allowed height. 2: largest allowed height. */
+                                esc_html__( 'Every logo is scaled to the same height, so a tall crest and a wide wordmark still look like they belong on the same row. Anything from %1$dpx to %2$dpx.', 'societypress' ),
+                                (int) SP_AFFILIATION_LOGO_HEIGHT_MIN,
+                                (int) SP_AFFILIATION_LOGO_HEIGHT_MAX
+                            );
+                            ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Behind the logos', 'societypress' ); ?></th>
+                    <td>
+                        <fieldset>
+                            <legend class="screen-reader-text">
+                                <?php esc_html_e( 'Behind the logos', 'societypress' ); ?>
+                            </legend>
+                            <label class="sp-affiliation-size-choice">
+                                <input type="radio" name="sp_affiliations_logo_plate" value="plate"
+                                       <?php checked( $logo_plate, 'plate' ); ?>>
+                                <?php esc_html_e( 'A white panel behind each logo', 'societypress' ); ?>
+                            </label>
+                            <label class="sp-affiliation-size-choice">
+                                <input type="radio" name="sp_affiliations_logo_plate" value="none"
+                                       <?php checked( $logo_plate, 'none' ); ?>>
+                                <?php esc_html_e( 'Nothing — let the footer colour show through', 'societypress' ); ?>
+                            </label>
+                        </fieldset>
+                        <p class="description">
+                            <?php esc_html_e( 'Logo files often have a see-through background. The white panel means artwork drawn in dark ink still reads on a dark footer. Turn it off when your logos are made for your footer colour, or when the panel looks like a box around them.', 'societypress' ); ?>
+                        </p>
+                        <p class="description">
+                            <?php esc_html_e( 'A see-through background only survives in a PNG. If a logo was saved as a JPEG, its background was filled in — usually with white — when the file was made, and no setting here can bring it back. Save it again as a PNG and upload that.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
             </table>
 
             <h2><?php esc_html_e( 'Organisations', 'societypress' ); ?></h2>
@@ -104924,6 +106496,26 @@ function sp_render_affiliations_page(): void {
     </div>
 
     <script>
+    /* Show the pixel box only when "A size of my own" is chosen. Its own IIFE
+       rather than part of the block below, which bails early when there are no
+       rows on the page — the size control is there either way. */
+    (function () {
+        var fieldset = document.getElementById('sp-affiliation-size');
+        if (!fieldset) return;
+
+        var custom = fieldset.querySelector('.sp-affiliation-size-custom');
+        if (!custom) return;
+
+        fieldset.addEventListener('change', function (e) {
+            if (!e.target.matches('input[name="sp_affiliations_logo_size"]')) return;
+            custom.hidden = e.target.value !== 'custom';
+            if (!custom.hidden) {
+                var box = custom.querySelector('input[type="number"]');
+                if (box) box.focus();
+            }
+        });
+    })();
+
     (function () {
         var rows     = document.getElementById('sp-affiliations-rows');
         var addBtn   = document.getElementById('sp-affiliation-add');
@@ -105047,6 +106639,23 @@ function sp_affiliation_row_markup( int $index, array $row, bool $template = fal
                 }
                 ?>
             </div>
+
+            <?php
+            /*
+             * Say so when a logo cannot be see-through. A JPEG has no
+             * transparency to show — whatever was behind the artwork was
+             * filled in when the file was saved — and the difference between
+             * "the setting is not working" and "this file cannot do it" is
+             * invisible unless we name it here, next to the file in question.
+             */
+            $mime = $id > 0 ? (string) get_post_mime_type( $id ) : '';
+            $transparency_capable = [ 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif' ];
+            if ( $mime !== '' && ! in_array( $mime, $transparency_capable, true ) ) :
+                ?>
+                <p class="sp-affiliation-flat-note">
+                    <?php esc_html_e( 'This file has a solid background that cannot be made see-through. Save it as a PNG and choose it again if you want the footer colour behind it.', 'societypress' ); ?>
+                </p>
+            <?php endif; ?>
 
             <div class="sp-affiliation-fields">
                 <p>
@@ -107186,10 +108795,16 @@ function sp_newsletter_parse_toc( string $text ): array {
     $misses = 0;
     $count  = count( $lines );
 
-    // WHY it stops after two consecutive misses rather than running to the end
-    // of the page: body prose further down throws up the occasional
-    // "something   5" that looks exactly like a contents entry.
-    for ( $i = $start + 1; $i < $count && $misses < 2 && count( $items ) < 40; $i++ ) {
+    // WHY it stops after a run of misses rather than running to the end of the
+    // page: body prose further down throws up the occasional "something   5"
+    // that looks exactly like a contents entry.
+    //
+    // WHY three and not two: the contents block is printed in a narrow left
+    // column beside body prose, and PDF extraction merges the two columns onto
+    // one line. Where the contents column has a gap, the line that comes out is
+    // pure prose — a miss sitting in the middle of a perfectly good list. Two
+    // was tight enough that one such gap ended the scan halfway down the block.
+    for ( $i = $start + 1; $i < $count && $misses < 3 && count( $items ) < 40; $i++ ) {
         $line = rtrim( $lines[ $i ] );
         if ( '' === trim( $line ) ) {
             continue;
@@ -107206,9 +108821,20 @@ function sp_newsletter_parse_toc( string $text ): array {
         // year inside a title from the page number after it is the gap — a
         // page number is preceded by two or more spaces or a run of dots,
         // where a year inside a phrase is preceded by one.
-        if ( preg_match_all( '/(\p{L}[^\n]{2,60}?)[ .\t]{2,}(\d{1,3})(?![\d\p{L}])/u', $line, $matches, PREG_SET_ORDER ) ) {
+        //
+        // WHY the leader class is not just [ .\t]: a word processor turns three
+        // typed dots into a single … character, so a real contents line reads
+        // "New Members …………..… 3" — ellipsis characters, then ONE space, then
+        // the page number. Against a class of plain dots and spaces that is a
+        // single separator character and the line failed to match, while the
+        // line above it, whose leaders happened to stay as ASCII dots, matched
+        // fine. That is the whole of "it shows 6 items when there are 12": the
+        // entries that went missing were the ones whose dots got prettified.
+        if ( preg_match_all( '/(\p{L}[^\n]{2,60}?)[ .\t\x{2026}\x{00B7}\x{2022}_]{2,}(\d{1,3})(?![\d\p{L}])/u', $line, $matches, PREG_SET_ORDER ) ) {
             foreach ( $matches as $hit ) {
-                $title = trim( (string) preg_replace( '/[\s.]+$/u', '', $hit[1] ) );
+                // Trailing leaders come off the title too, or entries read
+                // "New Members …………..…" in the archive.
+                $title = trim( (string) preg_replace( '/[\s.\x{2026}\x{00B7}\x{2022}_]+$/u', '', $hit[1] ) );
                 if ( mb_strlen( $title ) < 3 ) {
                     continue;
                 }
@@ -107238,7 +108864,7 @@ function sp_newsletter_build_index( int $newsletter_id ) {
     $table = $wpdb->prefix . 'sp_newsletters';
 
     $nl = $wpdb->get_row( $wpdb->prepare(
-        "SELECT id, title, file_id, toc FROM {$table} WHERE id = %d",
+        "SELECT id, title, file_id, toc, toc_auto FROM {$table} WHERE id = %d",
         $newsletter_id
     ) );
     if ( ! $nl ) {
@@ -107264,10 +108890,27 @@ function sp_newsletter_build_index( int $newsletter_id ) {
         current_time( 'mysql' )
     ) );
 
-    // Never overwrite a contents list someone typed by hand.
+    /*
+     * Never overwrite a contents list someone typed by hand — but do replace
+     * one this reader wrote itself when a re-read finds more of the issue than
+     * last time. An editor's list is the authority; the reader's own earlier
+     * guess is not, and refusing to revisit it meant a parser fix could never
+     * reach the issues it was written for.
+     *
+     * Fewer entries than are already stored is treated as a worse read, not a
+     * correction: a page that extracts badly one day should not quietly delete
+     * a list that was fine yesterday.
+     */
     $toc_written = false;
-    if ( $toc && '' === trim( (string) $nl->toc ) ) {
-        $wpdb->update( $table, [ 'toc' => implode( "\n", $toc ) ], [ 'id' => (int) $nl->id ] );
+    $stored      = array_values( array_filter( array_map( 'trim', preg_split( '/\R/', (string) $nl->toc ) ) ) );
+    $is_auto     = ( '' === trim( (string) $nl->toc ) ) || ! empty( $nl->toc_auto );
+
+    if ( $toc && $is_auto && count( $toc ) > count( $stored ) ) {
+        $wpdb->update(
+            $table,
+            [ 'toc' => implode( "\n", $toc ), 'toc_auto' => 1 ],
+            [ 'id' => (int) $nl->id ]
+        );
         $toc_written = true;
     }
 

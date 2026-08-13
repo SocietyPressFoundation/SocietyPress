@@ -17,6 +17,88 @@ Pre-1.0 development iterations are archived in
 
 ### Added
 
+**Affiliation logos: control their size and what sits behind them**
+
+**Website → Affiliations** now sets how large the logos are — Small, Medium,
+Large, or an exact height of your own — and whether each one gets a white panel
+behind it. Turn the panel off and a logo saved with a see-through background
+takes the footer's own colour. Logos are matched by height, so a tall crest and
+a wide wordmark still look like they belong on the same row. Each row warns you
+when a logo's file type cannot be see-through, so it is clear which file to
+replace rather than looking like a setting that does not work.
+
+**Catalog Options: the word lists your catalogers pick from**
+
+A new screen at **Library → Catalog Options** owns the Media Type, Subject and
+Location lists. Add an entry, rename one, delete one. On the item form those
+three fields are now dropdowns instead of empty boxes, each with an
+*Add new…* choice that takes a value on the spot — a cataloger with a book in
+their hand never has to leave the record to add one word, and what they type
+joins the list for everyone. The lists arrive filled with the standard
+genealogy-library vocabulary, and each has a button to put it back.
+
+A value already on an item but missing from the list is still offered, so
+opening an imported record and saving it cannot silently blank a value the
+library has used for years.
+
+**Choose which columns the public catalog shows**
+
+Same screen. Tick the columns a visitor sees in search results and arrow them
+into the order you want them read. A catalog imported from an older system
+often has nothing in Type or Year, and a column of dashes tells a researcher
+nothing while pushing the useful columns off a phone screen.
+
+**A Vertical Files page**
+
+A surname collection filed in folders is not a catalog search, and members look
+for it by name. The new **Vertical Files** page type lists them with the search,
+paging and rows-per-page controls a member of a society migrating from
+EasyNetSites will recognise. The arrow beside a row opens that record underneath
+it, so nobody loses their place partway down a list of a thousand surnames.
+
+### Fixed
+
+**Store, Shopping Cart and Records could not be chosen as page types**
+
+All three drew their pages correctly and had done all along, but none appeared
+in the page type list on the Edit Page screen — so the only route to them was
+WordPress's own Page Attributes box, which SocietyPress hides. A society could
+stock the Store from the admin and then find no way to put it on a page.
+
+**Newsletter contents lists were missing entries, and could never be repaired**
+
+Two faults, one on top of the other. The reader that lifts the "Inside this
+Issue" block off an issue's front page understood dot leaders written as plain
+dots, but not the single … character a word processor substitutes for them —
+so an entry whose dots had been prettified was skipped. It also gave up after
+two lines it could not read, and because a printed front page is two columns
+that a PDF hands over as one line, an ordinary gap in the contents column ended
+the scan halfway down the list.
+
+The second fault was worse: the reader refuses to overwrite a contents list that
+already exists, which is right for one an editor typed and wrong for its own bad
+earlier attempt, and it could not tell the two apart. Any improvement to the
+reading could therefore never reach the issues that most needed it.
+
+It now knows its own work. A fresh read replaces an earlier automatic list when
+it finds more of the issue, and never touches one you have typed. Saving the
+box yourself claims it permanently; emptying it hands it back.
+
+**The condition after every catalog title**
+
+Every item in an imported catalog carries "Good" because that is the setting
+nothing has changed, so "(Good)" appeared after every title and told a
+researcher nothing. Condition now shows only when it is something other than
+good — the cases that actually change whether an item can be borrowed or needs
+careful handling.
+
+**A long drop down menu ran off the bottom of the screen**
+
+The admin sidebar's drop down panels are pinned to the window, so anything below
+its bottom edge could not be reached by scrolling. A panel now slides up to fit,
+and one taller than the window scrolls inside itself with its title staying put.
+
+
 **A Menus screen built for the person who actually maintains the site**
 
 SocietyPress now has its own Menus screen, at **Website → Menus**, and it

@@ -2,8 +2,14 @@
 
 All notable changes to SocietyPress are recorded here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+SocietyPress uses a single running version shared by the plugin, the parent theme
+and every child theme — they are built, released and installed together, so they
+carry one number rather than drifting apart. The patch digit increments each
+release, without rolling over: 1.1.9, 1.1.10, 1.1.11, and so on. A change in the
+first or second digit marks a milestone release, not a technical distinction about
+the kind of change involved.
 
 Entries describe user-visible changes only. For the underlying commits, see
 [the Git log](https://github.com/SocietyPressFoundation/SocietyPress/commits/main).

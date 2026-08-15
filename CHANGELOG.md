@@ -13,7 +13,28 @@ Pre-1.0 development iterations are archived in
 
 ---
 
-## [Unreleased]
+## [1.1.11] — 2026-08-15
+
+### Fixed
+
+**Theme updates that never finished updating**
+
+The themes gallery could show an update for a theme, sit there while you clicked
+Update, report success — and still show the same update waiting for you
+afterwards. Clicking again did the same thing. Nothing was broken on your site,
+but there was no way to make the notice go away.
+
+The gallery was reading the version number carried inside the plugin, while the
+Update button could only fetch files from the most recent published release of
+SocietyPress. Whenever the plugin had moved ahead of the last release, the
+gallery offered a version that no download could deliver, so the theme on disk
+never changed and the notice came straight back.
+
+The gallery now only offers what a download can actually install, so an update
+you are offered is one that will finish. In the rarer case where the available
+files were *older* than the theme already on your site, the update would quietly
+replace it with the older version; updates now stop and tell you the site is
+already current instead of going backwards.
 
 ### Changed
 

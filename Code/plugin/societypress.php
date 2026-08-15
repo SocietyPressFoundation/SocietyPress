@@ -14324,6 +14324,40 @@ function sp_check_parent_theme_update(): ?array {
 }
 
 /**
+ * Cap a child theme's advertised version at what the latest release can deliver.
+ *
+ * WHY: sp_get_theme_registry() is baked into the plugin file, so its version
+ *      numbers move the instant new code is deployed — including straight from
+ *      a working copy that was never released. The installer, though, can only
+ *      ever copy files out of the latest published GitHub release. When the
+ *      registry claims a version no release carries, the gallery advertises an
+ *      update, the installer copies the older release files over the top, the
+ *      theme's style.css never reaches the advertised number, and the "update
+ *      available" badge comes back on the next page load. Forever.
+ *
+ *      This is the same trap sp_check_parent_theme_update() documents and
+ *      avoids; child themes trusted the registry blindly and fell into it. The
+ *      release version is the true ceiling of what is installable, so we clamp
+ *      to it here and let every caller share one answer.
+ *
+ * @param string $registry_version Version claimed by the registry.
+ * @return string|null Installable version, or null if GitHub is unreachable.
+ */
+function sp_get_installable_theme_version( string $registry_version ): ?string {
+    $release = sp_get_github_release();
+    if ( ! $release || empty( $release->version ) ) {
+        return null; // Can't reach GitHub — advertise nothing rather than guess.
+    }
+
+    // The registry may legitimately be BEHIND the release (a theme that stopped
+    // changing while others moved on), so take whichever is lower — that is what
+    // an install would actually put on disk.
+    return version_compare( $registry_version, $release->version, '>' )
+        ? $release->version
+        : $registry_version;
+}
+
+/**
  * Check if any installed child themes need updates.
  *
  * @return array Array of [ slug => [ 'name', 'installed', 'available' ] ] for outdated themes.
@@ -14338,12 +14372,18 @@ function sp_check_child_theme_updates(): array {
             continue; // Not installed — not an update issue
         }
 
+        // Only offer what the latest release can actually install.
+        $available = sp_get_installable_theme_version( $reg['version'] );
+        if ( null === $available ) {
+            continue;
+        }
+
         $installed_version = $theme->get( 'Version' );
-        if ( version_compare( $installed_version, $reg['version'], '<' ) ) {
+        if ( version_compare( $installed_version, $available, '<' ) ) {
             $outdated[ $slug ] = [
                 'name'      => $reg['name'],
                 'installed' => $installed_version,
-                'available' => $reg['version'],
+                'available' => $available,
             ];
         }
     }
@@ -32760,8 +32800,40 @@ add_action( 'wp_ajax_sp_install_theme', function () {
         ) ] );
     }
 
+    // Read the version we are actually about to install, straight from the
+    // extracted style.css. The registry's number is a claim about the repo; this
+    // is the fact about the archive in hand, and the two disagree whenever the
+    // plugin has moved ahead of the last published release.
+    $source_version = '';
+    if ( file_exists( $source_path . 'style.css' ) ) {
+        $source_header  = get_file_data( $source_path . 'style.css', [ 'Version' => 'Version' ], 'theme' );
+        $source_version = $source_header['Version'] ?? '';
+    }
+
+    // Refuse to overwrite a newer theme with an older one.
+    //
+    // WHY: the old code deleted the installed theme and copied whatever the
+    //      release held, with no comparison at all. Against a stale release that
+    //      silently DOWNGRADED a site — the reason Parlor was found sitting at
+    //      1.0.0 on a site whose other themes were ten patch versions ahead.
+    //      A refused update is a nuisance; a silent downgrade loses work.
+    $dest_path       = get_theme_root() . '/' . $theme_slug . '/';
+    $installed_theme = wp_get_theme( $theme_slug );
+    if ( $installed_theme->exists() && $source_version ) {
+        $installed_version = $installed_theme->get( 'Version' );
+        if ( version_compare( $source_version, $installed_version, '<=' ) ) {
+            $wp_filesystem->delete( $tmp_dir, true );
+            wp_send_json_error( [ 'message' => sprintf(
+                /* translators: 1: theme name, 2: installed version, 3: version in the release */
+                __( '%1$s is already at version %2$s. The latest published release only contains version %3$s, so there is nothing newer to install yet.', 'societypress' ),
+                $theme_info['name'],
+                $installed_version,
+                $source_version
+            ) ] );
+        }
+    }
+
     // Copy the theme to wp-content/themes/
-    $dest_path = get_theme_root() . '/' . $theme_slug . '/';
     if ( $wp_filesystem->exists( $dest_path ) ) {
         $wp_filesystem->delete( $dest_path, true );
     }
@@ -32773,14 +32845,22 @@ add_action( 'wp_ajax_sp_install_theme', function () {
         wp_send_json_error( [ 'message' => $copy_result->get_error_message() ] );
     }
 
+    // Report the version that landed on disk, not the one the registry claimed.
+    $installed_label = $source_version ?: $theme_info['version'];
+
     sp_audit(
         'theme_installed',
-        sprintf( 'Child theme "%s" installed/updated to version %s', $theme_info['name'], $theme_info['version'] ),
+        sprintf( 'Child theme "%s" installed/updated to version %s', $theme_info['name'], $installed_label ),
         'settings'
     );
 
     wp_send_json_success( [
-        'message' => sprintf( __( '%s has been installed.', 'societypress' ), $theme_info['name'] ),
+        'message' => sprintf(
+            /* translators: 1: theme name, 2: version installed */
+            __( '%1$s has been installed (version %2$s).', 'societypress' ),
+            $theme_info['name'],
+            $installed_label
+        ),
     ] );
 } );
 
@@ -34771,11 +34851,16 @@ function sp_render_themes_page(): void {
                 $is_parent      = ( $slug === 'societypress' );
                 $is_custom      = isset( $custom_themes[ $slug ] );
 
-                // Check if a registry update is available for this installed theme
+                // Check if an update is available for this installed theme.
+                // WHY sp_get_installable_theme_version() and not the registry number:
+                // the button has to promise a version the installer can actually
+                // deliver, or clicking it changes nothing and the badge never clears.
                 $update_available = false;
+                $reg_version      = '';
                 if ( isset( $registry[ $slug ] ) ) {
-                    $reg_version = $registry[ $slug ]['version'];
-                    if ( version_compare( $version, $reg_version, '<' ) ) {
+                    $installable = sp_get_installable_theme_version( $registry[ $slug ]['version'] );
+                    if ( null !== $installable && version_compare( $version, $installable, '<' ) ) {
+                        $reg_version      = $installable;
                         $update_available = true;
                     }
                 }
@@ -34927,7 +35012,13 @@ function sp_render_themes_page(): void {
                             <?php echo esc_html( $reg['name'] ); ?>
                         </h3>
                         <p class="sp-themes-card-meta">
-                            <?php printf( esc_html__( 'Version %s', 'societypress' ), esc_html( $reg['version'] ) ); ?>
+                            <?php
+                            // Show the version an install would actually produce. The registry
+                            // number can sit ahead of the newest published release, and quoting
+                            // it here would promise Harold something the installer cannot fetch.
+                            $available_version = sp_get_installable_theme_version( $reg['version'] );
+                            printf( esc_html__( 'Version %s', 'societypress' ), esc_html( $available_version ?: $reg['version'] ) );
+                            ?>
                         </p>
                         <?php if ( ! empty( $reg['description'] ) ) : ?>
                             <p class="sp-themes-card-desc">

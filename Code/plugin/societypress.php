@@ -88002,8 +88002,21 @@ function sp_render_store_frontend(): void {
             margin: 0 0 10px;
             font-size: 0.9rem;
         }
-        .sp-store-preview a {
+        /* WHY a button that looks like a link: the sample now opens a reader
+           instead of navigating away, and a button is what a screen reader
+           should announce for that. It keeps the link's appearance so the card
+           reads exactly as it did before. */
+        .sp-store-preview a,
+        .sp-store-preview-btn {
             text-decoration: underline;
+        }
+        .sp-store-preview-btn {
+            background: none;
+            border: none;
+            padding: 0;
+            font: inherit;
+            color: var(--sp-color-primary, #1e3a5f);
+            cursor: pointer;
         }
         .sp-store-price {
             font-size: 22px;
@@ -88219,11 +88232,23 @@ function sp_render_store_frontend(): void {
                                         echo esc_html( sprintf( __( 'Members pay %s', 'societypress' ), sp_format_currency( $mem_price ) ) );
                                     ?></div>
                                 <?php endif; ?>
+                                <?php
+                                // WHY the reader instead of a plain link: linking
+                                // straight at the PDF leaves it to the visitor's
+                                // browser settings, and a browser told to save PDFs
+                                // downloads the sample rather than showing it. Someone
+                                // deciding whether to buy a book should not end up with
+                                // a file on their computer to find out. The reader shows
+                                // it in place; the download stays available inside it
+                                // for anyone who does want the file.
+                                ?>
                                 <?php if ( ! empty( $entry['preview_url'] ) ) : ?>
                                     <div class="sp-store-preview">
-                                        <a href="<?php echo esc_url( $entry['preview_url'] ); ?>" target="_blank" rel="noopener">
+                                        <button type="button" class="sp-store-preview-btn"
+                                                data-pdf="<?php echo esc_url( $entry['preview_url'] ); ?>"
+                                                data-title="<?php echo esc_attr( sprintf( /* translators: %s: product title */ __( 'Sample — %s', 'societypress' ), $entry['title'] ) ); ?>">
                                             <?php esc_html_e( 'See a sample', 'societypress' ); ?>
-                                        </a>
+                                        </button>
                                     </div>
                                 <?php endif; ?>
                                 <div class="sp-store-actions">
@@ -88241,6 +88266,106 @@ function sp_render_store_frontend(): void {
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Sample reader. Rendered once per page and shared by every card, since the
+         handler below is bound to the document.
+
+         WHY its own id rather than the newsletter archive's #sp-pdf-modal: a page
+         builder can put a store and a newsletter archive on the same page, and two
+         elements answering to one id is a bug waiting for someone else to find. The
+         .sp-pdf-modal class still carries all the shared styling. -->
+    <div id="sp-store-pdf-modal" class="sp-pdf-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-store-pdf-modal-title">
+        <div class="sp-pdf-modal-overlay"></div>
+        <div class="sp-pdf-modal-content" tabindex="-1">
+            <div class="sp-pdf-modal-header">
+                <h3 id="sp-store-pdf-modal-title"></h3>
+                <div class="sp-pdf-modal-actions">
+                    <a href="#" id="sp-store-pdf-modal-download" class="sp-pdf-modal-btn sp-pdf-modal-btn-download" target="_blank" rel="noopener" download><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
+                    <button type="button" id="sp-store-pdf-modal-close" class="sp-pdf-modal-btn sp-pdf-modal-btn-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
+                </div>
+            </div>
+            <div class="sp-pdf-modal-body">
+                <iframe id="sp-store-pdf-modal-iframe" src="" frameborder="0" title="<?php esc_attr_e( 'Book sample viewer', 'societypress' ); ?>"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * Store — sample reader.
+     *
+     * Opens a product's sample PDF in an iframe using the browser's own PDF
+     * renderer, so no viewer library is needed. Each "See a sample" button
+     * carries its own PDF url and title, which is why one handler on the
+     * document serves every card without knowing how many there are.
+     */
+    (function() {
+        'use strict';
+
+        var modal  = document.getElementById('sp-store-pdf-modal');
+        if (!modal) return;
+
+        var title  = document.getElementById('sp-store-pdf-modal-title');
+        var frame  = document.getElementById('sp-store-pdf-modal-iframe');
+        var dl     = document.getElementById('sp-store-pdf-modal-download');
+        var close  = document.getElementById('sp-store-pdf-modal-close');
+        var overlay = modal.querySelector('.sp-pdf-modal-overlay');
+        var opener = null;  // element that opened it, so focus can go back
+
+        function open(btn) {
+            opener           = document.activeElement;
+            title.textContent = btn.getAttribute('data-title') || '';
+            frame.src         = btn.getAttribute('data-pdf') || '';
+            dl.href           = btn.getAttribute('data-pdf') || '#';
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';  // stop the page behind from scrolling
+            if (close && typeof close.focus === 'function') {
+                try { close.focus(); } catch (e) {}
+            }
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+            frame.src           = '';  // stops the PDF rendering in the background
+            document.body.style.overflow = '';
+            if (opener && typeof opener.focus === 'function') {
+                try { opener.focus(); } catch (e) {}
+            }
+            opener = null;
+        }
+
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-store-preview-btn[data-pdf]');
+            if (!btn) return;
+            e.preventDefault();
+            open(btn);
+        });
+
+        if (close)   close.addEventListener('click', closeModal);
+        if (overlay) overlay.addEventListener('click', closeModal);
+
+        // Escape closes it; Tab is kept inside it while it is open.
+        document.addEventListener('keydown', function(e) {
+            if (modal.style.display === 'none') return;
+            if (e.key === 'Escape') {
+                closeModal();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            var focusables = modal.querySelectorAll(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            if (!focusables.length) return;
+            var first = focusables[0];
+            var last  = focusables[focusables.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault(); last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault(); first.focus();
+            }
+        });
+    })();
+    </script>
 
     <!-- Store cart JavaScript — handles Add to Cart, mini-cart badge, and cart interactions.
          WHY here: Inline at the bottom of the store page because it's store-specific UI.

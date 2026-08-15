@@ -2648,8 +2648,12 @@ input[type="date"]:focus {
     margin-top: 10px;
 }
 
-/* Buttons */
-.sp-newsletter-btn {
+/* Buttons.
+   WHY the second selector: the PDF reader is no longer newsletter-only — the
+   store opens samples in it too. Anything outside the newsletter archive uses
+   the neutral name so no module has to wear another module's class. */
+.sp-newsletter-btn,
+.sp-pdf-modal-btn {
     display: inline-block;
     padding: 6px 14px;
     font-size: 0.85rem;
@@ -2689,13 +2693,15 @@ input[type="date"]:focus {
 
 /* Inside the reader the download link is the only action, so it keeps the
    solid treatment rather than sitting there looking disabled. */
-.sp-pdf-modal .sp-newsletter-btn-download {
+.sp-pdf-modal .sp-newsletter-btn-download,
+.sp-pdf-modal .sp-pdf-modal-btn-download {
     background: var(--sp-color-primary, #1e3a5f);
     color: #fff;
     box-shadow: none;
 }
 
-.sp-pdf-modal .sp-newsletter-btn-download:hover {
+.sp-pdf-modal .sp-newsletter-btn-download:hover,
+.sp-pdf-modal .sp-pdf-modal-btn-download:hover {
     background: var(--sp-color-primary-hover, #2c5282);
     color: #fff;
 }
@@ -2780,7 +2786,8 @@ input[type="date"]:focus {
 }
 
 /* Close button */
-.sp-newsletter-btn-close {
+.sp-newsletter-btn-close,
+.sp-pdf-modal-btn-close {
     background: #e5e7eb;
     color: #374151;
     font-size: 1.3rem;
@@ -2793,7 +2800,8 @@ input[type="date"]:focus {
     border-radius: 6px;
 }
 
-.sp-newsletter-btn-close:hover {
+.sp-newsletter-btn-close:hover,
+.sp-pdf-modal-btn-close:hover {
     background: #d1d5db;
 }
 

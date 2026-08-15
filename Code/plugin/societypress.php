@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.10
+ * Version:     1.1.11
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.10' );
+define( 'SOCIETYPRESS_VERSION', '1.1.11' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8543,6 +8543,86 @@ function sp_affiliation_logo_presets(): array {
 }
 
 /**
+ * Where the affiliation row sits across the width of the footer.
+ *
+ * WHY this is a setting at all: the row was centred and only centred, which is
+ * right for a footer built as one wide column but wrong the moment a theme puts
+ * its footer content on a left-hand rule — the logos then float in the middle of
+ * nothing, lined up with none of the text above them. Three positions cover
+ * every footer any of the themes actually draws.
+ *
+ * WHY named positions and not a free-form value: "Left" is a thing an
+ * administrator can picture. Anything finer belongs to whoever is editing the
+ * child theme's stylesheet, and they do not need a setting to do it.
+ *
+ * @return array<string, string> Position key => the label shown on the screen.
+ */
+function sp_affiliation_alignments(): array {
+    return [
+        'left'   => __( 'Left', 'societypress' ),
+        'center' => __( 'Center', 'societypress' ),
+        'right'  => __( 'Right', 'societypress' ),
+    ];
+}
+
+/**
+ * Force a stored or submitted position into one this plugin knows how to draw.
+ *
+ * WHY centre is the fallback: it is what every footer looked like before this
+ * setting existed, so a hand-edited option or a form posted without the field
+ * lands on the appearance the site already had rather than jumping sideways.
+ */
+function sp_sanitize_affiliation_align( $value ): string {
+    $key = sanitize_key( (string) $value );
+
+    return isset( sp_affiliation_alignments()[ $key ] ) ? $key : 'center';
+}
+
+/**
+ * Which part of the footer the logo row lives in.
+ *
+ * 'below' is the original behaviour: a band of its own, full width, sitting
+ * between the footer columns and the copyright line.
+ *
+ * 'inline' lifts the row up into the columns themselves, so it takes the empty
+ * space beside them instead of adding a new stripe underneath. WHY anyone
+ * wants that: footer columns are rarely the same height — an address block runs
+ * six lines while Quick Links runs three — so there is usually a pocket of dead
+ * footer sitting under the short column. Putting the logos in it costs no extra
+ * height at all.
+ *
+ * @return array<string, string> Placement key => the label shown on the screen.
+ */
+function sp_affiliation_placements(): array {
+    return [
+        'below'  => __( 'In a row of their own, below the columns', 'societypress' ),
+        'inline' => __( 'Up beside the columns, filling the empty space', 'societypress' ),
+    ];
+}
+
+/**
+ * Force a stored or submitted placement into one this plugin knows how to draw.
+ */
+function sp_sanitize_affiliation_placement( $value ): string {
+    $key = sanitize_key( (string) $value );
+
+    return isset( sp_affiliation_placements()[ $key ] ) ? $key : 'below';
+}
+
+/**
+ * The placement in force.
+ *
+ * A thin wrapper today, but every caller reads the placement through it rather
+ * than reaching into the option, so the "what if the theme cannot do this"
+ * question has exactly one answer in exactly one place. That answer lives in
+ * sp_affiliation_logos(), which prints the row in its own band when the inline
+ * slot never fires — see the note there.
+ */
+function sp_get_affiliation_placement(): string {
+    return sp_get_affiliations_option()['logo_placement'];
+}
+
+/**
  * Force a stored or submitted logo height into the supported range.
  *
  * WHY clamp rather than reject: a hand-edited option or a typo'd number should
@@ -8559,10 +8639,10 @@ function sp_clamp_affiliation_logo_height( $value ): int {
 }
 
 /**
- * Everything stored for affiliations: the optional heading, the logo size and
- * backdrop, and the rows.
+ * Everything stored for affiliations: the optional heading, the logo size,
+ * backdrop and position, and the rows.
  *
- * @return array{heading:string, logo_height:int, logo_plate:string, rows:array}
+ * @return array{heading:string, logo_height:int, logo_plate:string, logo_align:string, logo_placement:string, rows:array}
  */
 function sp_get_affiliations_option(): array {
     $stored = get_option( 'sp_affiliations', [] );
@@ -8574,6 +8654,8 @@ function sp_get_affiliations_option(): array {
         // no stored values; they keep the look their footer already had.
         'logo_height' => sp_clamp_affiliation_logo_height( is_array( $stored ) ? ( $stored['logo_height'] ?? 0 ) : 0 ),
         'logo_plate'  => $plate === 'none' ? 'none' : 'plate',
+        'logo_align'  => sp_sanitize_affiliation_align( is_array( $stored ) ? ( $stored['logo_align'] ?? '' ) : '' ),
+        'logo_placement' => sp_sanitize_affiliation_placement( is_array( $stored ) ? ( $stored['logo_placement'] ?? '' ) : '' ),
         'rows'        => is_array( $stored ) && isset( $stored['rows'] ) && is_array( $stored['rows'] ) ? $stored['rows'] : [],
     ];
 }
@@ -8668,6 +8750,71 @@ add_action( 'wp_head', function () {
         $css .= '.sp-affiliations .sp-affiliation img{background:none;padding:0;border-radius:0;}';
     }
 
+    // Position: only written when it differs from centre, so a site that never
+    // touched this setting gets exactly the stylesheet it got before — no rule
+    // to un-do, nothing new in the cascade to trip over.
+    //
+    // WHY the heading and the list are moved separately rather than by setting
+    // text-align on the .sp-affiliations wrapper: the wrapper's centring lives
+    // in the theme stylesheet at the same specificity as anything written here,
+    // so overriding it would come down to source order — which is exactly the
+    // fragile thing the size rule above was written to avoid. The heading takes
+    // text-align directly (it only inherits the wrapper's), and the list is a
+    // flex row, so it takes justify-content. Both selectors carry
+    // .sp-affiliations, which out-ranks the theme's single-class rules.
+    if ( $stored['logo_align'] !== 'center' ) {
+        // Physical left/right rather than logical start/end: the setting says
+        // "Left", and on the LTR sites these themes are drawn for the two agree.
+        // A future RTL stylesheet would flip this pair together with the rest.
+        $css .= sprintf(
+            '.sp-affiliations .sp-affiliations-heading{text-align:%1$s;}.sp-affiliations .sp-affiliations-list{justify-content:%2$s;}',
+            $stored['logo_align'] === 'right' ? 'right' : 'left',
+            $stored['logo_align'] === 'right' ? 'flex-end' : 'flex-start'
+        );
+    }
+
+    // Placement: drop the row into the empty footer beneath the first column.
+    //
+    // WHY beneath a column rather than in a column of its own: footer columns
+    // are set by a grid, so every column is as tall as the longest one. The
+    // first column — name, address, phone, email — is normally the short one,
+    // which leaves a pocket of empty footer under it while the opening-hours or
+    // links column runs on. That pocket is the space worth filling. Giving the
+    // logos their own extra column instead would fill nothing; it would just
+    // make every other column narrower to pay for it.
+    //
+    // WHY margin-top:auto and not a fixed offset: the size of the pocket is
+    // whatever the tallest column happens to make it, and that changes with the
+    // opening hours, the number of links, the width of the window. Pushing off
+    // the free space rather than measuring it means the logos sit on the floor
+    // of the footer at every width without a single number being guessed.
+    //
+    // WHY the :has() rule: margin-top:auto only reaches the bottom inside a
+    // flex column, and the containing column belongs to the theme — the plugin
+    // has no idea what it is called, only that it is whatever wraps this row.
+    // Where :has() is unsupported the logos simply sit under the address rather
+    // than at the foot of the column: still in the pocket, still no extra
+    // height, just not flush to the bottom. Nothing breaks.
+    if ( sp_get_affiliation_placement() === 'inline' ) {
+        $css .= '*:has(>.sp-affiliations--inline){display:flex;flex-direction:column;}';
+        $css .= '.sp-affiliations--inline{margin-top:auto;padding:28px 0 0;text-align:inherit;}';
+
+        // A footer column is a great deal narrower than the full-width band, so
+        // the pixel cap written above — which is generous on purpose, to stop a
+        // wide wordmark being squeezed — has to give way to the column it is
+        // now sitting in. Emitted after that rule and at equal specificity, so
+        // it is source order that settles it.
+        $css .= '.sp-affiliations--inline .sp-affiliation img{max-width:100%;}';
+
+        // In the column, the logos read as belonging to the block above them,
+        // so they start at its edge rather than centred under it — unless the
+        // administrator has explicitly chosen a position, which the rules
+        // written earlier already applied and must keep.
+        if ( $stored['logo_align'] === 'center' ) {
+            $css .= '.sp-affiliations--inline .sp-affiliations-list{justify-content:flex-start;}';
+        }
+    }
+
     printf( '<style id="sp-affiliations-size">%s</style>' . "\n", $css );
 } );
 
@@ -8680,7 +8827,36 @@ add_action( 'wp_head', function () {
  * the logos would land beneath the footer's background instead of inside it.
  * Each theme calls this where its own design wants the row to sit.
  */
-function sp_affiliation_logos(): void {
+function sp_affiliation_logos( string $slot = 'below' ): void {
+    // WHY the themes call this twice — once inside their column container with
+    // 'inline', once after it with 'below' — instead of the plugin moving one
+    // block around with CSS: only the theme knows which of its divs is the
+    // column grid, and only markup inside that grid can take a cell in it. The
+    // plugin cannot work that out; it has no idea which of a theme's divs is
+    // the grid. So the theme marks both spots and the setting picks one.
+    //
+    // WHY the static guard, and why 'below' prints when it "shouldn't": the
+    // below slot is also the safety net. A private child theme with its own
+    // footer.php that predates this — txsaghs has one, and so will anybody
+    // else's — has no inline call to fire. Without the net, choosing the inline
+    // placement on such a theme would make the logos vanish from the footer
+    // altogether: the worst possible outcome for a setting whose entire job is
+    // moving them a few inches. Instead the inline slot stays silent, the below
+    // slot finds nothing has printed, and the row appears where it always did.
+    // The setting quietly does nothing rather than quietly destroying something.
+    //
+    // The default argument is 'below', so a theme that has never heard of any
+    // of this keeps its single call and its original footer exactly as it was.
+    static $printed = false;
+
+    if ( $printed ) {
+        return;
+    }
+
+    if ( $slot === 'inline' && sp_get_affiliation_placement() !== 'inline' ) {
+        return;
+    }
+
     $rows = sp_get_affiliations();
 
     // Nothing configured — print nothing at all, not an empty container that
@@ -8689,9 +8865,19 @@ function sp_affiliation_logos(): void {
         return;
     }
 
+    $printed = true;
+
     $heading = trim( sp_get_affiliations_option()['heading'] );
 
-    echo '<div class="sp-affiliations">';
+    // The modifier names the slot that actually rendered, not the slot that was
+    // asked for. It is what the inline placement's CSS hooks onto, so the rules
+    // that pull the row into a grid cell can never touch a row that fell back to
+    // its own band underneath — the fallback and the real thing stay visually
+    // distinct instead of the band inheriting grid properties it cannot use.
+    printf(
+        '<div class="sp-affiliations sp-affiliations--%s">',
+        esc_attr( $slot )
+    );
 
     if ( $heading !== '' ) {
         echo '<p class="sp-affiliations-heading">' . esc_html( $heading ) . '</p>';
@@ -32450,7 +32636,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.10',
+            'version'     => '1.1.11',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32458,7 +32644,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.10',
+            'version'     => '1.1.11',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32466,7 +32652,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.10',
+            'version'     => '1.1.11',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32474,7 +32660,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.10',
+            'version'     => '1.1.11',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32482,7 +32668,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.10',
+            'version'     => '1.1.11',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -106429,12 +106615,16 @@ function sp_render_affiliations_page(): void {
         }
 
         $logo_plate = sanitize_key( wp_unslash( $_POST['sp_affiliations_logo_plate'] ?? '' ) ) === 'none' ? 'none' : 'plate';
+        $logo_align     = sp_sanitize_affiliation_align( wp_unslash( $_POST['sp_affiliations_logo_align'] ?? '' ) );
+        $logo_placement = sp_sanitize_affiliation_placement( wp_unslash( $_POST['sp_affiliations_logo_placement'] ?? '' ) );
 
         update_option( 'sp_affiliations', [
-            'heading'     => sanitize_text_field( wp_unslash( $_POST['sp_affiliations_heading'] ?? '' ) ),
-            'logo_height' => $logo_height,
-            'logo_plate'  => $logo_plate,
-            'rows'        => $rows_out,
+            'heading'        => sanitize_text_field( wp_unslash( $_POST['sp_affiliations_heading'] ?? '' ) ),
+            'logo_height'    => $logo_height,
+            'logo_plate'     => $logo_plate,
+            'logo_align'     => $logo_align,
+            'logo_placement' => $logo_placement,
+            'rows'           => $rows_out,
         ] );
 
         sp_audit( 'settings_updated', 'Affiliations saved.', 'settings' );
@@ -106447,6 +106637,11 @@ function sp_render_affiliations_page(): void {
     $heading     = $stored['heading'];
     $logo_height = $stored['logo_height'];
     $logo_plate  = $stored['logo_plate'];
+    $logo_align  = $stored['logo_align'];
+    $alignments  = sp_affiliation_alignments();
+
+    $logo_placement = $stored['logo_placement'];
+    $placements     = sp_affiliation_placements();
 
     // Which radio starts selected: the preset whose height matches what is
     // stored, or Custom when the number came from the pixel box.
@@ -106466,6 +106661,16 @@ function sp_render_affiliations_page(): void {
         .sp-affiliation-size-choice { display: block; margin: 0 0 6px; }
         .sp-affiliation-size-custom { margin: 4px 0 0 24px; }
         .sp-affiliation-size-custom[hidden] { display: none; }
+        /* The three positions read across a row rather than down a column: they
+           are a left-to-right choice, and stacking them fights what they mean. */
+        .sp-affiliation-align-choices { display: flex; flex-wrap: wrap; gap: 18px; margin: 0 0 10px; }
+        .sp-affiliation-align-choices label { display: flex; align-items: center; gap: 5px; margin: 0; }
+        /* Navy strip because that is the footer colour every shipped theme uses,
+           so the preview looks like the thing it is previewing. */
+        .sp-affiliation-align-preview { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 360px; padding: 14px; box-sizing: border-box; background: #0d1f3c; border-radius: 4px; justify-content: center; }
+        .sp-affiliation-align-preview span { display: block; width: 46px; height: 18px; background: #fff; border-radius: 2px; opacity: 0.85; }
+        .sp-affiliation-align-preview[data-align="left"] { justify-content: flex-start; }
+        .sp-affiliation-align-preview[data-align="right"] { justify-content: flex-end; }
         .sp-affiliation-row { padding: 12px 16px; margin: 0 0 12px; }
         .sp-affiliation-grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
         .sp-affiliation-preview { width: 110px; flex-shrink: 0; min-height: 60px; display: flex; align-items: center; justify-content: center; background: #f6f7f7; border: 1px dashed #c3c4c7; border-radius: 4px; }
@@ -106592,6 +106797,74 @@ function sp_render_affiliations_page(): void {
                         </p>
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Where the logos sit', 'societypress' ); ?></th>
+                    <td>
+                        <fieldset id="sp-affiliation-align">
+                            <legend class="screen-reader-text">
+                                <?php esc_html_e( 'Where the logos sit', 'societypress' ); ?>
+                            </legend>
+                            <div class="sp-affiliation-align-choices">
+                                <?php foreach ( $alignments as $align_key => $align_label ) : ?>
+                                    <label>
+                                        <input type="radio" name="sp_affiliations_logo_align"
+                                               value="<?php echo esc_attr( $align_key ); ?>"
+                                               <?php checked( $logo_align, $align_key ); ?>>
+                                        <?php echo esc_html( $align_label ); ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <!-- A picture of the choice rather than a sentence about it: three
+                                 blocks on a footer-coloured strip, sliding to the side that is
+                                 selected. Someone who has never met the words "left align" still
+                                 knows immediately which button gives them what they want. It is
+                                 decoration for the sighted reader — the radio labels above carry
+                                 the same information for everyone else. -->
+                            <div class="sp-affiliation-align-preview"
+                                 data-align="<?php echo esc_attr( $logo_align ); ?>" aria-hidden="true">
+                                <span></span><span></span><span></span>
+                            </div>
+                        </fieldset>
+                        <p class="description">
+                            <?php esc_html_e( 'Moves the logos, and the wording above them, across the width of your footer. Centre suits a footer built as one wide band; left or right suits a footer whose text is already lined up down one side.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Which part of the footer', 'societypress' ); ?></th>
+                    <td>
+                        <fieldset id="sp-affiliation-placement">
+                            <legend class="screen-reader-text">
+                                <?php esc_html_e( 'Which part of the footer', 'societypress' ); ?>
+                            </legend>
+                            <?php foreach ( $placements as $place_key => $place_label ) : ?>
+                                <label class="sp-affiliation-size-choice">
+                                    <input type="radio" name="sp_affiliations_logo_placement"
+                                           value="<?php echo esc_attr( $place_key ); ?>"
+                                           <?php checked( $logo_placement, $place_key ); ?>>
+                                    <?php echo esc_html( $place_label ); ?>
+                                </label>
+                            <?php endforeach; ?>
+                        </fieldset>
+                        <p class="description">
+                            <?php esc_html_e( 'Footer columns are rarely the same height — an address runs longer than a short list of links — which leaves a pocket of empty footer under the shortest one. The second choice puts the logos in that pocket, so they cost your footer no extra height at all.', 'societypress' ); ?>
+                        </p>
+                        <?php
+                        /*
+                         * Said plainly and without blame, and shown to everyone
+                         * rather than only to themes we can detect: a theme with
+                         * a hand-written footer may have no place inside its
+                         * columns to put the logos, in which case they stay in a
+                         * row of their own. Better that an administrator reads
+                         * this once and is unsurprised than tries the setting,
+                         * sees nothing move, and concludes it is broken.
+                         */
+                        ?>
+                        <p class="description">
+                            <?php esc_html_e( 'A theme with a hand-written footer may have nowhere inside its columns to put them. If you choose the second one and nothing moves, that is why — the logos stay in their own row rather than disappearing, and your choice is kept in case you change themes later. Every theme that comes with SocietyPress can do both.', 'societypress' ); ?>
+                        </p>
+                    </td>
+                </tr>
             </table>
 
             <h2><?php esc_html_e( 'Organisations', 'societypress' ); ?></h2>
@@ -106638,6 +106911,24 @@ function sp_render_affiliations_page(): void {
                 var box = custom.querySelector('input[type="number"]');
                 if (box) box.focus();
             }
+        });
+    })();
+
+    /* Slide the preview blocks to whichever position is selected. Its own IIFE
+       for the same reason as the one above — the position control is on the page
+       whether or not any organisations have been added yet. If this script never
+       runs, the preview simply stays on the saved position and the radios still
+       save correctly; nothing here is load-bearing. */
+    (function () {
+        var fieldset = document.getElementById('sp-affiliation-align');
+        if (!fieldset) return;
+
+        var preview = fieldset.querySelector('.sp-affiliation-align-preview');
+        if (!preview) return;
+
+        fieldset.addEventListener('change', function (e) {
+            if (!e.target.matches('input[name="sp_affiliations_logo_align"]')) return;
+            preview.setAttribute('data-align', e.target.value);
         });
     })();
 

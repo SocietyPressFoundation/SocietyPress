@@ -57,15 +57,32 @@
                 <li><a href="<?php echo esc_url( home_url( '/' ) ); ?>"><?php esc_html_e( 'Home', 'prairie' ); ?></a></li>
             </ul>
             <?php endif; ?>
+            <?php
+            /*
+             * Affiliation logos, "up beside the columns" placement — the slot
+             * that only prints when Website → Affiliations is set to it.
+             *
+             * Prairie is the odd one out: its footer is a single flex bar, not
+             * a grid of columns, so there is no short column and no pocket
+             * underneath one. Here "up beside" means what it can mean — the
+             * logos join the bar as another item on the line, rather than
+             * opening a second row beneath it. That still spends no extra
+             * footer height, which is the point of the setting.
+             */
+            if ( function_exists( 'sp_affiliation_logos' ) ) {
+                sp_affiliation_logos( 'inline' );
+            }
+            ?>
         </div>
         <?php
         /*
          * Affiliation logos — set at Website → Affiliations in the admin.
          * Sits above the bottom bar so the badges read as belonging to the
-         * whole site. Prints nothing when none are configured.
+         * whole site. Prints nothing when none are configured, and nothing
+         * when the inline slot above has already printed them.
          */
         if ( function_exists( 'sp_affiliation_logos' ) ) {
-            sp_affiliation_logos();
+            sp_affiliation_logos( 'below' );
         }
         ?>
 

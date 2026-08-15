@@ -49,6 +49,25 @@ $org_email   = $sp['organization_email']   ?? '';
                     </p>
                 <?php endif; ?>
                 <?php endif; ?>
+                <?php
+                /*
+                 * Affiliation logos, "up beside the columns" placement — the
+                 * slot that prints only when Website → Affiliations is set to
+                 * it.
+                 *
+                 * WHY inside this first column rather than after the grid: the
+                 * grid makes every column as tall as the longest one, and this
+                 * column — name, address, phone, email — is normally the short
+                 * one, so the empty footer collects underneath it. Rendering
+                 * here puts the logos in that pocket; the plugin's stylesheet
+                 * pushes them down to sit on the floor of the footer, level
+                 * with the foot of the longest column beside them, costing the
+                 * footer no extra height at all.
+                 */
+                if ( function_exists( 'sp_affiliation_logos' ) ) {
+                    sp_affiliation_logos( 'inline' );
+                }
+                ?>
             </div>
 
             <!-- Column 2: Footer navigation menu -->
@@ -106,10 +125,11 @@ $org_email   = $sp['organization_email']   ?? '';
          * Website → Affiliations. Placed below the columns and above the
          * copyright line because that is where a badge row reads as belonging
          * to the whole site rather than to one column of it. Prints nothing at
-         * all when none are configured.
+         * all when none are configured, and nothing when the inline slot above
+         * has already printed them.
          */
         if ( function_exists( 'sp_affiliation_logos' ) ) {
-            sp_affiliation_logos();
+            sp_affiliation_logos( 'below' );
         }
         ?>
 

@@ -15,9 +15,22 @@ Pre-1.0 development iterations are archived in
 
 ## [Unreleased]
 
+### Changed
+
+**The footer's last column now sits against the right margin**
+
+The footer's columns are sized in fractions, so they always span its full width
+— but their text does not. A column of short links on a wide screen fills a
+fraction of the space it is given and hugs its left edge, leaving the footer
+anchored at the left and trailing off into nothing at the right. The last column
+is now turned around to sit against the right margin, so there is content on both
+edges. Applies to the full three-column layout only: on a tablet the third column
+already wraps onto a centred row of its own, and on a phone the whole footer
+centres.
+
 ### Added
 
-**Affiliation logos: control their size and what sits behind them**
+**Affiliation logos: control their size, what sits behind them, and where they sit**
 
 **Website → Affiliations** now sets how large the logos are — Small, Medium,
 Large, or an exact height of your own — and whether each one gets a white panel
@@ -26,6 +39,24 @@ takes the footer's own colour. Logos are matched by height, so a tall crest and
 a wide wordmark still look like they belong on the same row. Each row warns you
 when a logo's file type cannot be see-through, so it is clear which file to
 replace rather than looking like a setting that does not work.
+
+**Where the logos sit** moves the row — and the wording above it — to the left,
+the centre or the right of your footer. Centre suits a footer built as one wide
+band; left or right suits a footer whose text is already lined up down one side,
+where a centred row of logos lines up with nothing above it. A small preview on
+the settings screen shows the choice rather than describing it. Footers that
+never touch the setting keep the centred row they already had.
+
+**Which part of the footer** decides whether the logos get a row of their own
+below the columns, as before, or move up beside the columns instead. Every footer
+column is as tall as the longest one, so a short first column — name, address,
+phone, email — leaves a pocket of empty footer underneath it while the opening
+hours or the links run on. The second choice puts the logos in that pocket, sat
+on the floor of the footer level with the foot of the longest column, so they
+cost the footer no extra height at all. On a phone, where the columns stack, they
+simply follow the address. A theme with a hand-written footer may have nowhere
+inside its columns to put them; there the logos stay in their own row rather than
+disappearing, and the choice is kept in case the site changes themes later.
 
 **Catalog Options: the word lists your catalogers pick from**
 
@@ -181,9 +212,17 @@ stay where they are and are sorted among themselves.
 
 **Samples and previews for store items**
 
-A store item can now link to a sample — a chapter PDF, a table of contents,
-or a page on the site — shown as a **See a sample** link on the store page,
-so a buyer can look before paying.
+A store item can now offer a sample — a chapter PDF, a table of contents, or a
+page on the site — shown as a **See a sample** button on the store page, so a
+buyer can look before paying.
+
+The sample opens in a reader on the page rather than sending the buyer at the
+PDF itself. A plain link to a PDF downloads it in most browsers, which leaves
+somebody who only wanted a glance at the first chapter hunting through their
+downloads folder for a file they now have to delete. The reader shows the sample
+where they are, with a **Download a Copy** button for anyone who does want to
+keep it, and closes back to the store. It uses the browser's own PDF renderer,
+so nothing extra is loaded to make it work.
 
 **Tidying the audit log**
 

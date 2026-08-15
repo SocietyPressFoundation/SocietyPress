@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.10
+Version: 1.1.11
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -1261,6 +1261,37 @@ article.post:last-child {
     grid-template-columns: 1.2fr 1fr 1fr;
     gap: 40px;
     padding: 50px 20px 40px;
+}
+
+/* The last column sits against the right margin.
+
+   WHY: the columns are sized in fractions, so they always span the full width
+   of the footer — but their text does not. A column of short links, set on a
+   wide screen, fills perhaps a fifth of the space it has been given and hugs
+   its left edge, leaving the footer anchored at the left margin and trailing
+   off into nothing at the right. Turning the last column's text around puts
+   content on both margins, which is what makes a footer read as deliberate
+   rather than as a layout that ran out of things to say.
+
+   WHY only above 1024px: at 769-1024 the footer drops to two columns, the
+   third wraps onto a row of its own, and the rule further down deliberately
+   centres it there; below 769 everything stacks and the whole footer centres.
+   In both of those the last column is no longer at the right-hand edge, so
+   pushing its text to the right would point it at nothing. This belongs to the
+   full three-column layout only. */
+@media screen and (min-width: 1025px) {
+    .footer-inner > .footer-col:last-child {
+        text-align: right;
+    }
+
+    /* Flex and grid children do not take alignment from text-align, so the two
+       things inside a footer column that are not plain text need saying
+       separately: the social icon row, and an affiliation row placed in this
+       column by Website → Affiliations. */
+    .footer-inner > .footer-col:last-child .sp-affiliations-list,
+    .footer-inner > .footer-col:last-child .sp-social-icons {
+        justify-content: flex-end;
+    }
 }
 
 .footer-heading {

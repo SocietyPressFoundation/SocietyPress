@@ -5,12 +5,44 @@
 # installer (sp-installer.php). Both must be delivered as-is — the
 # installer is meant to run on the user's WordPress site, not on ours.
 #
-# This file does two things:
-#   1. Disables PHP parsing for the whole directory so nothing in here
+# This file does three things:
+#   1. Routes the two public artifacts through WordPress so the download
+#      can be recorded (see 3 below).
+#   2. Disables PHP parsing for the whole directory so nothing in here
 #      ever executes on getsocietypress.org, no matter how it got there.
-#   2. Forces Content-Disposition: attachment for sp-installer.php so
+#   3. Forces Content-Disposition: attachment for sp-installer.php so
 #      clicking the Download button saves the file instead of opening it.
 
+# ---------------------------------------------------------------------------
+# Download logging
+# ---------------------------------------------------------------------------
+# WHY THIS REWRITE EXISTS: the site's root .htaccess only routes a request to
+# WordPress when the request does NOT match a real file on disk:
+#
+#     RewriteCond %{REQUEST_FILENAME} !-f
+#
+# These artifacts ARE real files, so that condition fails and Apache serves
+# them directly. WordPress never loads, so nothing can observe the download.
+# That is why the project reached 15 downloads with no record of a single one.
+#
+# Sending these two paths to index.php lets the gsp-download-log mu-plugin
+# append a log entry and then stream the file itself. The mu-plugin is written
+# so that any logging failure still serves the file — see its header comment.
+#
+# NOTE: if that mu-plugin is ever removed, remove this block too, or these two
+# URLs will fall through to the marketing site's 404 page.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^societypress-latest\.zip$ /index.php?gsp_dl=societypress-latest.zip [L,QSA]
+    RewriteRule ^sp-installer\.php$        /index.php?gsp_dl=sp-installer.php [L,QSA]
+</IfModule>
+
+# ---------------------------------------------------------------------------
+# Defence in depth
+# ---------------------------------------------------------------------------
+# These rules stay even though the rewrite above normally intercepts first.
+# If mod_rewrite is unavailable or the rules are edited away, PHP files in this
+# directory must still never execute on this server.
 <FilesMatch "\.(php|phtml|php3|php4|php5|php7|phps)$">
     SetHandler default-handler
     ForceType application/octet-stream

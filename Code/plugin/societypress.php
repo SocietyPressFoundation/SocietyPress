@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.29
+ * Version:     1.1.30
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.29' );
+define( 'SOCIETYPRESS_VERSION', '1.1.30' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2954,9 +2954,546 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
 
+    // ========================================================================
+    // sp_file_folders — Where a society decides its files live
+    //
+    // WHY at all: WordPress has no folders. Its media library is one flat pile
+    //      with a date filter and a type filter, and that is the whole feature.
+    //      A society uploading newsletters, minutes, event photos and product
+    //      shots into the same pile loses track of them within a season, and
+    //      there is no setting to turn on that fixes it.
+    //
+    // WHY parent_id: folders nest because filing cabinets nest. "Events / 2026
+    //      Seminar" is how a volunteer already thinks about it, and flattening
+    //      that to one level forces name-mangling like "Events - 2026 Seminar"
+    //      that sorts wrong and reads worse.
+    //
+    // WHY the name is not the identity: sp_files points at a folder by id, so
+    //      renaming "Photos" to "Event Photos" moves nothing and breaks
+    //      nothing. Filing survives second thoughts about naming, which is the
+    //      whole reason to keep an id column instead of storing the path.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}file_folders (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name        VARCHAR(190)        NOT NULL,
+        parent_id   BIGINT(20) UNSIGNED NULL,
+        sort_order  INT                 NOT NULL DEFAULT 0,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY parent_id (parent_id),
+        KEY sort_order (sort_order)
+    ) {$charset_collate};" );
+
+
+    // ========================================================================
+    // sp_files — One row per file SocietyPress knows about
+    //
+    // WHY this exists: until now the plugin stored a file as a web address in
+    //      a text column — image_url, file_url, cover_url, photo_url — and
+    //      nothing else. No record of what folder it belongs in, no record of
+    //      what is using it. So every act of organizing died the moment the
+    //      screen closed, and the media library showed every SocietyPress
+    //      upload as "Unattached" because WordPress can only attach a file to
+    //      a post, and a store product is not a post.
+    //
+    // WHY url is the unique key and not attachment_id: some files are ours
+    //      (uploaded through the media library, so they have an attachment id)
+    //      and some are an address somebody pasted from elsewhere. The address
+    //      is the one thing every file has, and it is what all the existing
+    //      *_url columns already hold — so keying on it means the backfill can
+    //      recognize a file the plugin has been referencing for years and
+    //      claim it, rather than creating a duplicate beside it.
+    //
+    // WHY url(191) on the key: utf8mb4 indexes cap at 191 characters per
+    //      column on older MySQL, and shared hosts still run those.
+    //
+    // WHY folder_id is NULL-able: a file that has not been filed yet is not an
+    //      error, it is Monday. NULL means Unfiled, which the Files screen
+    //      shows as its own folder so nothing is ever invisible.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}files (
+        id            BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        url           VARCHAR(500)        NOT NULL,
+        attachment_id BIGINT(20) UNSIGNED NULL,
+        folder_id     BIGINT(20) UNSIGNED NULL,
+        title         VARCHAR(255)        NULL,
+        mime_type     VARCHAR(100)        NULL,
+        file_size     BIGINT(20) UNSIGNED NULL,
+        uploaded_by   BIGINT(20) UNSIGNED NULL,
+        created_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY url (url(191)),
+        KEY folder_id (folder_id),
+        KEY attachment_id (attachment_id),
+        KEY mime_type (mime_type)
+    ) {$charset_collate};" );
+
+
+    // ========================================================================
+    // sp_file_links — What is using each file
+    //
+    // WHY separate from sp_files: one photo can be the product shot, the photo
+    //      on an event, and the image in a newsletter all at once. A column on
+    //      sp_files could hold one of those. A table holds all of them, which
+    //      is what makes the question answerable in both directions: open the
+    //      product and see its photo, open the photo and see the product.
+    //
+    // WHY field is part of the key: a store product has both image_url and
+    //      preview_url. Without the field name, setting the preview to the
+    //      same file as the photo would look like a duplicate link and one of
+    //      them would be lost. With it, each slot on each record is its own
+    //      link and can be updated independently.
+    //
+    // WHY no foreign keys: rows are written by whichever screen saved the
+    //      record, and the objects they point at live in a dozen different
+    //      tables with their own delete paths. sp_prune_file_links() sweeps
+    //      links whose object is gone; until it runs, a stale link is inert
+    //      because every read joins back to the object it names.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}file_links (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        file_id     BIGINT(20) UNSIGNED NOT NULL,
+        object_type VARCHAR(50)         NOT NULL,
+        object_id   BIGINT(20) UNSIGNED NOT NULL,
+        field       VARCHAR(50)         NOT NULL,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY link (file_id, object_type, object_id, field),
+        KEY object (object_type, object_id),
+        KEY file_id (file_id)
+    ) {$charset_collate};" );
+
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.32d' );
+    update_option( 'societypress_db_version', '0.33d' );
+}
+
+
+// ============================================================================
+// FILES — folders, and the record of what is using what
+//
+// WHY this layer exists: every screen in the plugin stores a file the same
+//      way, as a web address in a text column. That is a fine way to render
+//      a file and a useless way to organize one — the address says nothing
+//      about where the file was filed or what is using it, so both facts were
+//      being thrown away at the moment they were known.
+//
+//      These functions are the memory. A screen calls sp_link_file() when it
+//      saves, and from then on the file has a home and a list of what depends
+//      on it. Screens keep their *_url columns exactly as they are, so nothing
+//      already written has to change to benefit.
+// ============================================================================
+
+/**
+ * Find or create the sp_files row for a web address.
+ *
+ * WHY find-or-create rather than insert: the same photo can be picked on the
+ *      store product screen today and the newsletter screen next week. Both
+ *      should end up pointing at one file with one folder, not two rows that
+ *      disagree about where it lives.
+ *
+ * WHY the attachment lookup: a file picked through the media library carries
+ *      an attachment id, which is what lets us show a thumbnail and a real
+ *      file size later. A pasted address has none, and that is allowed — the
+ *      row still exists and can still be filed.
+ *
+ * @param string $url           The file's address.
+ * @param int    $attachment_id Media library id, or 0 when there isn't one.
+ * @return int   The sp_files row id, or 0 if the address was unusable.
+ */
+function sp_register_file( string $url, int $attachment_id = 0 ): int {
+    global $wpdb;
+
+    $url = trim( $url );
+    if ( $url === '' ) {
+        return 0;
+    }
+
+    $table    = $wpdb->prefix . 'sp_files';
+    $existing = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, attachment_id FROM {$table} WHERE url = %s",
+        $url
+    ) );
+
+    // An address the plugin has been carrying for years can turn out to be a
+    // media library file after all, the first time somebody picks it through
+    // the picker. Fill the id in rather than leaving the row half-known.
+    if ( $existing ) {
+        if ( $attachment_id && ! $existing->attachment_id ) {
+            $wpdb->update(
+                $table,
+                [ 'attachment_id' => $attachment_id ],
+                [ 'id' => (int) $existing->id ],
+                [ '%d' ],
+                [ '%d' ]
+            );
+        }
+        return (int) $existing->id;
+    }
+
+    if ( ! $attachment_id ) {
+        $attachment_id = (int) attachment_url_to_postid( $url );
+    }
+
+    $title = '';
+    $mime  = '';
+    $size  = null;
+
+    if ( $attachment_id ) {
+        $title = (string) get_the_title( $attachment_id );
+        $mime  = (string) get_post_mime_type( $attachment_id );
+        $path  = get_attached_file( $attachment_id );
+        if ( $path && file_exists( $path ) ) {
+            $size = (int) filesize( $path );
+        }
+    }
+
+    if ( $title === '' ) {
+        $title = wp_basename( wp_parse_url( $url, PHP_URL_PATH ) ?: $url );
+    }
+
+    $wpdb->insert(
+        $table,
+        [
+            'url'           => $url,
+            'attachment_id' => $attachment_id ?: null,
+            'title'         => $title,
+            'mime_type'     => $mime ?: null,
+            'file_size'     => $size,
+            'uploaded_by'   => get_current_user_id() ?: null,
+        ],
+        [ '%s', '%d', '%s', '%s', '%d', '%d' ]
+    );
+
+    return (int) $wpdb->insert_id;
+}
+
+/**
+ * Record that one field of one record is using one file.
+ *
+ * WHY the field argument: a store product has both a photo and a sample, and
+ *      a society is entitled to point both at the same PDF. Keying the link
+ *      by field keeps those two facts separate, so clearing the sample does
+ *      not also forget the photo.
+ *
+ * WHY it clears the old link first: this is called on save with whatever the
+ *      field now holds. If the photo changed, the previous file must stop
+ *      claiming to be this product's photo, or "what is using this file"
+ *      slowly fills up with things that stopped being true.
+ *
+ * @param string $url         The address now in the field. Empty clears it.
+ * @param string $object_type A slug from sp_get_file_object_types().
+ * @param int    $object_id   The record's id.
+ * @param string $field       The column the address lives in.
+ * @return int   The sp_files row id, or 0 when the field was cleared.
+ */
+function sp_link_file( string $url, string $object_type, int $object_id, string $field ): int {
+    global $wpdb;
+
+    $links = $wpdb->prefix . 'sp_file_links';
+
+    $wpdb->delete(
+        $links,
+        [
+            'object_type' => $object_type,
+            'object_id'   => $object_id,
+            'field'       => $field,
+        ],
+        [ '%s', '%d', '%s' ]
+    );
+
+    $file_id = sp_register_file( $url );
+    if ( ! $file_id ) {
+        return 0;
+    }
+
+    // INSERT IGNORE via a replace on the unique key: two screens saving the
+    // same pairing in the same second should not produce a duplicate-key
+    // warning in the log for what is a harmless no-op.
+    $wpdb->query( $wpdb->prepare(
+        "INSERT IGNORE INTO {$links} (file_id, object_type, object_id, field)
+         VALUES (%d, %s, %d, %s)",
+        $file_id,
+        $object_type,
+        $object_id,
+        $field
+    ) );
+
+    return $file_id;
+}
+
+/**
+ * Move a file into a folder, or out of every folder.
+ *
+ * @param int      $file_id   sp_files row id.
+ * @param int|null $folder_id Folder id, or null for Unfiled.
+ * @return bool    Whether the move happened.
+ */
+function sp_move_file_to_folder( int $file_id, ?int $folder_id ): bool {
+    global $wpdb;
+
+    // A folder id that no longer exists would strand the file somewhere the
+    // Files screen cannot show, which looks exactly like the file vanishing.
+    if ( $folder_id !== null ) {
+        $exists = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}sp_file_folders WHERE id = %d",
+            $folder_id
+        ) );
+        if ( ! $exists ) {
+            return false;
+        }
+    }
+
+    return false !== $wpdb->update(
+        $wpdb->prefix . 'sp_files',
+        [ 'folder_id' => $folder_id ],
+        [ 'id' => $file_id ],
+        [ '%d' ],
+        [ '%d' ]
+    );
+}
+
+/**
+ * Everything currently using a file, described in words a volunteer can read.
+ *
+ * WHY it resolves to a label and a link rather than returning raw rows: the
+ *      only two places this is needed — the file's detail panel and the
+ *      warning before a delete — both need to say "the Spring Newsletter is
+ *      using this" and offer a way to go look. Returning object_type and
+ *      object_id would make every caller write the same lookup again.
+ *
+ * @param int $file_id sp_files row id.
+ * @return array<int, array{label: string, type: string, url: string}>
+ */
+function sp_get_file_usage( int $file_id ): array {
+    global $wpdb;
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT object_type, object_id, field
+         FROM {$wpdb->prefix}sp_file_links
+         WHERE file_id = %d",
+        $file_id
+    ) );
+
+    if ( ! $rows ) {
+        return [];
+    }
+
+    $types = sp_get_file_object_types();
+    $out   = [];
+
+    foreach ( $rows as $row ) {
+        $def = $types[ $row->object_type ] ?? null;
+        if ( ! $def ) {
+            continue;
+        }
+
+        $name = $wpdb->get_var( $wpdb->prepare(
+            "SELECT {$def['title_column']} FROM {$wpdb->prefix}{$def['table']} WHERE {$def['id_column']} = %d",
+            $row->object_id
+        ) );
+
+        // A link whose record has been deleted says nothing useful. Skip it
+        // here and let sp_prune_file_links() clear it out on the next sweep.
+        if ( null === $name ) {
+            continue;
+        }
+
+        $out[] = [
+            'label' => (string) $name,
+            'type'  => $def['label'],
+            'url'   => sprintf( $def['edit_url'], $row->object_id ),
+        ];
+    }
+
+    return $out;
+}
+
+/**
+ * The record types that can hold a file, and how to describe one.
+ *
+ * WHY a registry: sp_get_file_usage() and the backfill both need to turn an
+ *      object_type slug back into a table, a name and an edit screen. Keeping
+ *      that in one place means adding a new file-holding screen is one entry
+ *      here rather than a new branch in three functions.
+ *
+ * WHY filterable: a society running a custom module should be able to declare
+ *      its own records here and get folders and usage tracking for free.
+ *
+ * @return array<string, array{label: string, folder: string, table: string, id_column: string, title_column: string, edit_url: string, fields: array<int, string>}>
+ */
+function sp_get_file_object_types(): array {
+    return apply_filters( 'sp_file_object_types', [
+        'store_product' => [
+            'label'        => __( 'Store product', 'societypress' ),
+            'folder'       => __( 'Store', 'societypress' ),
+            'table'        => 'sp_store_products',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-store-product-edit&product_id=%d' ),
+            'fields'       => [ 'image_url', 'preview_url' ],
+        ],
+        'document' => [
+            'label'        => __( 'Document', 'societypress' ),
+            'folder'       => __( 'Documents', 'societypress' ),
+            'table'        => 'sp_documents',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-document-edit&id=%d' ),
+            'fields'       => [ 'file_url' ],
+        ],
+        'library_item' => [
+            'label'        => __( 'Library item', 'societypress' ),
+            'folder'       => __( 'Library', 'societypress' ),
+            'table'        => 'sp_library_items',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-library-item-edit&item_id=%d' ),
+            'fields'       => [ 'cover_url' ],
+        ],
+    ] );
+}
+
+/**
+ * Delete links whose record no longer exists.
+ *
+ * WHY it is a sweep and not a delete hook: the records live in a dozen tables
+ *      with their own delete paths, several of which are bulk queries that
+ *      fire no per-row action. Chasing every one of them would mean touching
+ *      every delete in the plugin and still missing the ones a future screen
+ *      adds. A stale link is inert — every read joins back to the object it
+ *      names — so sweeping on the daily cron is enough.
+ *
+ * @return int How many links were removed.
+ */
+function sp_prune_file_links(): int {
+    global $wpdb;
+
+    $links   = $wpdb->prefix . 'sp_file_links';
+    $removed = 0;
+
+    foreach ( sp_get_file_object_types() as $slug => $def ) {
+        $table = $wpdb->prefix . $def['table'];
+
+        $removed += (int) $wpdb->query( $wpdb->prepare(
+            "DELETE l FROM {$links} l
+             LEFT JOIN {$table} o ON o.{$def['id_column']} = l.object_id
+             WHERE l.object_type = %s AND o.{$def['id_column']} IS NULL",
+            $slug
+        ) );
+    }
+
+    return $removed;
+}
+
+
+/**
+ * Build the file record from what the plugin is already pointing at.
+ *
+ * WHY it can run at all: every screen has been storing addresses in *_url
+ *      columns for years. Those columns are a complete record of which file
+ *      belongs to which thing — it was just never read that way. So the
+ *      history is not lost, it is only unindexed, and one pass over the
+ *      registry recovers all of it.
+ *
+ * WHY it files as it goes: a Files screen that opens on nine hundred loose
+ *      files in one pile is the problem it was built to solve. Each file lands
+ *      in the folder named for whatever is using it, so the first time anyone
+ *      opens the screen it is already sorted and dragging is for second
+ *      thoughts rather than for the initial cleanup.
+ *
+ * WHY only unfiled files get moved: run twice, and a file somebody has since
+ *      dragged somewhere deliberate must stay where they put it. Their filing
+ *      outranks ours.
+ *
+ * SAFETY: Reads only. Nothing outside the three file tables is written, so a
+ *         second run costs a little time and changes nothing else.
+ *
+ * @return array{files: int, links: int} Counts for the admin notice.
+ */
+function sp_backfill_file_records(): array {
+    global $wpdb;
+
+    $types   = sp_get_file_object_types();
+    $files   = 0;
+    $links   = 0;
+
+    foreach ( $types as $slug => $def ) {
+        $table  = $wpdb->prefix . $def['table'];
+        $folder = sp_get_or_create_file_folder( $def['folder'] ?? $def['label'] );
+
+        foreach ( $def['fields'] as $field ) {
+            $rows = $wpdb->get_results(
+                "SELECT {$def['id_column']} AS object_id, {$field} AS url
+                 FROM {$table}
+                 WHERE {$field} IS NOT NULL AND {$field} <> ''"
+            );
+
+            foreach ( $rows as $row ) {
+                $file_id = sp_link_file( (string) $row->url, $slug, (int) $row->object_id, $field );
+                if ( ! $file_id ) {
+                    continue;
+                }
+
+                $links++;
+
+                $current = $wpdb->get_var( $wpdb->prepare(
+                    "SELECT folder_id FROM {$wpdb->prefix}sp_files WHERE id = %d",
+                    $file_id
+                ) );
+
+                if ( null === $current && $folder ) {
+                    sp_move_file_to_folder( $file_id, $folder );
+                    $files++;
+                }
+            }
+        }
+    }
+
+    return [ 'files' => $files, 'links' => $links ];
+}
+
+/**
+ * Find a top-level folder by name, creating it if it is not there yet.
+ *
+ * WHY by name: the backfill and the seeder both want "the Store folder" and
+ *      neither knows an id. Names are unique enough at the top level for that
+ *      to be unambiguous, and a society that renames one keeps their name —
+ *      the next run creates nothing because the lookup is only used to place
+ *      files that have never been filed at all.
+ *
+ * @param string   $name      Folder name.
+ * @param int|null $parent_id Parent folder, or null for top level.
+ * @return int     Folder id, or 0 if it could not be made.
+ */
+function sp_get_or_create_file_folder( string $name, ?int $parent_id = null ): int {
+    global $wpdb;
+
+    $name = trim( $name );
+    if ( $name === '' ) {
+        return 0;
+    }
+
+    $table = $wpdb->prefix . 'sp_file_folders';
+
+    $existing = $parent_id === null
+        ? $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE name = %s AND parent_id IS NULL", $name ) )
+        : $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE name = %s AND parent_id = %d", $name, $parent_id ) );
+
+    if ( $existing ) {
+        return (int) $existing;
+    }
+
+    $wpdb->insert(
+        $table,
+        [ 'name' => $name, 'parent_id' => $parent_id ],
+        [ '%s', '%d' ]
+    );
+
+    return (int) $wpdb->insert_id;
 }
 
 
@@ -3207,6 +3744,16 @@ add_action( 'admin_init', function () {
 
         // Backfill phonetic codes for any surnames added before this feature existed
         sp_maybe_backfill_surname_phonetics();
+
+        // Recover which file belongs to what from the *_url columns every
+        // screen has been writing all along. Guarded to once ever: after the
+        // first pass the save handlers keep the record current, and a society
+        // that has since dragged files into their own folders should not have
+        // ours proposed again on the next version bump.
+        if ( ! get_option( 'sp_files_backfilled' ) ) {
+            sp_backfill_file_records();
+            update_option( 'sp_files_backfilled', 1 );
+        }
 
         // WHY: Without saving the new version, the upgrade check fires on every admin
         // page load, re-running dbDelta on every sp_* table and all seeding functions.
@@ -32801,7 +33348,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.29',
+            'version'     => '1.1.30',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32809,7 +33356,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.29',
+            'version'     => '1.1.30',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32817,7 +33364,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.29',
+            'version'     => '1.1.30',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32825,7 +33372,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.29',
+            'version'     => '1.1.30',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32833,7 +33380,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.29',
+            'version'     => '1.1.30',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90594,6 +91141,11 @@ function sp_render_store_product_edit_page(): void {
                 $product_id = (int) $wpdb->insert_id;
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Product added.', 'societypress' ) . '</p></div>';
             }
+
+            // The moment the address is known is the only moment we know what
+            // it belongs to. Record it here or the association is gone.
+            sp_link_file( (string) $data['image_url'], 'store_product', $product_id, 'image_url' );
+            sp_link_file( (string) $data['preview_url'], 'store_product', $product_id, 'preview_url' );
         }
     }
 

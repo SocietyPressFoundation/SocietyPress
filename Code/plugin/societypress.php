@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.23
+ * Version:     1.1.24
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.23' );
+define( 'SOCIETYPRESS_VERSION', '1.1.24' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -32801,7 +32801,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.23',
+            'version'     => '1.1.24',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32809,7 +32809,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.23',
+            'version'     => '1.1.24',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32817,7 +32817,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.23',
+            'version'     => '1.1.24',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32825,7 +32825,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.23',
+            'version'     => '1.1.24',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32833,7 +32833,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.23',
+            'version'     => '1.1.24',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92701,9 +92701,87 @@ function sp_frontend_documents(): void {
         return '<span aria-hidden="true">' . ( $map[ $ext ] ?? '📁' ) . '</span>';
     };
 
+    // ---- Folders ----------------------------------------------------------
+    // WHY a landing page: a society that has been going a while ends up with
+    // hundreds of documents, and printing every one of them under its heading
+    // makes a page nobody scrolls to the bottom of. Categories become folders,
+    // and a folder opens to its own contents.
+    //
+    // It turns itself on: with one category there is nothing to choose between,
+    // so the list shows directly and nothing changes for a small society.
+    $doc_cat = isset( $_GET['sp_doc_cat'] ) ? (int) $_GET['sp_doc_cat'] : null;
+
+    $cat_rows = $wpdb->get_results(
+        "SELECT c.id, c.name, c.access_level, COUNT(d.id) AS n
+         FROM {$prefix}document_categories c
+         INNER JOIN {$prefix}documents d
+                 ON d.category_id = c.id AND d.status = 'published'
+         WHERE c.active = 1
+         GROUP BY c.id, c.name, c.access_level, c.sort_order
+         HAVING n > 0
+         ORDER BY c.sort_order ASC, c.name ASC"
+    );
+
+    $loose = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$prefix}documents WHERE status = 'published' AND category_id IS NULL"
+    );
+
+    $folder_count = count( $cat_rows ) + ( $loose > 0 ? 1 : 0 );
+
+    if ( $doc_cat === null && $folder_count > 1 ) {
+        echo '<style>
+.sp-doc-folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin: 0 0 8px; }
+.sp-doc-folder { display: block; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; text-decoration: none; transition: border-color .15s ease, box-shadow .15s ease; }
+.sp-doc-folder:hover, .sp-doc-folder:focus { border-color: #0d1f3c; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.sp-doc-folder-icon { font-size: 30px; line-height: 1; }
+.sp-doc-folder-name { display: block; margin-top: 10px; font-weight: 600; font-size: 17px; }
+.sp-doc-folder-meta { display: block; margin-top: 3px; color: #6b7280; font-size: 13px; }
+</style>';
+
+        echo '<div class="sp-doc-folders">';
+        foreach ( $cat_rows as $c ) {
+            $locked = ( $c->access_level === 'members_only' && ! $is_member );
+            printf(
+                '<a class="sp-doc-folder" href="%s"><span class="sp-doc-folder-icon" aria-hidden="true">%s</span>'
+                . '<span class="sp-doc-folder-name">%s</span><span class="sp-doc-folder-meta">%s</span></a>',
+                esc_url( add_query_arg( 'sp_doc_cat', (int) $c->id ) ),
+                $locked ? '🔒' : '📁',
+                esc_html( $c->name ),
+                esc_html(
+                    sprintf(
+                        /* translators: %d: how many documents are in this folder */
+                        _n( '%d document', '%d documents', (int) $c->n, 'societypress' ),
+                        (int) $c->n
+                    )
+                    . ( $locked ? ' · ' . __( 'Members only', 'societypress' ) : '' )
+                )
+            );
+        }
+        if ( $loose > 0 ) {
+            printf(
+                '<a class="sp-doc-folder" href="%s"><span class="sp-doc-folder-icon" aria-hidden="true">📁</span>'
+                . '<span class="sp-doc-folder-name">%s</span><span class="sp-doc-folder-meta">%s</span></a>',
+                esc_url( add_query_arg( 'sp_doc_cat', 0 ) ),
+                esc_html__( 'Other Documents', 'societypress' ),
+                esc_html( sprintf( _n( '%d document', '%d documents', $loose, 'societypress' ), $loose ) )
+            );
+        }
+        echo '</div>';
+        return;
+    }
+
     // Optional recency filter (?sp_doc_time): narrow to documents dated within
     // the last N months. Undated documents are excluded while a range is active
     // (there's no date to judge them by); the default "all" shows everything.
+    // Inside a folder, the list is scoped to it. Nought means the documents
+    // that were never filed under anything.
+    $cat_where = '';
+    if ( $doc_cat !== null ) {
+        $cat_where = $doc_cat === 0
+            ? ' AND d.category_id IS NULL'
+            : $wpdb->prepare( ' AND d.category_id = %d', $doc_cat );
+    }
+
     $doc_time   = sanitize_text_field( wp_unslash( $_GET['sp_doc_time'] ?? 'all' ) );
     $time_months = [ '3months' => 3, '6months' => 6, '12months' => 12 ];
     $time_where = '';
@@ -92724,7 +92802,7 @@ function sp_frontend_documents(): void {
         "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format, c.show_updated AS cat_show_updated, c.list_sort AS cat_list_sort
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
-         WHERE d.status = 'published'{$time_where}
+         WHERE d.status = 'published'{$time_where}{$cat_where}
            AND ( d.category_id IS NULL OR c.active = 1 )
          ORDER BY (d.category_id IS NULL) ASC, c.sort_order ASC, c.name ASC,
                   d.sort_order ASC, d.title ASC"
@@ -92759,10 +92837,23 @@ function sp_frontend_documents(): void {
 .sp-doc-monthyear { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 32px; }
 .sp-doc-monthyear li { break-inside: avoid; padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
 @media (max-width: 600px) { .sp-doc-monthyear { columns: 1; } }
+.sp-doc-back { margin: 0 0 16px; }
+.sp-doc-back a { text-decoration: none; font-weight: 600; }
+.sp-doc-back a:hover { text-decoration: underline; }
 .sp-doc-filter { margin: 0 0 24px; }
 .sp-doc-filter label { font-weight: 600; margin-right: 8px; }
 .sp-doc-filter select { padding: 6px 8px; }
 </style>';
+
+    // A way back out of a folder. Only when folders are actually in play —
+    // with a single category there is nothing to go back to.
+    if ( $doc_cat !== null && $folder_count > 1 ) {
+        printf(
+            '<p class="sp-doc-back"><a href="%s">%s</a></p>',
+            esc_url( remove_query_arg( [ 'sp_doc_cat', 'sp_doc_time' ] ) ),
+            esc_html__( '← All documents', 'societypress' )
+        );
+    }
 
     // Recency filter control — only when some documents are dated. Submits with
     // a plain GET so it works without JavaScript; the <select> auto-submits via

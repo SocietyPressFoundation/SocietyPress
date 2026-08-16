@@ -19,6 +19,27 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.24] — 2026-08-16
+
+### Changed
+
+**The documents page opens as folders**
+
+It used to print every document on the site, one after another, grouped under
+headings. That reads fine with a dozen; a society that has been going a while
+has hundreds, and the page becomes something nobody scrolls to the bottom of.
+
+Categories are now folders. The page opens on them, each showing its name and
+how many documents are inside, and a folder opens to its own contents with a
+link back. Members-only folders carry a padlock so it is clear before clicking
+what will need signing in for.
+
+Nothing to switch on, and nothing changes for a society with a single category —
+with one folder there is nothing to choose between, so its documents show
+straight away as they always have.
+
+---
+
 ## [1.1.23] — 2026-08-16
 
 ### Fixed

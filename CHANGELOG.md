@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.13] — 2026-08-15
+
+### Added
+
+**A "View Site" button on the Dashboard**
+
+The admin toolbar is switched off by default, and it is hidden on the admin
+screens as well as the public ones. That is the right default — the toolbar is
+clutter for most of the people running a society site — but it left no way to
+get from the admin to the site itself. The only route was knowing to edit the
+address bar, which is not something to expect of anyone.
+
+There is now a **View Site** button beside the heading on the Dashboard. It
+opens the site in a new tab, so the admin stays where it was behind it. Without
+a toolbar on the public side, opening in the same tab would leave you looking at
+your own site with no way back.
+
+---
+
 ## [1.1.12] — 2026-08-15
 
 ### Added

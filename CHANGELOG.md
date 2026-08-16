@@ -19,6 +19,38 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.14] — 2026-08-15
+
+### Added
+
+**Put your logo above the menu instead of beside it**
+
+In the header as it has always been, the logo and the menu share one row, so the
+menu only gets whatever width the logo leaves it. For a society with a crest and
+a long name that is not much, and the usual answer has been to shrink the menu
+wording until it fits. Past a certain point the items stop fitting at all and
+start running underneath the logo.
+
+Settings → Design now has a **Header Layout** choice. Leave it on "Logo beside
+the menu" and nothing changes. Choose "Logo above the menu" and the logo gets a
+row of its own with the menu spanning the full width beneath it — enough room to
+keep the wording readable, show a larger logo, and add to the menu later without
+it collapsing.
+
+Full-width screens only. On a phone the menu is a button either way, so stacking
+there would only add height.
+
+### Fixed
+
+**The Logo Size setting now actually changes the logo**
+
+Settings → Design has had a Logo Size box for some time. It saved the number and
+did nothing with it — the header used a fixed maximum height regardless, so a
+society that wanted a larger logo had no way to get one and no clue why. The
+setting now does what it says. Sites that never touched it are unchanged.
+
+---
+
 ## [1.1.13] — 2026-08-15
 
 ### Added

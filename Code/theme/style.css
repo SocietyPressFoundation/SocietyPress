@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.13
+Version: 1.1.14
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -262,8 +262,13 @@ img {
     opacity: 0.9;
 }
 
+/* WHY the variable: Settings → Design has a Logo Size field that saves, and the
+   plugin emits it as --sp-logo-height, but this rule used to hardcode 75px — so
+   the control did nothing at all and a society that wanted a bigger logo had no
+   way to get one. The 75px stays as the fallback, which is what every site
+   without the setting has always had. */
 .custom-logo {
-    max-height: 75px;
+    max-height: var(--sp-logo-height, 75px);
     width: auto;
 }
 
@@ -302,6 +307,56 @@ img {
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+/* ----------------------------------------------------------------------------
+   STACKED HEADER — logo on its own row, navigation full width beneath it.
+
+   WHY it exists: in the default single row the menu only gets whatever space
+   the logo leaves, which for a society with a crest and a long name is not
+   much. The usual outcome is shrinking the nav font until it fits, and past a
+   certain point the items stop fitting at all and run underneath the logo. A
+   society with real depth to show should not have to choose between its logo
+   and its navigation, so the two get a row each.
+
+   Desktop only. Below 1025px the nav is already a hamburger panel and the row
+   is not contended, so stacking there would only add height.
+---------------------------------------------------------------------------- */
+@media (min-width: 1025px) {
+    .site-header.sp-header-stacked .header-inner {
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        /* Two rows cannot live inside a fixed single-row height. */
+        height: auto;
+        min-height: 0;
+    }
+
+    .site-header.sp-header-stacked .site-branding {
+        justify-content: center;
+        text-align: center;
+    }
+
+    /* The nav row spans the header rather than filling leftover space. */
+    .site-header.sp-header-stacked .header-nav-area {
+        flex: 0 0 auto;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .site-header.sp-header-stacked .main-navigation {
+        flex: 1;
+    }
+
+    .site-header.sp-header-stacked .main-navigation > ul {
+        justify-content: center;
+        /* WHY wrap: with the full width available the items fit on one line,
+           but a society that keeps adding to its menu should get a second line
+           rather than items overlapping — which is what a non-wrapping centred
+           row does when it overflows, spilling out of BOTH sides at once. */
+        flex-wrap: wrap;
+    }
 }
 
 /* ============================================================================

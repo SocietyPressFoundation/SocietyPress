@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.13
+ * Version:     1.1.14
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.13' );
+define( 'SOCIETYPRESS_VERSION', '1.1.14' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -26584,6 +26584,7 @@ function sp_sanitize_settings( array $input ): array {
         //      want it repeated as text next to it. Default on (1) so existing
         //      sites aren't affected.
         'design_show_header_title'    => fn() => ! empty( $input['design_show_header_title'] ) ? 1 : 0,
+        'design_header_layout'        => fn() => ( ( $input['design_header_layout'] ?? '' ) === 'stacked' ) ? 'stacked' : 'inline',
 
         // Header height in pixels. 0 = auto (no explicit height set).
         // WHY: Some societies want to match a specific header size from a
@@ -26686,6 +26687,7 @@ function sp_sanitize_settings( array $input ): array {
             'design_font_heading', 'design_font_size',
             'design_heading_scale', 'design_content_width',
             'design_logo_id', 'design_show_header_title',
+            'design_header_layout',
             'design_header_height', 'design_content_width_px',
             'design_logo_height', 'design_header_padding',
             'design_nav_font_size', 'design_nav_spacing', 'design_nav_font_weight',
@@ -32727,7 +32729,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.13',
+            'version'     => '1.1.14',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32735,7 +32737,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.13',
+            'version'     => '1.1.14',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32743,7 +32745,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.13',
+            'version'     => '1.1.14',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32751,7 +32753,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.13',
+            'version'     => '1.1.14',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32759,7 +32761,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.13',
+            'version'     => '1.1.14',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -36156,6 +36158,23 @@ function sp_render_settings_design_page(): void {
                             <?php endif; ?>
                             <p class="description sp-design-logo-desc">
                                 <?php esc_html_e( 'Recommended: PNG or SVG with a transparent background, at least 200px wide. The logo will be displayed at a maximum height of 75px in the header.', 'societypress' ); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Header Layout', 'societypress' ); ?></th>
+                        <td>
+                            <?php $header_layout = ( $settings['design_header_layout'] ?? 'inline' ) === 'stacked' ? 'stacked' : 'inline'; ?>
+                            <label class="sp-block-label">
+                                <input type="radio" name="societypress_settings[design_header_layout]" value="inline" <?php checked( $header_layout, 'inline' ); ?>>
+                                <?php esc_html_e( 'Logo beside the menu (one row)', 'societypress' ); ?>
+                            </label>
+                            <label class="sp-block-label">
+                                <input type="radio" name="societypress_settings[design_header_layout]" value="stacked" <?php checked( $header_layout, 'stacked' ); ?>>
+                                <?php esc_html_e( 'Logo above the menu (two rows)', 'societypress' ); ?>
+                            </label>
+                            <p class="description">
+                                <?php esc_html_e( 'On one row the menu only gets the space your logo leaves, so a large logo or a full menu squeezes it. Putting the logo on its own row hands the whole width to the menu, which lets the wording stay readable and gives you room to grow. Full-width screens only — on a phone the menu is a button either way.', 'societypress' ); ?>
                             </p>
                         </td>
                     </tr>
@@ -106052,6 +106071,7 @@ function sp_theme_preset_token_keys(): array {
         'design_content_width',
         'design_content_width_px',
         'design_show_header_title',
+        'design_header_layout',
         'design_header_height',
         'design_logo_height',
         'design_header_padding',
@@ -106153,6 +106173,11 @@ function sp_theme_preset_apply( array $payload ) {
                 break;
             case 'design_nav_font_weight':
                 if ( in_array( (string) $v, $valid_nav_weights, true ) ) $clean[ $k ] = (string) $v;
+                break;
+            case 'design_header_layout':
+                // Anything unrecognised falls back to the long-standing single
+                // row, so a malformed preset cannot rearrange someone's header.
+                $clean[ $k ] = ( (string) $v === 'stacked' ) ? 'stacked' : 'inline';
                 break;
             case 'design_show_header_title':
             case 'design_show_social_icons':

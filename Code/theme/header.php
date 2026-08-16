@@ -26,7 +26,16 @@
 <a href="#main-content" class="skip-to-main"><?php esc_html_e( 'Skip to main content', 'societypress' ); ?></a>
 
 <div class="site">
-    <header class="site-header">
+    <?php
+    // Header layout, set at Settings → Design. "inline" is the long-standing
+    // single row and stays the default so no existing site moves; "stacked"
+    // gives the logo its own row and hands the navigation the full width.
+    $sp_header_settings = get_option( 'societypress_settings', [] );
+    $sp_header_layout   = ( ( $sp_header_settings['design_header_layout'] ?? 'inline' ) === 'stacked' )
+        ? ' sp-header-stacked'
+        : '';
+    ?>
+    <header class="site-header<?php echo esc_attr( $sp_header_layout ); ?>">
 
         <div class="header-inner">
 

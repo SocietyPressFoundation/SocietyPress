@@ -117802,7 +117802,12 @@ function sp_ai_launcher_icons(): array {
         ],
         'leaf' => [
             'label' => __( 'Leaf', 'societypress' ),
-            'svg'   => '<path d="M4 20C4 11 11 4 20 4c0 9-7 16-16 16z"/><path d="M3 21 17 7"/>',
+            // Blade, midrib, three veins. The veins run straight up because the
+            // midrib sits at 45° — a vein leaving it at 45° toward the tip IS
+            // vertical, which is why an earlier pass with near-vertical-but-not
+            // quite ticks read as a fish skeleton rather than a leaf. Paired
+            // spacing along the midrib is what makes them read as veining.
+            'svg'   => '<path d="M4 20C4 11 11 4 20 4c0 9-7 16-16 16z"/><path d="M3 21 17 7"/><path d="M7.9 16.1V12.4"/><path d="M10.4 13.6V10.2"/><path d="M12.9 11.1V8.2"/>',
         ],
         'tree' => [
             'label' => __( 'Tree', 'societypress' ),

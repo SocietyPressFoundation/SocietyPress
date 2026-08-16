@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.11
+ * Version:     1.1.12
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.11' );
+define( 'SOCIETYPRESS_VERSION', '1.1.12' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -26049,11 +26049,44 @@ add_action( 'admin_init', function () {
         'surname_public_contact',
         __( 'Public Surname Contact', 'societypress' ),
         function () {
-            $settings = sp_settings();
+            // Reads through the helper so the box mirrors what the site is
+            // actually doing, including the on-by-default case where nothing
+            // has been saved yet.
             echo '<label><input type="checkbox" name="societypress_settings[surname_public_contact]" value="1" '
-               . checked( ! empty( $settings['surname_public_contact'] ), true, false )
+               . checked( sp_surname_public_contact_enabled(), true, false )
                . '> ' . esc_html__( 'Let non-members contact researchers from the surname search', 'societypress' ) . '</label>';
-            echo '<p class="description">' . esc_html__( 'When on, visitors who aren\'t logged in can message a researcher from the surname search — they supply their own name and email, and the researcher\'s address is never exposed. Messages are rate-limited to deter spam. Only useful when your surname registry is public.', 'societypress' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'When on, visitors who aren\'t logged in can message a researcher from the surname search — they supply their own name and email, and the researcher\'s address is never exposed. Messages are rate-limited to deter spam. On by default, because a public surname registry that nobody can reply to helps no one.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-directory',
+        'sp_directory_section'
+    );
+
+    // --- Lapsed Members in the Surname Registry ---
+    add_settings_field(
+        'surname_include_lapsed',
+        __( 'Lapsed Members\' Surnames', 'societypress' ),
+        function () {
+            echo '<label><input type="checkbox" name="societypress_settings[surname_include_lapsed]" value="1" '
+               . checked( sp_surname_include_lapsed(), true, false )
+               . '> ' . esc_html__( 'Keep showing surnames after a membership lapses', 'societypress' ) . '</label>';
+            echo '<p class="description">' . esc_html__( 'Off by default: when a membership lapses, that member\'s surnames leave the registry. Turn this on if you treat the registry as a research index rather than a member benefit — the family history stays true whether or not the dues were paid.', 'societypress' ) . '</p>';
+
+            // The count is the whole point of this setting existing: a society
+            // ran for a long time with a third of its registry invisible and
+            // nothing on any screen said so.
+            $hidden = sp_surname_hidden_count();
+            if ( $hidden > 0 && ! sp_surname_include_lapsed() ) {
+                echo '<p class="description"><strong>' . esc_html( sprintf(
+                    /* translators: %d: number of surname entries currently hidden */
+                    _n(
+                        '%d surname is hidden right now because that member\'s membership has lapsed.',
+                        '%d surnames are hidden right now because those members\' memberships have lapsed.',
+                        $hidden,
+                        'societypress'
+                    ),
+                    $hidden
+                ) ) . '</strong></p>';
+            }
         },
         'sp-settings-directory',
         'sp_directory_section'
@@ -26447,6 +26480,7 @@ function sp_sanitize_settings( array $input ): array {
                                               ? (int) $input['dir_per_page'] : 25,
         'profile_changes_require_approval' => fn() => ! empty( $input['profile_changes_require_approval'] ) ? 1 : 0,
         'surname_public_contact'  => fn() => ! empty( $input['surname_public_contact'] ) ? 1 : 0,
+        'surname_include_lapsed'  => fn() => ! empty( $input['surname_include_lapsed'] ) ? 1 : 0,
 
         // Events
         'events_default_visibility'   => fn() => in_array( $input['events_default_visibility'] ?? '', [ 'public', 'members_only' ], true )
@@ -26603,7 +26637,7 @@ function sp_sanitize_settings( array $input ): array {
             'dir_show_city_state', 'dir_show_phone', 'dir_show_email',
             'dir_show_website', 'dir_show_tier', 'dir_show_join_date',
             'dir_show_surnames', 'dir_per_page', 'profile_changes_require_approval',
-            'surname_public_contact',
+            'surname_public_contact', 'surname_include_lapsed',
         ]);
     }
 
@@ -30131,6 +30165,7 @@ function sp_get_page_type_labels(): array {
         'sp-directory'       => __( 'Membership Directory', 'societypress' ),
         'sp-library-catalog' => __( 'Library Catalog', 'societypress' ),
         'sp-vertical-files'  => __( 'Vertical Files', 'societypress' ),
+        'sp-surnames'        => __( 'Surname Research', 'societypress' ),
         'sp-groups'          => __( 'Interest Groups', 'societypress' ),
         'sp-help-requests'   => __( 'Research Help Requests', 'societypress' ),
         'sp-resources'       => __( 'Resource Links Directory', 'societypress' ),
@@ -32676,7 +32711,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.11',
+            'version'     => '1.1.12',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32684,7 +32719,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.11',
+            'version'     => '1.1.12',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32692,7 +32727,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.11',
+            'version'     => '1.1.12',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32700,7 +32735,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.11',
+            'version'     => '1.1.12',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32708,7 +32743,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.11',
+            'version'     => '1.1.12',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -42522,6 +42557,73 @@ function sp_surname_fuzzy_requested(): bool {
     return ( $_GET['sp_fuzzy'] ?? '1' ) !== '0';
 }
 
+/**
+ * May a signed-out visitor message a researcher through the registry?
+ *
+ * WHY it defaults on: the registry exists so people outside the society can
+ * find a member researching their family and reach them. With this off that
+ * cannot happen, which leaves a society running a surname page that quietly
+ * does nothing for the very people it is aimed at — and nothing on screen
+ * explains why. The relay never discloses the member's address and rate-limits
+ * guests, so the safe posture is also the useful one.
+ *
+ * An admin who unticks the box has the choice honoured: saving the settings
+ * form writes an explicit 0, and only an absent key means "never configured".
+ */
+function sp_surname_public_contact_enabled(): bool {
+    $settings = sp_settings();
+    if ( ! array_key_exists( 'surname_public_contact', $settings ) ) {
+        return true;
+    }
+    return ! empty( $settings['surname_public_contact'] );
+}
+
+/**
+ * Whether surnames belonging to lapsed members stay in the registry.
+ *
+ * WHY this is a setting rather than a fixed rule: a society that treats the
+ * registry as a member benefit wants a lapsed member's names to drop out; a
+ * society that treats it as a research index wants them kept, because the
+ * genealogy does not stop being true when the dues do. Neither answer is
+ * wrong, so the society picks. It defaults to off, which is the behaviour
+ * every existing install already has.
+ */
+function sp_surname_include_lapsed(): bool {
+    return ! empty( sp_settings()['surname_include_lapsed'] );
+}
+
+/**
+ * The SQL condition limiting the registry to members whose surnames show.
+ *
+ * Kept in one place because the browse list, the result count and the result
+ * rows must agree — when they drifted apart the A–Z list offered names that
+ * returned nothing when clicked.
+ *
+ * @param string $alias Table alias for the members table.
+ */
+function sp_surname_status_clause( string $alias = 'm' ): string {
+    return sp_surname_include_lapsed()
+        ? "{$alias}.status IN ('active','expired')"
+        : "{$alias}.status = 'active'";
+}
+
+/**
+ * How many surname entries are hidden by the rule above.
+ *
+ * WHY this exists: a society had a third of its registry invisible and nothing
+ * anywhere said so. The number is shown beside the setting so the choice is
+ * made knowingly instead of discovered by a member asking where their name went.
+ */
+function sp_surname_hidden_count(): int {
+    global $wpdb;
+    $p = $wpdb->prefix . 'sp_';
+    return (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$p}member_surnames s
+         INNER JOIN {$p}members m ON s.user_id = m.user_id
+         WHERE m.status <> 'active'"
+    );
+}
+
 function sp_render_builder_widget_surname_lookup( array $s ): void {
     global $wpdb;
     $login_required = $s['login_required'] ?? true;
@@ -42863,7 +42965,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
         }
         echo '</div>';
 
-        $browse_where  = "m.status = 'active'";
+        $browse_where  = sp_surname_status_clause( 'm' );
         $browse_params = [];
         if ( $letter !== '' ) {
             $browse_where    .= ' AND s.surname LIKE %s';
@@ -42931,11 +43033,13 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 
         list( $surname_sql, $surname_params ) = sp_surname_match_clause( $search, 's', $fuzzy );
 
+        $status_clause = sp_surname_status_clause( 'm' );
+
         $total = (int) $wpdb->get_var( $wpdb->prepare(
             "SELECT COUNT(*)
              FROM {$prefix}member_surnames s
              INNER JOIN {$prefix}members m ON s.user_id = m.user_id
-             WHERE {$surname_sql} AND m.status = 'active'",
+             WHERE {$surname_sql} AND {$status_clause}",
             ...$surname_params
         ) );
 
@@ -42953,7 +43057,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                     m.user_id, m.first_name, m.last_name
              FROM {$prefix}member_surnames s
              INNER JOIN {$prefix}members m ON s.user_id = m.user_id
-             WHERE {$surname_sql} AND m.status = 'active'
+             WHERE {$surname_sql} AND {$status_clause}
              ORDER BY {$order_by}
              LIMIT %d OFFSET %d",
             ...array_merge( $surname_params, [ $per_page, $offset ] )
@@ -43031,7 +43135,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 
             // A member who lists surnames is contactable through the registry;
             // listing the surnames is the opt-in.
-            $sp_public_contact = ! empty( sp_settings()['surname_public_contact'] );
+            $sp_public_contact = sp_surname_public_contact_enabled();
 
             foreach ( $results as $row ) {
                 echo '<tr>';
@@ -43094,7 +43198,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             //      user stays in context. The researcher's email is never exposed
             //      to the sender — the AJAX handler sends on their behalf with
             //      the sender's email only in the Reply-To header.
-            if ( is_user_logged_in() || ! empty( sp_settings()['surname_public_contact'] ) ) {
+            if ( is_user_logged_in() || sp_surname_public_contact_enabled() ) {
                 $current_user = wp_get_current_user();
                 $sp_sender_name_default  = $current_user->ID ? $current_user->display_name : '';
                 $sp_sender_email_default = $current_user->ID ? $current_user->user_email : '';
@@ -64290,7 +64394,7 @@ function sp_handle_surname_contact(): void {
     } else {
         // Guests may contact only if the society runs a public registry, and are
         // rate-limited by IP to deter spam (same posture as the contact form).
-        if ( empty( sp_settings()['surname_public_contact'] ) ) {
+        if ( ! sp_surname_public_contact_enabled() ) {
             wp_send_json_error( __( 'You must be logged in to contact a researcher.', 'societypress' ) );
         }
         if ( sp_rate_limit_hit( 'sp_surname_contact_' . md5( sp_get_remote_ip() ), 5, HOUR_IN_SECONDS ) ) {
@@ -66323,6 +66427,12 @@ add_filter( 'theme_page_templates', function( $templates ) {
     $templates['sp-resources']       = __( 'Resource Links Directory', 'societypress' );
     $templates['sp-library-catalog'] = __( 'Library Catalog', 'societypress' );
     $templates['sp-vertical-files']  = __( 'Vertical Files', 'societypress' );
+    // WHY a template and not builder-only: the surname registry shipped as a
+    // page-builder widget alone, which meant reaching it required knowing to
+    // build a builder page and find the right widget. A volunteer setting up a
+    // society site never discovers that, so a finished feature sat unused. It
+    // belongs in the same dropdown as every other module.
+    $templates['sp-surnames']        = __( 'Surname Research', 'societypress' );
     $templates['sp-records']         = __( 'Genealogical Records Search', 'societypress' );
     $templates['sp-store']           = __( 'Store', 'societypress' );
     $templates['sp-cart']            = __( 'Shopping Cart', 'societypress' );
@@ -66334,14 +66444,17 @@ add_filter( 'template_include', function( $template ) {
     if ( ! is_page() ) return $template;
 
     $page_template = get_page_template_slug();
-    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) ) {
+    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-surnames', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) ) {
         return $template;
     }
 
     // Most templates require login. Records, Store, and Documents handle their
     // own access (records: per-collection, store: public storefront, documents:
     // per-document access_level). Cart requires login to purchase.
-    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files' ], true ) && ! is_user_logged_in() ) {
+    // Surnames joins the public list for the same reason vertical files did:
+    // an outsider finding their family name in the registry is how the society
+    // gets found. The registry never shows a member's address either way.
+    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files', 'sp-surnames' ], true ) && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -66385,6 +66498,11 @@ add_filter( 'template_include', function( $template ) {
             // Public, like the records search: a researcher finding their
             // surname in this list is how the society gets found at all.
             sp_render_vertical_files_frontend();
+            break;
+        case 'sp-surnames':
+            // login_required false: the template itself already decided this
+            // page is public, so the widget must not gate it a second time.
+            sp_render_builder_widget_surname_lookup( [ 'login_required' => false ] );
             break;
         case 'sp-records':
             sp_render_records_frontend();

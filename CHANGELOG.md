@@ -19,6 +19,60 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.12] — 2026-08-15
+
+### Added
+
+**Surname Research is now a page you can just create**
+
+SocietyPress has always had a surname registry — members list the families they
+are researching, visitors search it, and anyone who finds a match can send that
+member a message without ever being shown their email address. The trouble was
+getting it onto your website. The only way in was to build a page with the page
+builder and know which block to drop onto it, which is not something anyone
+discovers by looking. Societies had the feature and no way to reach it.
+
+"Surname Research" now appears in the page template list alongside Library
+Catalog, Vertical Files and the rest. Create a page, pick it from the Template
+box, publish. Anything you type into the page itself still shows above the
+registry, so you can explain to your members how to add their names.
+
+The page is public, like the vertical files listing. Someone searching for their
+family and finding one of your members is how a society gets found at all.
+
+### Changed
+
+**Visitors can reply to your members out of the box**
+
+Letting a signed-out visitor message a researcher used to be switched off until
+someone found the setting and turned it on. That is the one thing the registry
+is for, so most societies were publishing a list of surnames that no outsider
+could act on, with nothing on screen explaining why.
+
+It is now on by default. The message goes through the site — the sender types
+their own name and email, and your member's address is never shown to them —
+and messages from signed-out visitors are rate-limited to discourage spam. If
+you would rather only signed-in members could make contact, the setting is still
+there at Settings → Directory, and unticking it is respected.
+
+### Fixed
+
+**Surnames no longer disappear without explanation when a membership lapses**
+
+When a member's membership lapsed, every surname they had listed dropped out of
+the registry — out of the search, and out of the A–Z list. Nothing anywhere said
+so. One society was running with roughly a third of its registry invisible
+without knowing it.
+
+The behaviour has not changed by default, because for many societies the
+registry is a member benefit and dropping lapsed members is the point. What has
+changed is that you are told: Settings → Directory now shows how many surnames
+are currently hidden for this reason, and a new tickbox keeps them listed if you
+would rather treat the registry as a research index — the family history is
+still true whether or not this year's dues were paid.
+
+---
+
 ## [1.1.11] — 2026-08-15
 
 ### Fixed

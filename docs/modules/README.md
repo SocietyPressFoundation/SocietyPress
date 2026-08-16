@@ -34,6 +34,7 @@ If you just installed SocietyPress and the site is empty:
 - **[Gallery](gallery.md)** — photo albums for events. Member-submitted Picture Walls.
 - **[Documents](documents.md)** — upload bylaws, policies, minutes. Per-document access control.
 - **[Blast Email](blast-email.md)** — send to all members or specific groups. Delivery tracking.
+- **[AI Assistant](ai-assistant.md)** — answers visitors' questions from your own calendar, catalog and pages, and helps volunteers find their way around the admin. Needs an API key you supply.
 
 ### Cross-cutting
 
@@ -44,6 +45,7 @@ If you just installed SocietyPress and the site is empty:
 - **[User Access & Roles](user-access.md)** — give volunteers different levels of access without giving everyone admin rights.
 - **[Email Setup](email-setup.md)** — SMTP, transactional providers, SPF/DKIM, real cron — what to do once so renewal reminders and blast emails actually land.
 - **[Privacy & GDPR](privacy-gdpr.md)** — encryption at rest, the export/erasure tools, processing requests, what the law actually requires.
+- **[Problem Reports](problem-reports.md)** — a "Report a Problem" button that files a fault from the page it happened on, with the browser, versions and screen details already attached.
 - **[Glossary](glossary.md)** — words SocietyPress uses, defined in plain English. Look here when a term in another guide isn't obvious.
 - **[Theme Presets](theme-presets.md)** — export your look as JSON, import others'.
 - **[Child Themes](child-themes.md)** — Heritage, Coastline, Prairie, Ledger, Parlor — when to pick which.

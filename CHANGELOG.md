@@ -19,6 +19,94 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.2.0] — 2026-08-16
+
+### Added
+
+**An assistant that answers questions using your own site**
+
+A chat button on your website that answers the questions people email you about
+— when the next meeting is, whether the library has anything on a particular
+county, how much membership costs. It searches your own calendar, catalog,
+newsletters and pages before it answers, so it stays current when your site
+changes, and it is told plainly to say "I don't know, contact the society"
+rather than guess. A wrong answer about a meeting time sends somebody driving
+across the county for nothing.
+
+You supply an API key from Anthropic and pay them directly for what it uses.
+SocietyPress never sees the traffic. The key is stored encrypted, the same way
+your payment keys are, or you can put it in `wp-config.php` and keep it out of
+the database entirely.
+
+You choose who sees it: everyone, logged-in members only, or nobody — in which
+case `[societypress_ai_assistant]` still lets you put it on one "Ask us" page
+instead of following visitors around the site.
+
+The chat button takes a speech bubble, a leaf, a tree, or a pedigree chart —
+picked from pictures on the settings screen rather than names in a list, since
+nobody can imagine "pedigree" from a dropdown. A leaf or a tree says the
+assistant belongs to a genealogical society; the speech bubble only says it is
+a chat, which visitors can see for themselves.
+
+**It cannot reach your membership roll.** The member directory is deliberately
+excluded from everything the assistant is allowed to read. It only ever sees
+what the person asking could already see for themselves, so a logged-out
+visitor asking about a members-only event gets nothing.
+
+Settings → AI Assistant also shows the last 25 questions people asked and what
+the last 30 days cost. The questions turn out to be the more useful half: five
+people in a month asking when meetings are means the meeting time is buried on
+your site, and that is a fix on the page rather than something an assistant
+should keep papering over.
+
+Per-person and per-day limits cap what it can cost. Three models to choose
+between, from cheapest to most capable.
+
+**Help for the volunteer running the site**
+
+"Ask SocietyPress" answers "how do I do X" for *this* site — it knows which
+modules you have switched on, which admin screens the person asking is allowed
+to open, and which screen they were standing on when they asked. So it gives
+steps that match your installation with a link to the screen, and if the
+feature is switched off it says so first instead of sending somebody looking
+for a menu that is not there. It explains what to click; it cannot change
+anything.
+
+**"Report a Problem", filed from the page it happened on**
+
+What normally reaches a developer is an email saying the events page looks
+funny on somebody's iPad — no address, no browser, no versions, and by the time
+anyone asks, the officer has moved on. Every one of those missing facts is
+already known to the browser and the server at the moment the fault is noticed.
+
+So there is now a Report a Problem button in the toolbar — or in the corner of
+the page, since SocietyPress hides the toolbar by default. Five plain
+questions, none of them technical, and the page address, browser, screen size,
+theme, versions and enabled modules are attached automatically. No IP address
+is recorded.
+
+Reports land in a queue at Settings → Problem Reports, with blocking problems
+at the top regardless of age. Optional email when one arrives. Export to CSV
+for the committee write-up or the next webmaster.
+
+If the AI Assistant is configured, each report gets a **Summarise with AI**
+button that turns a rambling description into a title, likely causes and steps
+to reproduce — reading the diagnostics, so it can spot that a report is really
+about a narrow screen when the reporter never mentioned their phone. It never
+overwrites what the officer wrote.
+
+Societies tracking faults upstream can add a GitHub repository and token, which
+puts a **Send to GitHub** button on each report. Nothing goes automatically,
+and the reporter's name and email are never included — that is a public
+tracker, and they did not agree to be published.
+
+Both features answer to Tools → Export/Erase Personal Data. Conversations are
+deleted on erasure. Problem reports are kept with the reporter scrubbed out,
+because the fault they describe is an organisational record and deleting it
+would destroy the history of a bug rather than the identity of a person.
+
+---
+
 ## [1.1.12] — 2026-08-15
 
 ### Added

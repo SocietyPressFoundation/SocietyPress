@@ -19,6 +19,22 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.22] — 2026-08-16
+
+### Changed
+
+**No download button on a book's sample**
+
+The reader that opens a sample of something the store sells offered to hand over
+the file. Reading the sample in place is the point of it; a button offering to
+save a copy of a book the society is selling on the same screen sits oddly next
+to Add to Cart.
+
+The newsletter archive's reader is untouched — members downloading their own
+newsletters is exactly what that is for.
+
+---
+
 ## [1.1.21] — 2026-08-16
 
 ### Changed

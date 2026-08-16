@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.21
+ * Version:     1.1.22
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.21' );
+define( 'SOCIETYPRESS_VERSION', '1.1.22' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -32729,7 +32729,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.21',
+            'version'     => '1.1.22',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32737,7 +32737,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.21',
+            'version'     => '1.1.22',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32745,7 +32745,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.21',
+            'version'     => '1.1.22',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32753,7 +32753,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.21',
+            'version'     => '1.1.22',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32761,7 +32761,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.21',
+            'version'     => '1.1.22',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -88710,7 +88710,12 @@ function sp_render_store_frontend(): void {
             <div class="sp-pdf-modal-header">
                 <h3 id="sp-store-pdf-modal-title"></h3>
                 <div class="sp-pdf-modal-actions">
-                    <a href="#" id="sp-store-pdf-modal-download" class="sp-pdf-modal-btn sp-pdf-modal-btn-download" target="_blank" rel="noopener" download><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
+                    <?php
+                    // WHY there is no download button here: this is a sample of
+                    // something the society sells. Reading it in place is the
+                    // point; handing over the file is not, and a button
+                    // offering to do so sits oddly next to an Add to Cart.
+                    ?>
                     <button type="button" id="sp-store-pdf-modal-close" class="sp-pdf-modal-btn sp-pdf-modal-btn-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
                 </div>
             </div>
@@ -88737,7 +88742,6 @@ function sp_render_store_frontend(): void {
 
         var title  = document.getElementById('sp-store-pdf-modal-title');
         var frame  = document.getElementById('sp-store-pdf-modal-iframe');
-        var dl     = document.getElementById('sp-store-pdf-modal-download');
         var close  = document.getElementById('sp-store-pdf-modal-close');
         var overlay = modal.querySelector('.sp-pdf-modal-overlay');
         var opener = null;  // element that opened it, so focus can go back
@@ -88746,7 +88750,6 @@ function sp_render_store_frontend(): void {
             opener           = document.activeElement;
             title.textContent = btn.getAttribute('data-title') || '';
             frame.src         = btn.getAttribute('data-pdf') || '';
-            dl.href           = btn.getAttribute('data-pdf') || '#';
             modal.style.display = 'flex';
             document.body.style.overflow = 'hidden';  // stop the page behind from scrolling
             if (close && typeof close.focus === 'function') {

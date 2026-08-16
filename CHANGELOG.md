@@ -19,6 +19,20 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.17] — 2026-08-15
+
+### Changed
+
+**The menu sits closer to the logo in the stacked header**
+
+There was more space between the logo and the menu than there looked to be any
+reason for. Two causes: a gap between the rows that added to the padding the
+menu links already carry, and the logo image sitting on a text baseline, which
+leaves descender space underneath it that no amount of adjusting margins can
+remove. Both are gone, so the menu now sits directly under the logo.
+
+---
+
 ## [1.1.16] — 2026-08-15
 
 ### Fixed

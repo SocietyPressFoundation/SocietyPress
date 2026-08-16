@@ -19,6 +19,22 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.16] — 2026-08-15
+
+### Fixed
+
+**The signed-in member's name no longer lands on top of the menu**
+
+With the logo above the menu, a signed-in member saw their own name and photo
+sitting over the middle of the navigation, covering whichever items happened to
+be underneath.
+
+The user menu is built as a navigation element in its own right, and the rule
+telling the main menu to fill the row was reaching it too. The two then split
+the row between them and overlapped. The rule now applies only to the main menu.
+
+---
+
 ## [1.1.15] — 2026-08-15
 
 ### Changed

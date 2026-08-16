@@ -19,7 +19,7 @@ Pre-1.0 development iterations are archived in
 
 ---
 
-## [1.1.31] — 2026-08-16
+## [1.1.32] — 2026-08-16
 
 ### Added
 
@@ -44,7 +44,12 @@ destroyed; a folder is where you put something, not what it is.
 
 Nothing had to be filed by hand to get started. Every file the plugin was
 already pointing at was found and sorted into Store, Documents and Library
-on the spot.
+on the spot, and store products, documents and catalog items keep the record
+current as they are saved from here on.
+
+A document switched between public and members-only physically moves on
+disk. It now takes its folder and its history with it, instead of arriving
+at the new address looking like a file nobody had ever filed.
 
 ---
 

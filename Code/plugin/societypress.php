@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.31
+ * Version:     1.1.32
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.31' );
+define( 'SOCIETYPRESS_VERSION', '1.1.32' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3223,6 +3223,71 @@ function sp_link_file( string $url, string $object_type, int $object_id, string 
     ) );
 
     return $file_id;
+}
+
+/**
+ * Follow a file that has moved on disk, keeping everything known about it.
+ *
+ * WHY this is needed: a document flipped between public and members-only is
+ *      physically relocated into (or out of) the protected directory, so its
+ *      address changes. Keyed on the address, that would read as a brand new
+ *      file — the old row would be orphaned and the folder somebody dragged it
+ *      into would be lost, which is exactly the forgetting this whole feature
+ *      exists to stop. Following the move keeps the folder, the links and the
+ *      history attached to the same file.
+ *
+ * @param string $old_url Where the file used to be.
+ * @param string $new_url Where it is now.
+ * @return bool  Whether a row was followed.
+ */
+function sp_update_file_url( string $old_url, string $new_url ): bool {
+    global $wpdb;
+
+    $old_url = trim( $old_url );
+    $new_url = trim( $new_url );
+
+    if ( $old_url === '' || $new_url === '' || $old_url === $new_url ) {
+        return false;
+    }
+
+    $table = $wpdb->prefix . 'sp_files';
+
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$table} WHERE url = %s",
+        $old_url
+    ) );
+
+    if ( ! $existing ) {
+        return false;
+    }
+
+    // The destination may already have a row — the same file moved back and
+    // forth, say. Two rows for one address would violate the unique key, so
+    // the older record yields and its links are carried across.
+    $clash = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$table} WHERE url = %s",
+        $new_url
+    ) );
+
+    if ( $clash && $clash !== $existing ) {
+        $wpdb->update(
+            $wpdb->prefix . 'sp_file_links',
+            [ 'file_id' => $clash ],
+            [ 'file_id' => $existing ],
+            [ '%d' ],
+            [ '%d' ]
+        );
+        $wpdb->delete( $table, [ 'id' => $existing ], [ '%d' ] );
+        return true;
+    }
+
+    return false !== $wpdb->update(
+        $table,
+        [ 'url' => $new_url ],
+        [ 'id' => $existing ],
+        [ '%s' ],
+        [ '%d' ]
+    );
 }
 
 /**
@@ -33361,7 +33426,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.31',
+            'version'     => '1.1.32',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33369,7 +33434,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.31',
+            'version'     => '1.1.32',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33377,7 +33442,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.31',
+            'version'     => '1.1.32',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33385,7 +33450,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.31',
+            'version'     => '1.1.32',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33393,7 +33458,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.31',
+            'version'     => '1.1.32',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -69602,6 +69667,11 @@ function sp_render_library_item_edit_page(): void {
                 $item_id = $wpdb->insert_id;
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Item added.', 'societypress' ) . '</p></div>';
             }
+
+            // Record the cover so it appears in Files with the catalog item
+            // named as what is using it.
+            sp_link_file( (string) ( $data['cover_url'] ?? '' ), 'library_item', (int) $item_id, 'cover_url' );
+
             delete_transient( 'sp_library_catalog_stats' );
         }
     }
@@ -92010,10 +92080,15 @@ add_action( 'admin_init', function () {
     // stored URL and the file's actual location can never disagree. This covers
     // a new upload marked members-only and an existing document switched either
     // way afterwards.
+    $before_move       = $data['file_url'];
     $data['file_url'] = sp_document_place_file(
         $data['file_url'],
         $data['access_level'] === 'members_only'
     );
+
+    // Switching access moved the file on disk. Follow it, or the folder
+    // somebody filed it in belongs to an address that no longer exists.
+    sp_update_file_url( $before_move, $data['file_url'] );
 
     if ( $doc_id ) {
         $wpdb->update( $table, $data, [ 'id' => $doc_id ] );
@@ -92023,6 +92098,8 @@ add_action( 'admin_init', function () {
         $wpdb->insert( $table, $data );
         $doc_id = $wpdb->insert_id;
     }
+
+    sp_link_file( (string) $data['file_url'], 'document', (int) $doc_id, 'file_url' );
 
     wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_updated=1' ) );
     exit;

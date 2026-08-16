@@ -19,6 +19,35 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.34] — 2026-08-16
+
+### Added
+
+**Files now covers everything that holds a file**
+
+Files started with store products, documents and the library catalog. It now
+also knows about member photos, meeting agendas and minutes, event images,
+speaker photos, newsletter covers and photo album covers — every place in
+SocietyPress that points at a file.
+
+Half of those screens store a file as a web address and half store the media
+library entry it came from. Both name a file; they just name it differently,
+and Files reads either.
+
+One picture used in three places is one file used three times, not three
+copies. Ask what is using it and all three come back.
+
+Replacing a member's photo used to be invisible to this, because each upload
+gets a fresh address to defeat browser caching. The record now follows the
+replacement, so the folder you filed it in survives somebody changing their
+picture, and a photo that is deleted is forgotten rather than left behind as
+a broken thumbnail.
+
+On txsaghs this brought in another 112 files — 93 newsletter covers, 13 event
+images, 5 album covers, 4 member photos — with nothing filed by hand.
+
+---
+
 ## [1.1.33] — 2026-08-16
 
 ### Added

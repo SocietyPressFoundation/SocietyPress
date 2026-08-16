@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.33
+ * Version:     1.1.34
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.33' );
+define( 'SOCIETYPRESS_VERSION', '1.1.34' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3291,6 +3291,113 @@ function sp_update_file_url( string $old_url, string $new_url ): bool {
 }
 
 /**
+ * Record a link where the screen stores a media library id, not an address.
+ *
+ * WHY a second entry point rather than resolving at the call site: every one
+ *      of these screens would otherwise repeat the same three lines — look up
+ *      the url, bail if the attachment is gone, link it — and the one that
+ *      forgot the bail would write a row pointing at nothing.
+ *
+ * @param int    $attachment_id Media library id. 0 clears the link.
+ * @param string $object_type   A slug from sp_get_file_object_types().
+ * @param int    $object_id     The record's id.
+ * @param string $field         The column the id lives in.
+ * @return int   The sp_files row id, or 0 when nothing was linked.
+ */
+function sp_link_file_by_attachment( int $attachment_id, string $object_type, int $object_id, string $field ): int {
+    if ( $attachment_id < 1 ) {
+        // Clearing the field still has to clear the link, and sp_link_file()
+        // with an empty address does exactly that.
+        return sp_link_file( '', $object_type, $object_id, $field );
+    }
+
+    $url = wp_get_attachment_url( $attachment_id );
+    if ( ! $url ) {
+        return sp_link_file( '', $object_type, $object_id, $field );
+    }
+
+    $file_id = sp_link_file( $url, $object_type, $object_id, $field );
+
+    // The address alone would not have told us which attachment this is on a
+    // site whose uploads are served from a CDN or a rewritten path, so record
+    // the id we were handed rather than inferring it back.
+    if ( $file_id ) {
+        global $wpdb;
+        $wpdb->update(
+            $wpdb->prefix . 'sp_files',
+            [ 'attachment_id' => $attachment_id ],
+            [ 'id' => $file_id, 'attachment_id' => null ],
+            [ '%d' ],
+            [ '%d', '%d' ]
+        );
+    }
+
+    return $file_id;
+}
+
+/**
+ * Forget a file entirely, because the file itself is gone.
+ *
+ * WHY this is different from clearing a link: a link going away means nothing
+ *      is using the file any more, and the file is still on disk and still
+ *      worth showing. This is for the case where the file has actually been
+ *      deleted — a replaced profile photo, say — where leaving the row behind
+ *      puts an entry in Files that shows a broken image and cannot be fixed.
+ *
+ * @param string $url The address of the file being deleted.
+ * @return bool  Whether a row was removed.
+ */
+function sp_forget_file( string $url ): bool {
+    global $wpdb;
+
+    $url = trim( $url );
+    if ( $url === '' ) {
+        return false;
+    }
+
+    $file_id = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_files WHERE url = %s",
+        $url
+    ) );
+
+    if ( ! $file_id ) {
+        return false;
+    }
+
+    $wpdb->delete( $wpdb->prefix . 'sp_file_links', [ 'file_id' => $file_id ], [ '%d' ] );
+    $wpdb->delete( $wpdb->prefix . 'sp_files', [ 'id' => $file_id ], [ '%d' ] );
+
+    return true;
+}
+
+/**
+ * Keep the file record straight when a member's photo changes.
+ *
+ * WHY it deserves a helper: profile photos are written from five different
+ *      places — the member's own account page, the admin member screen, and
+ *      the importer — and every one of them appends a cache-busting stamp, so
+ *      the address changes on every single upload. Handled naively that would
+ *      leave a dead row behind each time somebody updated their picture.
+ *
+ * @param int    $user_id The member.
+ * @param string $old_url What their photo used to be. May be empty.
+ * @param string $new_url What it is now. Empty means the photo was removed.
+ */
+function sp_record_member_photo( int $user_id, string $old_url, string $new_url ): void {
+    if ( trim( $new_url ) === '' ) {
+        sp_link_file( '', 'member', $user_id, 'photo_url' );
+        sp_forget_file( $old_url );
+        return;
+    }
+
+    // The old picture is replaced on disk, so the row follows the address
+    // rather than being abandoned beside a new one. Whatever folder somebody
+    // filed the photo in survives the member changing their picture.
+    sp_update_file_url( $old_url, $new_url );
+    sp_link_file( $new_url, 'member', $user_id, 'photo_url' );
+}
+
+/**
  * Move a file into a folder, or out of every folder.
  *
  * @param int      $file_id   sp_files row id.
@@ -3388,7 +3495,13 @@ function sp_get_file_usage( int $file_id ): array {
  * WHY filterable: a society running a custom module should be able to declare
  *      its own records here and get folders and usage tracking for free.
  *
- * @return array<string, array{label: string, folder: string, table: string, id_column: string, title_column: string, edit_url: string, fields: array<int, string>}>
+ * WHY two kinds of field: some screens store a file as an address
+ *      (image_url, file_url) and some store the media library id it came from
+ *      (image_id, cover_image_id). Both name a file; they just name it
+ *      differently. 'fields' lists the address columns and 'id_fields' the id
+ *      columns, so one registry covers screens written either way.
+ *
+ * @return array<string, array{label: string, folder: string, table: string, id_column: string, title_column: string, edit_url: string, fields: array<int, string>, id_fields?: array<int, string>}>
  */
 function sp_get_file_object_types(): array {
     return apply_filters( 'sp_file_object_types', [
@@ -3418,6 +3531,67 @@ function sp_get_file_object_types(): array {
             'title_column' => 'title',
             'edit_url'     => admin_url( 'admin.php?page=sp-library-item-edit&item_id=%d' ),
             'fields'       => [ 'cover_url' ],
+        ],
+        'member' => [
+            'label'        => __( 'Member', 'societypress' ),
+            'folder'       => __( 'Member photos', 'societypress' ),
+            'table'        => 'sp_members',
+            'id_column'    => 'user_id',
+            // A member has no single title column. The expression is used in
+            // the SELECT list, so a name built from two columns works exactly
+            // as a column name would.
+            'title_column' => "CONCAT(first_name, ' ', last_name)",
+            'edit_url'     => admin_url( 'admin.php?page=sp-member-edit&user_id=%d' ),
+            'fields'       => [ 'photo_url' ],
+        ],
+        'meeting' => [
+            'label'        => __( 'Meeting', 'societypress' ),
+            'folder'       => __( 'Meetings', 'societypress' ),
+            'table'        => 'sp_meetings',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-meeting-edit&meeting_id=%d' ),
+            'fields'       => [ 'agenda_url', 'minutes_url' ],
+        ],
+        'event' => [
+            'label'        => __( 'Event', 'societypress' ),
+            'folder'       => __( 'Events', 'societypress' ),
+            'table'        => 'sp_events',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-event-edit&event_id=%d' ),
+            'fields'       => [],
+            'id_fields'    => [ 'image_id' ],
+        ],
+        'event_speaker' => [
+            'label'        => __( 'Speaker', 'societypress' ),
+            'folder'       => __( 'Speaker photos', 'societypress' ),
+            'table'        => 'sp_event_speakers',
+            'id_column'    => 'id',
+            'title_column' => 'name',
+            'edit_url'     => admin_url( 'admin.php?page=sp-speaker-edit&speaker_id=%d' ),
+            'fields'       => [],
+            'id_fields'    => [ 'photo_id' ],
+        ],
+        'newsletter' => [
+            'label'        => __( 'Newsletter', 'societypress' ),
+            'folder'       => __( 'Newsletters', 'societypress' ),
+            'table'        => 'sp_newsletters',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-newsletter-edit&newsletter_id=%d' ),
+            'fields'       => [],
+            'id_fields'    => [ 'cover_image_id' ],
+        ],
+        'photo_album' => [
+            'label'        => __( 'Photo album', 'societypress' ),
+            'folder'       => __( 'Albums', 'societypress' ),
+            'table'        => 'sp_photo_albums',
+            'id_column'    => 'id',
+            'title_column' => 'title',
+            'edit_url'     => admin_url( 'admin.php?page=sp-album-edit&album_id=%d' ),
+            'fields'       => [],
+            'id_fields'    => [ 'cover_image_id' ],
         ],
     ] );
 }
@@ -3490,15 +3664,34 @@ function sp_backfill_file_records(): array {
         $table  = $wpdb->prefix . $def['table'];
         $folder = sp_get_or_create_file_folder( $def['folder'] ?? $def['label'] );
 
+        // Address columns and media-id columns are read the same way; only
+        // the step that turns the value into a file differs.
+        $columns = [];
         foreach ( $def['fields'] as $field ) {
-            $rows = $wpdb->get_results(
-                "SELECT {$def['id_column']} AS object_id, {$field} AS url
-                 FROM {$table}
-                 WHERE {$field} IS NOT NULL AND {$field} <> ''"
-            );
+            $columns[ $field ] = 'url';
+        }
+        foreach ( $def['id_fields'] ?? [] as $field ) {
+            $columns[ $field ] = 'id';
+        }
+
+        foreach ( $columns as $field => $kind ) {
+            $rows = 'id' === $kind
+                ? $wpdb->get_results(
+                    "SELECT {$def['id_column']} AS object_id, {$field} AS value
+                     FROM {$table}
+                     WHERE {$field} IS NOT NULL AND {$field} > 0"
+                )
+                : $wpdb->get_results(
+                    "SELECT {$def['id_column']} AS object_id, {$field} AS value
+                     FROM {$table}
+                     WHERE {$field} IS NOT NULL AND {$field} <> ''"
+                );
 
             foreach ( $rows as $row ) {
-                $file_id = sp_link_file( (string) $row->url, $slug, (int) $row->object_id, $field );
+                $file_id = 'id' === $kind
+                    ? sp_link_file_by_attachment( (int) $row->value, $slug, (int) $row->object_id, $field )
+                    : sp_link_file( (string) $row->value, $slug, (int) $row->object_id, $field );
+
                 if ( ! $file_id ) {
                     continue;
                 }
@@ -10054,9 +10247,11 @@ function sp_handle_account_forms() {
         }
         if ( move_uploaded_file( $file['tmp_name'], $filepath ) ) {
             $fileurl_busted = $fileurl . '?v=' . time();
+            $old_photo      = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$table} WHERE user_id = %d", $user->ID ) );
             update_user_meta( $user->ID, 'sp_profile_photo_url', $fileurl_busted );
             if ( sp_user_has_member_record( $user->ID ) ) {
                 $wpdb->update( $table, [ 'photo_url' => $fileurl_busted, 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user->ID ] );
+                sp_record_member_photo( (int) $user->ID, $old_photo, $fileurl_busted );
             }
             wp_redirect( add_query_arg( 'sp-updated', 'photo', $account_url ) ); exit;
         }
@@ -10071,9 +10266,11 @@ function sp_handle_account_forms() {
             $old_path = str_replace( $upload_dir['baseurl'], $upload_dir['basedir'], strtok( $old_photo_url, '?' ) );
             if ( file_exists( $old_path ) ) unlink( $old_path );
         }
+        $old_photo = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$table} WHERE user_id = %d", $user->ID ) );
         delete_user_meta( $user->ID, 'sp_profile_photo_url' );
         if ( sp_user_has_member_record( $user->ID ) ) {
             $wpdb->update( $table, [ 'photo_url' => '', 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user->ID ] );
+            sp_record_member_photo( (int) $user->ID, $old_photo, '' );
         }
         wp_redirect( add_query_arg( 'sp-updated', 'photo-removed', $account_url ) ); exit;
     }
@@ -19440,8 +19637,10 @@ add_action( 'admin_init', function () {
             if ( file_exists( $old_path ) ) {
                 wp_delete_file( $old_path );
             }
+            $old_photo = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$prefix}members WHERE user_id = %d", $user_id ) );
             delete_user_meta( $user_id, 'sp_profile_photo_url' );
             $wpdb->update( $prefix . 'members', [ 'photo_url' => '', 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user_id ] );
+            sp_record_member_photo( (int) $user_id, $old_photo, '' );
         }
     } elseif ( ! empty( $_FILES['sp_admin_photo']['tmp_name'] ) && $user_id ) {
         $file          = $_FILES['sp_admin_photo'];
@@ -19490,8 +19689,10 @@ add_action( 'admin_init', function () {
 
             if ( move_uploaded_file( $file['tmp_name'], $filepath ) ) {
                 $fileurl_busted = $fileurl . '?v=' . time();
+                $old_photo      = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$prefix}members WHERE user_id = %d", $user_id ) );
                 update_user_meta( $user_id, 'sp_profile_photo_url', $fileurl_busted );
                 $wpdb->update( $prefix . 'members', [ 'photo_url' => $fileurl_busted, 'updated_at' => current_time( 'mysql' ) ], [ 'user_id' => $user_id ] );
+                sp_record_member_photo( (int) $user_id, $old_photo, $fileurl_busted );
             }
         }
     }
@@ -22607,11 +22808,13 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             $photo_path = $photo_dir . '/' . $image_filename;
             if ( file_exists( $photo_path ) ) {
                 $photo_url_val = $upload_dir['baseurl'] . '/sp-profile-photos/' . $image_filename . '?v=' . time();
+                $old_photo = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$prefix}members WHERE user_id = %d", $user_id ) );
                 $wpdb->update(
                     $prefix . 'members',
                     [ 'photo_url' => $photo_url_val ],
                     [ 'user_id' => $user_id ]
                 );
+                sp_record_member_photo( (int) $user_id, $old_photo, $photo_url_val );
                 update_user_meta( $user_id, 'sp_profile_photo_url', $photo_url_val );
             }
         }
@@ -33426,7 +33629,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.33',
+            'version'     => '1.1.34',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33434,7 +33637,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.33',
+            'version'     => '1.1.34',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33442,7 +33645,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.33',
+            'version'     => '1.1.34',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33450,7 +33653,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.33',
+            'version'     => '1.1.34',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33458,7 +33661,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.33',
+            'version'     => '1.1.34',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -46512,6 +46715,8 @@ add_action( 'admin_init', function () {
         $event_id = $wpdb->insert_id;
     }
 
+    sp_link_file_by_attachment( (int) ( $data['image_id'] ?? 0 ), 'event', (int) $event_id, 'image_id' );
+
     // ---- Save speaker assignments ----
     // WHY: Speaker assignments are a many-to-many relationship. We delete all
     //      existing assignments for this event and re-insert from the form data.
@@ -59338,6 +59543,8 @@ add_action( 'admin_init', function () {
         $speaker_id = $wpdb->insert_id;
     }
 
+    sp_link_file_by_attachment( (int) ( $data['photo_id'] ?? 0 ), 'event_speaker', (int) $speaker_id, 'photo_id' );
+
     wp_redirect( admin_url( 'admin.php?page=sp-speakers&saved=1' ) );
     exit;
 } );
@@ -65372,6 +65579,8 @@ function sp_render_album_edit_page(): void {
             $wpdb->insert( $prefix . 'photo_albums', $data );
             $album_id = $wpdb->insert_id;
         }
+
+        sp_link_file_by_attachment( (int) ( $data['cover_image_id'] ?? 0 ), 'photo_album', (int) $album_id, 'cover_image_id' );
 
         // Save photos — expects comma-separated attachment IDs.
         // array_unique guards against the same attachment being added twice in
@@ -73187,6 +73396,9 @@ function sp_render_meeting_edit_page(): void {
                 $mid = (int) $wpdb->insert_id;
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Meeting recorded.', 'societypress' ) . '</p></div>';
             }
+
+            sp_link_file( (string) ( $data['agenda_url'] ?? '' ), 'meeting', $mid, 'agenda_url' );
+            sp_link_file( (string) ( $data['minutes_url'] ?? '' ), 'meeting', $mid, 'minutes_url' );
         }
     }
 
@@ -82814,7 +83026,10 @@ add_action( 'admin_init', function () {
     } else {
         $data['created_by'] = get_current_user_id();
         $wpdb->insert( $prefix . 'newsletters', $data );
+        $newsletter_id = (int) $wpdb->insert_id;
     }
+
+    sp_link_file_by_attachment( (int) ( $data['cover_image_id'] ?? 0 ), 'newsletter', (int) $newsletter_id, 'cover_image_id' );
 
     wp_redirect( admin_url( 'admin.php?page=sp-newsletter-archive&sp_notice=newsletter_saved' ) );
     exit;

@@ -19,6 +19,21 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.20] — 2026-08-15
+
+### Fixed
+
+**A menu link that isn't a web address is now refused**
+
+Typing a sentence into the new web-address box added a menu item pointing at
+nothing instead of saying so. The check only asked whether WordPress could make
+a URL out of what was typed, and it can make one out of almost anything. It now
+looks for a real site name — a dot, and nothing but letters, digits, dots and
+hyphens — so a mistake is caught while you are still on the screen rather than
+becoming a broken link on your site.
+
+---
+
 ## [1.1.19] — 2026-08-15
 
 ### Added

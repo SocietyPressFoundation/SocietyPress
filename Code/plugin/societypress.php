@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.20
+ * Version:     1.1.21
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.20' );
+define( 'SOCIETYPRESS_VERSION', '1.1.21' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -32729,7 +32729,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.20',
+            'version'     => '1.1.21',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32737,7 +32737,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.20',
+            'version'     => '1.1.21',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32745,7 +32745,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.20',
+            'version'     => '1.1.21',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32753,7 +32753,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.20',
+            'version'     => '1.1.21',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32761,7 +32761,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.20',
+            'version'     => '1.1.21',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -115596,6 +115596,23 @@ function sp_menus_handle_save( int $menu_id ): array {
             $noticed                   = true;
         }
 
+        // A link to another website can be corrected in place — shops move and
+        // registration forms get new addresses. Only custom items have one; a
+        // page's address is the page's own business.
+        //
+        // WHY a bad address is ignored rather than rejected: the row also
+        // carries wording, position and visibility, and throwing the whole save
+        // away over one mistyped address would lose the rest of somebody's
+        // work. The old address stays, so the menu never ends up pointing at
+        // nothing.
+        if ( isset( $fields['url'] ) && 'custom' === get_post_meta( $id, '_menu_item_type', true ) ) {
+            $new_url = sp_menus_normalize_link( (string) $fields['url'] );
+            if ( '' !== $new_url && $new_url !== get_post_meta( $id, '_menu_item_url', true ) ) {
+                update_post_meta( $id, '_menu_item_url', $new_url );
+                $noticed = true;
+            }
+        }
+
         // WHY position changes are written but NOT counted: menu_order is
         // whatever it happened to be before — an ENS import leaves gaps of ten
         // (0, 2, 50, 100, 101...) and WordPress itself never renumbers. This
@@ -115674,6 +115691,46 @@ function sp_menus_handle_save( int $menu_id ): array {
  * @param int $menu_id Nav menu term ID.
  * @return string Human-readable result notice, empty on no-op.
  */
+/**
+ * Turn what somebody typed into a usable web address, or nothing at all.
+ *
+ * Shared by adding a link and by correcting one later. Kept in one place
+ * because two copies of a rule like this drift, and the version that drifts is
+ * always the one nobody is looking at.
+ *
+ * @param string $raw What was typed into the box.
+ * @return string A safe http/https URL, or '' if it was not an address.
+ */
+function sp_menus_normalize_link( string $raw ): string {
+    $raw = trim( $raw );
+    if ( '' === $raw ) {
+        return '';
+    }
+
+    // Hardly anybody types the scheme. Assume https rather than refusing over
+    // a detail the person cannot see the absence of.
+    if ( ! preg_match( '#^[a-z][a-z0-9+.-]*://#i', $raw ) ) {
+        $raw = 'https://' . ltrim( $raw, '/' );
+    }
+
+    $clean = esc_url_raw( $raw, [ 'http', 'https' ] );
+    if ( ! $clean ) {
+        return '';
+    }
+
+    // esc_url_raw will happily return https://not%20a%20web%20address for a
+    // sentence, and wp_parse_url then reports the encoded sentence as the
+    // host, so "did it parse" is not a real check. A host has a dot in it and
+    // holds nothing but letters, digits, dots and hyphens — which still admits
+    // punycode for international domains.
+    $host = wp_parse_url( $clean, PHP_URL_HOST );
+    if ( ! $host || false === strpos( $host, '.' ) || preg_match( '/[^a-z0-9.\-]/i', $host ) ) {
+        return '';
+    }
+
+    return $clean;
+}
+
 function sp_menus_handle_add( int $menu_id ): string {
     check_admin_referer( 'sp_menus_add_' . $menu_id );
 
@@ -115685,34 +115742,16 @@ function sp_menus_handle_add( int $menu_id ): string {
     // A web address wins over the other two boxes: it is the most explicit
     // thing on the form, and nobody fills it in by accident.
     if ( '' !== $link_url ) {
-        // Someone typing an address by hand rarely types the scheme. Assume
-        // https rather than rejecting them over a detail they cannot see.
-        if ( ! preg_match( '#^[a-z][a-z0-9+.-]*://#i', $link_url ) ) {
-            $link_url = 'https://' . ltrim( $link_url, '/' );
-        }
+        $clean = sp_menus_normalize_link( $link_url );
 
-        $clean = esc_url_raw( $link_url, [ 'http', 'https' ] );
-        $host  = $clean ? wp_parse_url( $clean, PHP_URL_HOST ) : '';
-
-        // WHY this is stricter than "did esc_url_raw return something": that
-        // function happily hands back https://not%20a%20web%20address for a
-        // sentence typed into the box, and wp_parse_url then reports the
-        // percent-encoded sentence as the host. The result is a menu item that
-        // points nowhere, which is worse than a clear refusal. A real host has
-        // a dot in it and contains nothing but letters, digits, dots and
-        // hyphens — punycode for international domains included.
-        $host_ok = $host
-            && false !== strpos( $host, '.' )
-            && ! preg_match( '/[^a-z0-9.\-]/i', $host );
-
-        if ( ! $clean || ! $host_ok ) {
+        if ( '' === $clean ) {
             return __( 'That does not look like a web address. It should start with https:// and include a site name, like https://example.org.', 'societypress' );
         }
 
         // No wording given, so name it after the site it goes to — better than
         // an item labelled with the whole address.
         if ( '' === $link_txt ) {
-            $link_txt = preg_replace( '/^www\./i', '', $host );
+            $link_txt = preg_replace( '/^www\./i', '', (string) wp_parse_url( $clean, PHP_URL_HOST ) );
         }
 
         $item_id = wp_update_nav_menu_item(
@@ -115936,6 +115975,10 @@ function sp_render_menus_page(): void {
            the address itself — so they need separating from each other. */
         #sp-add-link-text { margin-right: 6px; }
         #sp-add-url { min-width: 260px; }
+        /* The address sits under the wording on a row, small and quiet — it is
+           reference most of the time and only occasionally edited. */
+        .sp-menu-url-label { color: #646970; font-size: 12px; margin-right: 4px; }
+        .sp-menu-url-input { width: 100%; max-width: 340px; font-size: 12px; }
         .sp-menus-hint { color: #646970; font-size: 13px; margin: 4px 0 0; }
 
         @media screen and (max-width: 782px) {
@@ -116039,7 +116082,22 @@ function sp_render_menus_page(): void {
                                 if ( 'post_type' === $item->type && $item->object_id ) {
                                     echo esc_html( sprintf( /* translators: %s: page title this menu item points to */ __( 'Goes to the page: %s', 'societypress' ), get_the_title( (int) $item->object_id ) ) );
                                 } elseif ( 'custom' === $item->type ) {
-                                    echo esc_html( sprintf( /* translators: %s: web address */ __( 'Goes to: %s', 'societypress' ), $item->url ) );
+                                    // WHY an input and not the address in text:
+                                    // a shop moves, a registration form gets a
+                                    // new address. Printed as text the only way
+                                    // to correct one was to remove the item and
+                                    // add it back, which loses its place in the
+                                    // menu and everything else set on the row.
+                                    ?>
+                                    <label class="screen-reader-text" for="sp-url-<?php echo esc_attr( $id ); ?>">
+                                        <?php esc_html_e( 'Web address this goes to', 'societypress' ); ?>
+                                    </label>
+                                    <span class="sp-menu-url-label"><?php esc_html_e( 'Goes to:', 'societypress' ); ?></span>
+                                    <input type="text" class="sp-menu-url-input"
+                                        id="sp-url-<?php echo esc_attr( $id ); ?>"
+                                        name="sp_item[<?php echo esc_attr( $id ); ?>][url]"
+                                        value="<?php echo esc_attr( $item->url ); ?>">
+                                    <?php
                                 } else {
                                     echo esc_html__( 'Goes to a list of posts', 'societypress' );
                                 }

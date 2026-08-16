@@ -19,6 +19,24 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.21] — 2026-08-16
+
+### Changed
+
+**A menu link's address can be corrected without removing the item**
+
+The address a link pointed at was shown as plain text, so fixing one meant
+removing the item and adding it again — losing its place in the menu and
+anything else set on the row. It is now a box you can type in, checked the same
+way as when the link was first added.
+
+A mistyped address is ignored rather than throwing the save away, because the
+same row also carries the wording, the position and who can see it, and one slip
+should not cost somebody all of that. The previous address stays, so a menu item
+never ends up pointing at nothing.
+
+---
+
 ## [1.1.20] — 2026-08-15
 
 ### Fixed

@@ -19,6 +19,29 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.19] — 2026-08-15
+
+### Added
+
+**Menus can now link to another website**
+
+The Menus screen only ever offered pages you already had, or a brand-new page.
+Anything that lives somewhere else — an apparel shop run by a supplier, a
+catalogue hosted elsewhere, a registration form — could not be added at all, so
+a menu item pointing off-site meant asking somebody technical for help. A menu
+is not a thing anyone should need help with.
+
+There is now a third option: type the wording you want and paste the address.
+Leave the scheme off and `https://` is assumed rather than the whole thing being
+rejected over a detail you cannot see. Leave the wording blank and the item is
+named after the site it points to, which beats a menu item labelled with a full
+web address.
+
+Links to other websites open in a new tab, so your own site is still there when
+somebody comes back.
+
+---
+
 ## [1.1.18] — 2026-08-15
 
 ### Changed

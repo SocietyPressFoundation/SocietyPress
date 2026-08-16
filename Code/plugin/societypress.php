@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.18
+ * Version:     1.1.19
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.18' );
+define( 'SOCIETYPRESS_VERSION', '1.1.19' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -32729,7 +32729,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.18',
+            'version'     => '1.1.19',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32737,7 +32737,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.18',
+            'version'     => '1.1.19',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32745,7 +32745,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.18',
+            'version'     => '1.1.19',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32753,7 +32753,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.18',
+            'version'     => '1.1.19',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32761,7 +32761,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.18',
+            'version'     => '1.1.19',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -115679,6 +115679,60 @@ function sp_menus_handle_add( int $menu_id ): string {
 
     $page_id  = isset( $_POST['sp_add_page'] ) ? (int) $_POST['sp_add_page'] : 0;
     $new_name = isset( $_POST['sp_add_new_page'] ) ? sanitize_text_field( wp_unslash( $_POST['sp_add_new_page'] ) ) : '';
+    $link_url = isset( $_POST['sp_add_url'] ) ? trim( (string) wp_unslash( $_POST['sp_add_url'] ) ) : '';
+    $link_txt = isset( $_POST['sp_add_link_text'] ) ? sanitize_text_field( wp_unslash( $_POST['sp_add_link_text'] ) ) : '';
+
+    // A web address wins over the other two boxes: it is the most explicit
+    // thing on the form, and nobody fills it in by accident.
+    if ( '' !== $link_url ) {
+        // Someone typing an address by hand rarely types the scheme. Assume
+        // https rather than rejecting them over a detail they cannot see.
+        if ( ! preg_match( '#^[a-z][a-z0-9+.-]*://#i', $link_url ) ) {
+            $link_url = 'https://' . ltrim( $link_url, '/' );
+        }
+
+        $clean = esc_url_raw( $link_url, [ 'http', 'https' ] );
+        $host  = $clean ? wp_parse_url( $clean, PHP_URL_HOST ) : '';
+
+        // WHY the host check as well: esc_url_raw will hand back something for
+        // input that is not really an address, and a menu item pointing at
+        // nowhere is worse than a clear refusal.
+        if ( ! $clean || ! $host ) {
+            return __( 'That does not look like a web address. It should start with https:// and include a site name.', 'societypress' );
+        }
+
+        // No wording given, so name it after the site it goes to — better than
+        // an item labelled with the whole address.
+        if ( '' === $link_txt ) {
+            $link_txt = preg_replace( '/^www\./i', '', $host );
+        }
+
+        $item_id = wp_update_nav_menu_item(
+            $menu_id,
+            0,
+            [
+                'menu-item-title'  => $link_txt,
+                'menu-item-url'    => $clean,
+                'menu-item-type'   => 'custom',
+                'menu-item-object' => 'custom',
+                'menu-item-status' => 'publish',
+                // It leaves the society's site for somebody else's, so the
+                // society's site should still be there when they come back.
+                'menu-item-target' => '_blank',
+            ]
+        );
+
+        if ( is_wp_error( $item_id ) || ! $item_id ) {
+            return __( 'That link could not be added to the menu. Please try again.', 'societypress' );
+        }
+
+        return sprintf(
+            /* translators: 1: menu wording, 2: the web address it points to */
+            __( '"%1$s" was added to the bottom of the menu, pointing at %2$s. It opens in a new tab.', 'societypress' ),
+            $link_txt,
+            $clean
+        );
+    }
 
     // A typed name wins over the dropdown: if the volunteer filled in both,
     // the thing they typed is the thing they were thinking about.
@@ -115870,6 +115924,10 @@ function sp_render_menus_page(): void {
         .sp-menus-add { background: #fff; border: 1px solid #c3c4c7; padding: 16px; margin-top: 24px; max-width: 720px; }
         .sp-menus-add h2 { margin-top: 0; font-size: 15px; }
         .sp-menus-add-fields { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+        /* The web-address option carries two boxes in one cell — wording and
+           the address itself — so they need separating from each other. */
+        #sp-add-link-text { margin-right: 6px; }
+        #sp-add-url { min-width: 260px; }
         .sp-menus-hint { color: #646970; font-size: 13px; margin: 4px 0 0; }
 
         @media screen and (max-width: 782px) {
@@ -116080,12 +116138,29 @@ function sp_render_menus_page(): void {
                             placeholder="<?php esc_attr_e( 'Name of the new page', 'societypress' ); ?>">
                     </div>
 
+                    <?php
+                    // WHY this third option: plenty of what a society wants in
+                    // its menu is not a page on its own site — an apparel shop
+                    // run by a supplier, a catalogue hosted elsewhere, a
+                    // registration form. Without this the only way to add one
+                    // was to ask somebody technical, and a menu is not a thing
+                    // a volunteer should need help with.
+                    ?>
+                    <div>
+                        <label for="sp-add-url"><strong><?php esc_html_e( 'Or link to another website', 'societypress' ); ?></strong></label><br>
+                        <input type="text" name="sp_add_link_text" id="sp-add-link-text"
+                            placeholder="<?php esc_attr_e( 'Menu wording, e.g. Apparel', 'societypress' ); ?>">
+                        <input type="url" name="sp_add_url" id="sp-add-url"
+                            placeholder="<?php esc_attr_e( 'https://…', 'societypress' ); ?>">
+                    </div>
+
                     <div>
                         <button type="submit" class="button button-secondary"><?php esc_html_e( 'Add to menu', 'societypress' ); ?></button>
                     </div>
                 </div>
                 <p class="sp-menus-hint">
                     <?php esc_html_e( 'The new item is added at the bottom of the menu. Use the arrows to move it where you want it.', 'societypress' ); ?>
+                    <?php esc_html_e( 'A link to another website opens in a new tab, so your own site stays open behind it.', 'societypress' ); ?>
                 </p>
             </form>
         </div>

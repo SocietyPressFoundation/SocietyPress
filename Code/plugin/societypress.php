@@ -26724,6 +26724,8 @@ function sp_sanitize_settings( array $input ): array {
                                           ? (string) $input['ai_public_audience'] : 'everyone',
         'ai_admin_enabled'   => fn() => ! empty( $input['ai_admin_enabled'] ) ? 1 : 0,
         'ai_assistant_name'  => fn() => sanitize_text_field( $input['ai_assistant_name'] ?? '' ),
+        'ai_icon'            => fn() => array_key_exists( (string) ( $input['ai_icon'] ?? '' ), sp_ai_launcher_icons() )
+                                          ? (string) $input['ai_icon'] : 'bubble',
         // Greeting, small print and society notes keep their newlines: the
         // admin's paragraph breaks are how they read on the widget.
         'ai_greeting'        => fn() => sanitize_textarea_field( (string) ( $input['ai_greeting'] ?? '' ) ),
@@ -26853,7 +26855,7 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'ai_public_audience', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'ai_api_key', 'ai_model', 'ai_public_audience', 'ai_admin_enabled',
-            'ai_assistant_name', 'ai_greeting', 'ai_disclaimer', 'ai_society_notes',
+            'ai_assistant_name', 'ai_icon', 'ai_greeting', 'ai_disclaimer', 'ai_society_notes',
             'ai_rate_per_visitor', 'ai_rate_per_day', 'ai_effort', 'ai_log_retention_days',
             'issues_enabled', 'issues_who_can_report', 'issues_notify',
             'issues_notify_email', 'issues_github_repo', 'issues_github_token',
@@ -117774,6 +117776,65 @@ function sp_ai_assistant_name(): string {
 }
 
 /**
+ * The icons a society can put on the chat launcher.
+ *
+ * WHY a leaf and a tree are here at all: the speech bubble says "this is a
+ * chat", which the visitor can already see. A leaf or a pedigree chart says
+ * "this belongs to a genealogical society" — it does the same job as the
+ * bubble and carries the society's subject while it does it.
+ *
+ * WHY hand-drawn paths rather than an icon library: the release build ships
+ * societypress.php and the .pot file and nothing else, so anything living in
+ * an asset file would arrive at a society's site missing. Everything here is
+ * inline for the same reason the widget's CSS is.
+ *
+ * Each entry is the inner markup of a 24×24 viewBox, stroked in currentColor.
+ * They were drawn against a 22px render, which is the size that actually
+ * matters — detail that only resolves at 80px is detail nobody will ever see.
+ *
+ * @return array<string, array{label:string, svg:string}>
+ */
+function sp_ai_launcher_icons(): array {
+    return [
+        'bubble' => [
+            'label' => __( 'Speech bubble', 'societypress' ),
+            'svg'   => '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',
+        ],
+        'leaf' => [
+            'label' => __( 'Leaf', 'societypress' ),
+            'svg'   => '<path d="M4 20C4 11 11 4 20 4c0 9-7 16-16 16z"/><path d="M3 21 17 7"/>',
+        ],
+        'tree' => [
+            'label' => __( 'Tree', 'societypress' ),
+            'svg'   => '<path d="M12 21.5V11"/><path d="M12 14.5 7.6 10.1"/><path d="M12 12.6l4.4-4.4"/><circle cx="6.1" cy="8.6" r="2.4"/><circle cx="17.9" cy="6.7" r="2.4"/><circle cx="12" cy="5.2" r="2.4"/><path d="M12 11V7.6"/>',
+        ],
+        'pedigree' => [
+            'label' => __( 'Family tree', 'societypress' ),
+            'svg'   => '<circle cx="6.5" cy="5" r="2.6"/><circle cx="17.5" cy="5" r="2.6"/><circle cx="12" cy="19" r="2.6"/><path d="M6.5 7.6v3.4h11V7.6"/><path d="M12 11v5.4"/>',
+        ],
+    ];
+}
+
+/**
+ * The chosen launcher icon as a complete <svg> element.
+ *
+ * @param int $size Pixel size for width/height.
+ * @return string
+ */
+function sp_ai_launcher_icon_svg( int $size = 22 ): string {
+    $icons    = sp_ai_launcher_icons();
+    $settings = sp_settings();
+    $key      = (string) ( $settings['ai_icon'] ?? 'bubble' );
+    $icon     = $icons[ $key ] ?? $icons['bubble'];
+
+    return sprintf(
+        '<svg viewBox="0 0 24 24" width="%1$d" height="%1$d" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">%2$s</svg>',
+        $size,
+        $icon['svg']
+    );
+}
+
+/**
  * The line under the assistant's name telling people what it is.
  *
  * WHY there is a default rather than an empty string: a visitor typing a
@@ -117851,8 +117912,8 @@ function sp_ai_render_chat( array $args = [] ): void {
 
         <?php if ( $variant === 'floating' ) : ?>
             <button type="button" class="sp-ai__launcher" aria-expanded="false" aria-controls="<?php echo esc_attr( $id ); ?>-panel">
-                <span class="sp-ai__launcher-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+                <span class="sp-ai__launcher-icon">
+                    <?php echo sp_ai_launcher_icon_svg( 22 ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Fixed markup from sp_ai_launcher_icons(); no user input reaches it. ?>
                 </span>
                 <span class="sp-ai__launcher-label"><?php echo esc_html( $title ); ?></span>
             </button>
@@ -119852,6 +119913,59 @@ add_action( 'admin_init', function (): void {
                 esc_attr__( 'Ask the Society', 'societypress' )
             );
             echo '<p class="description">' . esc_html__( 'The label on the chat button.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-ai',
+        'sp_ai_section'
+    );
+
+    add_settings_field(
+        'ai_icon',
+        __( 'Button icon', 'societypress' ),
+        static function () use ( $settings ): void {
+            $current = (string) ( $settings['ai_icon'] ?? 'bubble' );
+            $icons   = sp_ai_launcher_icons();
+
+            if ( ! isset( $icons[ $current ] ) ) {
+                $current = 'bubble';
+            }
+
+            // WHY the icons are drawn rather than listed by name: nobody can
+            // picture "pedigree" from a dropdown, and a society that has to
+            // save the page to find out what it picked will just leave the
+            // default. Showing them costs nothing and removes the guessing.
+            echo '<fieldset class="sp-ai-icon-picker">';
+            echo '<legend class="screen-reader-text">' . esc_html__( 'Button icon', 'societypress' ) . '</legend>';
+
+            foreach ( $icons as $key => $icon ) {
+                printf(
+                    '<label class="sp-ai-icon-option"><input type="radio" name="societypress_settings[ai_icon]" value="%s" %s><span class="sp-ai-icon-option__art">%s</span><span class="sp-ai-icon-option__label">%s</span></label>',
+                    esc_attr( $key ),
+                    checked( $current, $key, false ),
+                    sprintf(
+                        '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">%s</svg>',
+                        $icon['svg']
+                    ),
+                    esc_html( $icon['label'] )
+                );
+            }
+
+            echo '</fieldset>';
+            echo '<p class="description">' . esc_html__( 'Shown on the chat button on your website. A leaf or a tree says the assistant belongs to a genealogical society; the speech bubble just says it is a chat.', 'societypress' ) . '</p>';
+            ?>
+            <style>
+            .sp-ai-icon-picker { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
+            .sp-ai-icon-option { display: flex; flex-direction: column; align-items: center; gap: 6px;
+                border: 1px solid #c3c4c7; border-radius: 6px; padding: 12px 10px 9px; min-width: 92px;
+                cursor: pointer; background: #fff; }
+            .sp-ai-icon-option:has(input:checked) { border-color: #2271b1; box-shadow: 0 0 0 1px #2271b1; }
+            .sp-ai-icon-option__art { color: #2271b1; line-height: 0; }
+            .sp-ai-icon-option__label { font-size: 12px; color: #50575e; }
+            .sp-ai-icon-option input { margin: 0; }
+            /* :has() is unsupported on a handful of older browsers; without it
+               the radio itself still shows the selection, so the control
+               degrades to a plain radio group rather than becoming unusable. */
+            </style>
+            <?php
         },
         'sp-settings-ai',
         'sp_ai_section'

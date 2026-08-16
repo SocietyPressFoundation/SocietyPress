@@ -42,6 +42,12 @@ You choose who sees it: everyone, logged-in members only, or nobody — in which
 case `[societypress_ai_assistant]` still lets you put it on one "Ask us" page
 instead of following visitors around the site.
 
+The chat button takes a speech bubble, a leaf, a tree, or a pedigree chart —
+picked from pictures on the settings screen rather than names in a list, since
+nobody can imagine "pedigree" from a dropdown. A leaf or a tree says the
+assistant belongs to a genealogical society; the speech bubble only says it is
+a chat, which visitors can see for themselves.
+
 **It cannot reach your membership roll.** The member directory is deliberately
 excluded from everything the assistant is allowed to read. It only ever sees
 what the person asking could already see for themselves, so a logged-out

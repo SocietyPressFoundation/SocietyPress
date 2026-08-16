@@ -38,6 +38,19 @@ The constant wins if both are set, and the settings box goes read-only so nobody
 
 To put it on a single page, add `[societypress_ai_assistant]` to that page. When a page has the shortcode on it, the floating button stays away so you do not get two of them.
 
+## How to change the button icon
+
+**Settings → AI Assistant → Button icon.** Four choices, shown as pictures rather than named in a list:
+
+- **Speech bubble** — the default. Says "this is a chat", which the visitor can already see.
+- **Leaf** — the obvious one for a genealogical society.
+- **Tree** — a small tree, if you want something less on-the-nose than a leaf.
+- **Family tree** — a pedigree chart: two parents joined to a child. The most distinctive of the four, and the only one that could not belong to any other kind of website.
+
+One thing worth knowing before you pick the leaf: Ancestry.com's "shaky leaf" hint is probably the single most recognised icon in genealogy. A leaf on your chat button will remind some of your members of Ancestry — which reads as familiar and on-theme to most people, but occasionally as though the button is an Ancestry feature. The family tree has no such association.
+
+Whichever you pick, the label beside it is whatever you put in "What to call it".
+
 ## How to make its answers better
 
 The assistant searches your site for each question and reads the results before answering. Three things improve it, in order of how much they help:

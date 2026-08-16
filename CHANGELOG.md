@@ -19,6 +19,35 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.31] — 2026-08-16
+
+### Added
+
+**Files, in folders, that stay where you put them**
+
+WordPress has never had folders. Its media library is one flat pile with a
+date filter, and it labels everything SocietyPress uploads as "Unattached,"
+because the only belonging it understands is "attached to a post" — and a
+store product is not a post.
+
+There is now a Files screen that does understand. Drag a file onto a folder
+to move it. Tick several and use Move to if you would rather not drag —
+everything dragging can do, that menu does too, so nobody on an iPad is
+stuck. Make folders, rename them, nest them. Renaming never breaks anything,
+because files remember the folder itself and not what it happens to be
+called this month.
+
+Every file also knows what is using it. Click "Used by" and it tells you —
+the store product, the document, the catalog item — with a link straight to
+it. Delete a folder and its contents move to Unfiled rather than being
+destroyed; a folder is where you put something, not what it is.
+
+Nothing had to be filed by hand to get started. Every file the plugin was
+already pointing at was found and sorted into Store, Documents and Library
+on the spot.
+
+---
+
 ## [1.1.29] — 2026-08-16
 
 ### Added

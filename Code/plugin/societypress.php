@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.30
+ * Version:     1.1.31
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.30' );
+define( 'SOCIETYPRESS_VERSION', '1.1.31' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6863,6 +6863,16 @@ add_action( 'admin_menu', function () {
         'manage_options',
         'sp-documents',
         'sp_render_documents_page'
+    );
+
+    // Files — every uploaded file in one place, in folders the society keeps.
+    add_submenu_page(
+        'societypress',
+        __( 'Files — SocietyPress', 'societypress' ),
+        __( 'Files', 'societypress' ),
+        'manage_options',
+        'sp-files',
+        'sp_render_files_page'
     );
 
     add_submenu_page(
@@ -28334,6 +28344,9 @@ function sp_prune_audit_log(): void {
 }
 add_action( 'sp_daily_maintenance', 'sp_prune_audit_log' );
 
+// Sweep links whose record has since been deleted. See sp_prune_file_links().
+add_action( 'sp_daily_maintenance', 'sp_prune_file_links' );
+
 /**
  * Remove lapsed members from all groups on the daily cron, when the society has
  * opted in (Settings → Membership). WHY: expired/cancelled members linger in
@@ -33348,7 +33361,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.30',
+            'version'     => '1.1.31',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33356,7 +33369,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.30',
+            'version'     => '1.1.31',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33364,7 +33377,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.30',
+            'version'     => '1.1.31',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33372,7 +33385,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.30',
+            'version'     => '1.1.31',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33380,7 +33393,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.30',
+            'version'     => '1.1.31',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92366,6 +92379,895 @@ add_action( 'admin_init', function () {
     wp_redirect( admin_url( 'admin.php?page=sp-document-categories&sp_deleted=1' ) );
     exit;
 });
+
+
+// ---------------------------------------------------------------------------
+// ADMIN: Files — folders, dragging, and what is using what
+//
+// WHY a screen of our own rather than bending the media library: WordPress
+//      shows every SocietyPress upload as "Unattached" and offers no folders,
+//      because its only idea of belonging is "this file is attached to a
+//      post". A store product is not a post, a document is not a post, and a
+//      society's filing is not a date filter. None of that is fixable from
+//      inside its screen, so this one owns the question instead.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every folder, with the number of files in each.
+ *
+ * WHY the count is a join and not a per-folder query: the sidebar shows a
+ *      count beside every folder, and a society with forty folders would
+ *      otherwise run forty queries to draw one list.
+ *
+ * @return array<int, object> Folders in display order, each with a file_count.
+ */
+function sp_get_file_folders(): array {
+    global $wpdb;
+
+    return (array) $wpdb->get_results(
+        "SELECT f.*, COUNT(fi.id) AS file_count
+         FROM {$wpdb->prefix}sp_file_folders f
+         LEFT JOIN {$wpdb->prefix}sp_files fi ON fi.folder_id = f.id
+         GROUP BY f.id
+         ORDER BY f.sort_order ASC, f.name ASC"
+    );
+}
+
+/**
+ * Draw one level of the folder list, then its children.
+ *
+ * WHY recursive markup rather than a flat list with indent classes: a folder
+ *      that contains folders is a real nesting, and screen readers announce a
+ *      nested <ul> as one. Faking the depth with padding reads as a flat list
+ *      of equals to anyone not looking at it.
+ *
+ * @param array<int, object> $folders   All folders, any depth.
+ * @param int|null           $parent_id Level to draw.
+ * @param int                $current   Folder currently open.
+ */
+function sp_render_file_folder_list( array $folders, ?int $parent_id, int $current ): void {
+    $children = array_filter(
+        $folders,
+        static function ( $f ) use ( $parent_id ) {
+            return $parent_id === null
+                ? null === $f->parent_id
+                : (int) $f->parent_id === $parent_id;
+        }
+    );
+
+    if ( ! $children ) {
+        return;
+    }
+
+    echo '<ul class="sp-folder-list">';
+
+    foreach ( $children as $folder ) {
+        $id     = (int) $folder->id;
+        $active = $current === $id ? ' sp-folder-current' : '';
+        $url    = add_query_arg(
+            [ 'page' => 'sp-files', 'folder' => $id ],
+            admin_url( 'admin.php' )
+        );
+
+        printf(
+            '<li><a href="%1$s" class="sp-folder%2$s" data-folder-id="%3$d"><span class="dashicons dashicons-portfolio" aria-hidden="true"></span><span class="sp-folder-name">%4$s</span><span class="sp-folder-count">%5$s</span></a>',
+            esc_url( $url ),
+            esc_attr( $active ),
+            $id,
+            esc_html( $folder->name ),
+            esc_html( number_format_i18n( (int) $folder->file_count ) )
+        );
+
+        sp_render_file_folder_list( $folders, $id, $current );
+
+        echo '</li>';
+    }
+
+    echo '</ul>';
+}
+
+/**
+ * The Files screen.
+ */
+function sp_render_files_page(): void {
+    global $wpdb;
+
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    // wp.media powers the uploader behind "Add files here". Custom admin
+    // screens do not enqueue it, and the button is dead without it.
+    wp_enqueue_media();
+
+    $folders = sp_get_file_folders();
+
+    // folder=0 is Unfiled, which is a real place a file can be. "All files"
+    // has to be a different value entirely, so it is the absence of the
+    // parameter rather than a number that could collide with a folder id.
+    $showing_all = ! isset( $_GET['folder'] );
+    $current     = (int) ( $_GET['folder'] ?? 0 );
+
+    $where = '';
+    if ( ! $showing_all ) {
+        $where = $current
+            ? $wpdb->prepare( 'WHERE fi.folder_id = %d', $current )
+            : 'WHERE fi.folder_id IS NULL';
+    }
+
+    // A society that has been running for twenty years has thousands of files.
+    // Drawing all of them costs a megabyte of markup and a scroll bar nobody
+    // can aim, so the grid pages like every other list in the plugin.
+    $per_page = 100;
+    $paged    = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
+    $offset   = ( $paged - 1 ) * $per_page;
+
+    $found = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_files fi {$where}"
+    );
+
+    $files = (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT fi.*, COUNT(l.id) AS use_count
+         FROM {$wpdb->prefix}sp_files fi
+         LEFT JOIN {$wpdb->prefix}sp_file_links l ON l.file_id = fi.id
+         {$where}
+         GROUP BY fi.id
+         ORDER BY fi.title ASC
+         LIMIT %d OFFSET %d",
+        $per_page,
+        $offset
+    ) );
+
+    $unfiled = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_files WHERE folder_id IS NULL"
+    );
+    $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_files" );
+
+    $heading = __( 'All files', 'societypress' );
+    if ( ! $showing_all ) {
+        $heading = __( 'Unfiled', 'societypress' );
+        foreach ( $folders as $f ) {
+            if ( (int) $f->id === $current ) {
+                $heading = $f->name;
+            }
+        }
+    }
+    ?>
+    <div class="wrap sp-admin-wrap sp-files-wrap">
+        <h1><?php esc_html_e( 'Files', 'societypress' ); ?></h1>
+        <p class="description sp-files-intro">
+            <?php esc_html_e( 'Every file the society has uploaded, in folders you keep. Drag a file onto a folder to move it, or tick the files you want and use Move to.', 'societypress' ); ?>
+        </p>
+
+        <div class="sp-files-layout">
+
+            <div class="sp-files-sidebar">
+                <ul class="sp-folder-list">
+                    <li>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-files' ) ); ?>" class="sp-folder<?php echo $showing_all ? ' sp-folder-current' : ''; ?>">
+                            <span class="dashicons dashicons-media-default" aria-hidden="true"></span>
+                            <span class="sp-folder-name"><?php esc_html_e( 'All files', 'societypress' ); ?></span>
+                            <span class="sp-folder-count"><?php echo esc_html( number_format_i18n( $total ) ); ?></span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-files&folder=0' ) ); ?>" class="sp-folder<?php echo ( ! $showing_all && ! $current ) ? ' sp-folder-current' : ''; ?>" data-folder-id="0">
+                            <span class="dashicons dashicons-editor-help" aria-hidden="true"></span>
+                            <span class="sp-folder-name"><?php esc_html_e( 'Unfiled', 'societypress' ); ?></span>
+                            <span class="sp-folder-count"><?php echo esc_html( number_format_i18n( $unfiled ) ); ?></span>
+                        </a>
+                    </li>
+                </ul>
+
+                <?php sp_render_file_folder_list( $folders, null, $showing_all ? -1 : $current ); ?>
+
+                <button type="button" class="button sp-new-folder-btn" id="sp-new-folder">
+                    <span class="dashicons dashicons-plus-alt2" aria-hidden="true"></span>
+                    <?php esc_html_e( 'New folder', 'societypress' ); ?>
+                </button>
+            </div>
+
+            <div class="sp-files-main">
+
+                <div class="sp-files-toolbar">
+                    <h2 class="sp-files-heading"><?php echo esc_html( $heading ); ?></h2>
+
+                    <div class="sp-files-actions">
+                        <button type="button" class="button button-primary" id="sp-add-files">
+                            <?php esc_html_e( 'Add files here', 'societypress' ); ?>
+                        </button>
+
+                        <label class="screen-reader-text" for="sp-move-to"><?php esc_html_e( 'Move selected files to', 'societypress' ); ?></label>
+                        <select id="sp-move-to" disabled>
+                            <option value=""><?php esc_html_e( 'Move to…', 'societypress' ); ?></option>
+                            <option value="0"><?php esc_html_e( 'Unfiled', 'societypress' ); ?></option>
+                            <?php foreach ( $folders as $f ) : ?>
+                                <option value="<?php echo esc_attr( (int) $f->id ); ?>"><?php echo esc_html( $f->name ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+
+                        <?php if ( ! $showing_all && $current ) : ?>
+                            <button type="button" class="button" id="sp-rename-folder" data-folder-id="<?php echo esc_attr( $current ); ?>" data-folder-name="<?php echo esc_attr( $heading ); ?>">
+                                <?php esc_html_e( 'Rename folder', 'societypress' ); ?>
+                            </button>
+                            <button type="button" class="button sp-text-error-btn" id="sp-delete-folder" data-folder-id="<?php echo esc_attr( $current ); ?>">
+                                <?php esc_html_e( 'Delete folder', 'societypress' ); ?>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <p class="sp-files-selection" id="sp-files-selection" aria-live="polite"></p>
+
+                <?php if ( ! $files ) : ?>
+                    <div class="sp-files-empty">
+                        <p><?php esc_html_e( 'Nothing in here yet.', 'societypress' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'Use Add files here to put something in this folder, or drag files onto it from another folder.', 'societypress' ); ?></p>
+                    </div>
+                <?php else : ?>
+                    <ul class="sp-file-grid" id="sp-file-grid">
+                        <?php foreach ( $files as $file ) :
+                            $is_image = $file->mime_type && strpos( $file->mime_type, 'image/' ) === 0;
+                            $uses     = (int) $file->use_count;
+                            ?>
+                            <li class="sp-file-card" draggable="true" data-file-id="<?php echo esc_attr( (int) $file->id ); ?>" data-uses="<?php echo esc_attr( $uses ); ?>">
+                                <label class="sp-file-pick">
+                                    <input type="checkbox" class="sp-file-check" value="<?php echo esc_attr( (int) $file->id ); ?>">
+                                    <span class="screen-reader-text"><?php echo esc_html( sprintf( __( 'Select %s', 'societypress' ), $file->title ) ); ?></span>
+                                </label>
+
+                                <div class="sp-file-thumb">
+                                    <?php if ( $is_image ) : ?>
+                                        <img src="<?php echo esc_url( $file->url ); ?>" alt="" loading="lazy">
+                                    <?php else : ?>
+                                        <span class="dashicons dashicons-media-document" aria-hidden="true"></span>
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="sp-file-meta">
+                                    <span class="sp-file-name" title="<?php echo esc_attr( $file->title ); ?>"><?php echo esc_html( $file->title ); ?></span>
+                                    <?php if ( $uses ) : ?>
+                                        <button type="button" class="sp-file-uses" data-file-id="<?php echo esc_attr( (int) $file->id ); ?>">
+                                            <?php
+                                            printf(
+                                                esc_html( _n( 'Used by %s thing', 'Used by %s things', $uses, 'societypress' ) ),
+                                                esc_html( number_format_i18n( $uses ) )
+                                            );
+                                            ?>
+                                        </button>
+                                    <?php else : ?>
+                                        <span class="sp-file-unused"><?php esc_html_e( 'Not used yet', 'societypress' ); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+
+                    <?php
+                    $pages = (int) ceil( $found / $per_page );
+                    if ( $pages > 1 ) :
+                        $base = add_query_arg(
+                            array_filter(
+                                [ 'page' => 'sp-files', 'folder' => $showing_all ? null : $current ],
+                                static function ( $v ) { return null !== $v; }
+                            ),
+                            admin_url( 'admin.php' )
+                        );
+                        ?>
+                        <div class="tablenav sp-files-pager">
+                            <div class="tablenav-pages">
+                                <span class="displaying-num">
+                                    <?php
+                                    printf(
+                                        esc_html( _n( '%s file', '%s files', $found, 'societypress' ) ),
+                                        esc_html( number_format_i18n( $found ) )
+                                    );
+                                    ?>
+                                </span>
+                                <?php
+                                echo paginate_links( [
+                                    'base'      => add_query_arg( 'paged', '%#%', $base ),
+                                    'format'    => '',
+                                    'current'   => $paged,
+                                    'total'     => $pages,
+                                    'prev_text' => '&lsaquo;',
+                                    'next_text' => '&rsaquo;',
+                                ] );
+                                ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="sp-file-usage-panel" id="sp-file-usage" hidden>
+            <div class="sp-file-usage-inner">
+                <button type="button" class="sp-file-usage-close" id="sp-file-usage-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
+                <h2><?php esc_html_e( 'What is using this file', 'societypress' ); ?></h2>
+                <div id="sp-file-usage-body"></div>
+            </div>
+        </div>
+    </div>
+    <?php
+    sp_render_files_page_assets();
+}
+
+/**
+ * Styles and behaviour for the Files screen.
+ *
+ * WHY dragging is not the only way in: a drop target that misses does nothing
+ *      and says nothing, which is indistinguishable from the software being
+ *      broken. Every move dragging can do, the Move to menu also does, so a
+ *      volunteer on an iPad or anyone whose hands do not do fine drag-and-drop
+ *      is never stuck. Dragging is the fast path, not the only path.
+ */
+function sp_render_files_page_assets(): void {
+    $folder = isset( $_GET['folder'] ) ? (int) $_GET['folder'] : -1;
+    ?>
+    <style>
+    .sp-files-intro    { max-width: 60em; }
+    .sp-files-layout   { display: grid; grid-template-columns: 260px 1fr; gap: 24px; align-items: start; margin-top: 16px; }
+    .sp-files-sidebar  { background: #fff; border: 1px solid #dcdcde; border-radius: 4px; padding: 12px; }
+
+    .sp-folder-list        { margin: 0; padding: 0; list-style: none; }
+    .sp-folder-list ul     { margin: 0 0 0 18px; padding: 0; list-style: none; }
+    .sp-folder             { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 4px; text-decoration: none; color: #1d2327; }
+    .sp-folder:hover       { background: #f0f0f1; color: #1d2327; }
+    .sp-folder-current     { background: #0d1f3c; color: #fff; font-weight: 600; }
+    .sp-folder-current:hover { background: #0d1f3c; color: #fff; }
+    .sp-folder .dashicons  { font-size: 18px; width: 18px; height: 18px; opacity: .8; }
+    .sp-folder-name        { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-folder-count       { font-size: 12px; opacity: .7; }
+
+    /* The drop target has to be unmistakable while a file is in the air —
+       a thin outline reads as a rendering artifact, not as "let go here". */
+    .sp-folder-drop        { outline: 2px dashed #C9973A; outline-offset: -2px; background: #fdf6e8; color: #1d2327; }
+
+    .sp-new-folder-btn     { margin-top: 12px; width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 4px; }
+    .sp-new-folder-form    { margin-top: 12px; display: flex; gap: 4px; }
+    .sp-new-folder-form input { flex: 1; min-width: 0; }
+
+    .sp-files-main         { min-width: 0; }
+    .sp-files-toolbar      { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .sp-files-heading      { margin: 0; font-size: 18px; }
+    .sp-files-actions      { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .sp-text-error-btn     { color: #b32d2e; }
+    .sp-files-selection    { min-height: 20px; margin: 0 0 8px; font-style: italic; color: #50575e; }
+
+    .sp-files-empty        { background: #fff; border: 1px solid #dcdcde; border-radius: 4px; padding: 40px; text-align: center; }
+    .sp-files-pager        { margin-top: 16px; }
+
+    .sp-file-grid          { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+    .sp-file-card          { position: relative; background: #fff; border: 1px solid #dcdcde; border-radius: 4px; padding: 10px; cursor: grab; }
+    .sp-file-card:active   { cursor: grabbing; }
+    .sp-file-card.sp-file-selected { border-color: #0d1f3c; box-shadow: 0 0 0 2px #0d1f3c inset; }
+    .sp-file-card.sp-file-dragging { opacity: .45; }
+
+    .sp-file-pick          { position: absolute; top: 8px; left: 8px; background: #fff; border-radius: 3px; padding: 2px; line-height: 0; }
+    .sp-file-thumb         { height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f6f7f7; border-radius: 3px; }
+    .sp-file-thumb img     { max-width: 100%; max-height: 110px; object-fit: contain; }
+    .sp-file-thumb .dashicons { font-size: 42px; width: 42px; height: 42px; color: #8c8f94; }
+
+    .sp-file-meta          { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+    .sp-file-name          { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-file-uses          { background: none; border: 0; padding: 0; font-size: 11px; color: #2271b1; cursor: pointer; text-align: left; text-decoration: underline; }
+    .sp-file-unused        { font-size: 11px; color: #8c8f94; }
+
+    .sp-file-usage-panel   { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100050; }
+    .sp-file-usage-inner   { position: relative; background: #fff; border-radius: 4px; padding: 24px; max-width: 480px; width: 90%; max-height: 80vh; overflow: auto; }
+    .sp-file-usage-close   { position: absolute; top: 8px; right: 12px; background: none; border: 0; font-size: 24px; line-height: 1; cursor: pointer; color: #50575e; }
+    .sp-file-usage-inner h2 { margin-top: 0; }
+    .sp-file-usage-inner ul { margin: 0; padding-left: 18px; }
+
+    @media screen and (max-width: 782px) {
+        .sp-files-layout { grid-template-columns: 1fr; }
+    }
+    </style>
+
+    <script>
+    (function () {
+        var cfg = {
+            ajax:   <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
+            nonce:  <?php echo wp_json_encode( wp_create_nonce( 'sp_files_nonce' ) ); ?>,
+            folder: <?php echo (int) $folder; ?>,
+            i18n: {
+                selected:   <?php echo wp_json_encode( __( 'file selected', 'societypress' ) ); ?>,
+                selectedPl: <?php echo wp_json_encode( __( 'files selected', 'societypress' ) ); ?>,
+                nameFolder: <?php echo wp_json_encode( __( 'Folder name', 'societypress' ) ); ?>,
+                save:       <?php echo wp_json_encode( __( 'Save', 'societypress' ) ); ?>,
+                cancel:     <?php echo wp_json_encode( __( 'Cancel', 'societypress' ) ); ?>,
+                chooseFile: <?php echo wp_json_encode( __( 'Add files to this folder', 'societypress' ) ); ?>,
+                useFiles:   <?php echo wp_json_encode( __( 'Add these files', 'societypress' ) ); ?>,
+                nothing:    <?php echo wp_json_encode( __( 'Nothing is using this file.', 'societypress' ) ); ?>,
+                failed:     <?php echo wp_json_encode( __( 'That did not work. Nothing was changed.', 'societypress' ) ); ?>
+            }
+        };
+
+        function post(action, data, done) {
+            var body = new URLSearchParams();
+            body.append('action', action);
+            body.append('nonce', cfg.nonce);
+            Object.keys(data).forEach(function (k) { body.append(k, data[k]); });
+
+            fetch(cfg.ajax, { method: 'POST', credentials: 'same-origin', body: body })
+                .then(function (r) { return r.json(); })
+                .then(function (json) {
+                    if (!json || !json.success) {
+                        window.alert((json && json.data && json.data.message) || cfg.i18n.failed);
+                        return;
+                    }
+                    done(json.data || {});
+                })
+                .catch(function () { window.alert(cfg.i18n.failed); });
+        }
+
+        /* ---------- selection ---------- */
+
+        var grid  = document.getElementById('sp-file-grid');
+        var moveTo = document.getElementById('sp-move-to');
+        var note  = document.getElementById('sp-files-selection');
+
+        function selectedIds() {
+            if (!grid) { return []; }
+            return Array.prototype.slice
+                .call(grid.querySelectorAll('.sp-file-check:checked'))
+                .map(function (c) { return c.value; });
+        }
+
+        function refreshSelection() {
+            var ids = selectedIds();
+            if (moveTo) { moveTo.disabled = ids.length === 0; }
+            if (note) {
+                note.textContent = ids.length
+                    ? ids.length + ' ' + (ids.length === 1 ? cfg.i18n.selected : cfg.i18n.selectedPl)
+                    : '';
+            }
+            if (grid) {
+                Array.prototype.forEach.call(grid.querySelectorAll('.sp-file-card'), function (card) {
+                    var box = card.querySelector('.sp-file-check');
+                    card.classList.toggle('sp-file-selected', !!(box && box.checked));
+                });
+            }
+        }
+
+        if (grid) {
+            grid.addEventListener('change', function (e) {
+                if (e.target.classList.contains('sp-file-check')) { refreshSelection(); }
+            });
+        }
+
+        /* ---------- moving ---------- */
+
+        function move(ids, folderId) {
+            if (!ids.length) { return; }
+            post('sp_files_move', { files: ids.join(','), folder: folderId }, function () {
+                window.location.reload();
+            });
+        }
+
+        if (moveTo) {
+            moveTo.addEventListener('change', function () {
+                if (moveTo.value === '') { return; }
+                move(selectedIds(), moveTo.value);
+            });
+        }
+
+        /* ---------- dragging ---------- */
+
+        var dragging = [];
+
+        if (grid) {
+            grid.addEventListener('dragstart', function (e) {
+                var card = e.target.closest('.sp-file-card');
+                if (!card) { return; }
+
+                /* Dragging an unselected file moves that file, not the
+                   selection — otherwise picking up one thing silently drags
+                   whatever was ticked ten minutes ago. */
+                var picked = selectedIds();
+                var id     = card.getAttribute('data-file-id');
+                dragging   = picked.indexOf(id) === -1 ? [id] : picked;
+
+                card.classList.add('sp-file-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', dragging.join(','));
+            });
+
+            grid.addEventListener('dragend', function (e) {
+                var card = e.target.closest('.sp-file-card');
+                if (card) { card.classList.remove('sp-file-dragging'); }
+            });
+        }
+
+        Array.prototype.forEach.call(document.querySelectorAll('.sp-folder[data-folder-id]'), function (target) {
+            target.addEventListener('dragover', function (e) {
+                if (!dragging.length) { return; }
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                target.classList.add('sp-folder-drop');
+            });
+
+            target.addEventListener('dragleave', function () {
+                target.classList.remove('sp-folder-drop');
+            });
+
+            target.addEventListener('drop', function (e) {
+                e.preventDefault();
+                target.classList.remove('sp-folder-drop');
+                var ids = dragging.slice();
+                dragging = [];
+                move(ids, target.getAttribute('data-folder-id'));
+            });
+        });
+
+        /* ---------- folders ---------- */
+
+        function inlineName(anchor, initial, onSave) {
+            var form = document.createElement('div');
+            form.className = 'sp-new-folder-form';
+
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.value = initial || '';
+            input.setAttribute('aria-label', cfg.i18n.nameFolder);
+            input.placeholder = cfg.i18n.nameFolder;
+
+            var save = document.createElement('button');
+            save.type = 'button';
+            save.className = 'button button-primary';
+            save.textContent = cfg.i18n.save;
+
+            var cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'button';
+            cancel.textContent = cfg.i18n.cancel;
+
+            form.appendChild(input);
+            form.appendChild(save);
+            form.appendChild(cancel);
+            anchor.parentNode.insertBefore(form, anchor.nextSibling);
+            anchor.hidden = true;
+            input.focus();
+            input.select();
+
+            function close() { form.remove(); anchor.hidden = false; anchor.focus(); }
+
+            save.addEventListener('click', function () {
+                var name = input.value.trim();
+                if (!name) { close(); return; }
+                onSave(name);
+            });
+            cancel.addEventListener('click', close);
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter')  { e.preventDefault(); save.click(); }
+                if (e.key === 'Escape') { e.preventDefault(); close(); }
+            });
+        }
+
+        var newBtn = document.getElementById('sp-new-folder');
+        if (newBtn) {
+            newBtn.addEventListener('click', function () {
+                inlineName(newBtn, '', function (name) {
+                    post('sp_files_folder_create', { name: name }, function () {
+                        window.location.reload();
+                    });
+                });
+            });
+        }
+
+        var renameBtn = document.getElementById('sp-rename-folder');
+        if (renameBtn) {
+            renameBtn.addEventListener('click', function () {
+                inlineName(renameBtn, renameBtn.getAttribute('data-folder-name'), function (name) {
+                    post('sp_files_folder_rename', {
+                        folder: renameBtn.getAttribute('data-folder-id'),
+                        name:   name
+                    }, function () { window.location.reload(); });
+                });
+            });
+        }
+
+        var deleteBtn = document.getElementById('sp-delete-folder');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function () {
+                post('sp_files_folder_check', { folder: deleteBtn.getAttribute('data-folder-id') }, function (data) {
+                    spConfirm(data.message, function () {
+                        post('sp_files_folder_delete', { folder: deleteBtn.getAttribute('data-folder-id') }, function () {
+                            window.location.href = <?php echo wp_json_encode( admin_url( 'admin.php?page=sp-files' ) ); ?>;
+                        });
+                    });
+                });
+            });
+        }
+
+        /* ---------- adding ---------- */
+
+        var addBtn = document.getElementById('sp-add-files');
+        if (addBtn) {
+            var frame;
+            addBtn.addEventListener('click', function () {
+                if (typeof wp === 'undefined' || !wp.media) { return; }
+                if (frame) { frame.open(); return; }
+
+                frame = wp.media({
+                    title:    cfg.i18n.chooseFile,
+                    button:   { text: cfg.i18n.useFiles },
+                    multiple: true
+                });
+
+                frame.on('select', function () {
+                    var picked = frame.state().get('selection').toJSON().map(function (a) {
+                        return a.id + '|' + a.url;
+                    });
+                    post('sp_files_adopt', {
+                        picked: picked.join('\n'),
+                        folder: cfg.folder
+                    }, function () { window.location.reload(); });
+                });
+
+                frame.open();
+            });
+        }
+
+        /* ---------- what is using this ---------- */
+
+        var panel = document.getElementById('sp-file-usage');
+        var body  = document.getElementById('sp-file-usage-body');
+
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('.sp-file-uses');
+            if (!btn) { return; }
+
+            post('sp_files_usage', { file: btn.getAttribute('data-file-id') }, function (data) {
+                body.innerHTML = '';
+                if (!data.usage || !data.usage.length) {
+                    var p = document.createElement('p');
+                    p.textContent = cfg.i18n.nothing;
+                    body.appendChild(p);
+                } else {
+                    var ul = document.createElement('ul');
+                    data.usage.forEach(function (u) {
+                        var li = document.createElement('li');
+                        var a  = document.createElement('a');
+                        a.href = u.url;
+                        a.textContent = u.label;
+                        li.appendChild(document.createTextNode(u.type + ': '));
+                        li.appendChild(a);
+                        ul.appendChild(li);
+                    });
+                    body.appendChild(ul);
+                }
+                panel.hidden = false;
+            });
+        });
+
+        var closeBtn = document.getElementById('sp-file-usage-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () { panel.hidden = true; });
+        }
+        if (panel) {
+            panel.addEventListener('click', function (e) {
+                if (e.target === panel) { panel.hidden = true; }
+            });
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && panel && !panel.hidden) { panel.hidden = true; }
+        });
+
+        refreshSelection();
+    })();
+    </script>
+    <?php
+}
+
+
+/**
+ * Guard shared by every Files AJAX endpoint.
+ *
+ * WHY its own function: seven endpoints need the same nonce check and the same
+ *      capability check, and one of them forgetting is the whole vulnerability.
+ */
+function sp_files_ajax_guard(): void {
+    check_ajax_referer( 'sp_files_nonce', 'nonce' );
+
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+}
+
+/**
+ * AJAX: move one or more files into a folder.
+ */
+add_action( 'wp_ajax_sp_files_move', function () {
+    sp_files_ajax_guard();
+
+    $ids = array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['files'] ?? '' ) ) ) );
+    if ( ! $ids ) {
+        wp_send_json_error( [ 'message' => __( 'No files were selected.', 'societypress' ) ] );
+    }
+
+    // Folder 0 is Unfiled, which is a destination like any other.
+    $folder = (int) ( $_POST['folder'] ?? 0 );
+    $target = $folder ?: null;
+
+    $moved = 0;
+    foreach ( $ids as $id ) {
+        if ( sp_move_file_to_folder( $id, $target ) ) {
+            $moved++;
+        }
+    }
+
+    wp_send_json_success( [ 'moved' => $moved ] );
+} );
+
+/**
+ * AJAX: create a folder.
+ */
+add_action( 'wp_ajax_sp_files_folder_create', function () {
+    sp_files_ajax_guard();
+
+    $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+    if ( $name === '' ) {
+        wp_send_json_error( [ 'message' => __( 'A folder needs a name.', 'societypress' ) ] );
+    }
+
+    $id = sp_get_or_create_file_folder( $name );
+    if ( ! $id ) {
+        wp_send_json_error( [ 'message' => __( 'That folder could not be created.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [ 'id' => $id ] );
+} );
+
+/**
+ * AJAX: rename a folder.
+ *
+ * WHY renaming is safe: files point at the folder's id, never its name, so
+ *      this changes the label and nothing else. Second thoughts about naming
+ *      cost nothing.
+ */
+add_action( 'wp_ajax_sp_files_folder_rename', function () {
+    global $wpdb;
+    sp_files_ajax_guard();
+
+    $id   = (int) ( $_POST['folder'] ?? 0 );
+    $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+
+    if ( ! $id || $name === '' ) {
+        wp_send_json_error( [ 'message' => __( 'A folder needs a name.', 'societypress' ) ] );
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'sp_file_folders',
+        [ 'name' => $name ],
+        [ 'id' => $id ],
+        [ '%s' ],
+        [ '%d' ]
+    );
+
+    wp_send_json_success();
+} );
+
+/**
+ * AJAX: say what deleting a folder would do, before it is done.
+ *
+ * WHY a separate call: "Delete this folder?" is not a fair question when the
+ *      folder has two hundred files in it. The answer changes depending on
+ *      what is inside, so the confirmation has to know before it asks.
+ */
+add_action( 'wp_ajax_sp_files_folder_check', function () {
+    global $wpdb;
+    sp_files_ajax_guard();
+
+    $id = (int) ( $_POST['folder'] ?? 0 );
+
+    $files = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_files WHERE folder_id = %d",
+        $id
+    ) );
+    $subs = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_file_folders WHERE parent_id = %d",
+        $id
+    ) );
+
+    if ( ! $files && ! $subs ) {
+        $message = __( 'Delete this folder? It is empty, so nothing else changes.', 'societypress' );
+    } elseif ( $files && ! $subs ) {
+        $message = sprintf(
+            /* translators: %s: number of files. */
+            _n(
+                'Delete this folder? Its %s file moves to Unfiled. No file is deleted.',
+                'Delete this folder? Its %s files move to Unfiled. No file is deleted.',
+                $files,
+                'societypress'
+            ),
+            number_format_i18n( $files )
+        );
+    } else {
+        $message = sprintf(
+            /* translators: 1: number of files, 2: number of folders. */
+            __( 'Delete this folder? Its %1$s files move to Unfiled and its %2$s folders move to the top level. Nothing is deleted.', 'societypress' ),
+            number_format_i18n( $files ),
+            number_format_i18n( $subs )
+        );
+    }
+
+    wp_send_json_success( [ 'message' => $message ] );
+} );
+
+/**
+ * AJAX: delete a folder, keeping everything that was in it.
+ *
+ * WHY the contents survive: a folder is where a file was put, not what the
+ *      file is. Deleting the label should never destroy the thing it labelled
+ *      — that is the difference between tidying up and losing the newsletter
+ *      archive.
+ */
+add_action( 'wp_ajax_sp_files_folder_delete', function () {
+    global $wpdb;
+    sp_files_ajax_guard();
+
+    $id = (int) ( $_POST['folder'] ?? 0 );
+    if ( ! $id ) {
+        wp_send_json_error( [ 'message' => __( 'That folder could not be found.', 'societypress' ) ] );
+    }
+
+    $wpdb->update( $wpdb->prefix . 'sp_files', [ 'folder_id' => null ], [ 'folder_id' => $id ], [ '%d' ], [ '%d' ] );
+    $wpdb->update( $wpdb->prefix . 'sp_file_folders', [ 'parent_id' => null ], [ 'parent_id' => $id ], [ '%d' ], [ '%d' ] );
+    $wpdb->delete( $wpdb->prefix . 'sp_file_folders', [ 'id' => $id ], [ '%d' ] );
+
+    wp_send_json_success();
+} );
+
+/**
+ * AJAX: take files picked from the media library into a folder.
+ */
+add_action( 'wp_ajax_sp_files_adopt', function () {
+    sp_files_ajax_guard();
+
+    $folder = (int) ( $_POST['folder'] ?? -1 );
+    $target = $folder > 0 ? $folder : null;
+
+    $lines = array_filter( array_map( 'trim', explode( "\n", (string) wp_unslash( $_POST['picked'] ?? '' ) ) ) );
+    $added = 0;
+
+    foreach ( $lines as $line ) {
+        $parts = explode( '|', $line, 2 );
+        if ( count( $parts ) !== 2 ) {
+            continue;
+        }
+
+        $file_id = sp_register_file( esc_url_raw( $parts[1] ), (int) $parts[0] );
+        if ( ! $file_id ) {
+            continue;
+        }
+
+        // Adding to "All files" is not a filing instruction, so a file picked
+        // there keeps whatever folder it already had.
+        if ( $folder > -1 ) {
+            sp_move_file_to_folder( $file_id, $target );
+        }
+
+        $added++;
+    }
+
+    wp_send_json_success( [ 'added' => $added ] );
+} );
+
+/**
+ * AJAX: what is using one file.
+ */
+add_action( 'wp_ajax_sp_files_usage', function () {
+    sp_files_ajax_guard();
+
+    $file_id = (int) ( $_POST['file'] ?? 0 );
+    if ( ! $file_id ) {
+        wp_send_json_error( [ 'message' => __( 'That file could not be found.', 'societypress' ) ] );
+    }
+
+    wp_send_json_success( [ 'usage' => sp_get_file_usage( $file_id ) ] );
+} );
 
 
 // ---------------------------------------------------------------------------

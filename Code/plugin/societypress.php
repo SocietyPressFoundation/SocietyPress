@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.32
+ * Version:     1.1.33
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.32' );
+define( 'SOCIETYPRESS_VERSION', '1.1.33' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6942,8 +6942,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        __( 'Document Categories — SocietyPress', 'societypress' ),
-        __( 'Document Categories', 'societypress' ),
+        __( 'Document Sections — SocietyPress', 'societypress' ),
+        __( 'Document Sections', 'societypress' ),
         'manage_options',
         'sp-document-categories',
         'sp_render_document_categories_page'
@@ -33426,7 +33426,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.32',
+            'version'     => '1.1.33',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33434,7 +33434,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.32',
+            'version'     => '1.1.33',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33442,7 +33442,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.32',
+            'version'     => '1.1.33',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33450,7 +33450,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.32',
+            'version'     => '1.1.33',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33458,7 +33458,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.32',
+            'version'     => '1.1.33',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92383,7 +92383,7 @@ add_action( 'admin_init', function () {
     }
 
     if ( ! current_user_can( 'sp_manage_content' ) ) {
-        wp_die( __( 'You do not have permission to manage document categories.', 'societypress' ) );
+        wp_die( __( 'You do not have permission to manage document sections.', 'societypress' ) );
     }
 
     global $wpdb;
@@ -93426,7 +93426,7 @@ function sp_render_documents_page(): void {
             <input type="hidden" name="page" value="sp-documents">
             <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search documents…', 'societypress' ); ?>" class="sp-documents-filter-search">
             <select name="cat">
-                <option value=""><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>
+                <option value=""><?php esc_html_e( 'All Sections', 'societypress' ); ?></option>
                 <?php foreach ( $categories as $cat ) : ?>
                     <option value="<?php echo (int) $cat->id; ?>" <?php selected( $filter_cat, (int) $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
                 <?php endforeach; ?>
@@ -93443,7 +93443,7 @@ function sp_render_documents_page(): void {
             <thead>
                 <tr>
                     <th scope="col"><?php esc_html_e( 'Title', 'societypress' ); ?></th>
-                    <th scope="col"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Section', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Size', 'societypress' ); ?></th>
@@ -93559,20 +93559,20 @@ function sp_render_document_categories_page(): void {
         .sp-doc-cat-hidden { color: #767676; font-weight: normal; font-style: italic; }
     </style>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Document Categories', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Document Sections', 'societypress' ); ?></h1>
 
         <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
-            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Category saved.', 'societypress' ); ?></p></div>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Section saved.', 'societypress' ); ?></p></div>
         <?php endif; ?>
         <?php if ( ! empty( $_GET['sp_deleted'] ) ) : ?>
-            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Category deleted.', 'societypress' ); ?></p></div>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Section deleted.', 'societypress' ); ?></p></div>
         <?php endif; ?>
 
         <div class="sp-doc-cat-layout">
 
             <!-- Add/Edit form -->
             <div class="sp-doc-cat-form">
-                <h2><?php echo $edit_cat ? esc_html__( 'Edit Category', 'societypress' ) : esc_html__( 'Add Category', 'societypress' ); ?></h2>
+                <h2><?php echo $edit_cat ? esc_html__( 'Edit Section', 'societypress' ) : esc_html__( 'Add Section', 'societypress' ); ?></h2>
                 <form method="post">
                     <?php wp_nonce_field( 'sp_save_document_category', 'sp_doc_cat_nonce' ); ?>
                     <input type="hidden" name="sp_save_document_category" value="1">
@@ -93596,7 +93596,7 @@ function sp_render_document_categories_page(): void {
                                     <option value="public" <?php selected( $edit_cat->access_level ?? 'public', 'public' ); ?>><?php esc_html_e( 'Public — anyone can view', 'societypress' ); ?></option>
                                     <option value="members_only" <?php selected( $edit_cat->access_level ?? 'public', 'members_only' ); ?>><?php esc_html_e( 'Members only', 'societypress' ); ?></option>
                                 </select>
-                                <p class="description"><?php esc_html_e( 'Members-only makes every document in this category members-only, regardless of each file\'s own setting — so you don\'t have to lock them one by one.', 'societypress' ); ?></p>
+                                <p class="description"><?php esc_html_e( 'Members-only makes every document in this section members-only, regardless of each file\'s own setting — so you don\'t have to lock them one by one.', 'societypress' ); ?></p>
                             </td>
                         </tr>
                         <tr>
@@ -93650,7 +93650,7 @@ function sp_render_document_categories_page(): void {
                         </tr>
                     </table>
 
-                    <?php submit_button( $edit_cat ? __( 'Update Category', 'societypress' ) : __( 'Add Category', 'societypress' ) ); ?>
+                    <?php submit_button( $edit_cat ? __( 'Update Section', 'societypress' ) : __( 'Add Section', 'societypress' ) ); ?>
 
                     <?php if ( $edit_cat ) : ?>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories' ) ); ?>"><?php esc_html_e( 'Cancel editing', 'societypress' ); ?></a>
@@ -93658,7 +93658,7 @@ function sp_render_document_categories_page(): void {
                 </form>
             </div>
 
-            <!-- Categories table -->
+            <!-- Sections table -->
             <div class="sp-2col-flex__main">
                 <table class="widefat striped">
                     <thead>
@@ -93672,7 +93672,7 @@ function sp_render_document_categories_page(): void {
                     </thead>
                     <tbody>
                         <?php if ( empty( $categories ) ) : ?>
-                            <tr><td colspan="5" class="sp-empty-state"><?php esc_html_e( 'No categories yet.', 'societypress' ); ?></td></tr>
+                            <tr><td colspan="5" class="sp-empty-state"><?php esc_html_e( 'No sections yet.', 'societypress' ); ?></td></tr>
                         <?php else : ?>
                             <?php foreach ( $categories as $cat ) : ?>
                             <tr>
@@ -93763,7 +93763,7 @@ function sp_render_document_edit_page(): void {
                     <td><textarea id="document_description" name="document_description" rows="3" class="large-text sp-doc-desc-input"><?php echo esc_textarea( $doc->description ?? '' ); ?></textarea></td>
                 </tr>
                 <tr>
-                    <th scope="col"><label for="document_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="document_category"><?php esc_html_e( 'Section', 'societypress' ); ?></label></th>
                     <td>
                         <select id="document_category" name="document_category">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
@@ -94068,7 +94068,7 @@ function sp_render_document_bulk_upload_page(): void {
             <!-- Shared settings -->
             <table class="form-table sp-bulk-upload-settings-table">
                 <tr>
-                    <th scope="col"><label for="bulk_category"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
+                    <th scope="col"><label for="bulk_category"><?php esc_html_e( 'Section', 'societypress' ); ?></label></th>
                     <td>
                         <select id="bulk_category" name="bulk_category">
                             <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>

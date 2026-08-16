@@ -19,7 +19,7 @@ Pre-1.0 development iterations are archived in
 
 ---
 
-## [1.1.32] — 2026-08-16
+## [1.1.33] — 2026-08-16
 
 ### Added
 
@@ -50,6 +50,20 @@ current as they are saved from here on.
 A document switched between public and members-only physically moves on
 disk. It now takes its folder and its history with it, instead of arriving
 at the new address looking like a file nobody had ever filed.
+
+### Changed
+
+**Document categories are now called sections**
+
+With folders arriving in Files, two different things were both shaped like
+folders and it was not clear which one you were being asked for. They do
+different jobs: a **section** decides where a document appears on your
+website and who may read it, and a **folder** is simply where you keep the
+file. Naming them apart means you can tell at a glance which question a
+screen is asking.
+
+Nothing moved. Every document is in the same place it was, under the same
+name — only the label on the screen changed.
 
 ---
 

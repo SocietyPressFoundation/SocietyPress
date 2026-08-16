@@ -19,6 +19,22 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.25] — 2026-08-16
+
+### Fixed
+
+**Document folders sit in columns rather than a single stack**
+
+The folder grid asked the browser to fit as many columns as it could at a
+minimum tile width. In a narrow content column that works out at one, so the
+folders came out as a single tall stack.
+
+It now uses set column counts — two on a small screen, three from tablet width,
+four on a wide one, and one on a phone — so the folders read as a grid whatever
+the page around them is doing.
+
+---
+
 ## [1.1.24] — 2026-08-16
 
 ### Changed

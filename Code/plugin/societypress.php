@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.28
+ * Version:     1.1.29
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.28' );
+define( 'SOCIETYPRESS_VERSION', '1.1.29' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -32801,7 +32801,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.28',
+            'version'     => '1.1.29',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32809,7 +32809,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.28',
+            'version'     => '1.1.29',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32817,7 +32817,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.28',
+            'version'     => '1.1.29',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32825,7 +32825,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.28',
+            'version'     => '1.1.29',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32833,7 +32833,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.28',
+            'version'     => '1.1.29',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90659,21 +90659,22 @@ function sp_render_store_product_edit_page(): void {
                         <p class="description"><?php esc_html_e( 'Shipping fee per unit of this item. Multiplied by quantity at checkout. Set to 0 for no shipping (digital, pickup-only, or shipping-included pricing).', 'societypress' ); ?></p>
                     </td>
                 </tr>
+                <?php
+                // Custom admin screens do not enqueue the media library, and the
+                // Choose a file buttons below are dead without it.
+                wp_enqueue_media();
+                ?>
                 <tr>
                     <th scope="col"><label for="sp-prod-image"><?php esc_html_e( 'Image URL', 'societypress' ); ?></label></th>
                     <td>
                         <input type="url" name="image_url" id="sp-prod-image" value="<?php echo esc_attr( $product->image_url ?? '' ); ?>" class="large-text" placeholder="https://...">
-                        <p class="description"><?php esc_html_e( 'URL of the product photo. Upload via the Files section and paste its URL here.', 'societypress' ); ?></p>
-                        <?php if ( ! empty( $product->image_url ) ) : ?>
-                            <div class="sp-mt-12"><img src="<?php echo esc_url( $product->image_url ); ?>" alt="" class="sp-prod-img-preview"></div>
-                        <?php endif; ?>
+                        <button type="button" class="button" id="sp-prod-image-pick"><?php esc_html_e( 'Choose a file', 'societypress' ); ?></button>
+                        <p class="description"><?php esc_html_e( 'The product photo. Choose a file to pick an image you have already uploaded, or paste the address of one.', 'societypress' ); ?></p>
+                        <div class="sp-mt-12<?php echo empty( $product->image_url ) ? ' sp-hidden' : ''; ?>" id="sp-prod-image-preview-wrap">
+                            <img src="<?php echo esc_url( $product->image_url ?? '' ); ?>" alt="" class="sp-img-preview" id="sp-prod-image-preview">
+                        </div>
                     </td>
                 </tr>
-                <?php
-                // Custom admin screens do not enqueue the media library, and the
-                // Choose a file button is dead without it.
-                wp_enqueue_media();
-                ?>
                 <tr>
                     <th scope="col"><label for="sp-prod-preview"><?php esc_html_e( 'Sample or Preview', 'societypress' ); ?></label></th>
                     <td>
@@ -90717,30 +90718,55 @@ function sp_render_store_product_edit_page(): void {
     </div>
     <script>
     (function () {
-        var btn   = document.getElementById('sp-prod-preview-pick');
-        var field = document.getElementById('sp-prod-preview');
-        if (!btn || !field) { return; }
+        function wirePicker(btnId, fieldId, title, library, onPick) {
+            var btn   = document.getElementById(btnId);
+            var field = document.getElementById(fieldId);
+            if (!btn || !field) { return; }
 
-        var frame;
-        btn.addEventListener('click', function () {
-            /* wp.media prints in the admin footer, after this script parses, so
-               the check belongs at click time rather than up front. */
-            if (typeof wp === 'undefined' || !wp.media) { return; }
-            if (frame) { frame.open(); return; }
+            var frame;
+            btn.addEventListener('click', function () {
+                /* wp.media prints in the admin footer, after this script parses,
+                   so the check belongs at click time rather than up front. */
+                if (typeof wp === 'undefined' || !wp.media) { return; }
+                if (frame) { frame.open(); return; }
 
-            frame = wp.media({
-                title:    <?php echo wp_json_encode( __( 'Choose a sample file', 'societypress' ) ); ?>,
-                button:   { text: <?php echo wp_json_encode( __( 'Use this file', 'societypress' ) ); ?> },
-                multiple: false
+                frame = wp.media({
+                    title:    title,
+                    button:   { text: <?php echo wp_json_encode( __( 'Use this file', 'societypress' ) ); ?> },
+                    library:  library ? { type: library } : {},
+                    multiple: false
+                });
+
+                frame.on('select', function () {
+                    var att = frame.state().get('selection').first().toJSON();
+                    field.value = att.url;
+                    if (onPick) { onPick(att); }
+                });
+
+                frame.open();
             });
+        }
 
-            frame.on('select', function () {
-                var att = frame.state().get('selection').first().toJSON();
-                field.value = att.url;
-            });
+        wirePicker(
+            'sp-prod-preview-pick',
+            'sp-prod-preview',
+            <?php echo wp_json_encode( __( 'Choose a sample file', 'societypress' ) ); ?>,
+            ''
+        );
 
-            frame.open();
-        });
+        wirePicker(
+            'sp-prod-image-pick',
+            'sp-prod-image',
+            <?php echo wp_json_encode( __( 'Choose a product photo', 'societypress' ) ); ?>,
+            'image',
+            function (att) {
+                var img  = document.getElementById('sp-prod-image-preview');
+                var wrap = document.getElementById('sp-prod-image-preview-wrap');
+                if (!img || !wrap) { return; }
+                img.src = att.url;
+                wrap.classList.remove('sp-hidden');
+            }
+        );
     })();
     </script>
     <?php

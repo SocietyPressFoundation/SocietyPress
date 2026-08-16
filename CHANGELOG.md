@@ -19,6 +19,19 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.29] — 2026-08-16
+
+### Added
+
+**Pick a product photo instead of pasting its address**
+
+The Image URL field on a store product now has a Choose a file button, the same
+one the Sample or Preview field has. It opens the media library filtered to
+images, fills the address in for you, and shows the picture right there so you
+can tell at a glance you picked the right one.
+
+---
+
 ## [1.1.28] — 2026-08-16
 
 ### Changed

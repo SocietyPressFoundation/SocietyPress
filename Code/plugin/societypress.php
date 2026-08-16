@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.22
+ * Version:     1.1.23
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.22' );
+define( 'SOCIETYPRESS_VERSION', '1.1.23' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -25629,6 +25629,52 @@ add_action( 'admin_init', function () {
     }
 
     // ====================================================================
+    // SECTION: Email Delivery Records (Privacy tab)
+    //
+    // WHY it sits on Privacy rather than with the email settings: the question
+    // this answers is how long the society holds a record of who it wrote to,
+    // which is a privacy decision before it is a mail one.
+    // ====================================================================
+    add_settings_section(
+        'sp_email_log_retention_section',
+        __( 'Email Delivery Records', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'Every email the site sends is recorded — who it went to, when, and whether it arrived. That record is how you answer "did everyone get the seminar announcement?", and it is also a list of member addresses, so how long you keep it is your decision.', 'societypress' ) . '</p>';
+            echo '<p>' . esc_html__( 'This does not affect blast emails themselves. The message you wrote, who you sent it to and when are kept permanently either way.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy'
+    );
+
+    add_settings_field(
+        'email_log_retention_days',
+        __( 'Keep delivery records for', 'societypress' ),
+        function () {
+            $current = sp_email_log_retention_days();
+            $choices = [
+                0    => __( 'Forever — never delete them', 'societypress' ),
+                90   => __( '90 days', 'societypress' ),
+                180  => __( '6 months', 'societypress' ),
+                365  => __( '1 year', 'societypress' ),
+                730  => __( '2 years', 'societypress' ),
+                2555 => __( '7 years', 'societypress' ),
+            ];
+            echo '<select name="societypress_settings[email_log_retention_days]">';
+            foreach ( $choices as $days => $label ) {
+                printf(
+                    '<option value="%s" %s>%s</option>',
+                    esc_attr( $days ),
+                    selected( $current, $days, false ),
+                    esc_html( $label )
+                );
+            }
+            echo '</select>';
+            echo '<p class="description">' . esc_html__( 'Anything older is deleted overnight. Choosing a period cannot be undone for records already past it, so pick the shortest span you would still want to be able to look back over.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-privacy',
+        'sp_email_log_retention_section'
+    );
+
+    // ====================================================================
     // SECTION: Member Self-Service Locks (Privacy tab)
     //
     // WHY: Some societies keep authoritative contact/identity data and don't
@@ -26446,6 +26492,10 @@ function sp_sanitize_settings( array $input ): array {
         'pref_default_email_events'      => fn() => ! empty( $input['pref_default_email_events'] ) ? 1 : 0,
         'pref_default_email_newsletters' => fn() => ! empty( $input['pref_default_email_newsletters'] ) ? 1 : 0,
         'pref_default_email_surnames'    => fn() => ! empty( $input['pref_default_email_surnames'] ) ? 1 : 0,
+        // Only the offered spans are accepted; anything else falls back to
+        // keeping everything, because a bad value here silently deletes records.
+        'email_log_retention_days'       => fn() => in_array( (int) ( $input['email_log_retention_days'] ?? 0 ), [ 0, 90, 180, 365, 730, 2555 ], true )
+                                                       ? (int) $input['email_log_retention_days'] : 0,
 
         // Activity Logging (Privacy tab)
         'log_logouts'             => fn() => ! empty( $input['log_logouts'] ) ? 1 : 0,
@@ -26645,6 +26695,28 @@ function sp_sanitize_settings( array $input ): array {
             'membership_max_years', 'groups_auto_remove_expired',
             'grace_period_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
             'renewal_reminder_7d', 'renewal_reminder_subject',
+        ]);
+    }
+
+    // Privacy page — signature: the retention select, which always submits.
+    //
+    // WHY this block did not exist before: every control on the Privacy tab was
+    // a checkbox, and an unticked checkbox sends nothing at all. With no field
+    // guaranteed to arrive there was no signature to key on, so the tab was
+    // never given a block — and since only listed keys are saved, the entire
+    // tab silently discarded everything. Ticking "Lock Password" and pressing
+    // Save did nothing whatsoever, with a "Settings saved" notice on top.
+    //
+    // The retention setting is a select, so it always submits, which finally
+    // gives the tab something dependable to identify itself by.
+    if ( array_key_exists( 'email_log_retention_days', $input ) ) {
+        $page_keys = array_merge( $page_keys, [
+            'email_log_retention_days',
+            'member_lock_contact', 'member_lock_password',
+            'member_lock_surnames', 'member_lock_preferences',
+            'pref_default_email_notices', 'pref_default_email_events',
+            'pref_default_email_newsletters', 'pref_default_email_surnames',
+            'log_logouts', 'log_url_access',
         ]);
     }
 
@@ -32729,7 +32801,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.22',
+            'version'     => '1.1.23',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32737,7 +32809,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.22',
+            'version'     => '1.1.23',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32745,7 +32817,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.22',
+            'version'     => '1.1.23',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32753,7 +32825,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.22',
+            'version'     => '1.1.23',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32761,7 +32833,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.22',
+            'version'     => '1.1.23',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -57168,8 +57240,41 @@ function sp_email_log_get_types(): array {
  * @param int $days Delete entries older than this. Default 90.
  * @return int Number of rows deleted.
  */
-function sp_email_log_cleanup( int $days = 90 ): int {
+/**
+ * How long delivery records are kept, in days. Zero means keep them forever.
+ *
+ * WHY it defaults to forever: the delivery log is the society's evidence of
+ * what it actually sent and to whom — the answer to "did we email everyone
+ * about the March seminar?". It used to be deleted after ninety days with
+ * nothing on any screen saying so, which is both a surprise and at odds with
+ * the rule that nothing is ever purged without somebody agreeing to it. A
+ * society that would rather not hold the addresses that long can now say so.
+ */
+function sp_email_log_retention_days(): int {
+    $settings = sp_settings();
+    if ( ! array_key_exists( 'email_log_retention_days', $settings ) ) {
+        return 0;
+    }
+    return max( 0, (int) $settings['email_log_retention_days'] );
+}
+
+/**
+ * Delete delivery records older than the retention period.
+ *
+ * @param int|null $days Override in days; null reads the setting. 0 = keep all.
+ * @return int Rows removed.
+ */
+function sp_email_log_cleanup( ?int $days = null ): int {
     global $wpdb;
+
+    $days = $days === null ? sp_email_log_retention_days() : max( 0, $days );
+
+    // Zero is "keep everything" — and it must return before building a cutoff,
+    // because -0 days is now, which would delete the entire table.
+    if ( $days === 0 ) {
+        return 0;
+    }
+
     $table  = $wpdb->prefix . 'sp_email_log';
     $cutoff = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
 
@@ -57296,7 +57401,9 @@ add_action( 'init', function () {
 } );
 
 add_action( 'sp_email_log_cleanup_cron', function () {
-    sp_email_log_cleanup( 90 );
+    // No argument: the retention period is the society's to set, and the
+    // default keeps everything.
+    sp_email_log_cleanup();
 } );
 
 

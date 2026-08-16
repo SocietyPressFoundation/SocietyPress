@@ -19,6 +19,42 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.23] — 2026-08-16
+
+### Fixed
+
+**The Privacy settings tab was saving nothing at all**
+
+Every control on Settings → Privacy silently discarded whatever you set. Lock a
+section of My Account, change which emails new members get by default, switch
+activity logging on — press Save, watch "Settings saved" appear, and nothing
+had changed.
+
+Each settings tab is identified by a field that always arrives when the form is
+submitted, and only the keys belonging to that tab are written. Every control on
+the Privacy tab was a checkbox, and an unticked checkbox sends nothing, so there
+was no field that could identify the tab — and with no way to identify it, none
+of its settings were ever written. It now has one, and all of them save.
+
+### Added
+
+**You choose how long email delivery records are kept**
+
+Every email the site sends is recorded — who it went to, when, whether it
+arrived. That record was being deleted after ninety days by a nightly job, with
+nothing anywhere saying so.
+
+Settings → Privacy now has **Keep delivery records for**, offering anything from
+90 days to forever. It defaults to forever, which is the new behaviour: nothing
+is deleted unless a society decides it should be. A society that would rather
+not hold member addresses that long can pick a shorter span.
+
+Blast emails are unaffected either way. What you wrote, who you sent it to and
+when are kept permanently, and always were — it was only the delivery record
+that expired.
+
+---
+
 ## [1.1.22] — 2026-08-16
 
 ### Changed

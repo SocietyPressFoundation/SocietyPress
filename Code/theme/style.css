@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.17
+Version: 1.1.18
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -358,6 +358,12 @@ img {
     .site-header.sp-header-stacked .header-nav-area {
         flex: 0 0 auto;
         width: 100%;
+        /* Pull the row up by the padding the links carry above their text.
+           WHY not just reduce that padding: it is the click target. These sites
+           are run and read by people for whom a smaller target is a real cost,
+           and a few pixels of tidiness is not worth it. Moving the whole row
+           leaves every target exactly the size it was. */
+        margin-top: -10px;
     }
 
     /* WHY :not(.sp-user-menu): the signed-in user menu is ALSO a

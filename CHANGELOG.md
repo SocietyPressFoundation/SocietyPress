@@ -19,6 +19,19 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.18] — 2026-08-15
+
+### Changed
+
+**The menu tucks up under the logo**
+
+A further tightening of the stacked header. What remained between the logo and
+the menu was the padding each menu link carries above its own text. The row is
+now shifted up by that amount rather than the padding being reduced, so every
+link keeps a click target the same size it has always been.
+
+---
+
 ## [1.1.17] — 2026-08-15
 
 ### Changed

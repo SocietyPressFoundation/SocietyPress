@@ -19,6 +19,19 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.28] — 2026-08-16
+
+### Changed
+
+**Document folders sit two across**
+
+Three columns still made the tiles narrower than a category name wants. Two
+gives each one room to sit on a single line, and a short list of folders reads
+better as a pair of columns than as a thin strip of them. A phone still gets
+one.
+
+---
+
 ## [1.1.27] — 2026-08-16
 
 ### Fixed

@@ -19,6 +19,23 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.15] — 2026-08-15
+
+### Changed
+
+**The stacked header lines up with the rest of the page**
+
+The stacked header added in 1.1.14 centred the logo and let the menu wrap onto a
+second line. Both were wrong in practice. A centred logo sitting above
+left-aligned page content reads as a mistake even when it is deliberate, and a
+menu that wraps turns one clean row into a ragged block.
+
+The logo now sits against the left content edge, in line with everything else on
+the page, and the menu stays on a single row spanning the full width, with the
+items spread across it rather than bunched in the middle.
+
+---
+
 ## [1.1.14] — 2026-08-15
 
 ### Added

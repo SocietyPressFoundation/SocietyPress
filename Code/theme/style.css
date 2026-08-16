@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.14
+Version: 1.1.15
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -325,7 +325,9 @@ img {
 @media (min-width: 1025px) {
     .site-header.sp-header-stacked .header-inner {
         flex-direction: column;
-        align-items: center;
+        /* stretch, not center: each row spans the header so the logo can sit
+           against the left content edge rather than floating in the middle. */
+        align-items: stretch;
         justify-content: center;
         gap: 10px;
         /* Two rows cannot live inside a fixed single-row height. */
@@ -333,29 +335,34 @@ img {
         min-height: 0;
     }
 
+    /* Logo hard against the left content edge, matching how the rest of the
+       page lines up. A centred logo above left-aligned content reads as a
+       mistake even when it is deliberate. */
     .site-header.sp-header-stacked .site-branding {
-        justify-content: center;
-        text-align: center;
+        justify-content: flex-start;
     }
 
     /* The nav row spans the header rather than filling leftover space. */
     .site-header.sp-header-stacked .header-nav-area {
         flex: 0 0 auto;
         width: 100%;
-        justify-content: center;
     }
 
     .site-header.sp-header-stacked .main-navigation {
         flex: 1;
     }
 
-    .site-header.sp-header-stacked .main-navigation > ul {
-        justify-content: center;
-        /* WHY wrap: with the full width available the items fit on one line,
-           but a society that keeps adding to its menu should get a second line
-           rather than items overlapping — which is what a non-wrapping centred
-           row does when it overflows, spilling out of BOTH sides at once. */
-        flex-wrap: wrap;
+    /* WHY the doubled class: child themes commonly set their own alignment on
+       this list, and a child stylesheet loads after the parent — matching
+       specificity would lose on source order alone.
+
+       WHY nowrap and space-between: one wide line is the point. The items
+       spread across the full width instead of bunching in the middle under a
+       left-aligned logo. */
+    .site-header.sp-header-stacked .main-navigation.main-navigation > ul {
+        justify-content: space-between;
+        flex-wrap: nowrap;
+        width: 100%;
     }
 }
 

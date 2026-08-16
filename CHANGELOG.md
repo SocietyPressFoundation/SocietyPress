@@ -19,6 +19,29 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.27] — 2026-08-16
+
+### Fixed
+
+**New documents are protected too, and switching a document changes where it lives**
+
+Protecting members-only files covered the documents already on the site.
+Anything uploaded afterwards went to the ordinary uploads folder, so a new
+members-only document had its link guarded and its file open to anyone — the
+gap that arrangement exists to close, reopening on the next upload.
+
+Saving a document now puts its file on the correct side before the record is
+written. A members-only document goes behind the wall; one changed to public
+comes back out. That matters both ways: marking an existing public document
+members-only used to leave the file exactly where anyone could still fetch it.
+
+**Document folders cap at three columns**
+
+Four made each tile narrow enough that longer category names wrapped badly, and
+the row read as a strip rather than a set of folders.
+
+---
+
 ## [1.1.26] — 2026-08-16
 
 ### Fixed

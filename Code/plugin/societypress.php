@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.25
+ * Version:     1.1.26
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.25' );
+define( 'SOCIETYPRESS_VERSION', '1.1.26' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -32801,7 +32801,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.25',
+            'version'     => '1.1.26',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -32809,7 +32809,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.25',
+            'version'     => '1.1.26',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -32817,7 +32817,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.25',
+            'version'     => '1.1.26',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -32825,7 +32825,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.25',
+            'version'     => '1.1.26',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -32833,7 +32833,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.25',
+            'version'     => '1.1.26',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -91439,6 +91439,72 @@ add_action( 'admin_init', function () {
 //      members-only documents require an authenticated session.
 // ---------------------------------------------------------------------------
 
+/**
+ * The folder members-only documents live in, created on first use.
+ *
+ * WHY it exists: a permission check that ends in a redirect protects the link
+ * on the page and nothing else — once the address is known, the web server
+ * hands the file to anybody who asks, member or not, and search engines index
+ * it. Files kept here are refused by the web server outright and can only be
+ * read back through PHP, after the same check the page makes.
+ *
+ * @return array{dir:string,url:string}
+ */
+function sp_documents_protected_dir(): array {
+    $uploads = wp_upload_dir();
+    $dir     = trailingslashit( $uploads['basedir'] ) . 'sp-protected-documents';
+    $url     = trailingslashit( $uploads['baseurl'] ) . 'sp-protected-documents';
+
+    if ( ! is_dir( $dir ) ) {
+        wp_mkdir_p( $dir );
+    }
+
+    // Apache and LiteSpeed honour this. Both directives are present because
+    // 2.2 and 2.4 spell the same refusal differently.
+    $ht = $dir . '/.htaccess';
+    if ( ! file_exists( $ht ) ) {
+        file_put_contents(
+            $ht,
+            "Deny from all\n<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n"
+        );
+    }
+
+    // Belt and braces for a server that ignores .htaccess: without this an
+    // exposed directory index would list every members-only file by name.
+    if ( ! file_exists( $dir . '/index.php' ) ) {
+        file_put_contents( $dir . '/index.php', "<?php\n// Silence is golden.\n" );
+    }
+
+    return [ 'dir' => $dir, 'url' => $url ];
+}
+
+/**
+ * Is this document's file inside the protected folder?
+ *
+ * @param string $file_url The stored URL.
+ * @return string|false Absolute path when protected, false otherwise.
+ */
+function sp_document_protected_path( string $file_url ) {
+    $protected = sp_documents_protected_dir();
+
+    if ( strpos( $file_url, $protected['url'] . '/' ) !== 0 ) {
+        return false;
+    }
+
+    $relative = rawurldecode( substr( $file_url, strlen( $protected['url'] ) + 1 ) );
+    $path     = $protected['dir'] . '/' . $relative;
+
+    // Resolve before trusting: "../" in a stored URL would otherwise reach any
+    // file on the server that PHP can read.
+    $real = realpath( $path );
+    $base = realpath( $protected['dir'] );
+    if ( ! $real || ! $base || strpos( $real, $base . DIRECTORY_SEPARATOR ) !== 0 ) {
+        return false;
+    }
+
+    return $real;
+}
+
 function sp_ajax_document_download(): void {
     // No nonce by design: document links are meant to be shareable/bookmarkable
     // direct URLs, so they can't be tied to a per-session nonce. This is a
@@ -91488,6 +91554,29 @@ function sp_ajax_document_download(): void {
         if ( $member_status !== 'active' && ! current_user_can( 'sp_manage_content' ) ) {
             wp_die( esc_html__( 'Active membership required to download this document.', 'societypress' ), '', 403 );
         }
+    }
+
+    // A file in the protected folder cannot be redirected to — the web server
+    // refuses it, which is the point. Having passed the same check the page
+    // makes, read it back and send it.
+    $protected_path = sp_document_protected_path( $doc->file_url );
+    if ( $protected_path ) {
+        $name = $doc->file_name ?: basename( $protected_path );
+        $type = wp_check_filetype( $name );
+
+        nocache_headers();
+        header( 'Content-Type: ' . ( $type['type'] ?: 'application/octet-stream' ) );
+        header( 'Content-Length: ' . filesize( $protected_path ) );
+        header( 'Content-Disposition: inline; filename="' . rawurlencode( $name ) . '"' );
+        // Nothing here is meant to be framed or sniffed into something else.
+        header( 'X-Content-Type-Options: nosniff' );
+
+        // Anything already buffered would corrupt the file.
+        while ( ob_get_level() ) {
+            ob_end_clean();
+        }
+        readfile( $protected_path );
+        exit;
     }
 
     // Same-origin guard: only redirect to URLs on this site (file_url comes

@@ -19,6 +19,26 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.26] — 2026-08-16
+
+### Fixed
+
+**Members-only documents are now actually protected**
+
+Marking a document members-only put a permission check in front of the link on
+the page. It did not protect the file. Once the address was known — shared,
+guessed, or picked up by a search engine — the web server handed the file to
+anyone who asked, member or not.
+
+Members-only files now live in a folder the web server refuses to serve, and the
+site reads them back through PHP after making the same check the page makes. The
+permission finally applies to the document rather than to the link.
+
+Public documents are unaffected and are still served directly, which is faster
+and is what "public" ought to mean.
+
+---
+
 ## [1.1.25] — 2026-08-16
 
 ### Fixed

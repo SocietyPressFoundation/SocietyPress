@@ -19,6 +19,38 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.41] — 2026-08-17
+
+### Fixed
+
+**Tick boxes stretched across the whole column**
+
+On the member edit screen the Joint Membership tick box was drawn as wide as
+a text field, with its wording stranded above it. One styling rule was
+sizing every field on the form the same way, tick boxes included, so this
+affected every tick box and radio button on the screen rather than the one
+that got noticed. A tick box is now the size of a tick box, with its wording
+beside it on one line.
+
+### Changed
+
+**Site Role now explains itself**
+
+"Site Role" sounds like it means somebody's office in the society, and it
+does not — it is what they are allowed to do inside the website's admin
+area. A board member reasonably read it the other way and asked what the
+field was for, which is a fair question for a field that can hand out
+administrator by accident.
+
+The field now says plainly what it controls, notes that ordinary members
+should stay on Subscriber, and points administrators at Settings → User
+Access, which is where a treasurer or a librarian is actually given the
+run of their own area. Anyone who is not an administrator now sees a line
+telling them why their list of choices is short, instead of wondering
+where the other roles went.
+
+---
+
 ## [1.1.40] — 2026-08-17
 
 ### Fixed

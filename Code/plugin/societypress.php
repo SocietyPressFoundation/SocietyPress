@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.40
+ * Version:     1.1.41
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.40' );
+define( 'SOCIETYPRESS_VERSION', '1.1.41' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -20766,11 +20766,33 @@ function sp_render_member_edit_page(): void {
                     font-size: 13px;
                     color: #1d2327;
                 }
-                .sp-field input,
+                /* WHY the exclusions: this rule used to catch every input,
+                   which stretched checkboxes and radios across the whole
+                   column — a tick box the width of a text field, with its
+                   label stranded above it. A checkbox is the size of a
+                   checkbox; only fields you type or choose into should fill
+                   the column. */
+                .sp-field input:not([type="checkbox"]):not([type="radio"]),
                 .sp-field select,
                 .sp-field textarea {
                     width: 100%;
                     max-width: 100%;
+                }
+                .sp-field input[type="checkbox"],
+                .sp-field input[type="radio"] {
+                    width: auto;
+                    max-width: none;
+                    margin: 0;
+                }
+                /* A label wrapping a checkbox reads as one thing — box then
+                   words, on one line — rather than a heading with a field
+                   underneath it. */
+                .sp-field label:has(> input[type="checkbox"]),
+                .sp-field label:has(> input[type="radio"]) {
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    gap: 8px;
                 }
                 .sp-field .description {
                     font-size: 12px;
@@ -21091,6 +21113,37 @@ function sp_render_member_edit_page(): void {
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <?php
+                            // WHY this needed explaining: a board member asked what
+                            // the field was for. "Site Role" sounds like an office —
+                            // treasurer, secretary — and it is nothing of the kind. It
+                            // is the WordPress role, and the permissions that actually
+                            // matter in SocietyPress are set on a different screen
+                            // entirely. Somebody who reads this field as "their job in
+                            // the society" could hand out administrator by accident.
+                            ?>
+                            <p class="description">
+                                <?php esc_html_e( 'What this person can do inside the website\'s admin area. It is not their position in the society — a treasurer or secretary is set up separately.', 'societypress' ); ?>
+                                <br>
+                                <?php esc_html_e( 'Ordinary members should stay on Subscriber, which lets them sign in without changing anything.', 'societypress' ); ?>
+                                <?php if ( current_user_can( 'manage_options' ) ) : ?>
+                                    <br>
+                                    <?php
+                                    printf(
+                                        /* translators: %s: link to the User Access screen */
+                                        esc_html__( 'To let somebody manage members, events or money, leave this alone and give them the matching job on %s.', 'societypress' ),
+                                        '<a href="' . esc_url( admin_url( 'admin.php?page=sp-user-access' ) ) . '">'
+                                            . esc_html__( 'Settings &rarr; User Access', 'societypress' ) . '</a>'
+                                    );
+                                    ?>
+                                <?php endif; ?>
+                            </p>
+                            <?php
+                            // Non-admins get a short list on purpose. Saying so beats
+                            // leaving somebody hunting for a role that was never there.
+                            if ( ! current_user_can( 'manage_options' ) ) : ?>
+                                <p class="description"><?php esc_html_e( 'Only an administrator can assign the other roles.', 'societypress' ); ?></p>
+                            <?php endif; ?>
                             <?php if ( $is_self ) : ?>
                                 <p class="description"><?php esc_html_e( 'You cannot change your own role.', 'societypress' ); ?></p>
                                 <!-- Hidden field so the form still submits the current value -->
@@ -34264,7 +34317,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.40',
+            'version'     => '1.1.41',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34272,7 +34325,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.40',
+            'version'     => '1.1.41',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34280,7 +34333,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.40',
+            'version'     => '1.1.41',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34288,7 +34341,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.40',
+            'version'     => '1.1.41',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34296,7 +34349,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.40',
+            'version'     => '1.1.41',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.34
+ * Version:     1.1.35
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.34' );
+define( 'SOCIETYPRESS_VERSION', '1.1.35' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -33629,7 +33629,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.34',
+            'version'     => '1.1.35',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33637,7 +33637,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.34',
+            'version'     => '1.1.35',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33645,7 +33645,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.34',
+            'version'     => '1.1.35',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33653,7 +33653,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.34',
+            'version'     => '1.1.35',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33661,7 +33661,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.34',
+            'version'     => '1.1.35',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92742,7 +92742,7 @@ function sp_render_file_folder_list( array $folders, ?int $parent_id, int $curre
         );
 
         printf(
-            '<li><a href="%1$s" class="sp-folder%2$s" data-folder-id="%3$d"><span class="dashicons dashicons-portfolio" aria-hidden="true"></span><span class="sp-folder-name">%4$s</span><span class="sp-folder-count">%5$s</span></a>',
+            '<li><a href="%1$s" class="sp-folder%2$s" data-folder-id="%3$d" data-is-folder="1" draggable="true"><span class="dashicons dashicons-portfolio" aria-hidden="true"></span><span class="sp-folder-name">%4$s</span><span class="sp-folder-count">%5$s</span></a>',
             esc_url( $url ),
             esc_attr( $active ),
             $id,
@@ -92828,7 +92828,7 @@ function sp_render_files_page(): void {
     <div class="wrap sp-admin-wrap sp-files-wrap">
         <h1><?php esc_html_e( 'Files', 'societypress' ); ?></h1>
         <p class="description sp-files-intro">
-            <?php esc_html_e( 'Every file the society has uploaded, in folders you keep. Drag a file onto a folder to move it, or tick the files you want and use Move to.', 'societypress' ); ?>
+            <?php esc_html_e( 'Every file the society has uploaded, in folders you keep. Drag a file onto a folder to move it, or tick the files you want and use Move to. Folders drag too — drop one on another to put it inside, or on All files to bring it back out.', 'societypress' ); ?>
         </p>
 
         <div class="sp-files-layout">
@@ -92836,7 +92836,7 @@ function sp_render_files_page(): void {
             <div class="sp-files-sidebar">
                 <ul class="sp-folder-list">
                     <li>
-                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-files' ) ); ?>" class="sp-folder<?php echo $showing_all ? ' sp-folder-current' : ''; ?>">
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-files' ) ); ?>" class="sp-folder<?php echo $showing_all ? ' sp-folder-current' : ''; ?>" data-top-level="1">
                             <span class="dashicons dashicons-media-default" aria-hidden="true"></span>
                             <span class="sp-folder-name"><?php esc_html_e( 'All files', 'societypress' ); ?></span>
                             <span class="sp-folder-count"><?php echo esc_html( number_format_i18n( $total ) ); ?></span>
@@ -93147,7 +93147,8 @@ function sp_render_files_page_assets(): void {
 
         /* ---------- dragging ---------- */
 
-        var dragging = [];
+        var dragging      = [];
+        var draggingFolder = 0;
 
         if (grid) {
             grid.addEventListener('dragstart', function (e) {
@@ -93172,9 +93173,36 @@ function sp_render_files_page_assets(): void {
             });
         }
 
-        Array.prototype.forEach.call(document.querySelectorAll('.sp-folder[data-folder-id]'), function (target) {
+        /* A folder dragged onto another folder becomes its child, which is how
+           a filing cabinet works and the only way to build a nested folder
+           without a second screen asking which parent you meant. */
+        Array.prototype.forEach.call(document.querySelectorAll('.sp-folder[data-is-folder]'), function (src) {
+            src.addEventListener('dragstart', function (e) {
+                draggingFolder = parseInt(src.getAttribute('data-folder-id'), 10) || 0;
+                dragging = [];
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', 'folder:' + draggingFolder);
+                e.stopPropagation();
+            });
+            src.addEventListener('dragend', function () { draggingFolder = 0; });
+        });
+
+        function canDrop(target) {
+            if (dragging.length) { return target.hasAttribute('data-folder-id'); }
+            if (!draggingFolder)  { return false; }
+
+            /* Dropping a folder on itself is a no-op; dropping it inside its
+               own child would cut the whole branch loose from the tree, so the
+               server refuses it too. */
+            var id = parseInt(target.getAttribute('data-folder-id'), 10) || 0;
+            if (target.hasAttribute('data-top-level')) { return true; }
+            if (!target.hasAttribute('data-is-folder')) { return false; }
+            return id !== draggingFolder;
+        }
+
+        Array.prototype.forEach.call(document.querySelectorAll('.sp-folder[data-folder-id], .sp-folder[data-top-level]'), function (target) {
             target.addEventListener('dragover', function (e) {
-                if (!dragging.length) { return; }
+                if (!canDrop(target)) { return; }
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
                 target.classList.add('sp-folder-drop');
@@ -93185,8 +93213,22 @@ function sp_render_files_page_assets(): void {
             });
 
             target.addEventListener('drop', function (e) {
+                if (!canDrop(target)) { return; }
                 e.preventDefault();
                 target.classList.remove('sp-folder-drop');
+
+                if (draggingFolder) {
+                    var parent = target.hasAttribute('data-top-level')
+                        ? 0
+                        : target.getAttribute('data-folder-id');
+                    var moving = draggingFolder;
+                    draggingFolder = 0;
+                    post('sp_files_folder_move', { folder: moving, parent: parent }, function () {
+                        window.location.reload();
+                    });
+                    return;
+                }
+
                 var ids = dragging.slice();
                 dragging = [];
                 move(ids, target.getAttribute('data-folder-id'));
@@ -93410,6 +93452,66 @@ add_action( 'wp_ajax_sp_files_folder_create', function () {
     }
 
     wp_send_json_success( [ 'id' => $id ] );
+} );
+
+/**
+ * AJAX: move a folder inside another folder, or back to the top level.
+ *
+ * WHY the descendant check: dropping a folder into its own child detaches the
+ *      whole branch from the tree — the parent chain becomes a loop, so
+ *      nothing in it is reachable from the top and every file inside vanishes
+ *      from the screen while still sitting in the database. The browser
+ *      refuses the obvious case; this refuses the rest, because a dragged
+ *      folder's grandchildren are not on screen to check against.
+ */
+add_action( 'wp_ajax_sp_files_folder_move', function () {
+    global $wpdb;
+    sp_files_ajax_guard();
+
+    $id     = (int) ( $_POST['folder'] ?? 0 );
+    $parent = (int) ( $_POST['parent'] ?? 0 );
+
+    if ( ! $id ) {
+        wp_send_json_error( [ 'message' => __( 'That folder could not be found.', 'societypress' ) ] );
+    }
+
+    if ( $id === $parent ) {
+        wp_send_json_error( [ 'message' => __( 'A folder cannot go inside itself.', 'societypress' ) ] );
+    }
+
+    if ( $parent ) {
+        // Walk up from the proposed parent. Meeting the folder being moved
+        // means the drop would close a loop.
+        $seen   = [];
+        $cursor = $parent;
+
+        while ( $cursor ) {
+            if ( $cursor === $id ) {
+                wp_send_json_error( [ 'message' => __( 'A folder cannot go inside one of its own folders.', 'societypress' ) ] );
+            }
+
+            // A loop already in the data would spin here forever.
+            if ( isset( $seen[ $cursor ] ) ) {
+                break;
+            }
+            $seen[ $cursor ] = true;
+
+            $cursor = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT parent_id FROM {$wpdb->prefix}sp_file_folders WHERE id = %d",
+                $cursor
+            ) );
+        }
+    }
+
+    $wpdb->update(
+        $wpdb->prefix . 'sp_file_folders',
+        [ 'parent_id' => $parent ?: null ],
+        [ 'id' => $id ],
+        [ '%d' ],
+        [ '%d' ]
+    );
+
+    wp_send_json_success();
 } );
 
 /**

@@ -19,6 +19,23 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.35] — 2026-08-16
+
+### Added
+
+**Folders drag into folders**
+
+Nesting was in the plan and in the wording, and was not actually reachable —
+every folder you made came out at the top level. Drop a folder onto another
+to put it inside, or onto All files to bring it back out.
+
+A folder cannot be dropped into itself or into anything already inside it.
+That would close a loop in the tree: the branch stops being reachable from
+the top and everything filed in it disappears from the screen while sitting
+untouched in the database.
+
+---
+
 ## [1.1.34] — 2026-08-16
 
 ### Added

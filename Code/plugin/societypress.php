@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.38
+ * Version:     1.1.39
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.38' );
+define( 'SOCIETYPRESS_VERSION', '1.1.39' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -15393,6 +15393,646 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
 // DASHBOARD PAGE
 // ============================================================================
 
+// ---------------------------------------------------------------------------
+// DASHBOARD TILES — the registry
+//
+// WHY a registry rather than the five hard-coded cards this replaced: those
+// five were all about members, and every officer got the same five. A
+// treasurer signed in to a screen with nothing about money on it; a librarian
+// signed in to a screen with nothing about the library. The dashboard also
+// went on advertising Upcoming Events after the Events module had been turned
+// off, because nothing on the page had ever asked.
+//
+// A tile now declares two things about itself — which module it belongs to and
+// which capability it needs — and the page assembles from whatever answers
+// true for the person reading it. That means a society sees its own dashboard
+// without configuring anything, which matters because the volunteer who would
+// have to do the configuring is exactly the one who never will.
+//
+// Modelled on sp_get_widget_registry(): same shape of array, same filter at
+// the end, so anyone who has met one has met the other.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every tile SocietyPress knows how to draw.
+ *
+ * Each entry carries:
+ *   label      Shown under the number.
+ *   module     Module slug this belongs to; '' for tiles that always apply.
+ *   capability What the reader must be able to do to see it.
+ *   accent     Optional colour key for the left border.
+ *   url        Where the number links, as a callable (deferred so the admin
+ *              URL is not built for tiles nobody will see).
+ *   value      Callable returning the number. Only ever called for a tile that
+ *              has already passed the module and capability checks, so a
+ *              society with the Store off never pays for the Store's queries.
+ *   format     'number' (default) or 'currency'.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_get_dashboard_tiles(): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $today      = current_time( 'Y-m-d' );
+    $year_start = current_time( 'Y' ) . '-01-01';
+    $month_ago  = date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) );
+    $in_30_days = date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
+
+    $count = static function ( string $sql, ...$args ) use ( $wpdb ): int {
+        return (int) ( $args
+            ? $wpdb->get_var( $wpdb->prepare( $sql, ...$args ) )
+            : $wpdb->get_var( $sql ) );
+    };
+
+    $tiles = [
+
+        // ---- Members ------------------------------------------------------
+        'members_total' => [
+            'label'      => __( 'Total Members', 'societypress' ),
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}members" ),
+        ],
+        'members_active' => [
+            'label'      => __( 'Active', 'societypress' ),
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'accent'     => 'active',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&member_status=active' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'active'" ),
+        ],
+        'members_expiring' => [
+            'label'      => __( 'Expiring Soon', 'societypress' ),
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&sp_filter=expiring_30' ),
+            'value'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}members
+                  WHERE status = 'active' AND expiration_date IS NOT NULL
+                    AND expiration_date BETWEEN %s AND %s",
+                $today, $in_30_days
+            ),
+        ],
+        'members_expired' => [
+            'label'      => __( 'Expired', 'societypress' ),
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'accent'     => 'expired',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&member_status=expired' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'expired'" ),
+        ],
+        'members_new' => [
+            'label'      => __( 'New (30 Days)', 'societypress' ),
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'accent'     => 'new',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&sp_filter=new_30' ),
+            'value'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}members WHERE join_date >= %s", $month_ago
+            ),
+        ],
+
+        // ---- Money --------------------------------------------------------
+        // WHY these read from three different tables rather than one ledger:
+        // dues, donations and store orders are recorded separately and always
+        // have been. The treasurer's question is the same in all three cases —
+        // how much came in this year — so the tiles ask it three times.
+        'dues_ytd' => [
+            'label'      => __( 'Dues This Year', 'societypress' ),
+            'module'     => '',
+            'capability' => 'sp_manage_finances',
+            'accent'     => 'active',
+            'format'     => 'currency',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-payments' ),
+            'value'      => static fn() => (float) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(amount),0) FROM {$prefix}member_payments
+                  WHERE type = 'dues' AND date >= %s", $year_start
+            ) ),
+        ],
+        'donations_ytd' => [
+            'label'      => __( 'Donations This Year', 'societypress' ),
+            'module'     => 'donations',
+            'capability' => 'sp_manage_finances',
+            'accent'     => 'active',
+            'format'     => 'currency',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-donations' ),
+            // Matches the exclusion the donation reports already use, so the
+            // tile and the report can never disagree in front of a treasurer.
+            'value'      => static fn() => (float) $wpdb->get_var( $wpdb->prepare(
+                "SELECT COALESCE(SUM(amount),0) FROM {$prefix}donations
+                  WHERE date >= %s AND status NOT IN ('pending','failed')", $year_start
+            ) ),
+        ],
+        'orders_awaiting' => [
+            'label'      => __( 'Orders to Fill', 'societypress' ),
+            'module'     => 'store',
+            'capability' => 'sp_manage_finances',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-orders' ),
+            // Paid but not yet shipped — the pile somebody has to go and pack.
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}orders WHERE status = 'paid'" ),
+        ],
+
+        // ---- Events -------------------------------------------------------
+        'events_upcoming' => [
+            'label'      => __( 'Upcoming Events', 'societypress' ),
+            'module'     => 'events',
+            'capability' => 'sp_manage_events',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-events' ),
+            'value'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}events WHERE event_date >= %s AND status = 'scheduled'", $today
+            ),
+        ],
+        'event_registrations' => [
+            'label'      => __( 'Registrations (30 Days)', 'societypress' ),
+            'module'     => 'events',
+            'capability' => 'sp_manage_events',
+            'accent'     => 'new',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-events' ),
+            'value'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}event_registrations
+                  WHERE status = 'confirmed' AND registered_at >= %s", $month_ago
+            ),
+        ],
+
+        // ---- Governance ---------------------------------------------------
+        'volunteer_openings' => [
+            'label'      => __( 'Volunteer Openings', 'societypress' ),
+            'module'     => 'governance',
+            'capability' => 'sp_manage_governance',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-volunteer-opportunities' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}volunteer_opportunities WHERE status = 'open'" ),
+        ],
+        'committees_no_chair' => [
+            'label'      => __( 'Committees Without a Chair', 'societypress' ),
+            'module'     => 'governance',
+            'capability' => 'sp_manage_governance',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-committees' ),
+            // A quietly chairless committee is the kind of thing that goes
+            // unnoticed for a year. Counting it puts it in front of somebody.
+            'value'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}committees WHERE active = 1 AND (chair_user_id IS NULL OR chair_user_id = 0)"
+            ),
+        ],
+        'ballots_open' => [
+            'label'      => __( 'Open Ballots', 'societypress' ),
+            'module'     => 'voting',
+            'capability' => 'sp_manage_governance',
+            'accent'     => 'new',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-ballots' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}ballots WHERE status = 'open'" ),
+        ],
+
+        // ---- Library and records ------------------------------------------
+        'library_items' => [
+            'label'      => __( 'Catalog Items', 'societypress' ),
+            'module'     => 'library',
+            'capability' => 'sp_manage_library',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-library-catalog' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}library_items" ),
+        ],
+        'library_out' => [
+            'label'      => __( 'Items Not Available', 'societypress' ),
+            'module'     => 'library',
+            'capability' => 'sp_manage_library',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-library-catalog' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}library_items WHERE available = 0" ),
+        ],
+        'record_collections' => [
+            'label'      => __( 'Record Collections', 'societypress' ),
+            'module'     => 'records',
+            'capability' => 'sp_manage_records',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-record-collections' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}record_collections" ),
+        ],
+        'records_indexed' => [
+            'label'      => __( 'Records Indexed', 'societypress' ),
+            'module'     => 'records',
+            'capability' => 'sp_manage_records',
+            'accent'     => 'active',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-record-collections' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}records" ),
+        ],
+
+        // ---- Communications and content -----------------------------------
+        'subscribers' => [
+            'label'      => __( 'Email Subscribers', 'societypress' ),
+            'module'     => 'blast_email',
+            'capability' => 'sp_manage_communications',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-subscribers' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}subscribers WHERE status = 'confirmed'" ),
+        ],
+        'documents_count' => [
+            'label'      => __( 'Documents', 'societypress' ),
+            'module'     => 'documents',
+            'capability' => 'sp_manage_content',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-documents' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}documents WHERE status = 'published'" ),
+        ],
+        'newsletters_count' => [
+            'label'      => __( 'Newsletters', 'societypress' ),
+            'module'     => 'newsletters',
+            'capability' => 'sp_manage_content',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-newsletter-archive' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}newsletters" ),
+        ],
+        'photos_count' => [
+            'label'      => __( 'Photos', 'societypress' ),
+            'module'     => 'gallery',
+            'capability' => 'sp_manage_content',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-gallery' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}photo_album_items" ),
+        ],
+
+        // ---- Things waiting on somebody -------------------------------------
+        // WHY these two sit last: they are the tiles most likely to be nonzero
+        // and most likely to be ignored, which is an argument for showing them,
+        // not for burying them. Anything waiting on a person is coloured.
+        'help_open' => [
+            'label'      => __( 'Open Research Requests', 'societypress' ),
+            'module'     => 'help_requests',
+            'capability' => 'sp_manage_content',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-help-requests' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}help_requests WHERE status = 'open'" ),
+        ],
+        'form_unread' => [
+            'label'      => __( 'New Form Submissions', 'societypress' ),
+            'module'     => 'forms',
+            'capability' => 'sp_manage_content',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-form-submissions' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}form_submissions WHERE is_read = 0" ),
+        ],
+    ];
+
+    /**
+     * Filter the dashboard tile registry.
+     *
+     * @param array $tiles Tile definitions keyed by id.
+     */
+    return apply_filters( 'sp_dashboard_tiles', $tiles );
+}
+
+/**
+ * The tiles this person should see, in the order they should see them.
+ *
+ * Three gates, in order: the module has to be on, the reader has to hold the
+ * capability, and the reader must not have hidden it. Anything a person has
+ * dragged into a new position keeps that position; anything added by a later
+ * release lands after what they have already arranged rather than jumping the
+ * queue.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_visible_dashboard_tiles(): array {
+    $all   = sp_get_dashboard_tiles();
+    $prefs = sp_dashboard_tile_prefs();
+
+    $available = [];
+    foreach ( $all as $id => $tile ) {
+        $module = $tile['module'] ?? '';
+        if ( $module !== '' && ! sp_module_enabled( $module ) ) {
+            continue;
+        }
+        if ( ! empty( $tile['capability'] ) && ! current_user_can( $tile['capability'] ) ) {
+            continue;
+        }
+        if ( in_array( $id, $prefs['hidden'], true ) ) {
+            continue;
+        }
+        $available[ $id ] = $tile;
+    }
+
+    // Saved order first, then whatever the reader has never seen before.
+    $ordered = [];
+    foreach ( $prefs['order'] as $id ) {
+        if ( isset( $available[ $id ] ) ) {
+            $ordered[ $id ] = $available[ $id ];
+            unset( $available[ $id ] );
+        }
+    }
+
+    return $ordered + $available;
+}
+
+/**
+ * This person's saved tile arrangement.
+ *
+ * @return array{order:string[],hidden:string[]}
+ */
+function sp_dashboard_tile_prefs(): array {
+    $saved = get_user_meta( get_current_user_id(), 'sp_dashboard_tiles', true );
+
+    return [
+        'order'  => is_array( $saved['order'] ?? null ) ? array_values( array_map( 'strval', $saved['order'] ) ) : [],
+        'hidden' => is_array( $saved['hidden'] ?? null ) ? array_values( array_map( 'strval', $saved['hidden'] ) ) : [],
+    ];
+}
+
+/**
+ * Numbers for the given tiles, computed once and cached for five minutes.
+ *
+ * WHY cached together rather than per tile: a dashboard now runs one query per
+ * visible tile, and an officer with broad permissions can see a dozen. They are
+ * all cheap COUNTs, but they are also all pointless on the second page load in
+ * a minute. Any audited write clears this along with the other stat caches, so
+ * a number never lags an action the person just took.
+ *
+ * @param array<string,array<string,mixed>> $tiles
+ * @return array<string,float|int>
+ */
+function sp_dashboard_tile_values( array $tiles ): array {
+    $today  = current_time( 'Y-m-d' );
+    $cache  = get_transient( 'sp_dashboard_tile_values' );
+    $cache  = is_array( $cache ) && ( $cache['date'] ?? '' ) === $today ? $cache : [ 'date' => $today ];
+    $values = [];
+    $fresh  = false;
+
+    foreach ( $tiles as $id => $tile ) {
+        if ( array_key_exists( $id, $cache ) && $id !== 'date' ) {
+            $values[ $id ] = $cache[ $id ];
+            continue;
+        }
+        if ( ! is_callable( $tile['value'] ?? null ) ) {
+            continue;
+        }
+        $values[ $id ] = call_user_func( $tile['value'] );
+        $cache[ $id ]  = $values[ $id ];
+        $fresh         = true;
+    }
+
+    if ( $fresh ) {
+        set_transient( 'sp_dashboard_tile_values', $cache, 5 * MINUTE_IN_SECONDS );
+    }
+
+    return $values;
+}
+
+/**
+ * Render the tile strip, plus the controls for rearranging it.
+ */
+function sp_render_dashboard_tiles(): void {
+    $tiles  = sp_visible_dashboard_tiles();
+    $values = sp_dashboard_tile_values( $tiles );
+    $hidden = sp_dashboard_tile_prefs()['hidden'];
+
+    // Everything hidden is still a legitimate arrangement — the strip goes
+    // away and the Customize button stays, so it can be brought back.
+    ?>
+    <div class="sp-dash-tiles-wrap">
+        <div class="sp-dash-tiles-bar">
+            <button type="button" class="button button-small" id="sp-tiles-customize">
+                <span class="dashicons dashicons-edit sp-dash-icon-mr"></span><?php esc_html_e( 'Customize tiles', 'societypress' ); ?>
+            </button>
+            <span id="sp-tiles-help" class="sp-dash-tiles-help" hidden>
+                <?php esc_html_e( 'Use the arrows to move a tile, or Hide to take it off your dashboard. Only you see these changes.', 'societypress' ); ?>
+            </span>
+            <button type="button" class="button button-small" id="sp-tiles-reset" hidden><?php esc_html_e( 'Start over', 'societypress' ); ?></button>
+            <button type="button" class="button button-primary button-small" id="sp-tiles-done" hidden><?php esc_html_e( 'Done', 'societypress' ); ?></button>
+            <span id="sp-tiles-status" class="sp-dash-tiles-status" role="status" aria-live="polite"></span>
+        </div>
+
+        <div class="sp-dash-stats" id="sp-dash-tiles">
+            <?php foreach ( $tiles as $id => $tile ) :
+                $accent = ! empty( $tile['accent'] ) ? ' sp-dash-stat-' . sanitize_html_class( $tile['accent'] ) : '';
+                $value  = $values[ $id ] ?? 0;
+                $shown  = ( ( $tile['format'] ?? 'number' ) === 'currency' )
+                    ? sp_format_currency( (float) $value )
+                    : number_format_i18n( (int) $value );
+            ?>
+                <div class="sp-dash-stat<?php echo esc_attr( $accent ); ?>" data-tile="<?php echo esc_attr( $id ); ?>">
+                    <a href="<?php echo esc_url( call_user_func( $tile['url'] ) ); ?>" class="sp-dash-stat-link">
+                        <div class="sp-dash-stat-number"><?php echo esc_html( $shown ); ?></div>
+                        <div class="sp-dash-stat-label"><?php echo esc_html( $tile['label'] ); ?></div>
+                    </a>
+                    <div class="sp-dash-tile-controls" hidden>
+                        <button type="button" class="button-link sp-tile-move" data-dir="-1" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: tile name */ __( 'Move %s earlier', 'societypress' ), $tile['label'] ) ); ?>">&larr;</button>
+                        <button type="button" class="button-link sp-tile-hide"><?php esc_html_e( 'Hide', 'societypress' ); ?></button>
+                        <button type="button" class="button-link sp-tile-move" data-dir="1" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: tile name */ __( 'Move %s later', 'societypress' ), $tile['label'] ) ); ?>">&rarr;</button>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <?php
+        // Hidden tiles are listed while customizing so putting one back is a
+        // click, not a hunt through a settings screen.
+        $all_tiles = sp_get_dashboard_tiles();
+        $restorable = array_values( array_filter( $hidden, static fn( $id ) => isset( $all_tiles[ $id ] ) ) );
+        ?>
+        <div class="sp-dash-tiles-hidden" id="sp-tiles-hidden-list" hidden>
+            <?php if ( $restorable ) : ?>
+                <span class="sp-dash-tiles-hidden-label"><?php esc_html_e( 'Hidden:', 'societypress' ); ?></span>
+                <?php foreach ( $restorable as $id ) : ?>
+                    <button type="button" class="button button-small sp-tile-restore" data-tile="<?php echo esc_attr( $id ); ?>">
+                        <?php echo esc_html( $all_tiles[ $id ]['label'] ); ?> +
+                    </button>
+                <?php endforeach; ?>
+            <?php else : ?>
+                <span class="sp-dash-tiles-hidden-label"><?php esc_html_e( 'Nothing hidden.', 'societypress' ); ?></span>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * Dashboard tiles — rearranging.
+     *
+     * WHY arrow buttons rather than drag-and-drop: the people running these
+     * societies are often working on a trackpad, sometimes with hands that do
+     * not hold a drag steadily, and a dropped tile that lands in the wrong
+     * place is worse than no rearranging at all. Two arrows and a Hide link do
+     * the same job, work from the keyboard for nothing extra, and cannot be
+     * half-performed.
+     */
+    (function() {
+        'use strict';
+
+        var wrap = document.querySelector('.sp-dash-tiles-wrap');
+        if (!wrap) return;
+
+        var grid       = document.getElementById('sp-dash-tiles');
+        var hiddenList = document.getElementById('sp-tiles-hidden-list');
+        var btnEdit    = document.getElementById('sp-tiles-customize');
+        var btnDone    = document.getElementById('sp-tiles-done');
+        var btnReset   = document.getElementById('sp-tiles-reset');
+        var help       = document.getElementById('sp-tiles-help');
+        var status     = document.getElementById('sp-tiles-status');
+        var nonce      = '<?php echo esc_js( wp_create_nonce( 'sp_dashboard_tiles' ) ); ?>';
+
+        var STR = {
+            saved:  <?php echo wp_json_encode( __( 'Saved.', 'societypress' ) ); ?>,
+            failed: <?php echo wp_json_encode( __( 'Could not save. Try again.', 'societypress' ) ); ?>
+        };
+
+        function setEditing(on) {
+            wrap.classList.toggle('sp-dash-tiles-editing', on);
+            btnEdit.hidden  = on;
+            btnDone.hidden  = !on;
+            btnReset.hidden = !on;
+            help.hidden     = !on;
+            hiddenList.hidden = !on;
+            grid.querySelectorAll('.sp-dash-tile-controls').forEach(function(c) { c.hidden = !on; });
+            if (!on) status.textContent = '';
+        }
+
+        // The arrangement is whatever the page currently shows — read back off
+        // the DOM rather than tracked in a variable that could drift from it.
+        function currentState() {
+            return {
+                order: Array.prototype.map.call(
+                    grid.querySelectorAll('.sp-dash-stat'),
+                    function(t) { return t.getAttribute('data-tile'); }
+                ),
+                hidden: Array.prototype.map.call(
+                    hiddenList.querySelectorAll('.sp-tile-restore'),
+                    function(b) { return b.getAttribute('data-tile'); }
+                )
+            };
+        }
+
+        function save(then) {
+            var state = currentState();
+            var body  = new FormData();
+            body.append('action', 'sp_save_dashboard_tiles');
+            body.append('nonce', nonce);
+            state.order.forEach(function(id)  { body.append('order[]', id); });
+            state.hidden.forEach(function(id) { body.append('hidden[]', id); });
+
+            status.textContent = '';
+            fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (!r || !r.success) throw new Error('save failed');
+                    status.textContent = STR.saved;
+                    if (then) then();
+                })
+                .catch(function() { status.textContent = STR.failed; });
+        }
+
+        btnEdit.addEventListener('click', function() { setEditing(true); });
+        btnDone.addEventListener('click', function() { save(function() { setEditing(false); }); });
+
+        btnReset.addEventListener('click', function() {
+            var body = new FormData();
+            body.append('action', 'sp_reset_dashboard_tiles');
+            body.append('nonce', nonce);
+            fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' })
+                .then(function() { window.location.reload(); })
+                .catch(function() { status.textContent = STR.failed; });
+        });
+
+        grid.addEventListener('click', function(e) {
+            var tile = e.target.closest('.sp-dash-stat');
+            if (!tile) return;
+
+            if (e.target.closest('.sp-tile-move')) {
+                var dir = parseInt(e.target.closest('.sp-tile-move').getAttribute('data-dir'), 10);
+                var sib = dir < 0 ? tile.previousElementSibling : tile.nextElementSibling;
+                if (!sib) return;
+                if (dir < 0) { grid.insertBefore(tile, sib); }
+                else         { grid.insertBefore(sib, tile); }
+                // Keep focus on the button that moved, so a second press
+                // carries on moving the same tile.
+                var again = tile.querySelector('.sp-tile-move[data-dir="' + dir + '"]');
+                if (again) again.focus();
+                save();
+                return;
+            }
+
+            if (e.target.closest('.sp-tile-hide')) {
+                var id    = tile.getAttribute('data-tile');
+                var label = tile.querySelector('.sp-dash-stat-label').textContent;
+                tile.remove();
+
+                // First hide replaces the "Nothing hidden." note.
+                var empty = hiddenList.querySelector('.sp-dash-tiles-hidden-label');
+                if (empty && !hiddenList.querySelector('.sp-tile-restore')) {
+                    empty.textContent = <?php echo wp_json_encode( __( 'Hidden:', 'societypress' ) ); ?>;
+                }
+
+                var back = document.createElement('button');
+                back.type = 'button';
+                back.className = 'button button-small sp-tile-restore';
+                back.setAttribute('data-tile', id);
+                back.textContent = label + ' +';
+                hiddenList.appendChild(back);
+                save();
+            }
+        });
+
+        // Bringing a tile back needs its number, which only the server has —
+        // so save and reload rather than inventing a placeholder.
+        hiddenList.addEventListener('click', function(e) {
+            var btn = e.target.closest('.sp-tile-restore');
+            if (!btn) return;
+            btn.remove();
+            save(function() { window.location.reload(); });
+        });
+    })();
+    </script>
+    <?php
+}
+
+/**
+ * Save one person's tile arrangement.
+ *
+ * Stored per user rather than per site: a treasurer and a librarian want
+ * different dashboards, and making one of them win would put us back where
+ * this started.
+ */
+function sp_ajax_save_dashboard_tiles(): void {
+    check_ajax_referer( 'sp_dashboard_tiles', 'nonce' );
+
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
+    }
+
+    $known = array_keys( sp_get_dashboard_tiles() );
+
+    // Only ids this build knows about are stored. An unknown id is either a
+    // stale tab or somebody poking at the endpoint; neither should be able to
+    // grow a row of junk in user meta.
+    $order  = array_values( array_intersect(
+        array_map( 'sanitize_key', (array) ( $_POST['order'] ?? [] ) ),
+        $known
+    ) );
+    $hidden = array_values( array_intersect(
+        array_map( 'sanitize_key', (array) ( $_POST['hidden'] ?? [] ) ),
+        $known
+    ) );
+
+    update_user_meta( get_current_user_id(), 'sp_dashboard_tiles', [
+        'order'  => $order,
+        'hidden' => $hidden,
+    ] );
+
+    wp_send_json_success();
+}
+add_action( 'wp_ajax_sp_save_dashboard_tiles', 'sp_ajax_save_dashboard_tiles' );
+
+/**
+ * Put a person's dashboard back the way it shipped.
+ */
+function sp_ajax_reset_dashboard_tiles(): void {
+    check_ajax_referer( 'sp_dashboard_tiles', 'nonce' );
+
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
+    }
+
+    delete_user_meta( get_current_user_id(), 'sp_dashboard_tiles' );
+    wp_send_json_success();
+}
+add_action( 'wp_ajax_sp_reset_dashboard_tiles', 'sp_ajax_reset_dashboard_tiles' );
+
+
 /**
  * Render the SocietyPress Dashboard — the user's home base.
  *
@@ -15410,47 +16050,6 @@ function sp_render_dashboard_page(): void {
     $display_name = ! empty( $org_name ) ? $org_name : $site_name;
     $today        = current_time( 'Y-m-d' );
     $thirty_days  = date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
-
-    // ---- Stat queries ----
-    // WHY cached: these five COUNTs run on every dashboard load. They're cheap
-    // individually, but a write invalidates them immediately (sp_audit ->
-    // sp_invalidate_stat_caches), so the cache never shows a stale total after
-    // an admin action; the date stamp forces a recompute when the day rolls
-    // over (the expiring/recent windows are date-relative), and a 5-minute TTL
-    // backstops any unaudited public write.
-    $stats = get_transient( 'sp_dashboard_member_stats' );
-    if ( ! is_array( $stats ) || ( $stats['date'] ?? '' ) !== $today ) {
-        $stats = [
-            'date'   => $today,
-            'total'  => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members" ),
-            'active' => (int) $wpdb->get_var(
-                "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'active'"
-            ),
-            'expired' => (int) $wpdb->get_var(
-                "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'expired'"
-            ),
-            // Members expiring in the next 30 days (still active, but running out)
-            'expiring' => (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}members
-                 WHERE status = 'active'
-                   AND expiration_date IS NOT NULL
-                   AND expiration_date BETWEEN %s AND %s",
-                $today, $thirty_days
-            ) ),
-            // New members in the last 30 days
-            'recent' => (int) $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM {$prefix}members WHERE join_date >= %s",
-                date( 'Y-m-d', strtotime( '-30 days', strtotime( $today ) ) )
-            ) ),
-        ];
-        set_transient( 'sp_dashboard_member_stats', $stats, 5 * MINUTE_IN_SECONDS );
-    }
-
-    $total_members       = $stats['total'];
-    $active_members      = $stats['active'];
-    $expired_members     = $stats['expired'];
-    $expiring_soon       = $stats['expiring'];
-    $recent_signup_count = $stats['recent'];
 
     // ---- Upcoming events (next 5) ----
     // Events use the status workflow 'scheduled'/'cancelled'/'postponed'/
@@ -15813,6 +16412,49 @@ function sp_render_dashboard_page(): void {
             .sp-dash-stat-expired  { border-left-color: #d63638; }
             .sp-dash-stat-new      { border-left-color: #2271b1; }
 
+            /* ---- Tile customizing ---- */
+            .sp-dash-tiles-bar {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin: 0 0 10px;
+            }
+            .sp-dash-tiles-help,
+            .sp-dash-tiles-status { font-size: 13px; color: #50575e; }
+            .sp-dash-tiles-hidden {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin: 10px 0 0;
+                padding: 10px 12px;
+                background: #f6f7f7;
+                border: 1px solid #dcdcde;
+                border-radius: 4px;
+            }
+            .sp-dash-tiles-hidden-label { font-size: 13px; color: #50575e; font-weight: 600; }
+            /* The controls only exist while customizing, so the tile keeps its
+               ordinary height until then and the strip does not jump. */
+            .sp-dash-tile-controls {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 6px;
+                margin-top: 8px;
+                padding-top: 8px;
+                border-top: 1px solid #e0e0e0;
+            }
+            .sp-dash-tile-controls .button-link { text-decoration: none; font-size: 13px; }
+            .sp-dash-tile-controls .sp-tile-hide { color: #b32d2e; }
+            /* While customizing, the number is not a link — clicking a tile you
+               are rearranging should not navigate away from the page. */
+            .sp-dash-tiles-editing .sp-dash-stat-link { pointer-events: none; }
+            .sp-dash-tiles-editing .sp-dash-stat {
+                outline: 1px dashed #a7aaad;
+                outline-offset: 2px;
+            }
+
             /* Dashboard panels — two-column on desktop, stacked on narrow */
             .sp-dash-panels {
                 display: grid;
@@ -16092,54 +16734,36 @@ function sp_render_dashboard_page(): void {
             .sp-dash-activity-icon-glyph { font-size: 14px; }
         </style>
 
-        <!-- Stat Cards -->
-        <div class="sp-dash-stats">
-            <div class="sp-dash-stat">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>" class="sp-dash-stat-link">
-                    <div class="sp-dash-stat-number"><?php echo esc_html( $total_members ); ?></div>
-                    <div class="sp-dash-stat-label"><?php echo esc_html__( 'Total Members', 'societypress' ); ?></div>
-                </a>
-            </div>
-            <div class="sp-dash-stat sp-dash-stat-active">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members&member_status=active' ) ); ?>" class="sp-dash-stat-link">
-                    <div class="sp-dash-stat-number"><?php echo esc_html( $active_members ); ?></div>
-                    <div class="sp-dash-stat-label"><?php echo esc_html__( 'Active', 'societypress' ); ?></div>
-                </a>
-            </div>
-            <div class="sp-dash-stat sp-dash-stat-expiring">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members&sp_filter=expiring_30' ) ); ?>" class="sp-dash-stat-link">
-                    <div class="sp-dash-stat-number"><?php echo esc_html( $expiring_soon ); ?></div>
-                    <div class="sp-dash-stat-label"><?php echo esc_html__( 'Expiring Soon', 'societypress' ); ?></div>
-                </a>
-            </div>
-            <div class="sp-dash-stat sp-dash-stat-expired">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members&member_status=expired' ) ); ?>" class="sp-dash-stat-link">
-                    <div class="sp-dash-stat-number"><?php echo esc_html( $expired_members ); ?></div>
-                    <div class="sp-dash-stat-label"><?php echo esc_html__( 'Expired', 'societypress' ); ?></div>
-                </a>
-            </div>
-            <div class="sp-dash-stat sp-dash-stat-new">
-                <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members&sp_filter=new_30' ) ); ?>" class="sp-dash-stat-link">
-                    <div class="sp-dash-stat-number"><?php echo esc_html( $recent_signup_count ); ?></div>
-                    <div class="sp-dash-stat-label"><?php echo esc_html__( 'New (30 Days)', 'societypress' ); ?></div>
-                </a>
-            </div>
-        </div>
+        <?php
+        // Stat tiles. What appears here depends on which modules the society
+        // runs and what this person is allowed to see — see the registry above.
+        sp_render_dashboard_tiles();
+        ?>
 
         <!-- Quick Links -->
+        <?php
+        // Same two gates the tiles use. A link to a screen the reader cannot
+        // open, or to a module the society has switched off, is a dead end
+        // dressed up as a shortcut.
+        $quick_links = [
+            [ 'sp-members',          'dashicons-groups',        __( 'Members', 'societypress' ),  '',       'sp_manage_members' ],
+            [ 'sp-events',           'dashicons-calendar-alt',  __( 'Events', 'societypress' ),   'events', 'sp_manage_events' ],
+            [ 'sp-settings-website', 'dashicons-admin-generic', __( 'Settings', 'societypress' ), '',       'sp_manage_settings' ],
+        ];
+        ?>
         <div class="sp-dash-links">
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-members' ) ); ?>">
-                <span class="dashicons dashicons-groups"></span> <?php echo esc_html__( 'Members', 'societypress' ); ?>
-            </a>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>">
-                <span class="dashicons dashicons-calendar-alt"></span> <?php echo esc_html__( 'Events', 'societypress' ); ?>
-            </a>
-            <a href="<?php echo esc_url( admin_url( 'edit.php?post_type=page' ) ); ?>">
-                <span class="dashicons dashicons-admin-page"></span> <?php echo esc_html__( 'Pages', 'societypress' ); ?>
-            </a>
-            <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-settings-website' ) ); ?>">
-                <span class="dashicons dashicons-admin-generic"></span> <?php echo esc_html__( 'Settings', 'societypress' ); ?>
-            </a>
+            <?php foreach ( $quick_links as list( $slug, $icon, $label, $module, $cap ) ) : ?>
+                <?php if ( ( $module === '' || sp_module_enabled( $module ) ) && current_user_can( $cap ) ) : ?>
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $slug ) ); ?>">
+                        <span class="dashicons <?php echo esc_attr( $icon ); ?>"></span> <?php echo esc_html( $label ); ?>
+                    </a>
+                <?php endif; ?>
+            <?php endforeach; ?>
+            <?php if ( current_user_can( 'edit_pages' ) ) : ?>
+                <a href="<?php echo esc_url( admin_url( 'edit.php?post_type=page' ) ); ?>">
+                    <span class="dashicons dashicons-admin-page"></span> <?php echo esc_html__( 'Pages', 'societypress' ); ?>
+                </a>
+            <?php endif; ?>
             <a href="<?php echo esc_url( home_url( '/' ) ); ?>" target="_blank">
                 <span class="dashicons dashicons-external"></span> <?php echo esc_html__( 'View Site', 'societypress' ); ?>
             </a>
@@ -16205,6 +16829,13 @@ function sp_render_dashboard_page(): void {
         <!-- Two-Column Panels -->
         <div class="sp-dash-panels">
 
+            <?php
+            // WHY these gates were missing and now are not: the dashboard used
+            // to print this panel whether or not the society ran events at all,
+            // so a society with the module off was invited to look at an empty
+            // events table for ever. The same went for the membership panels in
+            // front of an officer with no business seeing members.
+            if ( sp_module_enabled( 'events' ) && current_user_can( 'sp_manage_events' ) ) : ?>
             <!-- Upcoming Events -->
             <div class="sp-dash-panel">
                 <div class="sp-dash-panel-header">
@@ -16239,7 +16870,9 @@ function sp_render_dashboard_page(): void {
                     <div class="sp-dash-empty"><?php echo esc_html__( 'No upcoming events.', 'societypress' ); ?></div>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
 
+            <?php if ( current_user_can( 'sp_manage_members' ) ) : ?>
             <!-- Expiring Soon -->
             <div class="sp-dash-panel">
                 <div class="sp-dash-panel-header">
@@ -16321,6 +16954,7 @@ function sp_render_dashboard_page(): void {
                     <div class="sp-dash-empty"><?php echo esc_html__( 'No members yet.', 'societypress' ); ?></div>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
 
             <!-- Quick Links / Site Info -->
             <div class="sp-dash-panel">
@@ -28474,6 +29108,7 @@ function sp_invalidate_stat_caches(): void {
     $busted = true;
 
     delete_transient( 'sp_dashboard_member_stats' );
+    delete_transient( 'sp_dashboard_tile_values' );
     update_option( 'sp_insights_cache_gen', sp_insights_cache_salt() + 1, false );
 }
 
@@ -33629,7 +34264,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.38',
+            'version'     => '1.1.39',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33637,7 +34272,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.38',
+            'version'     => '1.1.39',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33645,7 +34280,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.38',
+            'version'     => '1.1.39',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33653,7 +34288,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.38',
+            'version'     => '1.1.39',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33661,7 +34296,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.38',
+            'version'     => '1.1.39',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

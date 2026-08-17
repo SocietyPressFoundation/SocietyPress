@@ -19,6 +19,62 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.39] — 2026-08-17
+
+### Changed
+
+**The dashboard now shows your job, not everyone's**
+
+The five tiles across the top of the dashboard were always the same five, and
+all five were about members. A treasurer signed in to a screen with nothing
+about money on it. A librarian signed in to a screen with nothing about the
+library. And the dashboard went on offering Upcoming Events long after a
+society had turned the Events module off, because nothing on the page had
+ever thought to ask.
+
+The dashboard now builds itself out of what your society actually runs and
+what you personally are allowed to see. A treasurer gets dues collected this
+year, donations, and orders waiting to be filled. A librarian gets the
+catalog. Whoever looks after the committees gets volunteer openings, open
+ballots, and a count of committees sitting without a chair — the sort of
+thing that otherwise goes unnoticed for a year. Nobody sets any of this up;
+it is simply right when you sign in.
+
+New tiles cover dues, donations, store orders, events and registrations,
+volunteer openings, chairless committees, open ballots, the library catalog,
+record collections and records indexed, email subscribers, documents,
+newsletters, photos, open research requests, and unread form submissions.
+Each one appears only if its module is on and only for people whose role
+covers it.
+
+**Tiles you can arrange yourself**
+
+A **Customize tiles** button lets you move any tile earlier or later and hide
+the ones you never look at. Hidden tiles are listed underneath while you are
+customizing, so putting one back is a click rather than a hunt through
+settings. **Start over** returns everything to the way it shipped. Your
+arrangement is yours alone — it does not change what anyone else sees.
+
+The controls are arrow buttons rather than drag-and-drop, on purpose: they
+work on a trackpad, they work from the keyboard, and they cannot be
+half-performed and drop a tile somewhere you did not mean.
+
+### Fixed
+
+**Dead-end shortcuts on the dashboard**
+
+The row of quick links offered Members, Events and Settings to everyone,
+including people with no permission to open them and societies with the
+module switched off. Each link now appears only when it actually goes
+somewhere.
+
+**The dashboard counted its members twice**
+
+Five membership totals were being queried on every dashboard load and then
+again by the panels below them. The page now asks once.
+
+---
+
 ## [1.1.38] — 2026-08-17
 
 ### Changed

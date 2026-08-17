@@ -19,6 +19,52 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.38] — 2026-08-17
+
+### Changed
+
+**Every PDF can now be read on the page, not just downloaded**
+
+Documents offered one button, Download, and nothing else. A member who wanted
+to check a line in the bylaws had to put a copy of the bylaws on their
+computer to do it, and anyone reluctant to download things would reasonably
+conclude the document was closed to them.
+
+PDF documents now show a **Read** button beside Download. Read opens the
+document in a window on the page — the same reader the newsletter archive
+has always used. Download saves a copy, as before. Word files, spreadsheets
+and anything else with no reader to offer keep the single Download button
+they had. In a month-by-month list, such as a run of meeting minutes, the
+date itself opens the reader and a small Download link sits beside it.
+
+**Download now actually downloads**
+
+The Download buttons on newsletters and documents both handed the file to
+the browser and let it decide, and a browser shown a PDF shows it. Download
+now saves the file and Read shows it, so the two buttons do the two
+different things their labels promise. Files with an accent or a dash in
+the name arrive under their proper name instead of a string of percent
+signs.
+
+**One reader everywhere**
+
+The newsletter archive, the store's book samples and now the documents
+library all open the same reader, so the same window and the same keyboard
+shortcuts greet a member wherever they meet a PDF. On a phone or a small
+tablet the reader steps aside and lets the device show the file full
+screen, which it does better than any window on a page can.
+
+### Fixed
+
+**Members-only newsletters no longer publish their file address**
+
+Opening an issue in the reader used the file's own address in the uploads
+folder, which meant that address was sitting in the page for anyone to copy,
+member or not. The reader now goes through the same gate the Download button
+does.
+
+---
+
 ## [1.1.37] — 2026-08-17
 
 ### Fixed

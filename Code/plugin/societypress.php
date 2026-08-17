@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.37
+ * Version:     1.1.38
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.37' );
+define( 'SOCIETYPRESS_VERSION', '1.1.38' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -33629,7 +33629,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.37',
+            'version'     => '1.1.38',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33637,7 +33637,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.37',
+            'version'     => '1.1.38',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33645,7 +33645,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.37',
+            'version'     => '1.1.38',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33653,7 +33653,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.37',
+            'version'     => '1.1.38',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33661,7 +33661,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.37',
+            'version'     => '1.1.38',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -83438,6 +83438,277 @@ add_action( 'wp_ajax_sp_generate_newsletter_cover', 'sp_ajax_generate_newsletter
 
 
 // ============================================================================
+// SHARED: PDF READER
+//
+// WHY one reader: three places put a PDF in front of a member — the newsletter
+//      archive, the store's book samples, and the documents library — and each
+//      had grown its own modal, or in the documents library's case none at all,
+//      leaving a lone "Download" button that reads as the only way in. Someone
+//      who does not want a file on their computer would conclude the document
+//      was closed to them. One component means the same window every time and
+//      one place to fix the keyboard handling.
+//
+// WHY an iframe rather than a viewer library: every browser SocietyPress
+//      supports renders PDFs natively. Shipping PDF.js would add a megabyte of
+//      JavaScript to do what is already installed.
+//
+// WHY it steps aside on a phone: a 90vw modal is a worse reader than the
+//      phone's own full-screen one, and framed PDFs scroll badly on some
+//      mobile browsers. Below the breakpoint the opener behaves as an ordinary
+//      link and the device shows the file its own way.
+//
+// Any element opts in by carrying the attributes sp_pdf_reader_attrs() builds.
+// The markup prints once per page however many openers are on it, so a page
+// builder can put a store, a newsletter archive and a document list together
+// without three readers fighting over one id.
+// ============================================================================
+
+/**
+ * Can this file be read in the browser rather than only downloaded?
+ *
+ * Extension rather than stored MIME: the documents library records the file
+ * name for every row, but its MIME column is optional and older rows predate
+ * it. A wrong guess here is cosmetic — an unreadable file simply keeps the
+ * download-only treatment it has today.
+ *
+ * @param string $file_name The stored file name.
+ */
+function sp_pdf_is_readable( string $file_name ): bool {
+    return strtolower( (string) pathinfo( $file_name, PATHINFO_EXTENSION ) ) === 'pdf';
+}
+
+/**
+ * Send the header that decides whether a file is shown or saved.
+ *
+ * WHY it is worth a function: the quoted filename has to be plain ASCII or
+ * older browsers mangle it, while anything with an accent in its name needs
+ * the RFC 6266 form beside it to survive. Getting that wrong turns a file
+ * called "Bylaws — 2026.pdf" into "Bylaws%20%E2%80%94%202026.pdf" on the
+ * member's desktop, which is exactly the sort of thing nobody reports and
+ * everybody notices.
+ *
+ * @param string $file_name     Name to offer the file under.
+ * @param bool   $as_attachment True to save, false to render in place.
+ */
+function sp_send_file_disposition( string $file_name, bool $as_attachment ): void {
+    $file_name = $file_name !== '' ? $file_name : 'download';
+    $ascii     = sanitize_file_name( remove_accents( $file_name ) );
+    if ( $ascii === '' ) {
+        $ascii = 'download';
+    }
+
+    header( sprintf(
+        'Content-Disposition: %s; filename="%s"; filename*=UTF-8\'\'%s',
+        $as_attachment ? 'attachment' : 'inline',
+        str_replace( '"', '', $ascii ),
+        rawurlencode( $file_name )
+    ) );
+}
+
+/**
+ * Did the request ask for the file to be saved rather than shown?
+ *
+ * @param bool $default What to do when the request says nothing either way.
+ *                      Each module keeps the behaviour its existing links
+ *                      already have, so bookmarks and shared links do not
+ *                      change meaning under anyone.
+ */
+function sp_file_request_wants_download( bool $default ): bool {
+    if ( ! isset( $_GET['dl'] ) ) {
+        return $default;
+    }
+
+    return (string) $_GET['dl'] === '1';
+}
+
+/**
+ * Build the attributes that turn any element into a reader opener.
+ *
+ * @param string $view_url     Gated URL that streams the PDF inline.
+ * @param string $title        Heading shown above the reader.
+ * @param string $download_url Gated URL that forces a save. Omit to leave the
+ *                             download button out — the store's samples do,
+ *                             deliberately, since handing over the file is the
+ *                             one thing a sample is not for.
+ * @return string Attribute string, already escaped, with a leading space.
+ */
+function sp_pdf_reader_attrs( string $view_url, string $title, string $download_url = '' ): string {
+    $attrs = ' data-sp-pdf="' . esc_url( $view_url ) . '"'
+           . ' data-sp-pdf-title="' . esc_attr( $title ) . '"';
+
+    if ( $download_url !== '' ) {
+        $attrs .= ' data-sp-pdf-download="' . esc_url( $download_url ) . '"';
+    }
+
+    return $attrs;
+}
+
+/**
+ * Print the reader's markup, styles and behaviour. Safe to call repeatedly;
+ * every call after the first does nothing.
+ */
+function sp_pdf_reader(): void {
+    static $printed = false;
+    if ( $printed ) {
+        return;
+    }
+    $printed = true;
+
+    // WHY the display rules live here and not only in the theme: the theme
+    // styles .sp-pdf-modal for looks, but whether the thing is on screen is
+    // the component's own business. Kept together, a stylesheet that has not
+    // caught up can never leave the reader stuck open over the page.
+    ?>
+    <style>
+    .sp-pdf-modal { display: none; }
+    .sp-pdf-modal.sp-pdf-open { display: flex; }
+    /* The theme gives every button in here a display, which would otherwise
+       beat the browser's own meaning of the hidden attribute and leave a
+       download button on a sample that has nothing to download. */
+    .sp-pdf-modal [hidden] { display: none; }
+    </style>
+
+    <div id="sp-pdf-reader" class="sp-pdf-modal" role="dialog" aria-modal="true" aria-labelledby="sp-pdf-reader-title">
+        <div class="sp-pdf-modal-overlay"></div>
+        <div class="sp-pdf-modal-content" tabindex="-1">
+            <div class="sp-pdf-modal-header">
+                <h3 id="sp-pdf-reader-title"></h3>
+                <div class="sp-pdf-modal-actions">
+                    <a href="#" id="sp-pdf-reader-download" class="sp-pdf-modal-btn sp-pdf-modal-btn-download" hidden><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
+                    <button type="button" id="sp-pdf-reader-close" class="sp-pdf-modal-btn sp-pdf-modal-btn-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
+                </div>
+            </div>
+            <div class="sp-pdf-modal-body">
+                <iframe id="sp-pdf-reader-frame" src="" title="<?php esc_attr_e( 'PDF reader', 'societypress' ); ?>"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * Shared PDF reader.
+     *
+     * One handler bound to the document serves every opener on the page, so
+     * nothing here needs to know how many there are or when they appeared.
+     */
+    (function() {
+        'use strict';
+
+        var modal = document.getElementById('sp-pdf-reader');
+        if (!modal) return;
+
+        var title   = document.getElementById('sp-pdf-reader-title');
+        var frame   = document.getElementById('sp-pdf-reader-frame');
+        var dlLink  = document.getElementById('sp-pdf-reader-download');
+        var closeEl = document.getElementById('sp-pdf-reader-close');
+        var overlay = modal.querySelector('.sp-pdf-modal-overlay');
+        var opener  = null;  // element that opened it, so focus can go back
+
+        // Narrow screens get the device's own reader instead. Read per click
+        // rather than once, so a rotated tablet is judged on how it is held now.
+        function useNativeReader() {
+            return window.matchMedia('(max-width: 700px)').matches;
+        }
+
+        function open(el) {
+            var url = el.getAttribute('data-sp-pdf');
+            if (!url) return;
+
+            opener            = document.activeElement;
+            title.textContent = el.getAttribute('data-sp-pdf-title') || '';
+
+            var dl = el.getAttribute('data-sp-pdf-download');
+            if (dl) {
+                dlLink.href = dl;
+                dlLink.hidden = false;
+            } else {
+                dlLink.removeAttribute('href');
+                dlLink.hidden = true;
+            }
+
+            frame.src = url;
+            modal.classList.add('sp-pdf-open');
+            document.body.style.overflow = 'hidden';  // stop the page behind from scrolling
+            if (closeEl && typeof closeEl.focus === 'function') {
+                try { closeEl.focus(); } catch (e) {}
+            }
+        }
+
+        function closeModal() {
+            modal.classList.remove('sp-pdf-open');
+            frame.src = '';  // stops the PDF rendering behind the closed window
+            document.body.style.overflow = '';
+            if (opener && typeof opener.focus === 'function') {
+                try { opener.focus(); } catch (e) {}
+            }
+            opener = null;
+        }
+
+        document.addEventListener('click', function(e) {
+            var el = e.target.closest('[data-sp-pdf]');
+            if (!el) return;
+
+            if (useNativeReader()) {
+                // An opener that is a real link already goes somewhere sensible;
+                // leave it alone. One that is not gets a tab opened for it.
+                if (!el.getAttribute('href')) {
+                    e.preventDefault();
+                    window.open(el.getAttribute('data-sp-pdf'), '_blank', 'noopener');
+                }
+                return;
+            }
+
+            e.preventDefault();
+            open(el);
+        });
+
+        // Openers that are not links or buttons — the newsletter cover is a
+        // div — still have to answer the keyboard.
+        document.addEventListener('keydown', function(e) {
+            if (e.key !== 'Enter' && e.key !== ' ') return;
+            var el = e.target.closest('[data-sp-pdf][role="button"]');
+            if (!el) return;
+            e.preventDefault();
+            if (useNativeReader()) {
+                window.open(el.getAttribute('data-sp-pdf'), '_blank', 'noopener');
+                return;
+            }
+            open(el);
+        });
+
+        if (closeEl) closeEl.addEventListener('click', closeModal);
+        if (overlay) overlay.addEventListener('click', closeModal);
+
+        // Escape closes it; Tab is kept inside it while it is open.
+        document.addEventListener('keydown', function(e) {
+            if (!modal.classList.contains('sp-pdf-open')) return;
+            if (e.key === 'Escape') {
+                closeModal();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+
+            var focusables = Array.prototype.filter.call(
+                modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+                function(el) { return !el.hidden && el.offsetParent !== null; }
+            );
+            if (!focusables.length) return;
+
+            var first = focusables[0];
+            var last  = focusables[focusables.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault(); last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault(); first.focus();
+            }
+        });
+    })();
+    </script>
+    <?php
+}
+
+
+// ============================================================================
 // AJAX: Newsletter PDF Download
 //
 // WHY: Rather than exposing the raw wp-content/uploads URL (which anyone could
@@ -83445,6 +83716,11 @@ add_action( 'wp_ajax_sp_generate_newsletter_cover', 'sp_ajax_generate_newsletter
 //      the user is logged in before serving the file. For public newsletters,
 //      anyone can download. This also lets us log downloads in the future if
 //      we ever want analytics on newsletter engagement.
+//
+// WHY the dl parameter: the same file has to arrive two different ways. The
+//      reader needs it rendered in place; the download button needs it saved.
+//      Only the Content-Disposition header differs, so one endpoint serves
+//      both rather than two endpoints repeating the same access checks.
 // ============================================================================
 add_action( 'wp_ajax_sp_newsletter_download',        'sp_ajax_newsletter_download' );
 add_action( 'wp_ajax_nopriv_sp_newsletter_download', 'sp_ajax_newsletter_download' );
@@ -83509,11 +83785,16 @@ function sp_ajax_newsletter_download(): void {
     // because we haven't echoed anything ourselves.
     while ( ob_get_level() > 0 ) { ob_end_clean(); }
 
-    // Serve the file with proper headers for download
+    // Serve the file. Saving stays the default: every link that existed before
+    // the reader did asked for a download and must go on getting one.
     nocache_headers();
     header( 'Content-Type: application/pdf' );
-    header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $nl->title ) . '.pdf"' );
+    sp_send_file_disposition(
+        sanitize_file_name( $nl->title ) . '.pdf',
+        sp_file_request_wants_download( true )
+    );
     header( 'Content-Length: ' . filesize( $real_file ) );
+    header( 'X-Content-Type-Options: nosniff' );
 
     readfile( $real_file );
     exit;
@@ -83733,6 +84014,12 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
 
                     // Download URL goes through our AJAX endpoint for access control
                     $download_url = admin_url( 'admin-ajax.php?action=sp_newsletter_download&newsletter_id=' . $nl->id );
+
+                    // WHY the reader reads through the endpoint too, rather than
+                    // the raw uploads URL it used to: putting that URL in the page
+                    // handed out the one address that answers to anybody, member
+                    // or not. Same file, same checks, one door.
+                    $view_url = $download_url . '&dl=0';
                 ?>
                     <div class="sp-newsletter-card"
                          data-id="<?php echo (int) $nl->id; ?>"
@@ -83741,9 +84028,7 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
                         <!-- Cover image -->
                         <div class="sp-newsletter-card-cover"
                              <?php if ( $can_access && $pdf_url ) : ?>
-                                 data-pdf="<?php echo esc_url( $pdf_url ); ?>"
-                                 data-title="<?php echo esc_attr( $nl->title ); ?>"
-                                 data-download="<?php echo esc_url( $download_url ); ?>"
+                                 <?php echo sp_pdf_reader_attrs( $view_url, $nl->title, $download_url ); ?>
                                  role="button" tabindex="0"
                                  aria-label="<?php echo esc_attr( sprintf( /* translators: %s: newsletter title */ __( 'Open preview of %s', 'societypress' ), $nl->title ) ); ?>"
                              <?php endif; ?>>
@@ -83801,7 +84086,15 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
                             ?>
                             <div class="sp-newsletter-card-actions">
                                 <?php if ( $can_access && $pdf_url ) : ?>
-                                    <button type="button" class="sp-newsletter-btn sp-newsletter-btn-read"><?php esc_html_e( 'Read Online', 'societypress' ); ?></button>
+                                    <?php
+                                    // WHY a link and not a button: with JavaScript
+                                    // off, or before it has loaded, this still opens
+                                    // the issue in a tab. The reader takes over the
+                                    // click when it can.
+                                    ?>
+                                    <a href="<?php echo esc_url( $view_url ); ?>" target="_blank" rel="noopener"
+                                       class="sp-newsletter-btn sp-newsletter-btn-read"
+                                       <?php echo sp_pdf_reader_attrs( $view_url, $nl->title, $download_url ); ?>><?php esc_html_e( 'Read Online', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $download_url ); ?>" class="sp-newsletter-btn sp-newsletter-btn-download"><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
                                 <?php else : ?>
                                     <span class="sp-newsletter-members-badge" title="<?php echo esc_attr__( 'Cover, title, date, and contents are visible to everyone. The PDF itself is reserved for members.', 'societypress' ); ?>"><?php esc_html_e( 'Members Only', 'societypress' ); ?></span>
@@ -83816,33 +84109,14 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
 
     <?php if ( ! $primary ) { return; } ?>
 
-    <!-- PDF Viewer Modal. Rendered once per page: the handlers below are bound
-         to document, so one modal serves every card on the page. -->
-    <div id="sp-pdf-modal" class="sp-pdf-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-pdf-modal-title">
-        <div class="sp-pdf-modal-overlay"></div>
-        <div class="sp-pdf-modal-content" tabindex="-1">
-            <div class="sp-pdf-modal-header">
-                <h3 id="sp-pdf-modal-title"></h3>
-                <div class="sp-pdf-modal-actions">
-                    <a href="#" id="sp-pdf-modal-download" class="sp-newsletter-btn sp-newsletter-btn-download" target="_blank"><?php esc_html_e( 'Download a Copy', 'societypress' ); ?></a>
-                    <button type="button" id="sp-pdf-modal-close" class="sp-newsletter-btn sp-newsletter-btn-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
-                </div>
-            </div>
-            <div class="sp-pdf-modal-body">
-                <iframe id="sp-pdf-modal-iframe" src="" frameborder="0" title="<?php esc_attr_e( 'Newsletter PDF viewer', 'societypress' ); ?>"></iframe>
-            </div>
-        </div>
-    </div>
+    <?php sp_pdf_reader(); ?>
 
     <script>
     /**
      * Newsletter Archive — Frontend Interactions
      *
-     * WHY: Three pieces of interactivity:
-     * 1. Search filter — instant client-side filtering by title as the user types
-     * 2. PDF viewer modal — clicking a card cover opens an iframe modal with the
-     *    browser's native PDF renderer (no PDF.js dependency needed)
-     * 3. Escape key / overlay click closes the modal
+     * Search and year filtering only. Opening an issue is the shared PDF
+     * reader's job — the cards carry its attributes and it binds itself.
      */
     (function() {
         'use strict';
@@ -83982,89 +84256,6 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
 
         apply();
 
-        // ========== PDF VIEWER MODAL ==========
-        var modal       = document.getElementById('sp-pdf-modal');
-        var modalTitle  = document.getElementById('sp-pdf-modal-title');
-        var modalIframe = document.getElementById('sp-pdf-modal-iframe');
-        var modalDL     = document.getElementById('sp-pdf-modal-download');
-        var modalClose  = document.getElementById('sp-pdf-modal-close');
-        var overlay     = modal ? modal.querySelector('.sp-pdf-modal-overlay') : null;
-        var modalOpener = null;  // element that triggered open, for focus return
-
-        // Open modal when clicking a card cover that has a data-pdf attribute,
-        // or pressing Enter/Space when one has keyboard focus.
-        function openPdfModal(cover) {
-            if (!cover || !modal) return;
-            modalOpener            = document.activeElement;
-            modalTitle.textContent = cover.getAttribute('data-title') || '';
-            modalIframe.src        = cover.getAttribute('data-pdf') || '';
-            modalDL.href           = cover.getAttribute('data-download') || '#';
-            modal.style.display    = 'flex';
-            document.body.style.overflow = 'hidden'; // Prevent background scrolling
-            // Move focus into the modal so keyboard users can act on it.
-            if (modalClose && typeof modalClose.focus === 'function') {
-                try { modalClose.focus(); } catch (e) {}
-            }
-        }
-
-        // The cover and the "Read Online" button both open the reader. The button
-        // carries no data of its own — it borrows its card's cover — so the two
-        // paths can never drift apart.
-        document.addEventListener('click', function(e) {
-            var opener = e.target.closest('.sp-newsletter-card-cover[data-pdf], .sp-newsletter-btn-read');
-            if (!opener) return;
-            var cover = opener.classList.contains('sp-newsletter-btn-read')
-                ? (opener.closest('.sp-newsletter-card') || document).querySelector('.sp-newsletter-card-cover[data-pdf]')
-                : opener;
-            if (!cover) return;
-            e.preventDefault();
-            openPdfModal(cover);
-        });
-
-        document.addEventListener('keydown', function(e) {
-            if (e.key !== 'Enter' && e.key !== ' ') return;
-            var cover = e.target.closest('.sp-newsletter-card-cover[data-pdf]');
-            if (!cover) return;
-            e.preventDefault();
-            openPdfModal(cover);
-        });
-
-        // Close modal
-        function closeModal() {
-            if (!modal) return;
-            modal.style.display          = 'none';
-            modalIframe.src              = '';
-            document.body.style.overflow = '';
-            // Return focus to the element that opened the modal.
-            if (modalOpener && typeof modalOpener.focus === 'function') {
-                try { modalOpener.focus(); } catch (e) {}
-            }
-            modalOpener = null;
-        }
-
-        if (modalClose) modalClose.addEventListener('click', closeModal);
-        if (overlay)    overlay.addEventListener('click', closeModal);
-
-        // Escape closes modal; Tab is trapped inside it.
-        document.addEventListener('keydown', function(e) {
-            if (!modal || modal.style.display === 'none') return;
-            if (e.key === 'Escape') {
-                closeModal();
-                return;
-            }
-            if (e.key !== 'Tab') return;
-            var focusables = modal.querySelectorAll(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            );
-            if (!focusables.length) return;
-            var first = focusables[0];
-            var last  = focusables[focusables.length - 1];
-            if (e.shiftKey && document.activeElement === first) {
-                e.preventDefault(); last.focus();
-            } else if (!e.shiftKey && document.activeElement === last) {
-                e.preventDefault(); first.focus();
-            }
-        });
     })();
     </script>
     <?php
@@ -89648,9 +89839,19 @@ function sp_render_store_frontend(): void {
                                 ?>
                                 <?php if ( ! empty( $entry['preview_url'] ) ) : ?>
                                     <div class="sp-store-preview">
+                                        <?php
+                                        // WHY no download URL is passed: this is a
+                                        // sample of something the society sells.
+                                        // Reading it in place is the point; handing
+                                        // over the file is not, and a download button
+                                        // sits oddly next to an Add to Cart. Left out,
+                                        // the reader shows none.
+                                        ?>
                                         <button type="button" class="sp-store-preview-btn"
-                                                data-pdf="<?php echo esc_url( $entry['preview_url'] ); ?>"
-                                                data-title="<?php echo esc_attr( sprintf( /* translators: %s: product title */ __( 'Sample — %s', 'societypress' ), $entry['title'] ) ); ?>">
+                                                <?php echo sp_pdf_reader_attrs(
+                                                    $entry['preview_url'],
+                                                    sprintf( /* translators: %s: product title */ __( 'Sample — %s', 'societypress' ), $entry['title'] )
+                                                ); ?>>
                                             <?php esc_html_e( 'See a sample', 'societypress' ); ?>
                                         </button>
                                     </div>
@@ -89671,108 +89872,8 @@ function sp_render_store_frontend(): void {
         </div>
     </div>
 
-    <!-- Sample reader. Rendered once per page and shared by every card, since the
-         handler below is bound to the document.
 
-         WHY its own id rather than the newsletter archive's #sp-pdf-modal: a page
-         builder can put a store and a newsletter archive on the same page, and two
-         elements answering to one id is a bug waiting for someone else to find. The
-         .sp-pdf-modal class still carries all the shared styling. -->
-    <div id="sp-store-pdf-modal" class="sp-pdf-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="sp-store-pdf-modal-title">
-        <div class="sp-pdf-modal-overlay"></div>
-        <div class="sp-pdf-modal-content" tabindex="-1">
-            <div class="sp-pdf-modal-header">
-                <h3 id="sp-store-pdf-modal-title"></h3>
-                <div class="sp-pdf-modal-actions">
-                    <?php
-                    // WHY there is no download button here: this is a sample of
-                    // something the society sells. Reading it in place is the
-                    // point; handing over the file is not, and a button
-                    // offering to do so sits oddly next to an Add to Cart.
-                    ?>
-                    <button type="button" id="sp-store-pdf-modal-close" class="sp-pdf-modal-btn sp-pdf-modal-btn-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
-                </div>
-            </div>
-            <div class="sp-pdf-modal-body">
-                <iframe id="sp-store-pdf-modal-iframe" src="" frameborder="0" title="<?php esc_attr_e( 'Book sample viewer', 'societypress' ); ?>"></iframe>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    /**
-     * Store — sample reader.
-     *
-     * Opens a product's sample PDF in an iframe using the browser's own PDF
-     * renderer, so no viewer library is needed. Each "See a sample" button
-     * carries its own PDF url and title, which is why one handler on the
-     * document serves every card without knowing how many there are.
-     */
-    (function() {
-        'use strict';
-
-        var modal  = document.getElementById('sp-store-pdf-modal');
-        if (!modal) return;
-
-        var title  = document.getElementById('sp-store-pdf-modal-title');
-        var frame  = document.getElementById('sp-store-pdf-modal-iframe');
-        var close  = document.getElementById('sp-store-pdf-modal-close');
-        var overlay = modal.querySelector('.sp-pdf-modal-overlay');
-        var opener = null;  // element that opened it, so focus can go back
-
-        function open(btn) {
-            opener           = document.activeElement;
-            title.textContent = btn.getAttribute('data-title') || '';
-            frame.src         = btn.getAttribute('data-pdf') || '';
-            modal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';  // stop the page behind from scrolling
-            if (close && typeof close.focus === 'function') {
-                try { close.focus(); } catch (e) {}
-            }
-        }
-
-        function closeModal() {
-            modal.style.display = 'none';
-            frame.src           = '';  // stops the PDF rendering in the background
-            document.body.style.overflow = '';
-            if (opener && typeof opener.focus === 'function') {
-                try { opener.focus(); } catch (e) {}
-            }
-            opener = null;
-        }
-
-        document.addEventListener('click', function(e) {
-            var btn = e.target.closest('.sp-store-preview-btn[data-pdf]');
-            if (!btn) return;
-            e.preventDefault();
-            open(btn);
-        });
-
-        if (close)   close.addEventListener('click', closeModal);
-        if (overlay) overlay.addEventListener('click', closeModal);
-
-        // Escape closes it; Tab is kept inside it while it is open.
-        document.addEventListener('keydown', function(e) {
-            if (modal.style.display === 'none') return;
-            if (e.key === 'Escape') {
-                closeModal();
-                return;
-            }
-            if (e.key !== 'Tab') return;
-            var focusables = modal.querySelectorAll(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-            );
-            if (!focusables.length) return;
-            var first = focusables[0];
-            var last  = focusables[focusables.length - 1];
-            if (e.shiftKey && document.activeElement === first) {
-                e.preventDefault(); last.focus();
-            } else if (!e.shiftKey && document.activeElement === last) {
-                e.preventDefault(); first.focus();
-            }
-        });
-    })();
-    </script>
+    <?php sp_pdf_reader(); ?>
 
     <!-- Store cart JavaScript — handles Add to Cart, mini-cart badge, and cart interactions.
          WHY here: Inline at the bottom of the store page because it's store-specific UI.
@@ -92491,6 +92592,60 @@ function sp_document_place_file( string $file_url, bool $members_only ): string 
     return trailingslashit( $public_url ) . rawurlencode( $name );
 }
 
+/**
+ * Resolve a stored document URL to a file inside this site's uploads folder.
+ *
+ * The mirror of sp_document_protected_path() for files that never needed
+ * protecting. Returns false for anything that resolves outside uploads, so a
+ * tampered row cannot walk the disk.
+ *
+ * @param string $file_url The stored URL.
+ * @return string|false Absolute path, or false when it is not a local upload.
+ */
+function sp_document_local_path( string $file_url ) {
+    $uploads = wp_upload_dir();
+
+    if ( strpos( $file_url, $uploads['baseurl'] . '/' ) !== 0 ) {
+        return false;
+    }
+
+    $relative = rawurldecode( substr( $file_url, strlen( $uploads['baseurl'] ) + 1 ) );
+    $real     = realpath( trailingslashit( $uploads['basedir'] ) . $relative );
+    $base     = realpath( $uploads['basedir'] );
+
+    if ( ! $real || ! $base || strpos( $real, $base . DIRECTORY_SEPARATOR ) !== 0 ) {
+        return false;
+    }
+
+    return $real;
+}
+
+/**
+ * Send a document file to the browser and stop. Does not return.
+ *
+ * @param string $path          Absolute path, already checked for containment.
+ * @param string $name          Name to present the file under.
+ * @param bool   $as_attachment True to save it, false to show it in place.
+ */
+function sp_stream_document_file( string $path, string $name, bool $as_attachment ): void {
+    $type = wp_check_filetype( $name );
+
+    nocache_headers();
+    header( 'Content-Type: ' . ( $type['type'] ?: 'application/octet-stream' ) );
+    header( 'Content-Length: ' . filesize( $path ) );
+    sp_send_file_disposition( $name, $as_attachment );
+    // Nothing here is meant to be sniffed into something else.
+    header( 'X-Content-Type-Options: nosniff' );
+
+    // Anything already buffered would corrupt the file.
+    while ( ob_get_level() ) {
+        ob_end_clean();
+    }
+
+    readfile( $path );
+    exit;
+}
+
 function sp_ajax_document_download(): void {
     // No nonce by design: document links are meant to be shareable/bookmarkable
     // direct URLs, so they can't be tied to a per-session nonce. This is a
@@ -92505,7 +92660,7 @@ function sp_ajax_document_download(): void {
     }
 
     $doc = $wpdb->get_row( $wpdb->prepare(
-        "SELECT d.id, d.file_url, d.access_level, d.status, c.access_level AS cat_access
+        "SELECT d.id, d.file_url, d.file_name, d.access_level, d.status, c.access_level AS cat_access
          FROM {$wpdb->prefix}sp_documents d
          LEFT JOIN {$wpdb->prefix}sp_document_categories c ON d.category_id = c.id
          WHERE d.id = %d",
@@ -92542,27 +92697,17 @@ function sp_ajax_document_download(): void {
         }
     }
 
+    // Showing stays the default. Every link this module has ever handed out
+    // rendered the file in place, and a bookmark from last year must not start
+    // saving to somebody's downloads folder because the reader arrived.
+    $wants_download = sp_file_request_wants_download( false );
+
     // A file in the protected folder cannot be redirected to — the web server
     // refuses it, which is the point. Having passed the same check the page
     // makes, read it back and send it.
     $protected_path = sp_document_protected_path( $doc->file_url );
     if ( $protected_path ) {
-        $name = $doc->file_name ?: basename( $protected_path );
-        $type = wp_check_filetype( $name );
-
-        nocache_headers();
-        header( 'Content-Type: ' . ( $type['type'] ?: 'application/octet-stream' ) );
-        header( 'Content-Length: ' . filesize( $protected_path ) );
-        header( 'Content-Disposition: inline; filename="' . rawurlencode( $name ) . '"' );
-        // Nothing here is meant to be framed or sniffed into something else.
-        header( 'X-Content-Type-Options: nosniff' );
-
-        // Anything already buffered would corrupt the file.
-        while ( ob_get_level() ) {
-            ob_end_clean();
-        }
-        readfile( $protected_path );
-        exit;
+        sp_stream_document_file( $protected_path, $doc->file_name ?: basename( $protected_path ), $wants_download );
     }
 
     // Same-origin guard: only redirect to URLs on this site (file_url comes
@@ -92572,6 +92717,19 @@ function sp_ajax_document_download(): void {
     $file_host = wp_parse_url( $doc->file_url, PHP_URL_HOST );
     if ( ! $file_host || strcasecmp( $file_host, (string) $home_host ) !== 0 ) {
         wp_die( esc_html__( 'Document URL is invalid.', 'societypress' ), '', 400 );
+    }
+
+    // WHY a public file is streamed too when a download is asked for: handing
+    // the browser its own URL lets the browser decide, and a browser shown a
+    // PDF shows it. The Download button would then do the same thing as the
+    // View button, which is the complaint that started all this. Only the save
+    // path needs it — showing is what a redirect already does well, and a
+    // redirect keeps PHP out of the way of a large public file.
+    if ( $wants_download ) {
+        $local_path = sp_document_local_path( $doc->file_url );
+        if ( $local_path ) {
+            sp_stream_document_file( $local_path, $doc->file_name ?: basename( $local_path ), true );
+        }
     }
 
     wp_safe_redirect( $doc->file_url, 302, 'SocietyPress' );
@@ -95093,9 +95251,18 @@ function sp_frontend_documents(): void {
 .sp-doc-new { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: #e8f5e9; color: #166534; vertical-align: middle; }
 .sp-doc-meta { color: #6b7280; font-size: 13px; margin-top: 2px; }
 .sp-doc-desc { margin-top: 4px; }
-.sp-doc-action { flex: 0 0 auto; }
+.sp-doc-action { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* Reading is the ordinary way in, so it carries the solid fill and downloading
+   is outlined beside it — the same pairing the newsletter archive uses, so the
+   two pages do not teach a member two different habits. */
+.sp-doc-view { display: inline-block; padding: 6px 14px; border: 1px solid #0d1f3c; border-radius: 6px; text-decoration: none; font-weight: 600; background: #0d1f3c; color: #fff; }
+.sp-doc-view:hover, .sp-doc-view:focus { background: #16305c; color: #fff; }
 .sp-doc-download { display: inline-block; padding: 6px 14px; border: 1px solid #0d1f3c; border-radius: 6px; text-decoration: none; font-weight: 600; }
 .sp-doc-download:hover { background: #0d1f3c; color: #fff; }
+/* The compact month/year list has no room for a second button, so saving is a
+   quiet link that sits out of the way of the title. */
+.sp-doc-save { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-decoration: none; margin-left: 8px; }
+.sp-doc-save:hover, .sp-doc-save:focus { color: #0d1f3c; text-decoration: underline; }
 .sp-doc-locked { color: #6b7280; font-size: 13px; }
 .sp-doc-empty { color: #6b7280; font-style: italic; }
 .sp-doc-monthyear { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 32px; }
@@ -95201,8 +95368,20 @@ function sp_frontend_documents(): void {
                 $can_access = ( $d->access_level === 'public' ) || $is_member;
                 echo '<li>';
                 if ( $can_access ) {
-                    $download_url = admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $d->id );
-                    echo '<a href="' . esc_url( $download_url ) . '" target="_blank" rel="noopener">' . esc_html( $label ) . '</a>';
+                    $base_url     = admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $d->id );
+                    $view_url     = $base_url . '&dl=0';
+                    $download_url = $base_url . '&dl=1';
+
+                    // The title opens the reader; saving is the small link beside
+                    // it. A minutes archive is read far more often than it is
+                    // filed away, so the common act gets the whole line.
+                    if ( sp_pdf_is_readable( (string) $d->file_name ) ) {
+                        echo '<a href="' . esc_url( $view_url ) . '" target="_blank" rel="noopener"'
+                             . sp_pdf_reader_attrs( $view_url, $d->title, $download_url ) . '>' . esc_html( $label ) . '</a>';
+                        echo ' <a href="' . esc_url( $download_url ) . '" class="sp-doc-save">' . esc_html__( 'Download', 'societypress' ) . '</a>';
+                    } else {
+                        echo '<a href="' . esc_url( $download_url ) . '">' . esc_html( $label ) . '</a>';
+                    }
                 } else {
                     echo '<span class="sp-doc-locked">&#128274; ' . esc_html( $label ) . ' — <a href="' . esc_url( $login_url ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a></span>';
                 }
@@ -95219,6 +95398,9 @@ function sp_frontend_documents(): void {
         }
         echo '</section>';
     }
+
+    // One reader for however many documents the page ended up listing.
+    sp_pdf_reader();
 }
 
 function sp_render_document_row( object $doc, bool $is_member, string $login_url, callable $type_icon ): void {
@@ -95271,8 +95453,21 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
     if ( $can_access ) {
         // WHY: Route through the AJAX handler so members-only access is enforced server-side.
         // The raw file URL is never exposed to the browser for restricted documents.
-        $download_url = admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $doc->id );
-        echo '<a href="' . esc_url( $download_url ) . '" class="sp-doc-download" target="_blank" rel="noopener">'
+        $base_url     = admin_url( 'admin-ajax.php?action=sp_document_download&id=' . (int) $doc->id );
+        $view_url     = $base_url . '&dl=0';
+        $download_url = $base_url . '&dl=1';
+
+        // WHY reading comes first, and only for a PDF: a member looking up the
+        // bylaws wants to read the bylaws, not to acquire a copy of them — and
+        // a lone Download button reads as the only way in. A Word file has no
+        // reader to offer, so it keeps the single button it always had.
+        if ( sp_pdf_is_readable( (string) $doc->file_name ) ) {
+            echo '<a href="' . esc_url( $view_url ) . '" class="sp-doc-view" target="_blank" rel="noopener"'
+                 . sp_pdf_reader_attrs( $view_url, $doc->title, $download_url ) . '>'
+                 . esc_html__( 'Read', 'societypress' ) . '</a> ';
+        }
+
+        echo '<a href="' . esc_url( $download_url ) . '" class="sp-doc-download">'
              . esc_html__( 'Download', 'societypress' ) . '</a>';
     } else {
         echo '<span class="sp-doc-locked">&#128274; <a href="' . esc_url( $login_url ) . '">'

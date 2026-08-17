@@ -19,6 +19,28 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.36] — 2026-08-16
+
+### Added
+
+**Deleting a file, with the thing that stops you deleting the wrong one**
+
+Files could delete a folder but not a file. Tick what you want gone and press
+Delete.
+
+A file something is using will not delete. The check runs before the question
+is asked, so you get "3 files? One other is being used and will be kept"
+rather than a confirmation followed by a refusal — and a picture cannot
+quietly disappear from a store product or a newsletter because somebody was
+tidying up.
+
+Delete means delete. The file leaves the whole site, not only this screen,
+and the confirmation says so. Nothing outside this site's own uploads folder
+is ever touched — a picture hosted somewhere else loses its record here and
+stays where it is, because it was never ours to remove.
+
+---
+
 ## [1.1.35] — 2026-08-16
 
 ### Added

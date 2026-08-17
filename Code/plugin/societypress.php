@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.35
+ * Version:     1.1.36
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.35' );
+define( 'SOCIETYPRESS_VERSION', '1.1.36' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -33629,7 +33629,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.35',
+            'version'     => '1.1.36',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33637,7 +33637,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.35',
+            'version'     => '1.1.36',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33645,7 +33645,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.35',
+            'version'     => '1.1.36',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33653,7 +33653,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.35',
+            'version'     => '1.1.36',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33661,7 +33661,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.35',
+            'version'     => '1.1.36',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92878,6 +92878,10 @@ function sp_render_files_page(): void {
                             <?php endforeach; ?>
                         </select>
 
+                        <button type="button" class="button sp-text-error-btn" id="sp-delete-files" disabled>
+                            <?php esc_html_e( 'Delete', 'societypress' ); ?>
+                        </button>
+
                         <?php if ( ! $showing_all && $current ) : ?>
                             <button type="button" class="button" id="sp-rename-folder" data-folder-id="<?php echo esc_attr( $current ); ?>" data-folder-name="<?php echo esc_attr( $heading ); ?>">
                                 <?php esc_html_e( 'Rename folder', 'societypress' ); ?>
@@ -93072,6 +93076,7 @@ function sp_render_files_page_assets(): void {
                 chooseFile: <?php echo wp_json_encode( __( 'Add files to this folder', 'societypress' ) ); ?>,
                 useFiles:   <?php echo wp_json_encode( __( 'Add these files', 'societypress' ) ); ?>,
                 nothing:    <?php echo wp_json_encode( __( 'Nothing is using this file.', 'societypress' ) ); ?>,
+                del:        <?php echo wp_json_encode( __( 'Delete', 'societypress' ) ); ?>,
                 failed:     <?php echo wp_json_encode( __( 'That did not work. Nothing was changed.', 'societypress' ) ); ?>
             }
         };
@@ -93107,9 +93112,12 @@ function sp_render_files_page_assets(): void {
                 .map(function (c) { return c.value; });
         }
 
+        var delBtn = document.getElementById('sp-delete-files');
+
         function refreshSelection() {
             var ids = selectedIds();
             if (moveTo) { moveTo.disabled = ids.length === 0; }
+            if (delBtn) { delBtn.disabled = ids.length === 0; }
             if (note) {
                 note.textContent = ids.length
                     ? ids.length + ' ' + (ids.length === 1 ? cfg.i18n.selected : cfg.i18n.selectedPl)
@@ -93142,6 +93150,23 @@ function sp_render_files_page_assets(): void {
             moveTo.addEventListener('change', function () {
                 if (moveTo.value === '') { return; }
                 move(selectedIds(), moveTo.value);
+            });
+        }
+
+        if (delBtn) {
+            delBtn.addEventListener('click', function () {
+                var ids = selectedIds();
+                if (!ids.length) { return; }
+
+                /* The check runs first so the confirmation can say what is in
+                   the way, rather than asking a question and then refusing. */
+                post('sp_files_delete_check', { files: ids.join(',') }, function (data) {
+                    spConfirm(data.message, function () {
+                        post('sp_files_delete', { files: data.files }, function () {
+                            window.location.reload();
+                        });
+                    }, { confirmText: cfg.i18n.del });
+                });
             });
         }
 
@@ -93648,6 +93673,168 @@ add_action( 'wp_ajax_sp_files_adopt', function () {
 
     wp_send_json_success( [ 'added' => $added ] );
 } );
+
+/**
+ * AJAX: say what deleting the selected files would do, before it is done.
+ *
+ * WHY it asks first: "Delete 12 files?" is not a fair question when four of
+ *      them are the photos on your store products. The check reports what is
+ *      in the way so the confirmation can name it, and so a delete that would
+ *      break a page never gets offered in the first place.
+ */
+add_action( 'wp_ajax_sp_files_delete_check', function () {
+    sp_files_ajax_guard();
+
+    $ids = array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['files'] ?? '' ) ) ) );
+    if ( ! $ids ) {
+        wp_send_json_error( [ 'message' => __( 'No files were selected.', 'societypress' ) ] );
+    }
+
+    $free    = [];
+    $blocked = [];
+
+    foreach ( $ids as $id ) {
+        $usage = sp_get_file_usage( $id );
+        if ( $usage ) {
+            $blocked[] = [ 'id' => $id, 'usage' => $usage ];
+        } else {
+            $free[] = $id;
+        }
+    }
+
+    $free_count    = count( $free );
+    $blocked_count = count( $blocked );
+
+    if ( ! $free_count ) {
+        wp_send_json_error( [
+            'message' => _n(
+                'That file is being used, so it was not deleted. Take it off whatever is using it first.',
+                'Those files are all being used, so none were deleted. Take them off whatever is using them first.',
+                $blocked_count,
+                'societypress'
+            ),
+        ] );
+    }
+
+    $message = sprintf(
+        /* translators: %s: number of files. */
+        _n(
+            'Delete %s file? It is removed from the whole site, not only from this screen, and it cannot be brought back.',
+            'Delete %s files? They are removed from the whole site, not only from this screen, and they cannot be brought back.',
+            $free_count,
+            'societypress'
+        ),
+        number_format_i18n( $free_count )
+    );
+
+    if ( $blocked_count ) {
+        $message .= ' ' . sprintf(
+            /* translators: %s: number of files being kept. */
+            _n(
+                '%s other is being used and will be kept.',
+                '%s others are being used and will be kept.',
+                $blocked_count,
+                'societypress'
+            ),
+            number_format_i18n( $blocked_count )
+        );
+    }
+
+    wp_send_json_success( [
+        'message' => $message,
+        'files'   => implode( ',', $free ),
+    ] );
+} );
+
+/**
+ * AJAX: delete files that nothing is using.
+ *
+ * WHY it re-checks usage: the confirmation dialog was answered by a person,
+ *      which takes seconds during which somebody else may have put one of
+ *      these files on a newsletter. The check that matters is the one at the
+ *      moment of deleting, not the one that drew the dialog.
+ */
+add_action( 'wp_ajax_sp_files_delete', function () {
+    global $wpdb;
+    sp_files_ajax_guard();
+
+    $ids = array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['files'] ?? '' ) ) ) );
+    if ( ! $ids ) {
+        wp_send_json_error( [ 'message' => __( 'No files were selected.', 'societypress' ) ] );
+    }
+
+    $uploads = wp_upload_dir();
+    $deleted = 0;
+    $kept    = 0;
+
+    foreach ( $ids as $id ) {
+        if ( sp_get_file_usage( $id ) ) {
+            $kept++;
+            continue;
+        }
+
+        $file = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, url, attachment_id FROM {$wpdb->prefix}sp_files WHERE id = %d",
+            $id
+        ) );
+
+        if ( ! $file ) {
+            continue;
+        }
+
+        if ( $file->attachment_id ) {
+            wp_delete_attachment( (int) $file->attachment_id, true );
+        } else {
+            // Not a media library entry — a profile photo written straight to
+            // disk, or an address on somebody else's server. Only ever touch
+            // what is inside this site's uploads folder; anything else is not
+            // ours to delete and the record going away is the whole job.
+            $path = sp_files_local_path( (string) $file->url, $uploads );
+            if ( $path && file_exists( $path ) ) {
+                wp_delete_file( $path );
+            }
+        }
+
+        $wpdb->delete( $wpdb->prefix . 'sp_file_links', [ 'file_id' => $id ], [ '%d' ] );
+        $wpdb->delete( $wpdb->prefix . 'sp_files', [ 'id' => $id ], [ '%d' ] );
+        $deleted++;
+    }
+
+    wp_send_json_success( [ 'deleted' => $deleted, 'kept' => $kept ] );
+} );
+
+/**
+ * Turn a URL into a path, but only if it is inside this site's uploads folder.
+ *
+ * WHY the containment check and not just str_replace: the address comes out of
+ *      a database column any screen can write, and a delete that trusts it
+ *      would follow ../.. straight out of the uploads folder. realpath()
+ *      resolves the traversal and the prefix test refuses anything that lands
+ *      outside.
+ *
+ * @param string               $url     The file's address.
+ * @param array<string, mixed> $uploads wp_upload_dir() result.
+ * @return string Absolute path, or '' if the file is not ours to touch.
+ */
+function sp_files_local_path( string $url, array $uploads ): string {
+    // The cache-busting stamp on profile photos is not part of the filename.
+    $url  = strtok( $url, '?' );
+    $base = (string) $uploads['baseurl'];
+
+    if ( strpos( $url, $base ) !== 0 ) {
+        return '';
+    }
+
+    $candidate = (string) $uploads['basedir'] . substr( $url, strlen( $base ) );
+    $real      = realpath( $candidate );
+    $root      = realpath( (string) $uploads['basedir'] );
+
+    if ( ! $real || ! $root || strpos( $real, $root . DIRECTORY_SEPARATOR ) !== 0 ) {
+        return '';
+    }
+
+    return $real;
+}
 
 /**
  * AJAX: what is using one file.

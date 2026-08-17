@@ -19,6 +19,32 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.40] — 2026-08-17
+
+### Fixed
+
+**Book samples opened in a desktop app instead of on the page**
+
+In Firefox, clicking "See a sample" opened the sample window with the title
+at the top and nothing underneath, while the PDF itself opened in a separate
+desktop application. Safari was unaffected.
+
+The cause was a missing instruction rather than anything to do with Firefox.
+The sample was linked straight at the uploaded file, and a web server hands
+an uploaded PDF over with no word on what to do with it — so the browser
+falls back to whatever the person has configured for PDFs generally. A
+browser told to open PDFs in a desktop reader did precisely that.
+
+Samples are now served the same way newsletters and documents already were,
+through an address that states the file is meant to be read where it is. The
+store was the last place still pointing at a raw file; that gap is closed.
+
+If a browser has been explicitly set to always open PDFs in another
+application, it may still honour that setting — that is a choice made in the
+browser, and no website can overrule it.
+
+---
+
 ## [1.1.39] — 2026-08-17
 
 ### Changed

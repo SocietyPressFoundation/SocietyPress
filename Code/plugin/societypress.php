@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.39
+ * Version:     1.1.40
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.39' );
+define( 'SOCIETYPRESS_VERSION', '1.1.40' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34264,7 +34264,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.39',
+            'version'     => '1.1.40',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34272,7 +34272,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.39',
+            'version'     => '1.1.40',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34280,7 +34280,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.39',
+            'version'     => '1.1.40',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34288,7 +34288,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.39',
+            'version'     => '1.1.40',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34296,7 +34296,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.39',
+            'version'     => '1.1.40',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90472,7 +90472,7 @@ function sp_render_store_frontend(): void {
                                 // it in place; the download stays available inside it
                                 // for anyone who does want the file.
                                 ?>
-                                <?php if ( ! empty( $entry['preview_url'] ) ) : ?>
+                                <?php if ( ! empty( $entry['preview_url'] ) && $entry['source'] === 'product' ) : ?>
                                     <div class="sp-store-preview">
                                         <?php
                                         // WHY no download URL is passed: this is a
@@ -90481,10 +90481,17 @@ function sp_render_store_frontend(): void {
                                         // over the file is not, and a download button
                                         // sits oddly next to an Add to Cart. Left out,
                                         // the reader shows none.
+                                        //
+                                        // WHY the endpoint rather than preview_url
+                                        // itself: the raw file arrives with no
+                                        // Content-Disposition, which leaves a browser
+                                        // free to hand it to the desktop instead of
+                                        // showing it. See sp_ajax_store_sample().
+                                        $sample_url = admin_url( 'admin-ajax.php?action=sp_store_sample&product_id=' . (int) $entry['id'] );
                                         ?>
                                         <button type="button" class="sp-store-preview-btn"
                                                 <?php echo sp_pdf_reader_attrs(
-                                                    $entry['preview_url'],
+                                                    $sample_url,
                                                     sprintf( /* translators: %s: product title */ __( 'Sample — %s', 'societypress' ), $entry['title'] )
                                                 ); ?>>
                                             <?php esc_html_e( 'See a sample', 'societypress' ); ?>
@@ -93228,16 +93235,19 @@ function sp_document_place_file( string $file_url, bool $members_only ): string 
 }
 
 /**
- * Resolve a stored document URL to a file inside this site's uploads folder.
+ * Resolve a stored URL to a file inside this site's uploads folder.
  *
  * The mirror of sp_document_protected_path() for files that never needed
  * protecting. Returns false for anything that resolves outside uploads, so a
  * tampered row cannot walk the disk.
  *
+ * Used by the documents library and the store's book samples — anywhere a
+ * stored URL has to become a file this site is willing to read back.
+ *
  * @param string $file_url The stored URL.
  * @return string|false Absolute path, or false when it is not a local upload.
  */
-function sp_document_local_path( string $file_url ) {
+function sp_uploads_local_path( string $file_url ) {
     $uploads = wp_upload_dir();
 
     if ( strpos( $file_url, $uploads['baseurl'] . '/' ) !== 0 ) {
@@ -93256,13 +93266,73 @@ function sp_document_local_path( string $file_url ) {
 }
 
 /**
- * Send a document file to the browser and stop. Does not return.
+ * Serve a store product's sample so the browser will show it rather than
+ * hand it off.
+ *
+ * WHY this exists at all, when the sample already had a perfectly good URL:
+ * the web server sends an uploaded PDF with a Content-Type and nothing else.
+ * With no Content-Disposition to go on, a browser falls back to whatever the
+ * reader has configured for PDFs — and Firefox set to open PDFs in Preview
+ * does exactly that, handing the file to the desktop and leaving the sample
+ * window on the page blank. Saying "inline" is how a server states that the
+ * file is meant to be looked at where it is.
+ *
+ * The store was the last surface still pointing at a raw file URL; newsletters
+ * and documents have gone through an endpoint for a while. This is that gap
+ * closed rather than a special case for one browser.
+ *
+ * No login check, deliberately: a sample is advertising, and it was public
+ * before this endpoint existed. What is checked is that the file is the one
+ * recorded against an active product and that it resolves inside uploads, so
+ * this cannot be talked into serving anything else.
+ */
+function sp_ajax_store_sample(): void {
+    global $wpdb;
+
+    $product_id = absint( $_GET['product_id'] ?? 0 );
+    if ( ! $product_id ) {
+        wp_die( esc_html__( 'Sample not found.', 'societypress' ), '', 404 );
+    }
+
+    $row = $wpdb->get_row( $wpdb->prepare(
+        "SELECT title, preview_url FROM {$wpdb->prefix}sp_store_products WHERE id = %d AND active = 1",
+        $product_id
+    ) );
+
+    if ( ! $row || empty( $row->preview_url ) ) {
+        wp_die( esc_html__( 'Sample not found.', 'societypress' ), '', 404 );
+    }
+
+    $path = sp_uploads_local_path( $row->preview_url );
+
+    // A sample hosted somewhere else is out of our hands — we cannot set
+    // headers on another server, so send the reader there and let their
+    // browser do whatever it does.
+    if ( ! $path ) {
+        wp_redirect( $row->preview_url, 302, 'SocietyPress' );
+        exit;
+    }
+
+    // PDF only. An admin can point this field at any uploaded file, and
+    // streaming, say, an HTML file inline from our own domain would be a
+    // scripting hole dressed up as a book sample.
+    if ( strtolower( (string) pathinfo( $path, PATHINFO_EXTENSION ) ) !== 'pdf' ) {
+        wp_die( esc_html__( 'Sample not found.', 'societypress' ), '', 404 );
+    }
+
+    sp_stream_uploads_file( $path, basename( $path ), false );
+}
+add_action( 'wp_ajax_sp_store_sample',        'sp_ajax_store_sample' );
+add_action( 'wp_ajax_nopriv_sp_store_sample', 'sp_ajax_store_sample' );
+
+/**
+ * Send a file to the browser and stop. Does not return.
  *
  * @param string $path          Absolute path, already checked for containment.
  * @param string $name          Name to present the file under.
  * @param bool   $as_attachment True to save it, false to show it in place.
  */
-function sp_stream_document_file( string $path, string $name, bool $as_attachment ): void {
+function sp_stream_uploads_file( string $path, string $name, bool $as_attachment ): void {
     $type = wp_check_filetype( $name );
 
     nocache_headers();
@@ -93342,7 +93412,7 @@ function sp_ajax_document_download(): void {
     // makes, read it back and send it.
     $protected_path = sp_document_protected_path( $doc->file_url );
     if ( $protected_path ) {
-        sp_stream_document_file( $protected_path, $doc->file_name ?: basename( $protected_path ), $wants_download );
+        sp_stream_uploads_file( $protected_path, $doc->file_name ?: basename( $protected_path ), $wants_download );
     }
 
     // Same-origin guard: only redirect to URLs on this site (file_url comes
@@ -93361,9 +93431,9 @@ function sp_ajax_document_download(): void {
     // path needs it — showing is what a redirect already does well, and a
     // redirect keeps PHP out of the way of a large public file.
     if ( $wants_download ) {
-        $local_path = sp_document_local_path( $doc->file_url );
+        $local_path = sp_uploads_local_path( $doc->file_url );
         if ( $local_path ) {
-            sp_stream_document_file( $local_path, $doc->file_name ?: basename( $local_path ), true );
+            sp_stream_uploads_file( $local_path, $doc->file_name ?: basename( $local_path ), true );
         }
     }
 

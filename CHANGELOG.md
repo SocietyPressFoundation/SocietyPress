@@ -19,6 +19,24 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.42] — 2026-08-17
+
+### Changed
+
+**Dashboard tiles can be dragged**
+
+Rearranging a tile is now a matter of picking it up and dropping it where
+you want it. A line shows where it will land, and the arrangement saves
+itself as soon as you let go.
+
+The arrows are still there beside each tile, and stay there. Dragging is
+the quicker way when it suits you, but it needs a steady hand, it is
+invisible to anyone working from the keyboard, and on a tablet the browser
+never reports a drag at all. Either method does the same job and saves the
+same way.
+
+---
+
 ## [1.1.41] — 2026-08-17
 
 ### Fixed

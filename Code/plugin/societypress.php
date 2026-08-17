@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.41
+ * Version:     1.1.42
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.41' );
+define( 'SOCIETYPRESS_VERSION', '1.1.42' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -15791,7 +15791,7 @@ function sp_render_dashboard_tiles(): void {
                 <span class="dashicons dashicons-edit sp-dash-icon-mr"></span><?php esc_html_e( 'Customize tiles', 'societypress' ); ?>
             </button>
             <span id="sp-tiles-help" class="sp-dash-tiles-help" hidden>
-                <?php esc_html_e( 'Use the arrows to move a tile, or Hide to take it off your dashboard. Only you see these changes.', 'societypress' ); ?>
+                <?php esc_html_e( 'Drag a tile where you want it, or use the arrows. Hide takes one off your dashboard. Only you see these changes.', 'societypress' ); ?>
             </span>
             <button type="button" class="button button-small" id="sp-tiles-reset" hidden><?php esc_html_e( 'Start over', 'societypress' ); ?></button>
             <button type="button" class="button button-primary button-small" id="sp-tiles-done" hidden><?php esc_html_e( 'Done', 'societypress' ); ?></button>
@@ -15844,12 +15844,12 @@ function sp_render_dashboard_tiles(): void {
     /**
      * Dashboard tiles — rearranging.
      *
-     * WHY arrow buttons rather than drag-and-drop: the people running these
-     * societies are often working on a trackpad, sometimes with hands that do
-     * not hold a drag steadily, and a dropped tile that lands in the wrong
-     * place is worse than no rearranging at all. Two arrows and a Hide link do
-     * the same job, work from the keyboard for nothing extra, and cannot be
-     * half-performed.
+     * Two ways to move a tile, on purpose. Dragging is what most people reach
+     * for and is the quickest when it works. The arrows stay because dragging
+     * does not: it needs a steady hand on a trackpad, it is invisible to
+     * anyone working from the keyboard, and the browser drag events it relies
+     * on never fire on a tablet. Whichever a person uses, the arrangement is
+     * saved the same way.
      */
     (function() {
         'use strict';
@@ -15879,6 +15879,12 @@ function sp_render_dashboard_tiles(): void {
             help.hidden     = !on;
             hiddenList.hidden = !on;
             grid.querySelectorAll('.sp-dash-tile-controls').forEach(function(c) { c.hidden = !on; });
+            // Only draggable while customizing — outside it the tiles are links
+            // to their reports and dragging one should do nothing.
+            grid.querySelectorAll('.sp-dash-stat').forEach(function(t) {
+                if (on) { t.setAttribute('draggable', 'true'); }
+                else    { t.removeAttribute('draggable'); }
+            });
             if (!on) status.textContent = '';
         }
 
@@ -15974,6 +15980,74 @@ function sp_render_dashboard_tiles(): void {
             if (!btn) return;
             btn.remove();
             save(function() { window.location.reload(); });
+        });
+
+        // ---- Dragging ----------------------------------------------------
+        var dragged = null;
+
+        function clearMarkers() {
+            grid.querySelectorAll('.sp-tile-drop-before, .sp-tile-drop-after').forEach(function(t) {
+                t.classList.remove('sp-tile-drop-before', 'sp-tile-drop-after');
+            });
+        }
+
+        // Which tile is the pointer nearest, and is it on the near or far side?
+        // Distance is measured to the centre in both directions because the
+        // strip wraps onto several rows on a narrow screen, where "left of" on
+        // its own would pick a tile from the wrong row.
+        function targetFor(x, y) {
+            var best = null, bestDist = Infinity;
+            grid.querySelectorAll('.sp-dash-stat').forEach(function(t) {
+                if (t === dragged) return;
+                var b  = t.getBoundingClientRect();
+                var cx = b.left + b.width / 2;
+                var cy = b.top + b.height / 2;
+                var d  = Math.pow(x - cx, 2) + Math.pow(y - cy, 2);
+                if (d < bestDist) { bestDist = d; best = t; }
+            });
+            if (!best) return null;
+            var bb = best.getBoundingClientRect();
+            return { tile: best, before: x < bb.left + bb.width / 2 };
+        }
+
+        grid.addEventListener('dragstart', function(e) {
+            var tile = e.target.closest('.sp-dash-stat');
+            if (!tile || !wrap.classList.contains('sp-dash-tiles-editing')) return;
+            dragged = tile;
+            tile.classList.add('sp-tile-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            // Firefox will not start a drag unless something is set here.
+            try { e.dataTransfer.setData('text/plain', tile.getAttribute('data-tile') || ''); } catch (err) {}
+        });
+
+        grid.addEventListener('dragover', function(e) {
+            if (!dragged) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            var t = targetFor(e.clientX, e.clientY);
+            clearMarkers();
+            if (t) t.tile.classList.add(t.before ? 'sp-tile-drop-before' : 'sp-tile-drop-after');
+        });
+
+        grid.addEventListener('drop', function(e) {
+            if (!dragged) return;
+            e.preventDefault();
+            var t = targetFor(e.clientX, e.clientY);
+            if (t) {
+                if (t.before) { grid.insertBefore(dragged, t.tile); }
+                else          { grid.insertBefore(dragged, t.tile.nextElementSibling); }
+            }
+            clearMarkers();
+        });
+
+        // Fires whether the drop landed or was abandoned, so the tidy-up and
+        // the save belong here rather than in drop alone.
+        grid.addEventListener('dragend', function() {
+            if (!dragged) return;
+            dragged.classList.remove('sp-tile-dragging');
+            dragged = null;
+            clearMarkers();
+            save();
         });
     })();
     </script>
@@ -16453,7 +16527,14 @@ function sp_render_dashboard_page(): void {
             .sp-dash-tiles-editing .sp-dash-stat {
                 outline: 1px dashed #a7aaad;
                 outline-offset: 2px;
+                cursor: grab;
             }
+            .sp-dash-tiles-editing .sp-dash-stat:active { cursor: grabbing; }
+            /* The tile being carried fades so the gap it will leave is visible. */
+            .sp-dash-stat.sp-tile-dragging { opacity: 0.4; }
+            /* Where it would land if dropped now. */
+            .sp-dash-stat.sp-tile-drop-before { box-shadow: -3px 0 0 0 #2271b1; }
+            .sp-dash-stat.sp-tile-drop-after  { box-shadow:  3px 0 0 0 #2271b1; }
 
             /* Dashboard panels — two-column on desktop, stacked on narrow */
             .sp-dash-panels {
@@ -34317,7 +34398,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.41',
+            'version'     => '1.1.42',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34325,7 +34406,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.41',
+            'version'     => '1.1.42',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34333,7 +34414,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.41',
+            'version'     => '1.1.42',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34341,7 +34422,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.41',
+            'version'     => '1.1.42',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34349,7 +34430,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.41',
+            'version'     => '1.1.42',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

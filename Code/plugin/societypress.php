@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.36
+ * Version:     1.1.37
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.36' );
+define( 'SOCIETYPRESS_VERSION', '1.1.37' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -33629,7 +33629,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.36',
+            'version'     => '1.1.37',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -33637,7 +33637,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.36',
+            'version'     => '1.1.37',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -33645,7 +33645,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.36',
+            'version'     => '1.1.37',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -33653,7 +33653,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.36',
+            'version'     => '1.1.37',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -33661,7 +33661,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.36',
+            'version'     => '1.1.37',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -43874,6 +43874,9 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
     $fuzzy = sp_surname_fuzzy_requested();
 
     echo '<form method="get" class="sp-surname-search-form">';
+    // Keep the page's own context (page_id on a plain-permalink site, anything
+    // else the page is carrying); a fresh search starts back at page one.
+    sp_carry_query_args( [ 'sp_surname', 'sp_fuzzy', 'sp_page' ] );
     echo '<input type="text" name="sp_surname" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search surnames…', 'societypress' ) . '" class="sp-surname-search-input">';
     echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
     // Phonetic-match toggle. Hidden 0 + checkbox 1 so an unchecked box submits
@@ -44043,11 +44046,10 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             ) ) . '</p>';
 
             // Per-page picker. It is a plain form so it works with JavaScript off;
-            // the hidden fields carry the current search along with it.
+            // the hidden fields carry the current search, sort and page context
+            // along with it. Resizing the page starts back at page one.
             echo '<form method="get" class="sp-surname-perpage-form">';
-            foreach ( [ 'sp_surname' => $search, 'sp_fuzzy' => $fuzzy ? '1' : '0', 'sp_sort' => $sort, 'sp_dir' => strtolower( $dir ) ] as $hk => $hv ) {
-                echo '<input type="hidden" name="' . esc_attr( $hk ) . '" value="' . esc_attr( (string) $hv ) . '">';
-            }
+            sp_carry_query_args( [ 'sp_per', 'sp_page' ] );
             echo '<label for="sp-surname-perpage">' . esc_html__( 'Results Per Page:', 'societypress' ) . ' </label>';
             echo '<select name="sp_per" id="sp-surname-perpage" onchange="this.form.submit();">';
             foreach ( $per_page_choices as $choice ) {
@@ -52282,11 +52284,9 @@ add_filter( 'template_include', function ( $template ) {
     if ( ! empty( $categories ) ) {
         echo '<form method="get" action="' . esc_url( $base_url ) . '" class="sp-cal-filter-form">';
 
-        // Preserve the current month if set
-        $current_cal_month = isset( $_GET['sp_cal_month'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_cal_month'] ) ) : '';
-        if ( $current_cal_month && preg_match( '/^\d{4}-\d{2}$/', $current_cal_month ) ) {
-            echo '<input type="hidden" name="sp_cal_month" value="' . esc_attr( $current_cal_month ) . '">';
-        }
+        // Everything the page is already carrying — the month being viewed, the
+        // page's own id where permalinks are plain — rides through the form.
+        sp_carry_query_args( [ 'sp_cal_cat' ] );
 
         echo '<select name="sp_cal_cat" class="sp-cal-filter-select" aria-label="' . esc_attr__( 'Filter by category', 'societypress' ) . '">';
         echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
@@ -53073,6 +53073,11 @@ function sp_render_events_listing( array $settings ): void {
     <!-- ================================================================ -->
     <div class="sp-events-filters">
         <form method="get" action="<?php echo esc_url( $base_url ); ?>" class="sp-events-filter-form">
+            <?php
+            // Filtering must not change which view you are looking at — carry
+            // sp_view and anything else the page holds; paging starts over.
+            sp_carry_query_args( [ 'sp_search', 'sp_cat', 'sp_time', 'sp_page' ] );
+            ?>
 
             <div class="sp-events-filter-row">
                 <!-- Search -->
@@ -64524,13 +64529,6 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     // SECTION 2: TABBED SEARCH — OPAC-style field-targeted search
     // ================================================================
     if ( $show_search ) {
-        // Build base URL preserving non-catalog query params
-        $base_params = [];
-        foreach ( $_GET as $k => $v ) {
-            if ( strpos( $k, 'sp_lib_' ) !== 0 ) {
-                $base_params[ $k ] = $v;
-            }
-        }
 
         // WHY: Tabs let the researcher target their search. A genealogist looking
         //      for "Smith" as a surname doesn't want to also match books with
@@ -64563,9 +64561,9 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
         // Search form
         echo '<form method="get" class="sp-catalog-search-form" id="' . esc_attr( $uid ) . '-form" role="tabpanel" aria-labelledby="' . esc_attr( $uid ) . '-tab-' . esc_attr( $search_field ) . '">';
-        foreach ( $base_params as $k => $v ) {
-            echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
-        }
+        // Searching narrows what is already on screen, so the active media /
+        // subject / source filters ride along; only the page number resets.
+        sp_carry_query_args( [ 'sp_lib_search', 'sp_lib_field', 'sp_lib_pg' ] );
         echo '<input type="hidden" name="sp_lib_field" value="' . esc_attr( $search_field ) . '" id="' . esc_attr( $uid ) . '-field">';
         echo '<input type="text" name="sp_lib_search" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr( $tab_placeholders[ $search_field ] ) . '" id="' . esc_attr( $uid ) . '-input">';
         echo '<button type="submit">' . esc_html__( 'Search', 'societypress' ) . '</button>';
@@ -64573,14 +64571,9 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
         // Additional filter dropdowns (media type, source, sort)
         echo '<form method="get" class="sp-catalog-filter-row" id="' . esc_attr( $uid ) . '-filters">';
-        foreach ( $base_params as $k => $v ) {
-            echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
-        }
-        // Carry search params forward when changing filters
-        if ( $search ) {
-            echo '<input type="hidden" name="sp_lib_search" value="' . esc_attr( $search ) . '">';
-            echo '<input type="hidden" name="sp_lib_field" value="' . esc_attr( $search_field ) . '">';
-        }
+        // Everything the page is carrying — the active search among it — comes
+        // through; the three selects below supply their own values.
+        sp_carry_query_args( [ 'sp_lib_media', 'sp_lib_acq', 'sp_lib_sort', 'sp_lib_pg' ] );
 
         // Media type filter
         echo '<select name="sp_lib_media" aria-label="' . esc_attr__( 'Filter by media type', 'societypress' ) . '" class="sp-autosubmit">';
@@ -67392,6 +67385,50 @@ function sp_render_help_requests_admin_page(): void {
 }
 
 /**
+ * Echo the current request's query arguments as hidden fields inside a GET form.
+ *
+ * WHY: a GET form replaces the entire query string when it submits. Anything
+ * the page was already carrying — which folder the visitor had opened, which
+ * category they were browsing, the page_id that identifies the page at all on
+ * a site without pretty permalinks — is thrown away the moment a filter
+ * dropdown fires, and the visitor lands back at the top of the section
+ * wondering what they did wrong. Every frontend filter form has to hand that
+ * context back to itself, so it lives in one place rather than being
+ * re-invented (and forgotten) form by form.
+ *
+ * Array-valued args are skipped: no frontend filter uses them, and flattening
+ * one into a single hidden field would corrupt it.
+ *
+ * @param array $exclude Keys the form supplies itself, plus any it should
+ *                       deliberately reset. A trailing '*' matches a prefix,
+ *                       e.g. 'sp_lib_*'.
+ */
+function sp_carry_query_args( array $exclude = [] ): void {
+    foreach ( (array) $_GET as $raw_key => $value ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+        $key = sanitize_key( $raw_key );
+        if ( $key === '' || is_array( $value ) ) {
+            continue;
+        }
+
+        foreach ( $exclude as $skip ) {
+            if ( substr( $skip, -1 ) === '*' ) {
+                if ( strpos( $key, substr( $skip, 0, -1 ) ) === 0 ) {
+                    continue 2;
+                }
+            } elseif ( $key === $skip ) {
+                continue 2;
+            }
+        }
+
+        printf(
+            '<input type="hidden" name="%s" value="%s">',
+            esc_attr( $key ),
+            esc_attr( sanitize_text_field( wp_unslash( $value ) ) )
+        );
+    }
+}
+
+/**
  * Frontend Page Template: Research Help Requests
  *
  * WHY: Members interact with help requests on the frontend via a page that
@@ -68202,14 +68239,17 @@ function sp_frontend_resources_directory(): void {
     </style>';
     echo '<div class="sp-res-dir-filters">';
 
-    // Search form — searches title, description, and category name
+    // Search form — searches title, description, and category name. It narrows
+    // whatever is on screen, so the chosen category rides along.
     echo '<form method="get" class="sp-res-dir-search-form">';
+    sp_carry_query_args( [ 'sp_resource' ] );
     echo '<input type="text" name="sp_resource" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search resources…', 'societypress' ) . '" class="sp-res-dir-search-input">';
     echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
     echo '</form>';
 
     // Category dropdown — auto-submits, clears any active search
     echo '<form method="get">';
+    sp_carry_query_args( [ 'sp_rcat', 'sp_resource' ] );
     echo '<select name="sp_rcat" class="sp-autosubmit sp-res-dir-cat-select">';
     echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
     foreach ( $categories as $cat ) {
@@ -68419,17 +68459,7 @@ function sp_render_vertical_files_frontend(): void {
             <?php
             // Carry any query args the page itself needs (page id on a plain
             // permalink setup, for one) through the form as hidden fields.
-            foreach ( $_GET as $key => $value ) {
-                $key = sanitize_key( $key );
-                if ( strpos( $key, 'sp_vf_' ) === 0 || is_array( $value ) ) {
-                    continue;
-                }
-                printf(
-                    '<input type="hidden" name="%s" value="%s">',
-                    esc_attr( $key ),
-                    esc_attr( sanitize_text_field( wp_unslash( $value ) ) )
-                );
-            }
+            sp_carry_query_args( [ 'sp_vf_*' ] );
             ?>
             <div class="sp-vf-control">
                 <label for="sp-vf-field"><?php esc_html_e( 'Search:', 'societypress' ); ?></label>
@@ -88762,18 +88792,10 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     </style>
     <?php
 
-    // Search + filter bar
-    $base_params = [];
-    foreach ( $_GET as $k => $v ) {
-        if ( strpos( $k, 'sp_rec_' ) !== 0 ) {
-            $base_params[ $k ] = $v;
-        }
-    }
-
+    // Search + filter bar. The form owns every sp_rec_* value it submits;
+    // everything else the page is carrying comes through as hidden fields.
     echo '<form method="get" class="sp-records-filters">';
-    foreach ( $base_params as $k => $v ) {
-        echo '<input type="hidden" name="' . esc_attr( $k ) . '" value="' . esc_attr( $v ) . '">';
-    }
+    sp_carry_query_args( [ 'sp_rec_*' ] );
     // Visually-hidden label for the search input — screen readers need it, sighted users have the placeholder
     echo '<label for="sp-rec-q" class="screen-reader-text">' . esc_html__( 'Search records', 'societypress' ) . '</label>';
     echo '<input type="text" name="sp_rec_q" id="sp-rec-q" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search names, places, dates...', 'societypress' ) . '">';
@@ -95028,10 +95050,14 @@ function sp_frontend_documents(): void {
         $time_where = $wpdb->prepare( ' AND d.document_date IS NOT NULL AND d.document_date >= %s', $cutoff );
     }
 
-    // Whether any published document is dated at all — if not, the recency
-    // filter is meaningless, so we hide the control entirely.
+    // Whether anything in view is dated at all — if not, the recency filter is
+    // meaningless, so we hide the control entirely. Scoped to the open folder:
+    // offering "Past 3 months" over a folder of undated reference sheets only
+    // leads to an empty list.
     $has_dated_docs = (int) $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$prefix}documents WHERE status = 'published' AND document_date IS NOT NULL AND document_date <> '0000-00-00'"
+        "SELECT COUNT(*) FROM {$prefix}documents d
+         WHERE d.status = 'published'
+           AND d.document_date IS NOT NULL AND d.document_date <> '0000-00-00'{$cat_where}"
     ) > 0;
 
     // Published documents only on the frontend. Order by category sort order,
@@ -95104,6 +95130,10 @@ function sp_frontend_documents(): void {
             '12months' => __( 'Past 12 months', 'societypress' ),
         ];
         echo '<form method="get" class="sp-doc-filter">';
+        // The open folder (and the page's own id on a plain-permalink site) has
+        // to ride along, or picking a range drops the visitor back on the
+        // folder list instead of filtering the folder they were reading.
+        sp_carry_query_args( [ 'sp_doc_time' ] );
         echo '<label for="sp-doc-time">' . esc_html__( 'Show:', 'societypress' ) . '</label>';
         echo '<select id="sp-doc-time" name="sp_doc_time" class="sp-autosubmit">';
         foreach ( $doc_time_opts as $val => $label ) {

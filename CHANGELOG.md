@@ -19,6 +19,31 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.37] — 2026-08-17
+
+### Fixed
+
+**Filters keep you where you were**
+
+On Documents, choosing "Past 3 months" from the Show list threw you back to
+the folder list instead of narrowing the folder you were reading. The
+dropdown was rebuilding the web address from scratch and losing the folder
+along the way.
+
+The same fault was waiting in every other filter on the public side, so it
+was fixed once and applied everywhere. Searching the library catalog now
+keeps whatever media type, subject or source you had already picked instead
+of quietly dropping them. Filtering events no longer flips you out of the
+calendar and back to the list. Searching the resource directory stays inside
+the category you were browsing. The surname registry and vertical files keep
+their place too.
+
+The Show list on Documents now appears only when the folder you are in
+actually holds dated documents. A folder of undated reference sheets used to
+offer a date range that could only ever come back empty.
+
+---
+
 ## [1.1.36] — 2026-08-16
 
 ### Added

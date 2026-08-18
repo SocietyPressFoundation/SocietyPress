@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.46
+ * Version:     1.1.47
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.46' );
+define( 'SOCIETYPRESS_VERSION', '1.1.47' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -81,6 +81,7 @@ register_activation_hook( __FILE__, function () {
             'dir_show_tier'           => 1,
             'dir_show_join_date'      => 1,
             'dir_show_surnames'       => 1,
+            'dir_name_format'         => 'last_first',
             'dir_per_page'            => 25,
             // Events — defaults for the event system
             'events_default_visibility'    => 'public',
@@ -27662,6 +27663,38 @@ add_action( 'admin_init', function () {
         'sp_directory_section'
     );
 
+    // --- Name Format ---
+    // WHY a choice rather than a fixed order: the list is sorted by surname, so
+    //      surname first puts the word people are scanning for at the start of
+    //      every line. Societies that read their roll the everyday way can say so.
+    add_settings_field(
+        'dir_name_format',
+        __( 'Name Format', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $current  = ( $settings['dir_name_format'] ?? 'last_first' ) === 'first_last' ? 'first_last' : 'last_first';
+
+            $choices = [
+                'last_first' => __( 'Surname first — Whitfield, Harold', 'societypress' ),
+                'first_last' => __( 'Given name first — Harold Whitfield', 'societypress' ),
+            ];
+
+            echo '<select name="societypress_settings[dir_name_format]">';
+            foreach ( $choices as $value => $label ) {
+                printf(
+                    '<option value="%s" %s>%s</option>',
+                    esc_attr( $value ),
+                    selected( $current, $value, false ),
+                    esc_html( $label )
+                );
+            }
+            echo '</select>';
+            echo '<p class="description">' . esc_html__( 'How names are listed in the member directory. The list is always sorted by surname either way.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-directory',
+        'sp_directory_section'
+    );
+
     // --- Results Per Page ---
     add_settings_field(
         'dir_per_page',
@@ -28155,6 +28188,8 @@ function sp_sanitize_settings( array $input ): array {
         'dir_show_tier'           => fn() => ! empty( $input['dir_show_tier'] ) ? 1 : 0,
         'dir_show_join_date'      => fn() => ! empty( $input['dir_show_join_date'] ) ? 1 : 0,
         'dir_show_surnames'       => fn() => ! empty( $input['dir_show_surnames'] ) ? 1 : 0,
+        'dir_name_format'         => fn() => in_array( $input['dir_name_format'] ?? '', [ 'last_first', 'first_last' ], true )
+                                              ? $input['dir_name_format'] : 'last_first',
         'dir_per_page'            => fn() => in_array( (int) ( $input['dir_per_page'] ?? -1 ), [ 10, 25, 50, 100, 250, 500 ], true )
                                               ? (int) $input['dir_per_page'] : 25,
         'profile_changes_require_approval' => fn() => ! empty( $input['profile_changes_require_approval'] ) ? 1 : 0,
@@ -28338,7 +28373,8 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'dir_show_city_state', 'dir_show_phone', 'dir_show_email',
             'dir_show_website', 'dir_show_tier', 'dir_show_join_date',
-            'dir_show_surnames', 'dir_per_page', 'profile_changes_require_approval',
+            'dir_show_surnames', 'dir_name_format', 'dir_per_page',
+            'profile_changes_require_approval',
             'surname_public_contact', 'surname_include_lapsed',
         ]);
     }
@@ -34418,7 +34454,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.46',
+            'version'     => '1.1.47',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34426,7 +34462,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.46',
+            'version'     => '1.1.47',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34434,7 +34470,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.46',
+            'version'     => '1.1.47',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34442,7 +34478,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.46',
+            'version'     => '1.1.47',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34450,7 +34486,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.46',
+            'version'     => '1.1.47',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -39744,6 +39780,138 @@ function sp_fulltext_boolean_query( string $search ): string {
 }
 
 /**
+ * Split what someone typed into a search box into the terms a match must satisfy.
+ *
+ * WHY: Typing two words and getting nothing back is the commonest complaint
+ *      about a catalog search. Treating the whole box as one string means
+ *      "smith rusk" only finds a record where those words sit side by side in
+ *      that order, which almost never happens. Splitting lets each word match a
+ *      different field of the same record.
+ *
+ * Double quotes keep words together, so a researcher who really does want them
+ * side by side — "first families" — can still say so.
+ *
+ * @param  string $search Raw text from a search box.
+ * @return string[]       Terms to match, with quoted phrases kept whole.
+ */
+function sp_search_terms( string $search ): array {
+    $terms = [];
+
+    if ( preg_match_all( '/"([^"]*)"|(\S+)/', $search, $matches, PREG_SET_ORDER ) ) {
+        foreach ( $matches as $match ) {
+            // A quoted phrase arrives in group 1, a bare word in group 2. An
+            // unclosed quote falls through as a bare word, so the stray
+            // character is trimmed rather than searched for.
+            $term = $match[1] !== '' ? $match[1] : ( $match[2] ?? '' );
+            $term = trim( trim( $term ), '"' );
+            if ( $term !== '' ) {
+                $terms[] = $term;
+            }
+        }
+    }
+
+    return $terms;
+}
+
+
+/**
+ * Build a WHERE fragment requiring every term to appear in at least one column.
+ *
+ * Terms are ANDed and columns are ORed, so "smith rusk" finds an item with
+ * Smith among its surnames and Rusk in its description. Column names come from
+ * the calling code and never from a request, so they are safe to interpolate;
+ * the values people type are always bound.
+ *
+ * @param  string   $search  Raw text from a search box.
+ * @param  string[] $columns Column names to search, qualified as the query needs.
+ * @return string            Prepared SQL, or '' when there is nothing to match.
+ */
+function sp_like_terms_clause( string $search, array $columns ): string {
+    global $wpdb;
+
+    $terms = sp_search_terms( $search );
+    if ( empty( $terms ) || empty( $columns ) ) {
+        return '';
+    }
+
+    $groups = [];
+    foreach ( $terms as $term ) {
+        $like   = '%' . $wpdb->esc_like( $term ) . '%';
+        $parts  = [];
+        $params = [];
+        foreach ( $columns as $column ) {
+            $parts[]  = $column . ' LIKE %s';
+            $params[] = $like;
+        }
+        $groups[] = $wpdb->prepare( '(' . implode( ' OR ', $parts ) . ')', ...$params );
+    }
+
+    return '(' . implode( ' AND ', $groups ) . ')';
+}
+
+
+/**
+ * Build the name a member is listed under in the directory.
+ *
+ * WHY surname first by default: a membership roll is sorted by surname and read
+ *      by surname, so listing "Whitfield, Harold" puts the word the eye is
+ *      hunting for at the start of the line. A society that prefers the
+ *      everyday order sets Directory → Name Format back to given name first.
+ *
+ * Returns plain text. Callers escape it for wherever it is going.
+ *
+ * @param  object $m      A row from the members table.
+ * @param  string $format 'last_first' or 'first_last'.
+ * @return string         The name, unescaped.
+ */
+function sp_directory_display_name( $m, string $format = 'last_first' ): string {
+    // An organization holds its membership under its own name — there is no
+    // given name to put after a comma.
+    if ( ( $m->member_type ?? 'individual' ) === 'organization' && ! empty( $m->organization_name ) ) {
+        return (string) $m->organization_name;
+    }
+
+    $last  = trim( (string) ( $m->last_name ?? '' ) );
+    $given = trim( (string) ( ( $m->preferred_name ?? '' ) ?: ( $m->first_name ?? '' ) ) );
+
+    // A joint membership lists both people. They share one payment, not one
+    // identity, so the second name is spelled out in full when it differs.
+    $joint_given = '';
+    $joint_last  = '';
+    if ( ! empty( $m->joint_member ) && ! empty( $m->joint_first_name ) ) {
+        $joint_given = trim( (string) ( ( $m->joint_preferred_name ?? '' ) ?: $m->joint_first_name ) );
+        $joint_last  = trim( (string) ( $m->joint_last_name ?? '' ) );
+        if ( $joint_last === $last ) {
+            $joint_last = '';
+        }
+    }
+
+    if ( $format === 'first_last' ) {
+        if ( $joint_given === '' ) {
+            $name = trim( $given . ' ' . $last );
+        } elseif ( $joint_last !== '' ) {
+            $name = trim( $given . ' ' . $last ) . ' & ' . trim( $joint_given . ' ' . $joint_last );
+        } else {
+            $name = $given . ' & ' . trim( $joint_given . ' ' . $last );
+        }
+    } else {
+        $name = $last !== '' ? trim( $last . ', ' . $given, ' ,' ) : $given;
+        if ( $joint_given !== '' ) {
+            $name .= ' & ' . ( $joint_last !== '' ? trim( $joint_given . ' ' . $joint_last ) : $joint_given );
+        }
+    }
+
+    $name = trim( $name );
+
+    $suffix = trim( (string) ( $m->suffix ?? '' ) );
+    if ( $suffix !== '' ) {
+        $name .= ', ' . $suffix;
+    }
+
+    return $name;
+}
+
+/**
  * Render the membership directory — the main content between header and footer.
  *
  * WHY: This function builds the complete directory UI: search bar, filter
@@ -40009,6 +40177,7 @@ function sp_render_directory( array $settings ): void {
     $show_tier       = ! empty( $settings['dir_show_tier'] );
     $show_join_date  = ! empty( $settings['dir_show_join_date'] );
     $show_surnames   = ! empty( $settings['dir_show_surnames'] );
+    $name_format     = ( $settings['dir_name_format'] ?? 'last_first' ) === 'first_last' ? 'first_last' : 'last_first';
 
     // Count columns for the "no results" colspan
     $col_count = 1; // Name is always shown
@@ -40267,42 +40436,9 @@ function sp_render_directory( array $settings ): void {
                     continue;
                 }
 
-                // Build the display name — orgs show their org name, individuals
-                // show preferred (or first) + last name as before.
-                if ( ( $m->member_type ?? 'individual' ) === 'organization' && ! empty( $m->organization_name ) ) {
-                    $display_name = esc_html( $m->organization_name );
-                } else {
-                    $display_name = esc_html( trim(
-                        ( ($m->preferred_name ?? '') ?: $m->first_name ) . ' ' . $m->last_name
-                    ) );
-                    if ( $m->suffix ) {
-                        $display_name .= ', ' . esc_html( $m->suffix );
-                    }
-                    // Joint member — show both names in the directory.
-                    // WHY: Couples who share a membership expect to both be
-                    //      visible in the directory. "John & Jane Smith" or
-                    //      "John Smith & Jane Doe" if different last names.
-                    if ( ! empty( $m->joint_member ) && ! empty( $m->joint_first_name ) ) {
-                        $joint_display = esc_html( ($m->joint_preferred_name ?? '') ?: $m->joint_first_name );
-                        if ( ! empty( $m->joint_last_name ) && $m->joint_last_name !== $m->last_name ) {
-                            $joint_display .= ' ' . esc_html( $m->joint_last_name );
-                        }
-                        // Rebuild as "John & Jane Smith" or "John Smith & Jane Doe"
-                        $primary = esc_html( ($m->preferred_name ?? '') ?: $m->first_name );
-                        if ( ! empty( $m->joint_last_name ) && $m->joint_last_name !== $m->last_name ) {
-                            // Different last names — show both full names
-                            $display_name = $primary . ' ' . esc_html( $m->last_name )
-                                          . ' &amp; ' . $joint_display;
-                        } else {
-                            // Same last name — "John & Jane Smith"
-                            $display_name = $primary . ' &amp; ' . $joint_display
-                                          . ' ' . esc_html( $m->last_name );
-                        }
-                        if ( $m->suffix ) {
-                            $display_name .= ', ' . esc_html( $m->suffix );
-                        }
-                    }
-                }
+                // Orgs list under their own name; people list under the
+                // society's chosen name format, joint members included.
+                $display_name = esc_html( sp_directory_display_name( $m, $name_format ) );
             ?>
                 <tr>
                     <td class="sp-col-name" data-label="<?php echo esc_attr__( 'Name', 'societypress' ); ?>"><a href="#" class="sp-member-name-link" data-user-id="<?php echo (int) $m->user_id; ?>"><?php echo $display_name; ?></a></td>
@@ -41013,17 +41149,10 @@ function sp_ajax_member_detail(): void {
         wp_send_json_error( __( 'This member has opted out of the directory.', 'societypress' ) );
     }
 
-    // Build display name
-    if ( ( $member->member_type ?? 'individual' ) === 'organization' && ! empty( $member->organization_name ) ) {
-        $display_name = $member->organization_name;
-    } else {
-        $display_name = trim(
-            ( ($member->preferred_name ?? '') ?: $member->first_name ) . ' ' . $member->last_name
-        );
-        if ( $member->suffix ) {
-            $display_name .= ', ' . $member->suffix;
-        }
-    }
+    // Build display name — the same format the directory list uses, so the
+    // heading of the card matches the row that was clicked.
+    $name_format  = ( $settings['dir_name_format'] ?? 'last_first' ) === 'first_last' ? 'first_last' : 'last_first';
+    $display_name = sp_directory_display_name( $member, $name_format );
 
     // Build the response data, respecting both society-level and member-level privacy.
     // WHY: Two layers of privacy control. The society admin decides which columns
@@ -64933,27 +65062,19 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     //      target a specific field (title, author, subject, call number) or search
     //      everything (keyword). This mirrors how real library OPACs work and helps
     //      researchers who know exactly what they're looking for.
+    // Every word typed has to turn up somewhere in the record, and a phrase in
+    // quotes has to turn up whole. See sp_like_terms_clause().
     if ( $search ) {
-        $like = '%' . $wpdb->esc_like( $search ) . '%';
-        switch ( $search_field ) {
-            case 'title':
-                $where[] = $wpdb->prepare( 'li.title LIKE %s', $like );
-                break;
-            case 'author':
-                $where[] = $wpdb->prepare( 'li.author LIKE %s', $like );
-                break;
-            case 'subject':
-                $where[] = $wpdb->prepare( 'li.subject LIKE %s', $like );
-                break;
-            case 'call_number':
-                $where[] = $wpdb->prepare( 'li.call_number LIKE %s', $like );
-                break;
-            default: // keyword — all fields
-                $where[] = $wpdb->prepare(
-                    '(li.title LIKE %s OR li.author LIKE %s OR li.call_number LIKE %s OR li.subject LIKE %s OR li.surname LIKE %s OR li.description LIKE %s)',
-                    $like, $like, $like, $like, $like, $like
-                );
-                break;
+        $search_columns = [
+            'title'       => [ 'li.title' ],
+            'author'      => [ 'li.author' ],
+            'subject'     => [ 'li.subject' ],
+            'call_number' => [ 'li.call_number' ],
+            'keyword'     => [ 'li.title', 'li.author', 'li.call_number', 'li.subject', 'li.surname', 'li.description' ],
+        ];
+        $clause = sp_like_terms_clause( $search, $search_columns[ $search_field ] ?? $search_columns['keyword'] );
+        if ( $clause !== '' ) {
+            $where[] = $clause;
         }
     }
     if ( $media_filter ) {
@@ -65115,6 +65236,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-search-form button[type="submit"]:hover {
             background: var(--sp-color-accent, #667eea);
             border-color: var(--sp-color-accent, #667eea);
+        }
+
+        .sp-catalog-search-hint {
+            margin: 10px 2px 0; font-size: 13px; line-height: 1.5; color: #667085;
         }
 
         /* Additional filter row below the search bar */
@@ -65397,6 +65522,13 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         }
         echo '</select>';
         echo '</form>';
+
+        // WHY say it on the page: the rule is invisible otherwise, and a
+        // researcher who types two words and gets a short list needs to know
+        // whether that is the collection or the search.
+        echo '<p class="sp-catalog-search-hint">'
+            . esc_html__( 'Type as many words as you like — every one has to appear somewhere in the record. Put a phrase in quotes to keep the words together.', 'societypress' )
+            . '</p>';
 
         echo '</div>'; // close .sp-catalog-search
     }
@@ -70282,12 +70414,16 @@ function sp_render_library_catalog_page(): void {
 
     // Build WHERE clause
     $where = [ '1=1' ];
+    // Same rule the public catalog follows: all the words, anywhere in the
+    // record, and a quoted phrase kept whole.
     if ( $search ) {
-        $like = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[] = $wpdb->prepare(
-            '(li.title LIKE %s OR li.author LIKE %s OR li.call_number LIKE %s OR li.subject LIKE %s OR li.surname LIKE %s)',
-            $like, $like, $like, $like, $like
+        $clause = sp_like_terms_clause(
+            $search,
+            [ 'li.title', 'li.author', 'li.call_number', 'li.subject', 'li.surname' ]
         );
+        if ( $clause !== '' ) {
+            $where[] = $clause;
+        }
     }
     if ( $media_filter ) {
         $where[] = $wpdb->prepare( 'li.media_type = %s', $media_filter );
@@ -82049,12 +82185,16 @@ function sp_ajax_export_library(): void {
     // Apply same filters the admin catalog page uses, so "export what you see"
     $where = [ '1=1' ];
     $search = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
+    // Same rule the public catalog follows: all the words, anywhere in the
+    // record, and a quoted phrase kept whole.
     if ( $search ) {
-        $like = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[] = $wpdb->prepare(
-            '(li.title LIKE %s OR li.author LIKE %s OR li.call_number LIKE %s OR li.subject LIKE %s OR li.surname LIKE %s)',
-            $like, $like, $like, $like, $like
+        $clause = sp_like_terms_clause(
+            $search,
+            [ 'li.title', 'li.author', 'li.call_number', 'li.subject', 'li.surname' ]
         );
+        if ( $clause !== '' ) {
+            $where[] = $clause;
+        }
     }
     $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( wp_unslash( $_GET['media_type'] ) ) : '';
     if ( $media_filter ) {
@@ -85222,11 +85362,13 @@ function sp_do_unified_search( string $query, int $per_module = 5 ): array {
     // WHY no visibility check: The library catalog is public — it's a selling
     //     point for prospective members to see the society's collection.
     // =====================================================================
-    $library_where = $wpdb->prepare(
-        "WHERE (title LIKE %s OR author LIKE %s OR call_number LIKE %s
-               OR subject LIKE %s OR surname LIKE %s OR description LIKE %s)",
-        $like, $like, $like, $like, $like, $like
+    // The catalog is the one collection big enough that a two-word search has
+    // to mean both words, so it follows the same rule as the catalog page.
+    $library_clause = sp_like_terms_clause(
+        $query,
+        [ 'title', 'author', 'call_number', 'subject', 'surname', 'description' ]
     );
+    $library_where  = $library_clause !== '' ? 'WHERE ' . $library_clause : 'WHERE 1 = 0';
 
     $library_total = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}library_items {$library_where}"
@@ -93519,7 +93661,8 @@ function sp_ajax_document_download(): void {
     }
 
     $doc = $wpdb->get_row( $wpdb->prepare(
-        "SELECT d.id, d.file_url, d.file_name, d.access_level, d.status, c.access_level AS cat_access
+        "SELECT d.id, d.file_url, d.file_name, d.access_level, d.status,
+                c.access_level AS cat_access, c.active AS cat_active
          FROM {$wpdb->prefix}sp_documents d
          LEFT JOIN {$wpdb->prefix}sp_document_categories c ON d.category_id = c.id
          WHERE d.id = %d",
@@ -93532,6 +93675,16 @@ function sp_ajax_document_download(): void {
 
     // Drafts are only reachable for editors with content management capability.
     if ( $doc->status !== 'published' && ! current_user_can( 'sp_manage_content' ) ) {
+        wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
+    }
+
+    // A hidden section takes its documents off the website, and that has to
+    // include the file itself. Otherwise a bookmark, a mailed link, or a search
+    // engine's cache still hands over a board's minutes that the society has
+    // deliberately taken down, and the setting only looks like it worked.
+    // isset() rather than a falsy test: an uncategorised document joins to no
+    // category row at all, and it has not been hidden by anybody.
+    if ( isset( $doc->cat_active ) && ! $doc->cat_active && ! current_user_can( 'sp_manage_content' ) ) {
         wp_die( esc_html__( 'Document not found.', 'societypress' ), '', 404 );
     }
 

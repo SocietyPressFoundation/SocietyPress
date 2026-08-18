@@ -19,6 +19,50 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.47] — 2026-08-18
+
+### Changed
+
+**The directory lists people surname first**
+
+A membership roll is sorted by surname and read by surname, so the directory
+now lists "Whitfield, Harold" rather than "Harold Whitfield" — the word the
+eye is hunting for now starts every line. Joint memberships read
+"Whitfield, Harold & Margaret", and an organisation still appears under its
+own name.
+
+Settings → Directory → Name Format switches it back to given name first for
+a society that prefers the everyday order. The list is sorted by surname
+either way.
+
+**The library catalog searches every word you type**
+
+Typing more than one word used to find only records where those words sat
+side by side in that order, so "smith rusk" found almost nothing however
+much Smith material the collection held. Every word is now matched
+separately, and a record has to contain all of them — in any field, in any
+order.
+
+A phrase in quotes is still matched whole, so "first families" finds the
+words together. The rule is stated under the search box, and it applies to
+the public catalog, the librarian's catalog screen, the export that mirrors
+it, and the site-wide search.
+
+### Fixed
+
+**Hiding a document section now hides the files as well**
+
+Unticking "Show this category on the website" took a section off the
+documents page but left every file in it downloadable to anyone who still
+had the address — a bookmark, a mailed link, or a search engine's cache. A
+society taking its board minutes down until the board rules on them was
+publishing them the whole time.
+
+The files in a hidden section are now refused too. Anyone who can manage
+documents still reaches them from the admin, and nothing is deleted.
+
+---
+
 ## [1.1.46] — 2026-08-17
 
 ### Fixed

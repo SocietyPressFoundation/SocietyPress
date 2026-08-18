@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.42
+ * Version:     1.1.44
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.42' );
+define( 'SOCIETYPRESS_VERSION', '1.1.44' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34398,7 +34398,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.42',
+            'version'     => '1.1.44',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34406,7 +34406,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.42',
+            'version'     => '1.1.44',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34414,7 +34414,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.42',
+            'version'     => '1.1.44',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34422,7 +34422,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.42',
+            'version'     => '1.1.44',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34430,7 +34430,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.42',
+            'version'     => '1.1.44',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -103659,6 +103659,184 @@ function sp_donation_check_slip( array $settings, string $org_name ): string {
 
 
 /**
+ * Attach a verified Stripe Checkout session id to a donation that was already
+ * finalized before the donor got back to the site.
+ *
+ * WHY verify against Stripe instead of trusting the URL: the session id arrives
+ * in a query string, and it becomes the key that unlocks the thank-you screen,
+ * so it has to be confirmed as belonging to this donation first.
+ */
+function sp_donation_backfill_session_id( object $donation, string $session_id ): void {
+    $secret_key = sp_stripe_get_secret_key( sp_settings() );
+    if ( empty( $secret_key ) ) return;
+
+    $response = wp_remote_get( 'https://api.stripe.com/v1/checkout/sessions/' . $session_id, [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret_key ],
+    ] );
+    if ( is_wp_error( $response ) ) return;
+
+    $session = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( (int) ( $session['client_reference_id'] ?? 0 ) !== (int) $donation->id ) return;
+
+    global $wpdb;
+    $wpdb->update( $wpdb->prefix . 'sp_donations', [
+        'stripe_session_id' => $session_id,
+    ], [ 'id' => (int) $donation->id ] );
+}
+
+
+/**
+ * Post-donation thank-you panel.
+ *
+ * WHY this replaces the form rather than sitting above it: someone who has just
+ * given should land on a page about their gift, not on the same ask again with
+ * a notice pinned to the top. Mirrors the mail-in check slip, which already
+ * takes over the page for the same reason.
+ *
+ * Returns an empty string when the visit can't be tied to a real completed
+ * gift, which lets the shortcode fall back to the form. Access is gated on the
+ * Stripe session id stored when the donation was marked paid, so walking the
+ * donation ids in the URL reveals nothing about other donors.
+ */
+function sp_donation_thank_you( int $donation_id, string $session_id, array $settings, string $org_name ): string {
+    if ( ! $donation_id || ! sp_stripe_session_id_is_valid( $session_id ) ) return '';
+
+    global $wpdb;
+    $d = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_donations WHERE id = %d", $donation_id
+    ) );
+    if ( ! $d ) return '';
+    if ( ! in_array( $d->status, [ 'paid', 'subscription_active' ], true ) ) return '';
+    if ( ! hash_equals( (string) $d->stripe_session_id, $session_id ) ) return '';
+
+    $symbol     = sp_get_currency_symbol();
+    $gross      = (float) ( $d->gross_amount ?: $d->amount );
+    $tax_id     = trim( $settings['tax_id'] ?? '' );
+    $recurring  = $d->frequency !== 'one_time';
+    $freq_label = $d->frequency === 'monthly'
+        ? __( 'monthly gift', 'societypress' )
+        : ( $d->frequency === 'annually' ? __( 'annual gift', 'societypress' ) : __( 'one-time gift', 'societypress' ) );
+
+    // First name only: the headline reads as a greeting, not a database field.
+    $first_name = trim( (string) $d->donor_name );
+    if ( $first_name !== '' ) {
+        $parts      = preg_split( '/\s+/', $first_name );
+        $first_name = (string) $parts[0];
+    }
+
+    ob_start();
+    ?>
+    <div class="sp-donate-thanks-wrap">
+        <style>
+            .sp-donate-thanks-wrap { max-width: 560px; margin: 1.5em auto; }
+            .sp-donate-thanks { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 32px 28px; text-align: center; }
+            .sp-donate-thanks-mark {
+                width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 50%;
+                background: #0d1f3c; color: #fff; font-size: 30px; line-height: 56px;
+            }
+            .sp-donate-thanks h3 { margin: 0 0 8px; font-size: 26px; }
+            .sp-donate-thanks-lead { color: #555; margin: 0 0 24px; font-size: 16px; }
+            .sp-donate-thanks-amount {
+                font-size: 34px; font-weight: 700; color: #0d1f3c; line-height: 1.2;
+            }
+            .sp-donate-thanks-freq { color: #666; font-size: 14px; margin-top: 2px; }
+            .sp-donate-thanks-panel {
+                background: #f6f6f6; border-radius: 8px; padding: 18px; margin: 24px 0;
+            }
+            .sp-donate-thanks-detail { color: #555; font-size: 14px; margin: 10px 0 0; }
+            .sp-donate-thanks-detail:first-child { margin-top: 0; }
+            .sp-donate-thanks-ref { font-family: monospace; letter-spacing: .06em; }
+            .sp-donate-thanks-fine { color: #777; font-size: 13px; margin: 18px 0 0; }
+            .sp-donate-thanks-back {
+                display: inline-block; margin-top: 24px; background: #0d1f3c; color: #fff;
+                border-radius: 6px; padding: 11px 22px; font-weight: 600; text-decoration: none;
+            }
+            @media print { .sp-donate-thanks-back { display: none; } .sp-donate-thanks { border: none; } }
+        </style>
+        <div class="sp-donate-thanks">
+            <div class="sp-donate-thanks-mark" aria-hidden="true">&#10003;</div>
+
+            <h3>
+                <?php
+                echo esc_html(
+                    $first_name !== ''
+                        ? sprintf( __( 'Thank you, %s.', 'societypress' ), $first_name )
+                        : __( 'Thank you.', 'societypress' )
+                );
+                ?>
+            </h3>
+
+            <p class="sp-donate-thanks-lead">
+                <?php
+                echo esc_html( sprintf(
+                    __( 'Your gift to %s came through.', 'societypress' ),
+                    $org_name
+                ) );
+                ?>
+            </p>
+
+            <div class="sp-donate-thanks-amount"><?php echo esc_html( $symbol . number_format( $gross, 2 ) ); ?></div>
+            <div class="sp-donate-thanks-freq"><?php echo esc_html( $freq_label ); ?></div>
+
+            <div class="sp-donate-thanks-panel">
+                <?php if ( ! empty( $d->donor_email ) ) : ?>
+                    <p class="sp-donate-thanks-detail">
+                        <?php
+                        echo esc_html( sprintf(
+                            __( 'A receipt is on its way to %s.', 'societypress' ),
+                            $d->donor_email
+                        ) );
+                        ?>
+                    </p>
+                <?php endif; ?>
+
+                <p class="sp-donate-thanks-detail">
+                    <?php esc_html_e( 'Reference', 'societypress' ); ?>
+                    <span class="sp-donate-thanks-ref"><?php echo esc_html( sprintf( 'SP-%06d', (int) $d->id ) ); ?></span>
+                </p>
+
+                <?php if ( ! empty( $d->dedication ) ) : ?>
+                    <p class="sp-donate-thanks-detail">
+                        <?php
+                        echo esc_html( sprintf(
+                            __( 'Given in honor of %s.', 'societypress' ),
+                            $d->dedication
+                        ) );
+                        ?>
+                    </p>
+                <?php endif; ?>
+
+                <?php if ( $recurring ) : ?>
+                    <p class="sp-donate-thanks-detail">
+                        <?php esc_html_e( 'This gift repeats automatically. You can stop it at any time by replying to your receipt.', 'societypress' ); ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <?php if ( $tax_id ) : ?>
+                <p class="sp-donate-thanks-fine">
+                    <?php
+                    echo esc_html( sprintf(
+                        __( '%1$s is a 501(c)(3) tax-exempt organization. EIN: %2$s. No goods or services were provided in exchange for this contribution.', 'societypress' ),
+                        $org_name,
+                        $tax_id
+                    ) );
+                    ?>
+                </p>
+            <?php endif; ?>
+
+            <a class="sp-donate-thanks-back" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+                <?php esc_html_e( 'Back to the site', 'societypress' ); ?>
+            </a>
+        </div>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+
+/**
  * Shortcode: [sp_donate]
  *
  * Public donation form. Accepts attributes:
@@ -103716,6 +103894,20 @@ add_shortcode( 'sp_donate', function ( $atts ) {
     // slip in place of the form rather than sending the donor to a processor.
     if ( $msg === 'check_mailin' ) {
         return sp_donation_check_slip( $settings, $org_name );
+    }
+
+    // Paid path: take over the page with a thank-you rather than re-presenting
+    // the ask. Falls through to the form if the visit can't be tied to a gift.
+    if ( $msg === 'success' ) {
+        $thanks = sp_donation_thank_you(
+            (int) ( $_GET['sp_donation'] ?? 0 ),
+            sanitize_text_field( wp_unslash( $_GET['sp_session'] ?? '' ) ),
+            $settings,
+            $org_name
+        );
+        if ( $thanks !== '' ) {
+            return $thanks;
+        }
     }
 
     ob_start();
@@ -103789,12 +103981,14 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             .sp-donate-check-help { color: #6d7175; font-size: 13px; text-align: center; margin-top: 8px; }
         </style>
 
-        <?php if ( $msg === 'success' ) : ?>
-            <div class="sp-donate-notice sp-donate-notice-success">
-                <strong><?php esc_html_e( 'Thank you!', 'societypress' ); ?></strong>
-                <?php esc_html_e( 'Your gift has been received. A receipt will be emailed to you.', 'societypress' ); ?>
-            </div>
-        <?php elseif ( $msg === 'cancelled' ) : ?>
+        <?php
+        // WHY no success notice here: a confirmed gift is answered by the
+        // thank-you panel above, which takes over the whole page. Reaching the
+        // form with a success flag means the gift could not be confirmed, and
+        // saying "received" on that path told donors money had changed hands
+        // when it had not.
+        ?>
+        <?php if ( $msg === 'cancelled' ) : ?>
             <div class="sp-donate-notice sp-donate-notice-error">
                 <?php esc_html_e( 'Your donation was cancelled. No payment was taken.', 'societypress' ); ?>
             </div>
@@ -104307,8 +104501,15 @@ add_action( 'template_redirect', function () {
     ) );
     if ( ! $donation ) return;
 
-    // Already processed (webhook fired first)?
-    if ( in_array( $donation->status, [ 'paid', 'subscription_active' ], true ) ) return;
+    // Already processed (webhook fired first)? Still record the session id if it
+    // is missing — the thank-you screen authorizes against it, and the webhook
+    // usually wins this race, so otherwise the donor lands on the bare form.
+    if ( in_array( $donation->status, [ 'paid', 'subscription_active' ], true ) ) {
+        if ( empty( $donation->stripe_session_id ) ) {
+            sp_donation_backfill_session_id( $donation, $session_id );
+        }
+        return;
+    }
 
     $settings   = sp_settings();
     $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
@@ -104338,6 +104539,21 @@ function sp_donation_mark_paid_from_session( int $donation_id, array $session ):
     ) );
     if ( ! $donation ) return;
 
+    // WHY the session has to name this donation: the return-from-Stripe handler
+    // reads the donation id out of one query parameter and the session id out of
+    // another, and nothing tied the two together. Anyone holding a completed
+    // session — their own dollar gift is enough — could pair it with someone
+    // else's pending donation, settle it, and send that donor a receipt for
+    // money never received. Checkout records the donation id on the session in
+    // two places when it is created, so a session that names a different gift
+    // (or names none) has no business finalizing this one. The webhook derives
+    // its id from this same metadata, so it is unaffected.
+    $claimed_id = (int) ( $session['client_reference_id'] ?? 0 );
+    if ( ! $claimed_id ) {
+        $claimed_id = (int) ( $session['metadata']['donation_id'] ?? 0 );
+    }
+    if ( $claimed_id !== $donation_id ) return;
+
     // Idempotency: Stripe retries webhook delivery for up to 72h, and the
     // success-URL handler can race it. If this donation is already finalized,
     // don't re-update or fire a second receipt.
@@ -104348,15 +104564,24 @@ function sp_donation_mark_paid_from_session( int $donation_id, array $session ):
     $payment_status = $session['payment_status'] ?? '';
     $mode           = $session['mode'] ?? 'payment';
 
+    // WHY record the session id: the thank-you screen is reachable by URL, so it
+    // has to prove the visitor came back from this donation's own checkout
+    // before it shows any donor detail. The column existed but was never filled.
+    $session_ref = sp_stripe_session_id_is_valid( (string) ( $session['id'] ?? '' ) )
+        ? (string) $session['id']
+        : null;
+
     if ( $mode === 'subscription' ) {
         $sub_id = $session['subscription'] ?? '';
         $wpdb->update( $wpdb->prefix . 'sp_donations', [
             'status'                 => 'subscription_active',
+            'stripe_session_id'      => $session_ref,
             'stripe_subscription_id' => $sub_id ?: null,
         ], [ 'id' => $donation_id ] );
     } elseif ( $payment_status === 'paid' ) {
         $wpdb->update( $wpdb->prefix . 'sp_donations', [
-            'status' => 'paid',
+            'status'            => 'paid',
+            'stripe_session_id' => $session_ref,
         ], [ 'id' => $donation_id ] );
     } else {
         return; // Don't fire a receipt for non-paid sessions

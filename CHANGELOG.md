@@ -19,6 +19,56 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.44] — 2026-08-17
+
+### Fixed
+
+**A donation could be marked paid by someone else's payment**
+
+Returning from Stripe, the site read which gift to settle from one part of
+the web address and which payment to settle it with from another, and never
+checked that the two belonged together. Anyone who had completed a payment
+of their own held something that would settle a stranger's pending gift —
+recording money that was never received and emailing that donor a receipt
+for it.
+
+Stripe stamps the gift's own reference onto the payment when checkout
+begins, in two separate places. A payment that names a different gift, or
+names none, is now refused. Payments arriving directly from Stripe were
+never affected; they were already reading the reference off the payment
+itself.
+
+Societies should check their donation records for any online gift they
+cannot match to money actually received.
+
+The donation form no longer says "your gift has been received" when it
+cannot confirm the gift. A confirmed gift gets the thank-you page; anything
+else gets the form back without a claim attached to it.
+
+---
+
+## [1.1.43] — 2026-08-17
+
+### Changed
+
+**A real thank-you page after an online gift**
+
+Giving online used to hand you the donation form back, with a small green
+line above it saying the gift went through. Read quickly, it looked as
+though nothing had happened — and it asked you for money a second time.
+
+Paying now takes you to a page about your gift instead: the amount, the
+frequency, where the receipt is headed, a reference number to quote, and
+the dedication if you gave in someone's honor. Recurring gifts say plainly
+that they will repeat and how to stop them. The 501(c)(3) acknowledgment
+appears only for societies that have entered their EIN, so nobody claims a
+tax status they do not hold.
+
+The page can only be opened by the person who just gave. Walking the
+donation numbers in the address bar shows a stranger nothing.
+
+---
+
 ## [1.1.42] — 2026-08-17
 
 ### Changed

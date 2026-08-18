@@ -19,6 +19,24 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.48] — 2026-08-18
+
+### Fixed
+
+**The Grant Access button is no longer hidden behind the search box**
+
+On User Access, searching for someone to grant access to put the search box
+on top of the results underneath it, covering the right-hand end of every row
+— which is where the Grant Access button sits. The name column looked
+squeezed and the button could not be reached at all.
+
+The search row now stays in place above the results instead of floating over
+them, and the action column is held narrow so names and email addresses get
+the width. The newsletter archive's search box had the same fault and is
+fixed with it.
+
+---
+
 ## [1.1.47] — 2026-08-18
 
 ### Changed

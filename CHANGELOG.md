@@ -19,6 +19,24 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.49] — 2026-08-18
+
+### Fixed
+
+**Button columns are as wide as their buttons, and no wider**
+
+The tables on User Access divided their width evenly between however many
+columns they had, so the Grant Access column took half the page while the
+name and email beside it were squeezed into the other half — and the
+previous release's fix pinned that column to a fixed 140 pixels, which is a
+guess that goes wrong the moment a word gets longer or the page is
+translated.
+
+Each button column now takes exactly the width its buttons need and hands
+the rest to the names beside them.
+
+---
+
 ## [1.1.48] — 2026-08-18
 
 ### Fixed

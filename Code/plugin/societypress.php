@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.48
+ * Version:     1.1.49
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.48' );
+define( 'SOCIETYPRESS_VERSION', '1.1.49' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34454,7 +34454,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.48',
+            'version'     => '1.1.49',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34462,7 +34462,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.48',
+            'version'     => '1.1.49',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34470,7 +34470,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.48',
+            'version'     => '1.1.49',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34478,7 +34478,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.48',
+            'version'     => '1.1.49',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34486,7 +34486,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.48',
+            'version'     => '1.1.49',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -39083,9 +39083,14 @@ function sp_render_user_access_page(): void {
         .sp-access-muted {
             color: #646970;
         }
-        /* Staff table — constrained width so it doesn't sprawl on very wide screens */
+        /* Staff table — constrained width so it doesn't sprawl on very wide
+           screens. WHY table-layout: auto: .widefat lays out fixed, which
+           divides the width evenly between however many columns there are, so
+           a two-column table gives half the page to one button and squeezes
+           the name beside it. Auto lets each column take what it needs. */
         .sp-access-staff-table {
             max-width: 900px;
+            table-layout: auto;
         }
         /* Smaller muted email display under the user's display name in the table */
         .sp-access-user-email {
@@ -39115,11 +39120,14 @@ function sp_render_user_access_page(): void {
             gap: 8px;
             margin: 11px 0;
         }
-        /* Action column — held narrow so the name and email get the width they
-           need. A fixed-layout table splits two columns evenly otherwise, which
-           leaves a name squeezed beside a mostly empty button column. */
+        /* Button column — width: 1% with the wrapping turned off is the
+           shrink-to-fit idiom: the column ends up exactly as wide as its
+           buttons, whatever they say in whatever language, and every other
+           column keeps the rest. A width in pixels only guesses at that, and
+           guesses low the moment a word gets longer. */
         .sp-access-col-action {
-            width: 140px;
+            width: 1%;
+            white-space: nowrap;
         }
         /* Flex row holding the user <select> and submit button side-by-side */
         .sp-access-user-form-row {
@@ -39297,7 +39305,7 @@ function sp_render_user_access_page(): void {
                         <th scope="col"><?php esc_html_e( 'User', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Role Template', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Access Areas', 'societypress' ); ?></th>
-                        <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                        <th scope="col" class="sp-access-col-action"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -39317,7 +39325,7 @@ function sp_render_user_access_page(): void {
                         </td>
                         <td><?php echo esc_html( $tpl_name ); ?></td>
                         <td><?php echo esc_html( implode( ', ', $area_names ) ?: '—' ); ?></td>
-                        <td>
+                        <td class="sp-access-col-action">
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access&edit_user=' . $staff_user->ID ) ); ?>" class="button button-small">
                                 <?php esc_html_e( 'Edit', 'societypress' ); ?>
                             </a>
@@ -39394,7 +39402,7 @@ function sp_render_user_access_page(): void {
                                     <strong><?php echo esc_html( $fu->display_name ); ?></strong><br>
                                     <span class="sp-access-user-email"><?php echo esc_html( $fu->user_email ); ?></span>
                                 </td>
-                                <td>
+                                <td class="sp-access-col-action">
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-user-access&edit_user=' . $fu->ID ) ); ?>" class="button button-primary button-small">
                                         <?php esc_html_e( 'Grant Access', 'societypress' ); ?>
                                     </a>

@@ -19,6 +19,23 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.46] — 2026-08-17
+
+### Fixed
+
+**The email address you choose to send from is now the one used**
+
+Settings offers a name and address for outgoing mail, and nothing was
+reading them. Every receipt, notice and reminder went out under the site
+title and the WordPress administrator's address instead, so a society that
+set up a proper sending address watched it be ignored without a word.
+
+Both fields are now used wherever the site sends mail, falling back to the
+site title and the administrator's address only when they are left empty. An
+address chosen by another plugin is still left alone.
+
+---
+
 ## [1.1.45] — 2026-08-17
 
 ### Fixed

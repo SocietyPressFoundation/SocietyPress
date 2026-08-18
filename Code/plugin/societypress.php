@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.45
+ * Version:     1.1.46
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.45' );
+define( 'SOCIETYPRESS_VERSION', '1.1.46' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -11288,26 +11288,38 @@ function sp_generate_initial_avatar_url( int $user_id ): string {
 //      instead of "WordPress <wordpress@yoursociety.org>."
 // ============================================================================
 
-// FROM name: "WordPress" → the site's name (Settings → General → Site Title)
+// FROM name: "WordPress" → the society's own name.
+//
+// WHY the settings value comes first: Settings → Email offers a "from" name and
+// address, and these filters used to ignore both, falling back to the site title
+// and the WordPress admin address. A society that filled those fields in saw
+// them quietly overridden on every receipt and notice it sent — the setting
+// looked broken because it was.
 add_filter( 'wp_mail_from_name', function ( $name ) {
-    // Only override if it's still the WordPress default.
-    // WHY: If another plugin (like a SMTP plugin) has already set a custom
-    //      FROM name, we don't want to clobber it.
-    if ( $name === 'WordPress' ) {
-        return get_option( 'blogname' ) ?: 'SocietyPress';
+    // Leave a name another plugin (an SMTP plugin, say) has already chosen.
+    if ( $name !== 'WordPress' ) {
+        return $name;
     }
-    return $name;
+    $configured = trim( (string) ( sp_settings()['email_from_name'] ?? '' ) );
+
+    return $configured !== '' ? $configured : ( get_option( 'blogname' ) ?: 'SocietyPress' );
 });
 
-// FROM email: "wordpress@domain" → the admin email from Settings → General
+// FROM email: "wordpress@domain" → the configured sending address, or the
+// WordPress admin address where none is set.
 add_filter( 'wp_mail_from', function ( $email ) {
-    // Only override the default WordPress-generated address.
-    // The default is "wordpress@{domain}" — detect it by checking the local part.
+    // The WordPress default is "wordpress@{domain}"; anything else was chosen
+    // deliberately and stays.
     $local_part = strtolower( explode( '@', $email )[0] ?? '' );
-    if ( $local_part === 'wordpress' ) {
-        return get_option( 'admin_email' ) ?: $email;
+    if ( $local_part !== 'wordpress' ) {
+        return $email;
     }
-    return $email;
+    $configured = sanitize_email( (string) ( sp_settings()['email_from_email'] ?? '' ) );
+    if ( $configured !== '' && is_email( $configured ) ) {
+        return $configured;
+    }
+
+    return get_option( 'admin_email' ) ?: $email;
 });
 
 
@@ -34406,7 +34418,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.45',
+            'version'     => '1.1.46',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34414,7 +34426,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.45',
+            'version'     => '1.1.46',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34422,7 +34434,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.45',
+            'version'     => '1.1.46',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34430,7 +34442,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.45',
+            'version'     => '1.1.46',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34438,7 +34450,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.45',
+            'version'     => '1.1.46',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

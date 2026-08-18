@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'LEDGER_THEME_VERSION' ) ) {
-    define( 'LEDGER_THEME_VERSION', '1.1.44' );
+    define( 'LEDGER_THEME_VERSION', '1.1.45' );
 }
 
 

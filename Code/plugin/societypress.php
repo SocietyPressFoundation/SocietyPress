@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.44
+ * Version:     1.1.45
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.44' );
+define( 'SOCIETYPRESS_VERSION', '1.1.45' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -26630,6 +26630,10 @@ add_action( 'admin_init', function () {
         [
             'key'         => 'organization_address',
             'placeholder' => "123 Main Street\nSpringfield, IL 62701",
+            // WHY say this here: the donation page hides its "mail a check"
+            // option until there is an address to mail one to, and without a
+            // word on this screen that absence looks like a fault.
+            'description' => __( 'Donors are offered the option of mailing a check only once this address is filled in — it is the address their check is sent to.', 'societypress' ),
         ]
     );
 
@@ -27972,6 +27976,10 @@ function sp_render_textarea_field( array $args ): void {
         esc_attr( $args['placeholder'] ?? '' ),
         esc_textarea( $value )
     );
+
+    if ( ! empty( $args['description'] ) ) {
+        printf( '<p class="description">%s</p>', esc_html( $args['description'] ) );
+    }
 }
 
 
@@ -34398,7 +34406,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.44',
+            'version'     => '1.1.45',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34406,7 +34414,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.44',
+            'version'     => '1.1.45',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34414,7 +34422,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.44',
+            'version'     => '1.1.45',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34422,7 +34430,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.44',
+            'version'     => '1.1.45',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34430,7 +34438,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.44',
+            'version'     => '1.1.45',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -103598,6 +103606,21 @@ function sp_donation_presets(): array {
 
 
 /**
+ * Is mail-in giving usable on this site?
+ *
+ * WHY: the slip exists to tell a donor where to send the check. With no
+ *      mailing address on record it printed a payable-to line and nothing
+ *      else, leaving the donor holding a check and no envelope to put it in —
+ *      while the society got a pending gift that would never arrive. A society
+ *      that hasn't entered its address hasn't set mail-in giving up, so the
+ *      option stays hidden until it has.
+ */
+function sp_donation_check_giving_enabled( array $settings ): bool {
+    return trim( (string) ( $settings['organization_address'] ?? '' ) ) !== '';
+}
+
+
+/**
  * Printable "mail us a check" confirmation slip.
  *
  * WHY: When a donor chooses the mail-in option we record a pending gift and
@@ -104001,6 +104024,10 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             <div class="sp-donate-notice sp-donate-notice-error">
                 <?php esc_html_e( 'Please enter a donation amount of at least $1.', 'societypress' ); ?>
             </div>
+        <?php elseif ( $err === 'check_unavailable' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-error">
+                <?php esc_html_e( 'Giving by mailed check isn\'t set up on this site yet. Please use the card option above.', 'societypress' ); ?>
+            </div>
         <?php elseif ( $err === 'checkout_failed' ) : ?>
             <div class="sp-donate-notice sp-donate-notice-error">
                 <?php esc_html_e( 'We could not connect to the payment processor. Please try again in a moment.', 'societypress' ); ?>
@@ -104114,11 +104141,13 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                 <p class="sp-donate-paypal-soon"><?php esc_html_e( 'Secure payment via Stripe.', 'societypress' ); ?></p>
             <?php endif; ?>
 
-            <div class="sp-donate-or"><?php esc_html_e( 'or', 'societypress' ); ?></div>
-            <button type="submit" name="sp_donate_method" value="check" class="sp-donate-check-btn" id="sp-donate-check-btn">
-                <?php esc_html_e( 'Prefer to mail a check? →', 'societypress' ); ?>
-            </button>
-            <p class="sp-donate-check-help"><?php esc_html_e( 'We\'ll show you where to send it and a code to write on the check.', 'societypress' ); ?></p>
+            <?php if ( sp_donation_check_giving_enabled( $settings ) ) : ?>
+                <div class="sp-donate-or"><?php esc_html_e( 'or', 'societypress' ); ?></div>
+                <button type="submit" name="sp_donate_method" value="check" class="sp-donate-check-btn" id="sp-donate-check-btn">
+                    <?php esc_html_e( 'Prefer to mail a check? →', 'societypress' ); ?>
+                </button>
+                <p class="sp-donate-check-help"><?php esc_html_e( 'We\'ll show you where to send it and a code to write on the check.', 'societypress' ); ?></p>
+            <?php endif; ?>
         </form>
 
         <?php if ( $paypal_configured && $paypal_client_id ) : ?>
@@ -104304,6 +104333,13 @@ add_action( 'init', function () {
     //      this branches out before any Stripe work — checks are one-time only.
     if ( ( $_POST['sp_donate_method'] ?? '' ) === 'check' ) {
         global $wpdb;
+
+        // The button is hidden without a mailing address; this stops a posted
+        // form from booking a pledge the society could never receive.
+        if ( ! sp_donation_check_giving_enabled( sp_settings() ) ) {
+            wp_safe_redirect( add_query_arg( 'sp_donate_err', 'check_unavailable', $referer ) );
+            exit;
+        }
 
         $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
         $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );

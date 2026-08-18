@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.45] — 2026-08-17
+
+### Fixed
+
+**"Mail a check" no longer sends donors to a blank address**
+
+The donation page offered mailing a check whether or not the society had
+ever said where to mail it. Choosing it on a site with no address on file
+produced a slip naming who to make the check out to and nothing else — the
+donor was left holding a check with nowhere to send it, and the society got
+a pending gift that was never going to arrive.
+
+The option now appears only once an address is entered under Settings →
+Organization, and that field says so, so its absence reads as something to
+fill in rather than something broken. A donation page reached without one
+explains itself instead of going quiet.
+
+---
+
 ## [1.1.44] — 2026-08-17
 
 ### Fixed

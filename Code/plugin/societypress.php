@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.51
+ * Version:     1.1.52
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.51' );
+define( 'SOCIETYPRESS_VERSION', '1.1.52' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8316,6 +8316,7 @@ add_filter( 'edit_page_per_page', function () {
 
 // Left side: "Thank you for creating with WordPress" → SocietyPress branding
 add_filter( 'admin_footer_text', function () {
+    /* translators: %s: the product name SocietyPress, shown in the admin footer */
     return '<span id="footer-thankyou">' . sprintf( esc_html__( 'Powered by %s', 'societypress' ), '<strong>SocietyPress</strong>' ) . '</span>';
 });
 
@@ -8757,6 +8758,7 @@ add_action( 'init', function () {
     $org_name = trim( sp_settings()['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
     // Offline fallback HTML — shown only when the device has no network at
     // all. Plain, accessible, no external assets so it works in airplane mode.
+    /* translators: %s: site name */
     $offline_html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . esc_html( sprintf( __( 'Offline — %s', 'societypress' ), $org_name ) ) . '</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:520px;margin:60px auto;padding:24px;color:#1a1a1a;line-height:1.5}h1{margin-top:0;font-size:24px}p{margin:14px 0}.btn{display:inline-block;margin-top:16px;padding:10px 18px;background:#2271b1;color:#fff;border-radius:6px;text-decoration:none}</style></head><body><h1>' . esc_html__( 'You\'re offline', 'societypress' ) . '</h1><p>' . esc_html( sprintf( __( '%s couldn\'t reach the network just now. Once your connection is back, refresh this page.', 'societypress' ), $org_name ) ) . '</p><p>' . esc_html__( 'If you\'re trying to do something time-sensitive (renew, register, donate), it\'s safest to wait — your form would not have been saved.', 'societypress' ) . '</p><a href="/" class="btn" onclick="location.reload();return false;">' . esc_html__( 'Try again', 'societypress' ) . '</a></body></html>';
 
     $sw = "/* SocietyPress service worker — version {$version} */\n";
@@ -10510,8 +10512,10 @@ function sp_queue_profile_change( int $user_id, string $section, array $new_data
     ];
     $section_label = $section_labels[ $section ] ?? $section;
     $review_url    = admin_url( 'admin.php?page=sp-pending-changes' );
+    /* translators: %s: site name */
     $subject       = sprintf( __( '[%s] Profile Change Pending Review', 'societypress' ), get_option( 'blogname' ) );
     $body          = sprintf(
+        /* translators: 1: member name, 2: profile section name, 3: review URL */
         __( "%s has submitted changes to their %s.\n\nReview and approve or reject:\n%s", 'societypress' ),
         $member_name, $section_label, $review_url
     );
@@ -10643,10 +10647,12 @@ function sp_render_pending_changes_page(): void {
                     : __( 'rejected', 'societypress' );
 
                 $subject = sprintf(
+                    /* translators: 1: site name, 2: approved or rejected */
                     __( '[%s] Your profile changes have been %s', 'societypress' ),
                     get_option( 'blogname' ), $status_word
                 );
                 $body = sprintf(
+                    /* translators: 1: profile section name, 2: approved or rejected */
                     __( "Your changes to %s have been %s by an administrator.", 'societypress' ),
                     $section_label, $status_word
                 );
@@ -10664,6 +10670,7 @@ function sp_render_pending_changes_page(): void {
 
             echo '<div class="notice notice-success"><p>';
             printf(
+                /* translators: %s: approved and applied, or rejected */
                 esc_html__( 'Change request %s.', 'societypress' ),
                 $decision === 'approve' ? esc_html__( 'approved and applied', 'societypress' ) : esc_html__( 'rejected', 'societypress' )
             );
@@ -11774,7 +11781,7 @@ add_action( 'admin_footer', function () {
             window.spBulkConfirmBound = true;
             var SP_DESTRUCTIVE   = ['delete', 'bulk_delete', 'trash', 'delete_all'];
             var SP_BULK_MSG_ONE  = <?php echo wp_json_encode( __( 'Delete the selected item? This cannot be undone.', 'societypress' ) ); ?>;
-            var SP_BULK_MSG_MANY = <?php echo wp_json_encode( __( 'Delete the %d selected items? This cannot be undone.', 'societypress' ) ); ?>;
+            var SP_BULK_MSG_MANY = <?php /* translators: %d: number of selected items */ echo wp_json_encode( __( 'Delete the %d selected items? This cannot be undone.', 'societypress' ) ); ?>;
             document.addEventListener('submit', function (e) {
                 if (typeof spConfirm !== 'function') return;
                 var form = e.target;
@@ -15079,6 +15086,7 @@ add_action( 'wp_ajax_sp_run_update', function () {
     sp_audit( 'plugin_updated', sprintf( 'SocietyPress updated to %s', $release->version ), 'settings' );
 
     wp_send_json_success( [
+        /* translators: %s: new version number */
         'message' => sprintf( __( 'Updated to version %s. Reloading...', 'societypress' ), $release->version ),
         'version' => $release->version,
     ] );
@@ -15114,6 +15122,7 @@ add_action( 'wp_ajax_sp_check_update', function () {
 
     wp_send_json_success( [
         'available' => false,
+        /* translators: %s: current version number */
         'message'   => sprintf( __( 'You are running the latest version (%s).', 'societypress' ), SOCIETYPRESS_VERSION ),
     ] );
 } );
@@ -15413,6 +15422,7 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
     );
 
     wp_send_json_success( [
+        /* translators: %s: new theme version number */
         'message' => sprintf( __( 'Theme updated to version %s. Reloading...', 'societypress' ), $update['available'] ),
     ] );
 } );
@@ -16246,12 +16256,13 @@ function sp_render_dashboard_page(): void {
                 <div>
                     <strong class="sp-dash-update-title">
                         <?php printf(
+                            /* translators: %s: available version number */
                             esc_html__( 'SocietyPress %s is available', 'societypress' ),
                             esc_html( $sp_update->version )
                         ); ?>
                     </strong>
                     <span class="sp-dash-update-current">
-                        (<?php printf( esc_html__( 'you have %s', 'societypress' ), esc_html( SOCIETYPRESS_VERSION ) ); ?>)
+                        (<?php /* translators: %s: currently installed version number */ printf( esc_html__( 'you have %s', 'societypress' ), esc_html( SOCIETYPRESS_VERSION ) ); ?>)
                     </span>
                     <?php if ( ! empty( $sp_update->html_url ) ) : ?>
                         <br>
@@ -16341,6 +16352,7 @@ function sp_render_dashboard_page(): void {
                 <div class="sp-dash-update-row<?php echo ! empty( $child_theme_updates ) ? ' sp-dash-update-row--gap' : ''; ?>">
                     <span class="sp-dash-update-text">
                         <?php printf(
+                            /* translators: 1: installed version, 2: available version */
                             esc_html__( 'SocietyPress parent theme: %s → %s', 'societypress' ),
                             '<strong>' . esc_html( $parent_theme_update['installed'] ) . '</strong>',
                             '<strong>' . esc_html( $parent_theme_update['available'] ) . '</strong>'
@@ -16359,6 +16371,7 @@ function sp_render_dashboard_page(): void {
                 <div class="sp-dash-update-row sp-dash-update-row--child" data-child-slug="<?php echo esc_attr( $ct_slug ); ?>">
                     <span class="sp-dash-update-text">
                         <?php printf(
+                            /* translators: 1: child theme name, 2: installed version, 3: available version */
                             esc_html__( '%s child theme: %s → %s', 'societypress' ),
                             '<strong>' . esc_html( $ct_info['name'] ) . '</strong>',
                             esc_html( $ct_info['installed'] ),
@@ -17014,7 +17027,7 @@ function sp_render_dashboard_page(): void {
                                         <?php echo esc_html( $exp_display ); ?>
                                         <?php if ( $days_left <= 7 ) : ?>
                                             <span class="sp-dash-expiry-urgent">
-                                                (<?php echo $days_left === 0 ? esc_html__( 'today', 'societypress' ) : sprintf( esc_html__( '%dd', 'societypress' ), $days_left ); ?>)
+                                                (<?php /* translators: %d: number of days until the membership expires */ echo $days_left === 0 ? esc_html__( 'today', 'societypress' ) : sprintf( esc_html__( '%dd', 'societypress' ), $days_left ); ?>)
                                             </span>
                                         <?php endif; ?>
                                     </td>
@@ -17083,7 +17096,7 @@ function sp_render_dashboard_page(): void {
                         </tr>
                         <tr>
                             <td class="sp-dash-td-label"><?php echo esc_html__( 'SocietyPress', 'societypress' ); ?></td>
-                            <td><?php echo esc_html( sprintf( __( 'Version %s', 'societypress' ), SOCIETYPRESS_VERSION ) ); ?></td>
+                            <td><?php /* translators: %s: version number */ echo esc_html( sprintf( __( 'Version %s', 'societypress' ), SOCIETYPRESS_VERSION ) ); ?></td>
                         </tr>
                         <tr>
                             <td class="sp-dash-td-label"><?php echo esc_html__( 'PHP', 'societypress' ); ?></td>
@@ -17137,12 +17150,15 @@ function sp_render_dashboard_page(): void {
                         $time_label = __( 'just now', 'societypress' );
                     } elseif ( $time_diff < 3600 ) {
                         $mins = (int) ( $time_diff / 60 );
+                        /* translators: %d: number of minutes */
                         $time_label = sprintf( _n( '%d minute ago', '%d minutes ago', $mins, 'societypress' ), $mins );
                     } elseif ( $time_diff < 86400 ) {
                         $hours = (int) ( $time_diff / 3600 );
+                        /* translators: %d: number of hours */
                         $time_label = sprintf( _n( '%d hour ago', '%d hours ago', $hours, 'societypress' ), $hours );
                     } elseif ( $time_diff < 604800 ) {
                         $days = (int) ( $time_diff / 86400 );
+                        /* translators: %d: number of days */
                         $time_label = sprintf( _n( '%d day ago', '%d days ago', $days, 'societypress' ), $days );
                     } else {
                         $time_label = sp_format_wall_clock( $act->created_at, 'M j, Y' );
@@ -19261,7 +19277,7 @@ add_action( 'admin_init', function () {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?php echo esc_html( sprintf( __( '%s — Membership List', 'societypress' ), $org_name ) ); ?></title>
+<title><?php /* translators: %s: organization name */ echo esc_html( sprintf( __( '%s — Membership List', 'societypress' ), $org_name ) ); ?></title>
 <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; margin: 32px; }
@@ -19285,10 +19301,10 @@ add_action( 'admin_init', function () {
 <body>
     <div class="sp-print-toolbar">
         <button type="button" class="sp-print-btn" onclick="window.print();"><?php esc_html_e( 'Print / Save as PDF', 'societypress' ); ?></button>
-        <span class="sp-print-count"><?php echo esc_html( sprintf( _n( '%d member', '%d members', count( $rows ), 'societypress' ), count( $rows ) ) ); ?></span>
+        <span class="sp-print-count"><?php /* translators: %d: number of members */ echo esc_html( sprintf( _n( '%d member', '%d members', count( $rows ), 'societypress' ), count( $rows ) ) ); ?></span>
     </div>
     <h1><?php echo esc_html( sprintf( __( '%s — Membership List', 'societypress' ), $org_name ) ); ?></h1>
-    <p class="sp-print-meta"><?php echo esc_html( sprintf( __( 'Generated %s', 'societypress' ), $when ) ); ?></p>
+    <p class="sp-print-meta"><?php /* translators: %s: date and time the list was generated */ echo esc_html( sprintf( __( 'Generated %s', 'societypress' ), $when ) ); ?></p>
     <table>
         <thead>
             <tr>
@@ -19434,7 +19450,7 @@ add_action( 'admin_init', function () {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?php echo esc_html( sprintf( __( '%s — Member Directory', 'societypress' ), $org_name ) ); ?></title>
+<title><?php /* translators: %s: organization name */ echo esc_html( sprintf( __( '%s — Member Directory', 'societypress' ), $org_name ) ); ?></title>
 <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1a1a1a; margin: 32px; }
@@ -19840,7 +19856,7 @@ function sp_render_members_page(): void {
             var batchSize  = 25;
 
             btn.addEventListener('click', function() {
-                spConfirm(<?php echo wp_json_encode( sprintf( __( "Delete all %d other members and their accounts?\n\nYour own account will NOT be touched.\n\nThis cannot be undone.", "societypress" ), $others_count ) ); ?>, function() {
+                spConfirm(<?php /* translators: %d: number of other members that will be deleted */ echo wp_json_encode( sprintf( __( "Delete all %d other members and their accounts?\n\nYour own account will NOT be touched.\n\nThis cannot be undone.", "societypress" ), $others_count ) ); ?>, function() {
                 var overlay     = document.getElementById('sp-delete-overlay');
                 var progressBar = document.getElementById('sp-delete-progress');
                 var countEl     = document.getElementById('sp-delete-count');
@@ -25050,7 +25066,7 @@ function sp_render_import_page(): void {
                     <!-- Confirm import button — inside the same form as the mapping dropdowns -->
                     <div class="sp-import-confirm-box">
                             <p class="sp-import-confirm-intro">
-                                <strong><?php printf( esc_html__( 'Ready to import %d members?', 'societypress' ), (int) $preview['row_count'] ); ?></strong><br>
+                                <strong><?php /* translators: %d: number of members in the file */ printf( esc_html__( 'Ready to import %d members?', 'societypress' ), (int) $preview['row_count'] ); ?></strong><br>
                                 <?php esc_html_e( 'This will create login accounts for each new member (no welcome emails are sent).', 'societypress' ); ?>
                             </p>
 
@@ -29875,8 +29891,8 @@ function sp_render_audit_log_page(): void {
                 var label = sel.options[sel.selectedIndex].textContent;
 
                 var msg = (name === 'sp_audit_archive')
-                    ? <?php echo wp_json_encode( __( 'Save entries older than %s to a file, then remove them from the log?', 'societypress' ) ); ?>.replace('%s', label)
-                    : <?php echo wp_json_encode( __( 'Permanently delete entries older than %s with no copy kept? This cannot be undone.', 'societypress' ) ); ?>.replace('%s', label);
+                    ? <?php /* translators: %s: cut-off date, e.g. 1 year */ echo wp_json_encode( __( 'Save entries older than %s to a file, then remove them from the log?', 'societypress' ) ); ?>.replace('%s', label)
+                    : <?php /* translators: %s: cut-off date, e.g. 1 year */ echo wp_json_encode( __( 'Permanently delete entries older than %s with no copy kept? This cannot be undone.', 'societypress' ) ); ?>.replace('%s', label);
 
                 if (typeof spConfirm === 'function') {
                     spConfirm(msg, function () {
@@ -30430,6 +30446,7 @@ function sp_breadcrumbs( bool $echo = true ): string {
 
     } elseif ( is_tag() ) {
         $crumbs[] = [
+            /* translators: %s: tag name */
             'label' => sprintf( __( 'Tag: %s', 'societypress' ), single_tag_title( '', false ) ),
             'url'   => '',
         ];
@@ -31123,7 +31140,7 @@ function sp_render_group_edit_page(): void {
             </table>
 
             <?php if ( $group_id && ! empty( $members ) ) : ?>
-                <h2><?php echo esc_html( sprintf( __( 'Current Members (%d)', 'societypress' ), count( $members ) ) ); ?></h2>
+                <h2><?php /* translators: %d: number of members in the group */ echo esc_html( sprintf( __( 'Current Members (%d)', 'societypress' ), count( $members ) ) ); ?></h2>
                 <table class="widefat striped sp-max-w-600">
                     <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Email', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Joined', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Remove', 'societypress' ); ?></th></tr></thead>
                     <tbody>
@@ -31216,6 +31233,7 @@ function sp_ajax_join_group(): void {
         'joined_at' => current_time( 'mysql' ),
     ] );
 
+    /* translators: %s: group name */
     wp_send_json_success( [ 'message' => sprintf( __( 'You have joined %s!', 'societypress' ), $group->name ) ] );
 }
 add_action( 'wp_ajax_sp_join_group', 'sp_ajax_join_group' );
@@ -32962,6 +32980,7 @@ function sp_handle_page_save(): void {
     }
 
     if ( is_wp_error( $result ) ) {
+        /* translators: %s: error message */
         wp_die( esc_html( sprintf( __( 'Error saving page: %s', 'societypress' ), $result->get_error_message() ) ) );
     }
 
@@ -33228,9 +33247,9 @@ function sp_render_shared_addresses_page(): void {
         </p>
 
         <p>
-            <strong><?php echo esc_html( sprintf( _n( '%d shared address', '%d shared addresses', count( $groups ), 'societypress' ), count( $groups ) ) ); ?></strong>
+            <strong><?php /* translators: %d: number of shared addresses */ echo esc_html( sprintf( _n( '%d shared address', '%d shared addresses', count( $groups ), 'societypress' ), count( $groups ) ) ); ?></strong>
             &mdash;
-            <?php echo esc_html( sprintf( _n( '%d needs a look', '%d need a look', count( $split ), 'societypress' ), count( $split ) ) ); ?>
+            <?php /* translators: %d: number of shared addresses needing review */ echo esc_html( sprintf( _n( '%d needs a look', '%d need a look', count( $split ), 'societypress' ), count( $split ) ) ); ?>
         </p>
 
         <?php if ( empty( $groups ) ) : ?>
@@ -33739,7 +33758,7 @@ function sp_render_finances_page(): void {
         <?php if ( $total_pages > 1 ) : ?>
             <div class="tablenav bottom">
                 <div class="tablenav-pages">
-                    <span class="displaying-num"><?php echo esc_html( sprintf( _n( '%s item', '%s items', $total_rows, 'societypress' ), number_format( $total_rows ) ) ); ?></span>
+                    <span class="displaying-num"><?php /* translators: %s: formatted number of items */ echo esc_html( sprintf( _n( '%s item', '%s items', $total_rows, 'societypress' ), number_format( $total_rows ) ) ); ?></span>
                     <?php
                     echo paginate_links( [
                         'base'    => add_query_arg( 'paged', '%#%' ),
@@ -34637,7 +34656,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.51',
+            'version'     => '1.1.52',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34645,7 +34664,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.51',
+            'version'     => '1.1.52',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34653,7 +34672,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.51',
+            'version'     => '1.1.52',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34661,7 +34680,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.51',
+            'version'     => '1.1.52',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34669,7 +34688,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.51',
+            'version'     => '1.1.52',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -34756,6 +34775,7 @@ add_action( 'wp_ajax_sp_install_theme', function () {
     if ( ! $source_path ) {
         $wp_filesystem->delete( $tmp_dir, true );
         wp_send_json_error( [ 'message' => sprintf(
+            /* translators: %s: theme directory name */
             __( 'Theme directory "%s" not found in the release archive.', 'societypress' ),
             $repo_path
         ) ] );
@@ -35215,6 +35235,7 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
     foreach ( $color_keys as $key ) {
         $val = sanitize_hex_color( $_POST[ 'color_' . $key ] ?? '' );
         if ( ! $val ) {
+            /* translators: %s: name of the color setting */
             wp_send_json_error( [ 'message' => sprintf( __( 'Invalid color for %s.', 'societypress' ), $key ) ] );
         }
         $colors[ $key ] = $val;
@@ -35294,6 +35315,7 @@ add_action( 'wp_ajax_sp_create_custom_theme', function () {
     );
 
     wp_send_json_success( [
+        /* translators: %s: theme name */
         'message' => sprintf( __( '"%s" has been created! You can now activate it.', 'societypress' ), $name ),
         'slug'    => $slug,
     ] );
@@ -35392,6 +35414,7 @@ add_action( 'wp_ajax_sp_update_custom_theme', function () {
     );
 
     wp_send_json_success( [
+        /* translators: %s: theme name */
         'message' => sprintf( __( '"%s" has been updated.', 'societypress' ), $name ),
     ] );
 } );
@@ -35448,6 +35471,7 @@ add_action( 'wp_ajax_sp_delete_custom_theme', function () {
     );
 
     wp_send_json_success( [
+        /* translators: %s: theme name */
         'message' => sprintf( __( '"%s" has been deleted.', 'societypress' ), $name ),
     ] );
 } );
@@ -36084,6 +36108,7 @@ add_action( 'wp_ajax_sp_extract_site_colors', function () {
     if ( is_wp_error( $response ) ) {
         wp_send_json_error( [
             'message' => sprintf(
+                /* translators: %s: error message */
                 __( 'Could not reach that website: %s', 'societypress' ),
                 $response->get_error_message()
             ),
@@ -36094,6 +36119,7 @@ add_action( 'wp_ajax_sp_extract_site_colors', function () {
     if ( $code !== 200 ) {
         wp_send_json_error( [
             'message' => sprintf(
+                /* translators: %d: HTTP status code */
                 __( 'The website returned an error (HTTP %d). Make sure the URL is correct.', 'societypress' ),
                 $code
             ),
@@ -36913,7 +36939,7 @@ function sp_render_themes_page(): void {
                                 <button type="button" class="button sp-theme-update-btn sp-themes-update-btn-danger"
                                         data-slug="<?php echo esc_attr( $slug ); ?>"
                                         data-version="<?php echo esc_attr( $reg_version ); ?>">
-                                    <?php printf( esc_html__( 'Update to %s', 'societypress' ), esc_html( $reg_version ) ); ?>
+                                    <?php /* translators: %s: version number to update to */ printf( esc_html__( 'Update to %s', 'societypress' ), esc_html( $reg_version ) ); ?>
                                 </button>
                             <?php endif; ?>
 
@@ -38598,7 +38624,7 @@ function sp_render_settings_design_page(): void {
             return (hi + 0.05) / (lo + 0.05);
         }
 
-        var SP_CONTRAST_MSG = <?php echo wp_json_encode( __( 'These colors may be hard to read for some visitors (contrast %s:1; aim for at least 4.5:1).', 'societypress' ) ); ?>;
+        var SP_CONTRAST_MSG = <?php /* translators: %s: measured contrast ratio, e.g. 3.2 */ echo wp_json_encode( __( 'These colors may be hard to read for some visitors (contrast %s:1; aim for at least 4.5:1).', 'societypress' ) ); ?>;
 
         function spToggleContrastWarn(elId, bg, text) {
             var el = document.getElementById(elId);
@@ -39337,6 +39363,7 @@ function sp_render_user_access_page(): void {
             <div class="sp-access-edit-card">
                 <h2 class="sp-access-card-heading">
                     <?php printf(
+                        /* translators: %s: user name and email address */
                         esc_html__( 'Editing Access for: %s', 'societypress' ),
                         '<strong>' . esc_html( $editing_user->display_name ) . '</strong> (' . esc_html( $editing_user->user_email ) . ')'
                     ); ?>
@@ -39900,6 +39927,7 @@ add_filter( 'template_include', function ( $template ) {
             echo '<div class="sp-directory-login-required">';
             echo '<h2>' . esc_html__( 'Members Only', 'societypress' ) . '</h2>';
             echo '<p>' . sprintf(
+                /* translators: %s: log in link */
                 esc_html__( 'The membership directory is available to logged-in members. Please %s to view the directory.', 'societypress' ),
                 '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
             ) . '</p>';
@@ -45308,7 +45336,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                     messageSent:    <?php echo wp_json_encode( __( 'Message sent!', 'societypress' ) ); ?>,
                     somethingWrong: <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>,
                     networkError:   <?php echo wp_json_encode( __( 'Network error. Please try again.', 'societypress' ) ); ?>,
-                    descTemplate:   <?php echo wp_json_encode( __( 'Send a message to %1$s about the surname "%2$s".', 'societypress' ) ); ?>
+                    descTemplate:   <?php /* translators: 1: researcher name, 2: surname being researched */ echo wp_json_encode( __( 'Send a message to %1$s about the surname "%2$s".', 'societypress' ) ); ?>
                 };
                 (function(){
                     // WHY: Event delegation from the parent container so buttons
@@ -45463,6 +45491,7 @@ function sp_render_builder_widget_membership_tiers( array $s ): void {
             echo '<div class="sp-tier-card-price">' . ( $price > 0 ? esc_html( sp_format_currency( $price ) ) : esc_html__( 'Free', 'societypress' ) ) . '</div>';
             if ( $price > 0 && $tier->duration_months ) {
                 $d = intval( $tier->duration_months );
+                /* translators: %d: number of months in the membership term */
                 echo '<div class="sp-tier-card-period">' . ( $d === 12 ? esc_html__( 'per year', 'societypress' ) : esc_html( sprintf( __( 'per %d months', 'societypress' ), $d ) ) ) . '</div>';
             }
         }
@@ -45818,6 +45847,7 @@ function sp_handle_builder_contact_form(): void {
 
     $sent = wp_mail(
         $to,
+        /* translators: %s: number of results */
         $subject,
         sprintf(
             /* translators: 1: sender name, 2: sender email, 3: message body, 4: site/society name */
@@ -49593,12 +49623,9 @@ function sp_render_event_edit_page(): void {
 
         if (newSpeakerBtn && newSpeakerPanel) {
             var qaNonce      = <?php echo wp_json_encode( wp_create_nonce( 'sp_quick_add_speaker' ) ); ?>;
-            /* translators: %s: speaker name */
-            var qaMsgAdded   = <?php echo wp_json_encode( __( '%s was added to your speaker list.', 'societypress' ) ); ?>;
-            /* translators: %s: speaker name */
-            var qaMsgExists  = <?php echo wp_json_encode( __( '%s was already on your speaker list, so we selected them instead of adding a duplicate.', 'societypress' ) ); ?>;
-            /* translators: %s: speaker name */
-            var qaMsgFinish  = <?php echo wp_json_encode( __( 'Finish %s’s profile', 'societypress' ) ); ?>;
+            var qaMsgAdded   = <?php /* translators: %s: speaker name */ echo wp_json_encode( __( '%s was added to your speaker list.', 'societypress' ) ); ?>;
+            var qaMsgExists  = <?php /* translators: %s: speaker name */ echo wp_json_encode( __( '%s was already on your speaker list, so we selected them instead of adding a duplicate.', 'societypress' ) ); ?>;
+            var qaMsgFinish  = <?php /* translators: %s: speaker name */ echo wp_json_encode( __( 'Finish %s’s profile', 'societypress' ) ); ?>;
             var qaMsgNoName  = <?php echo wp_json_encode( __( 'Please enter the speaker’s name.', 'societypress' ) ); ?>;
             var qaMsgFailed  = <?php echo wp_json_encode( __( 'Something went wrong and the speaker was not saved. Please try again.', 'societypress' ) ); ?>;
             var qaSaving     = <?php echo wp_json_encode( __( 'Adding…', 'societypress' ) ); ?>;
@@ -49818,7 +49845,9 @@ function sp_render_event_edit_page(): void {
         ] ); ?>;
         var I18N = <?php echo wp_json_encode( [
             'no_dates'     => __( 'No occurrences — check the event date and end date.', 'societypress' ),
+            /* translators: %d: number of occurrences */
             'count_one'    => __( '%d occurrence', 'societypress' ),
+            /* translators: %d: number of occurrences */
             'count_many'   => __( '%d occurrences', 'societypress' ),
             'showing_list' => __( 'Dates', 'societypress' ),
             'show_all'     => __( 'Show all', 'societypress' ),
@@ -50024,8 +50053,7 @@ function sp_render_event_edit_page(): void {
                 fd.append('nonce', '<?php echo wp_create_nonce( "sp_recurrence" ); ?>');
 
                 var spRegenI18n = {
-                    /* translators: %d: number of new occurrences created */
-                    createdFmt: <?php echo wp_json_encode( __( '%d new occurrence(s) created.', 'societypress' ) ); ?>,
+                    createdFmt: <?php /* translators: %d: number of new occurrences created */ echo wp_json_encode( __( '%d new occurrence(s) created.', 'societypress' ) ); ?>,
                     error:     <?php echo wp_json_encode( __( 'Error generating occurrences.', 'societypress' ) ); ?>,
                     wrong:     <?php echo wp_json_encode( __( 'Something went wrong.', 'societypress' ) ); ?>
                 };
@@ -50890,6 +50918,7 @@ function sp_render_member_tiers_page(): void {
                             // Format duration for display
                             $duration_display = is_null( $tier->duration_months )
                                 ? __( 'Lifetime', 'societypress' )
+                                /* translators: %d: number of months */
                                 : sprintf( _n( '%d month', '%d months', $tier->duration_months, 'societypress' ), $tier->duration_months );
                         ?>
                         <tr data-tier-id="<?php echo esc_attr( $tier->id ); ?>">
@@ -53156,7 +53185,7 @@ function sp_render_import_events_page(): void {
                     </table>
 
                     <p>
-                        <?php submit_button( sprintf( __( 'Import %d Events', 'societypress' ), (int) $preview['row_count'] ), 'primary', 'submit', false ); ?>
+                        <?php /* translators: %d: number of events in the file */ submit_button( sprintf( __( 'Import %d Events', 'societypress' ), (int) $preview['row_count'] ), 'primary', 'submit', false ); ?>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-events' ) ); ?>"
                            class="button sp-import-events-btn-gap"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     </p>
@@ -53615,11 +53644,11 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
         <div class="sp-calendar-nav">
             <a href="<?php echo esc_url( $prev_url ); ?>"
                class="sp-cal-nav-btn"
-               aria-label="<?php echo esc_attr( sprintf( __( 'Previous month — %s', 'societypress' ), $prev_label ) ); ?>">&laquo; <?php echo esc_html__( 'Prev', 'societypress' ); ?></a>
+               aria-label="<?php /* translators: %s: name of the previous month */ echo esc_attr( sprintf( __( 'Previous month — %s', 'societypress' ), $prev_label ) ); ?>">&laquo; <?php echo esc_html__( 'Prev', 'societypress' ); ?></a>
             <h2 class="sp-cal-month-label"><?php echo esc_html( $month_label ); ?></h2>
             <a href="<?php echo esc_url( $next_url ); ?>"
                class="sp-cal-nav-btn"
-               aria-label="<?php echo esc_attr( sprintf( __( 'Next month — %s', 'societypress' ), $next_label ) ); ?>"><?php echo esc_html__( 'Next', 'societypress' ); ?> &raquo;</a>
+               aria-label="<?php /* translators: %s: name of the next month */ echo esc_attr( sprintf( __( 'Next month — %s', 'societypress' ), $next_label ) ); ?>"><?php echo esc_html__( 'Next', 'societypress' ); ?> &raquo;</a>
         </div>
 
         <!-- Jump controls: Month/Year dropdowns, date picker, Today. Each is a
@@ -53687,6 +53716,7 @@ function sp_render_calendar_grid( int $category_id = 0, string $base_url = '', a
                 $aria_date   = wp_date( 'F j, Y', mktime( 12, 0, 0, $cal_mon, $d, $cal_year ) );
                 $event_count = isset( $events_by_day[ $d ] ) ? count( $events_by_day[ $d ] ) : 0;
                 $aria_label  = $event_count > 0
+                    /* translators: 1: date, 2: number of events on that date */
                     ? sprintf( __( '%1$s — %2$d events', 'societypress' ), $aria_date, $event_count )
                     : $aria_date;
             ?>
@@ -54298,6 +54328,7 @@ function sp_render_events_listing( array $settings ): void {
         <div class="sp-events-empty">
             <p><?php
                 if ( $search !== '' ) {
+                    /* translators: %s: search term */
                     echo esc_html( sprintf( __( 'No events found matching "%s".', 'societypress' ), $search ) );
                 } else {
                     esc_html_e( 'No events found.', 'societypress' );
@@ -54312,6 +54343,7 @@ function sp_render_events_listing( array $settings ): void {
         <div class="sp-events-count">
             <p><?php
                 printf(
+                    /* translators: %s: formatted number of events */
                     esc_html( _n( '%s event', '%s events', $total, 'societypress' ) ),
                     esc_html( number_format_i18n( $total ) )
                 );
@@ -54391,6 +54423,7 @@ function sp_render_events_listing( array $settings ): void {
                         if ( $spots_left === 0 ) {
                             $reg_info = esc_html__( 'Full — Waitlist Available', 'societypress' );
                         } else {
+                            /* translators: %d: number of remaining spots */
                             $reg_info = sprintf( _n( '%d spot remaining', '%d spots remaining', $spots_left, 'societypress' ), $spots_left );
                         }
                     }
@@ -54679,6 +54712,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
             echo '<div class="sp-event-login-required">';
             echo '<h2>' . esc_html__( 'Members Only', 'societypress' ) . '</h2>';
             echo '<p>' . sprintf(
+                /* translators: %s: log in link */
                 esc_html__( 'This event is only visible to logged-in members. Please %s to view details.', 'societypress' ),
                 '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
             ) . '</p>';
@@ -55205,7 +55239,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                                     <?php echo esc_html( $sd->time_range ); ?>
                                                     <?php if ( $sd->description ) echo ' — ' . esc_html( $sd->description ); ?>
                                                     <?php if ( $sd->is_full ) echo ' ' . esc_html__( '(FULL — waitlist)', 'societypress' ); ?>
-                                                    <?php if ( $sd->capacity !== null && ! $sd->is_full ) echo ' ' . sprintf( _n( '(%d spot)', '(%d spots)', $sd->remaining, 'societypress' ), $sd->remaining ); ?>
+                                                    <?php /* translators: %d: number of remaining spots */ if ( $sd->capacity !== null && ! $sd->is_full ) echo ' ' . sprintf( _n( '(%d spot)', '(%d spots)', $sd->remaining, 'societypress' ), $sd->remaining ); ?>
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
@@ -55290,7 +55324,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                         <?php elseif ( $event->guest_registration ) : ?>
                             <!-- Guest registration form (not logged in, guest allowed) -->
                             <div class="sp-reg-form" id="sp-guest-reg-form">
-                                <p class="sp-reg-form-intro"><?php printf( esc_html__( 'Register as a guest, or %slog in%s if you\'re a member.', 'societypress' ), '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">', '</a>' ); ?></p>
+                                <p class="sp-reg-form-intro"><?php /* translators: 1: opening anchor tag, 2: closing anchor tag */ printf( esc_html__( 'Register as a guest, or %slog in%s if you\'re a member.', 'societypress' ), '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">', '</a>' ); ?></p>
                                 <div class="sp-reg-form-row">
                                     <label for="sp-guest-name"><?php esc_html_e( 'Full Name', 'societypress' ); ?> <span class="sp-required" aria-hidden="true">*</span></label>
                                     <input type="text" id="sp-guest-name" required placeholder="<?php echo esc_attr__( 'Your full name', 'societypress' ); ?>">
@@ -55389,7 +55423,7 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                         <?php else : ?>
                             <!-- Not logged in, no guest registration -->
                             <p class="sp-reg-login-prompt">
-                                <?php printf( esc_html__( 'Please %slog in%s to register for this event.', 'societypress' ), '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">', '</a>' ); ?>
+                                <?php /* translators: 1: opening anchor tag, 2: closing anchor tag */ printf( esc_html__( 'Please %slog in%s to register for this event.', 'societypress' ), '<a href="' . esc_url( wp_login_url( add_query_arg( 'sp_event', $slug, get_permalink() ) ) ) . '">', '</a>' ); ?>
                             </p>
                         <?php endif; ?>
                     </div>
@@ -55840,8 +55874,7 @@ function sp_events_frontend_scripts(): void {
                             waitlistedHeading: <?php echo wp_json_encode( __( "You're on the waitlist.", 'societypress' ) ); ?>,
                             waitlistedNote:    <?php echo wp_json_encode( __( "We'll notify you if a spot opens up.", 'societypress' ) ); ?>,
                             registeredHeading: <?php echo wp_json_encode( __( "You're registered!", 'societypress' ) ); ?>,
-                            /* translators: %s: dollar amount, e.g. "12.00" */
-                            doorNote:          <?php echo wp_json_encode( __( 'Please bring $%s to the event.', 'societypress' ) ); ?>,
+                            doorNote:          <?php /* translators: %s: dollar amount, e.g. 12.00 */ echo wp_json_encode( __( 'Please bring $%s to the event.', 'societypress' ) ); ?>,
                             reminderNote:      <?php echo wp_json_encode( __( "You'll receive a reminder email before the event.", 'societypress' ) ); ?>
                         };
                         function spEscHTML(s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; }
@@ -58020,6 +58053,7 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
         'method'  => 'stripe',
         'date'    => current_time( 'Y-m-d' ),
         'note'    => $session_ref !== ''
+            /* translators: %s: Stripe payment reference */
             ? sprintf( __( 'Online dues payment (Stripe: %s)', 'societypress' ), $session_ref )
             : __( 'Online dues payment', 'societypress' ),
     ] );
@@ -58329,6 +58363,7 @@ function sp_render_join_form(): string {
     if ( is_user_logged_in() && sp_is_member() ) {
         $account_url = sp_get_my_account_url();
         return '<div class="sp-join-already-member">'
+             /* translators: %s: link to the My Account page */
              . '<p>' . sprintf( esc_html__( 'You are already a member. %s.', 'societypress' ), '<a href="' . esc_url( $account_url ) . '">' . esc_html__( 'Go to My Account', 'societypress' ) . '</a>' ) . '</p>'
              . '</div>';
     }
@@ -58464,7 +58499,7 @@ function sp_render_join_form(): string {
                 <label for="sp-membership-years"><?php esc_html_e( 'Pay for how many years?', 'societypress' ); ?></label>
                 <select name="membership_years" id="sp-membership-years">
                     <?php for ( $y = 1; $y <= $sp_max_years; $y++ ) : ?>
-                        <option value="<?php echo (int) $y; ?>"><?php echo esc_html( sprintf( _n( '%d year', '%d years', $y, 'societypress' ), $y ) ); ?></option>
+                        <option value="<?php /* translators: %d: number of years */ echo (int) $y; ?>"><?php echo esc_html( sprintf( _n( '%d year', '%d years', $y, 'societypress' ), $y ) ); ?></option>
                     <?php endfor; ?>
                 </select>
                 <p class="sp-field-help"><?php esc_html_e( 'Dues are multiplied by the number of years, and your membership is extended accordingly.', 'societypress' ); ?></p>
@@ -63158,10 +63193,14 @@ function sp_notify_backup_ready( int $backup_id ): void {
     $size = size_format( (int) $backup->file_size );
     $when = sp_format_wall_clock( $backup->completed_at, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
 
+    /* translators: %s: organization name */
     $subject = sprintf( __( '[%s] Your backup is ready to download', 'societypress' ), $org );
 
+    /* translators: %s: organization name */
     $body  = sprintf( __( 'A new backup of %s finished successfully.', 'societypress' ), $org ) . "\n\n";
+    /* translators: %s: date and time the backup was created */
     $body .= sprintf( __( 'Created: %s', 'societypress' ), $when ) . "\n";
+    /* translators: %s: file size, e.g. 4.2 MB */
     $body .= sprintf( __( 'Size: %s', 'societypress' ), $size ) . "\n\n";
     $body .= __( 'Download it from the Export & Backup page (you will need to be logged in):', 'societypress' ) . "\n";
     $body .= $url . "\n\n";
@@ -63369,6 +63408,7 @@ function sp_create_stripe_checkout_session( object $event, int $registration_id,
             'line_items[0][price_data][unit_amount]'   => $amount_cents,
             'line_items[0][price_data][product_data][name]' => $line_item_name,
             'line_items[0][price_data][product_data][description]' =>
+                /* translators: 1: event title, 2: site name */
                 sprintf( __( 'Registration for %1$s — %2$s', 'societypress' ), $event->title, $site_name ),
             'line_items[0][quantity]' => 1,
         ],
@@ -65087,6 +65127,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                     echo ' <span class="sp-gallery-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
                 }
                 echo '</h4>';
+                /* translators: %d: number of photos */
                 echo '<span class="sp-gallery-photo-count">' . sprintf( _n( '%d photo', '%d photos', $photo_count, 'societypress' ), $photo_count ) . '</span>';
                 echo '</div>';
             }
@@ -65111,6 +65152,7 @@ function sp_render_builder_widget_resource_links( array $s ): void {
     $login_required = $s['login_required'] ?? false;
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
+        /* translators: %s: log in URL */
         echo '<p>' . sprintf( __( 'Please <a href="%s">log in</a> to view resources.', 'societypress' ), esc_url( wp_login_url( get_permalink() ) ) ) . '</p>';
         echo '</div>';
         return;
@@ -67415,7 +67457,7 @@ function sp_render_annual_report_page(): void {
         </style>
 
         <div class="sp-no-print sp-annual-header">
-            <h1 class="sp-annual-title"><?php echo esc_html( sprintf( __( 'Annual Report — %s', 'societypress' ), $year ) ); ?></h1>
+            <h1 class="sp-annual-title"><?php /* translators: %s: report year */ echo esc_html( sprintf( __( 'Annual Report — %s', 'societypress' ), $year ) ); ?></h1>
             <div>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-annual-report&year=' . $prev_year ) ); ?>" class="button">&larr; <?php echo $prev_year; ?></a>
                 <?php if ( $year < (int) wp_date( 'Y' ) ) : ?>
@@ -68235,7 +68277,7 @@ function sp_render_membership_reports_page(): void {
             <!-- Members Added Over Time -->
             <div class="sp-mr-section">
                 <h2 class="sp-mr-section-title">
-                    <?php echo esc_html( sprintf( __( 'Members Added — %s', 'societypress' ), $period_labels[ $period ] ) ); ?>
+                    <?php /* translators: %s: reporting period, e.g. This Year */ echo esc_html( sprintf( __( 'Members Added — %s', 'societypress' ), $period_labels[ $period ] ) ); ?>
                 </h2>
                 <?php if ( ! empty( $monthly_added ) ) : ?>
                 <div class="sp-mr-chart">
@@ -68257,7 +68299,7 @@ function sp_render_membership_reports_page(): void {
             <!-- Revenue by Month -->
             <div class="sp-mr-section">
                 <h2 class="sp-mr-section-title">
-                    <?php echo esc_html( sprintf( __( 'Revenue — %s', 'societypress' ), $period_labels[ $period ] ) ); ?>
+                    <?php /* translators: %s: reporting period, e.g. This Year */ echo esc_html( sprintf( __( 'Revenue — %s', 'societypress' ), $period_labels[ $period ] ) ); ?>
                 </h2>
                 <div class="sp-mr-stat-number--green sp-mr-revenue-total">
                     <?php echo esc_html( '$' . number_format( $total_revenue, 2 ) ); ?>
@@ -68285,7 +68327,7 @@ function sp_render_membership_reports_page(): void {
         <?php if ( ! empty( $rev_by_tier ) ) : ?>
         <div class="sp-mr-section">
             <h2 class="sp-mr-section-title">
-                <?php echo esc_html( sprintf( __( 'Revenue by Tier — %s', 'societypress' ), $period_labels[ $period ] ) ); ?>
+                <?php /* translators: %s: reporting period, e.g. This Year */ echo esc_html( sprintf( __( 'Revenue by Tier — %s', 'societypress' ), $period_labels[ $period ] ) ); ?>
             </h2>
             <table class="sp-mr-table">
                 <thead>
@@ -68471,7 +68513,7 @@ function sp_render_help_requests_admin_page(): void {
                 </div>
             </div>
 
-            <h3><?php echo esc_html( sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ) ); ?></h3>
+            <h3><?php /* translators: %d: number of responses */ echo esc_html( sprintf( _n( '%d Response', '%d Responses', count( $responses ), 'societypress' ), count( $responses ) ) ); ?></h3>
             <?php foreach ( $responses as $resp ) : ?>
                 <div class="sp-help-admin-response">
                     <p class="sp-help-admin-resp-meta">
@@ -68749,6 +68791,7 @@ function sp_frontend_help_requests(): void {
                 "SELECT title FROM {$prefix}help_requests WHERE id = %d", $request_id
             ) );
             $activity = sprintf(
+                /* translators: %s: question title, or the request number */
                 __( 'Help Request response: %s', 'societypress' ),
                 $req_row ? wp_trim_words( $req_row->title, 12 ) : '#' . $request_id
             );
@@ -68803,6 +68846,7 @@ function sp_frontend_help_requests(): void {
                 //      site instead of WordPress blue.
                 $email_settings = sp_settings();
                 $email_primary  = esc_attr( $email_settings['design_color_primary'] ?? '#0D1F3C' );
+                /* translators: %s: first name of the person who asked */
                 $body = '<p>' . sprintf( esc_html__( 'Dear %s,', 'societypress' ), esc_html( $request->first_name ) ) . '</p>'
                       . '<p>' . sprintf(
                           /* translators: 1: responder name, 2: question title (already wrapped in <strong>) */
@@ -69280,6 +69324,7 @@ function sp_frontend_help_requests(): void {
                             $picks = [ 5, 15, 30, 60 ];
                             foreach ( $picks as $i => $m ) {
                                 $checked = ( $m === 15 ) ? 'checked' : '';
+                                /* translators: %d: number of minutes */
                                 $label   = $m < 60 ? sprintf( __( '%d min', 'societypress' ), $m ) : __( '1 hour', 'societypress' );
                                 echo '<label class="sp-help-hours-label">'
                                    . '<input type="radio" name="response_minutes" value="' . (int) $m . '" ' . $checked . ' class="sp-help-hours-radio"> '
@@ -69330,6 +69375,7 @@ function sp_frontend_help_requests(): void {
                 echo '<p class="sp-help-question-card-meta">'
                    . esc_html( $req->first_name . ' ' . $req->last_name )
                    . ' &middot; ' . esc_html( sp_format_wall_clock( $req->created_at, 'M j, Y' ) )
+                   /* translators: %d: number of responses */
                    . ' &middot; ' . sprintf( _n( '%d response', '%d responses', (int) $req->responses_count, 'societypress' ), (int) $req->responses_count )
                    . '</p>';
                 if ( $req->description ) {
@@ -70929,7 +70975,7 @@ function sp_render_library_catalog_page(): void {
             <?php endif; ?>
         </form>
 
-        <p class="description"><?php echo sprintf( _n( '%d item found.', '%d items found.', $total, 'societypress' ), $total ); ?></p>
+        <p class="description"><?php /* translators: %d: number of catalog items found */ echo sprintf( _n( '%d item found.', '%d items found.', $total, 'societypress' ), $total ); ?></p>
 
         <table class="wp-list-table widefat striped">
             <thead>
@@ -71243,7 +71289,7 @@ function sp_render_library_item_edit_page(): void {
                         <p class="description"><?php esc_html_e( 'URL to the book cover image. Can be populated automatically via Library Enrichment.', 'societypress' ); ?></p>
                         <?php if ( ! empty( $item->cover_url ) ) : ?>
                             <div class="sp-lib-edit-cover-preview">
-                                <img src="<?php echo esc_url( $item->cover_url ); ?>" alt="<?php echo esc_attr( sprintf( __( 'Cover image for %s', 'societypress' ), $item->title ) ); ?>" class="sp-lib-edit-cover-img">
+                                <img src="<?php /* translators: %s: catalog item title */ echo esc_url( $item->cover_url ); ?>" alt="<?php echo esc_attr( sprintf( __( 'Cover image for %s', 'societypress' ), $item->title ) ); ?>" class="sp-lib-edit-cover-img">
                             </div>
                         <?php endif; ?>
                     </td>
@@ -72017,12 +72063,13 @@ function sp_render_library_import_page(): void {
                     <strong><?php esc_html_e( 'Import complete.', 'societypress' ); ?></strong>
                     <?php
                     printf(
+                        /* translators: %s: formatted number of items imported */
                         esc_html( _n( '%s item imported.', '%s items imported.', $results['imported'], 'societypress' ) ),
                         number_format( $results['imported'] )
                     );
                     ?>
                     <?php if ( $results['skipped'] > 0 ) : ?>
-                        <?php printf( esc_html__( '%s skipped (duplicates or missing title).', 'societypress' ), number_format( $results['skipped'] ) ); ?>
+                        <?php /* translators: %s: formatted number of rows skipped */ printf( esc_html__( '%s skipped (duplicates or missing title).', 'societypress' ), number_format( $results['skipped'] ) ); ?>
                     <?php endif; ?>
                 </p>
             </div>
@@ -72042,7 +72089,7 @@ function sp_render_library_import_page(): void {
             $total_items = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_library_items" );
             ?>
             <p>
-                <?php printf( esc_html__( 'Your catalog now has %s items.', 'societypress' ), '<strong>' . number_format( $total_items ) . '</strong>' ); ?>
+                <?php /* translators: %s: formatted total number of items in the catalog */ printf( esc_html__( 'Your catalog now has %s items.', 'societypress' ), '<strong>' . number_format( $total_items ) . '</strong>' ); ?>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>"><?php esc_html_e( 'View Catalog', 'societypress' ); ?> &rarr;</a>
             </p>
         <?php endif; ?>
@@ -72058,6 +72105,7 @@ function sp_render_library_import_page(): void {
                 <p class="description">
                     <?php
                     printf(
+                        /* translators: 1: number of data rows, 2: number of columns */
                         esc_html__( 'We detected %1$s data rows and %2$s columns. Verify the mapping below, then click Run Import.', 'societypress' ),
                         '<strong>' . number_format( $preview['row_count'] ) . '</strong>',
                         '<strong>' . count( $preview['headers'] ) . '</strong>'
@@ -72141,7 +72189,7 @@ function sp_render_library_import_page(): void {
                     </table>
 
                     <p class="submit">
-                        <input type="submit" class="button button-primary button-hero" value="<?php printf( esc_attr__( 'Run Import (%s rows)', 'societypress' ), number_format( $preview['row_count'] ) ); ?>">
+                        <input type="submit" class="button button-primary button-hero" value="<?php /* translators: %s: formatted number of rows */ printf( esc_attr__( 'Run Import (%s rows)', 'societypress' ), number_format( $preview['row_count'] ) ); ?>">
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-import-library' ) ); ?>" class="button button-hero"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
                     </p>
                 </form>
@@ -72166,7 +72214,7 @@ function sp_render_library_import_page(): void {
                             <th scope="col"><label for="import_file"><?php esc_html_e( 'CSV File', 'societypress' ); ?></label></th>
                             <td>
                                 <input type="file" name="import_file" id="import_file" accept=".csv" required>
-                                <p class="description"><?php printf( esc_html__( 'Maximum file size: %s', 'societypress' ), size_format( wp_max_upload_size() ) ); ?></p>
+                                <p class="description"><?php /* translators: %s: maximum upload size, e.g. 8 MB */ printf( esc_html__( 'Maximum file size: %s', 'societypress' ), size_format( wp_max_upload_size() ) ); ?></p>
                             </td>
                         </tr>
                     </table>
@@ -72182,7 +72230,7 @@ function sp_render_library_import_page(): void {
                 if ( $total_items > 0 ) : ?>
                     <hr class="sp-lib-import-hr">
                     <p>
-                        <?php printf( esc_html__( 'Your catalog currently has %s items. Duplicate items (matched by System ID) will be skipped during import.', 'societypress' ), '<strong>' . number_format( $total_items ) . '</strong>' ); ?>
+                        <?php /* translators: %s: formatted number of items already in the catalog */ printf( esc_html__( 'Your catalog currently has %s items. Duplicate items (matched by System ID) will be skipped during import.', 'societypress' ), '<strong>' . number_format( $total_items ) . '</strong>' ); ?>
                     </p>
                 <?php endif; ?>
             </div>
@@ -72893,9 +72941,9 @@ function sp_render_links_import_page(): void {
             <div class="notice notice-<?php echo $results['imported'] > 0 ? 'success' : 'warning'; ?>">
                 <p>
                     <strong><?php esc_html_e( 'Import complete.', 'societypress' ); ?></strong>
-                    <?php echo sprintf( _n( '%d link imported.', '%d links imported.', $results['imported'], 'societypress' ), $results['imported'] ); ?>
+                    <?php /* translators: %d: number of links imported */ echo sprintf( _n( '%d link imported.', '%d links imported.', $results['imported'], 'societypress' ), $results['imported'] ); ?>
                     <?php if ( $results['categories_created'] > 0 ) : ?>
-                        <?php echo sprintf( _n( '%d new category created.', '%d new categories created.', $results['categories_created'], 'societypress' ), $results['categories_created'] ); ?>
+                        <?php /* translators: %d: number of categories created */ echo sprintf( _n( '%d new category created.', '%d new categories created.', $results['categories_created'], 'societypress' ), $results['categories_created'] ); ?>
                     <?php endif; ?>
                     <?php if ( $results['skipped'] > 0 ) : ?>
                         <?php echo (int) $results['skipped'] . ' ' . esc_html__( 'skipped (duplicates or missing title/URL).', 'societypress' ); ?>
@@ -73827,18 +73875,18 @@ function sp_render_volunteer_opportunities_frontend(): string {
                                 <?php if ( $is_full ) : ?>
                                     <strong><?php esc_html_e( 'Full', 'societypress' ); ?></strong> (<?php echo (int) $signup_count; ?>/<?php echo (int) $opp->capacity; ?>)
                                 <?php else : ?>
-                                    <?php printf( esc_html__( '%1$d/%2$d spots filled', 'societypress' ), (int) $signup_count, (int) $opp->capacity ); ?>
+                                    <?php /* translators: 1: number of volunteers signed up, 2: total spots */ printf( esc_html__( '%1$d/%2$d spots filled', 'societypress' ), (int) $signup_count, (int) $opp->capacity ); ?>
                                 <?php endif; ?>
                             </p>
                         <?php elseif ( $signup_count > 0 ) : ?>
                             <p class="sp-vol-card-signups">
-                                <?php printf( esc_html( _n( '%d volunteer signed up', '%d volunteers signed up', $signup_count, 'societypress' ) ), $signup_count ); ?>
+                                <?php /* translators: %d: number of volunteers */ printf( esc_html( _n( '%d volunteer signed up', '%d volunteers signed up', $signup_count, 'societypress' ) ), $signup_count ); ?>
                             </p>
                         <?php endif; ?>
 
                         <?php if ( $opp->contact_name ) : ?>
                             <p class="sp-vol-card-contact">
-                                <?php printf( esc_html__( 'Contact: %s', 'societypress' ), esc_html( $opp->contact_name ) ); ?>
+                                <?php /* translators: %s: contact name */ printf( esc_html__( 'Contact: %s', 'societypress' ), esc_html( $opp->contact_name ) ); ?>
                             </p>
                         <?php endif; ?>
                     </div>
@@ -74310,7 +74358,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                 $opp->id
             ) );
             if ( ! empty( $signups ) ) : ?>
-                <h2 class="sp-vol-opp-edit-signups-h2"><?php echo esc_html( sprintf( __( 'Signups (%d)', 'societypress' ), count( $signups ) ) ); ?></h2>
+                <h2 class="sp-vol-opp-edit-signups-h2"><?php /* translators: %d: number of signups */ echo esc_html( sprintf( __( 'Signups (%d)', 'societypress' ), count( $signups ) ) ); ?></h2>
                 <table class="wp-list-table widefat fixed striped">
                     <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Signed Up', 'societypress' ); ?></th></tr></thead>
                     <tbody>
@@ -77968,7 +78016,7 @@ function sp_render_email_log_detail( int $log_id ): void {
     <div class="wrap">
         <h1>
             <?php esc_html_e( 'Email Log', 'societypress' ); ?>
-            <span class="sp-email-detail-entry-id"> &mdash; <?php echo esc_html( sprintf( __( 'Entry #%d', 'societypress' ), $entry->id ) ); ?></span>
+            <span class="sp-email-detail-entry-id"> &mdash; <?php /* translators: %d: email log entry number */ echo esc_html( sprintf( __( 'Entry #%d', 'societypress' ), $entry->id ) ); ?></span>
         </h1>
 
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-email-log' ) ); ?>"><?php esc_html_e( '&larr; Back to Email Log', 'societypress' ); ?></a></p>
@@ -78245,7 +78293,7 @@ function sp_render_blast_email_page(): void {
                     report.innerHTML = '';
                     return;
                 }
-                var badMsg = <?php echo wp_json_encode( __( '%d address(es) may be undeliverable:', 'societypress' ) ); ?>;
+                var badMsg = <?php /* translators: %d: number of email addresses */ echo wp_json_encode( __( '%d address(es) may be undeliverable:', 'societypress' ) ); ?>;
                 status.innerHTML = '<span class="sp-eh-bad">' + esc( badMsg.replace( '%d', affected ) ) + '</span>';
                 var html = '';
                 bad.forEach(function (d) {
@@ -78539,7 +78587,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
         .sp-blast-detail-iframe { width: 100%; min-height: 500px; border: none; }
     </style>
     <div class="wrap">
-        <h1><?php echo esc_html( sprintf( __( 'Blast Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
+        <h1><?php /* translators: %s: subject line of the blast email */ echo esc_html( sprintf( __( 'Blast Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>"><?php esc_html_e( '&larr; Back to Blast Email', 'societypress' ); ?></a></p>
 
         <table class="widefat sp-blast-detail-meta-table">
@@ -78625,6 +78673,7 @@ function sp_render_blast_email_compose_page(): void {
 
             // Friendly, fully-editable HTML starting point (body is a wp_editor).
             $lines   = [];
+            /* translators: %s: event title */
             $lines[] = '<p>' . esc_html( sprintf( __( 'Join us for %s.', 'societypress' ), $event->title ) ) . '</p>';
             if ( $when !== '' ) {
                 $lines[] = '<p><strong>' . esc_html__( 'When:', 'societypress' ) . '</strong> ' . esc_html( $when ) . '</p>';
@@ -78825,7 +78874,7 @@ function sp_render_blast_email_compose_page(): void {
                         <fieldset>
                             <label class="sp-blast-recipient-label">
                                 <input type="radio" name="recipient_type" value="all_members" <?php checked( $recipient_type, 'all_members' ); ?>>
-                                <?php printf( esc_html__( 'All Active Members (%d)', 'societypress' ), $all_count ); ?>
+                                <?php /* translators: %d: number of active members */ printf( esc_html__( 'All Active Members (%d)', 'societypress' ), $all_count ); ?>
                             </label>
 
                             <label class="sp-blast-recipient-label-sm">
@@ -78870,19 +78919,19 @@ function sp_render_blast_email_compose_page(): void {
 
                             <label class="sp-blast-recipient-label-sm">
                                 <input type="radio" name="recipient_type" value="mailing_list_subscribers" <?php checked( $recipient_type, 'mailing_list_subscribers' ); ?>>
-                                <?php printf( esc_html__( 'Mailing list subscribers (%d)', 'societypress' ), sp_subscriber_confirmed_count() ); ?>
+                                <?php /* translators: %d: number of mailing list subscribers */ printf( esc_html__( 'Mailing list subscribers (%d)', 'societypress' ), sp_subscriber_confirmed_count() ); ?>
                             </label>
                             <label class="sp-blast-recipient-label-sm">
                                 <input type="radio" name="recipient_type" value="renewal_due" <?php checked( $recipient_type, 'renewal_due' ); ?>>
-                                <?php printf( esc_html__( 'Renewal due soon — active members expiring within 30 days (%d)', 'societypress' ), sp_blast_count_recipients( 'renewal_due', null ) ); ?>
+                                <?php /* translators: %d: number of members expiring within 30 days */ printf( esc_html__( 'Renewal due soon — active members expiring within 30 days (%d)', 'societypress' ), sp_blast_count_recipients( 'renewal_due', null ) ); ?>
                             </label>
                             <label class="sp-blast-recipient-label-sm">
                                 <input type="radio" name="recipient_type" value="recently_joined" <?php checked( $recipient_type, 'recently_joined' ); ?>>
-                                <?php printf( esc_html__( 'Recently joined — within the last 30 days (%d)', 'societypress' ), sp_blast_count_recipients( 'recently_joined', null ) ); ?>
+                                <?php /* translators: %d: number of members who joined in the last 30 days */ printf( esc_html__( 'Recently joined — within the last 30 days (%d)', 'societypress' ), sp_blast_count_recipients( 'recently_joined', null ) ); ?>
                             </label>
                             <label class="sp-blast-recipient-label-sm">
                                 <input type="radio" name="recipient_type" value="birthday_month" <?php checked( $recipient_type, 'birthday_month' ); ?>>
-                                <?php printf( esc_html__( 'Birthdays this month (%d)', 'societypress' ), sp_blast_count_recipients( 'birthday_month', null ) ); ?>
+                                <?php /* translators: %d: number of members with a birthday this month */ printf( esc_html__( 'Birthdays this month (%d)', 'societypress' ), sp_blast_count_recipients( 'birthday_month', null ) ); ?>
                             </label>
                         </fieldset>
                         <?php
@@ -79529,6 +79578,7 @@ function sp_subscriber_render_message_page( string $heading, string $message ): 
     echo '</head><body>';
     echo '<h1>' . esc_html( $heading ) . '</h1>';
     echo '<p>' . esc_html( $message ) . '</p>';
+    /* translators: %s: organization name */
     echo '<a class="btn" href="' . esc_url( home_url( '/' ) ) . '">' . esc_html( sprintf( __( 'Back to %s', 'societypress' ), $org_name ) ) . '</a>';
     echo '</body></html>';
     exit;
@@ -79547,6 +79597,7 @@ function sp_subscriber_send_confirmation( string $email, string $confirm_token )
 
     /* translators: %s: organization name */
     $subject = trim( $settings['subscribe_confirm_subject'] ?? '' )
+        /* translators: %s: organization name */
         ?: sprintf( __( 'Please confirm your subscription to %s', 'societypress' ), $org_name );
 
     $intro = trim( $settings['subscribe_confirm_body'] ?? '' )
@@ -80745,6 +80796,7 @@ function sp_replace_donation_merge_tags( string $content, object $donation ): st
     // WHY: The template might wrap this in a <p> tag, so returning an empty string
     // lets the admin remove the whole paragraph if they don't use campaigns.
     $campaign_display = ! empty( $donation->campaign_name )
+        /* translators: %s: campaign name */
         ? sprintf( __( 'Campaign: %s', 'societypress' ), $donation->campaign_name )
         : '';
 
@@ -81177,19 +81229,20 @@ function sp_render_privacy_policy_content(): void {
     ?>
     <div class="sp-privacy-policy">
 
-        <p><em><?php printf( esc_html__( 'Last updated: %s', 'societypress' ), $last_updated ); ?></em></p>
+        <p><em><?php /* translators: %s: date the policy was last updated */ printf( esc_html__( 'Last updated: %s', 'societypress' ), $last_updated ); ?></em></p>
 
         <!-- ============================================================ -->
         <!-- WHO WE ARE                                                   -->
         <!-- ============================================================ -->
         <h2><?php esc_html_e( 'Who We Are', 'societypress' ); ?></h2>
         <p><?php printf(
+            /* translators: 1: organization name, 2: website address */
             esc_html__( 'This website is operated by %s. Our website address is: %s', 'societypress' ),
             '<strong>' . $org_name . '</strong>',
             '<a href="' . $site_url . '">' . $site_url . '</a>'
         ); ?></p>
         <?php if ( $org_email ) : ?>
-            <p><?php printf( esc_html__( 'For privacy-related inquiries, contact us at %s.', 'societypress' ), '<a href="mailto:' . $org_email . '">' . $org_email . '</a>' ); ?></p>
+            <p><?php /* translators: %s: contact email address */ printf( esc_html__( 'For privacy-related inquiries, contact us at %s.', 'societypress' ), '<a href="mailto:' . $org_email . '">' . $org_email . '</a>' ); ?></p>
         <?php endif; ?>
 
         <!-- ============================================================ -->
@@ -81235,6 +81288,7 @@ function sp_render_privacy_policy_content(): void {
             if ( $has_store ) $payment_uses[] = esc_html__( 'store purchases', 'societypress' );
             if ( $has_donations ) $payment_uses[] = esc_html__( 'donations', 'societypress' );
             printf(
+                /* translators: %s: list of what payments are accepted for */
                 esc_html__( 'We accept online payments for %s through Stripe. When you pay online:', 'societypress' ),
                 implode( ', ', $payment_uses )
             );
@@ -81244,6 +81298,7 @@ function sp_render_privacy_policy_content(): void {
             <li><?php esc_html_e( 'We store a record of the transaction amount, date, and Stripe reference ID for our bookkeeping records.', 'societypress' ); ?></li>
         </ul>
         <p><?php printf(
+            /* translators: 1: opening anchor tag, 2: closing anchor tag */
             esc_html__( 'For more information about how Stripe handles your payment data, see %sStripe\'s Privacy Policy%s.', 'societypress' ),
             '<a href="https://stripe.com/privacy" target="_blank" rel="noopener">', '</a>'
         ); ?></p>
@@ -81383,6 +81438,7 @@ function sp_render_privacy_policy_content(): void {
             <?php endif; ?>
             <?php if ( $ga_enabled ) : ?>
                 <li><?php printf(
+                    /* translators: 1: opening anchor tag, 2: closing anchor tag */
                     esc_html__( 'Google Analytics — receives anonymous, aggregated usage data (pages visited, visit duration). See %sGoogle\'s Privacy Policy%s.', 'societypress' ),
                     '<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">', '</a>'
                 ); ?></li>
@@ -81420,6 +81476,7 @@ function sp_render_privacy_policy_content(): void {
             <li><?php esc_html_e( 'Request erasure of your personal data. This does not include data we are legally obligated to retain for tax, accounting, or security purposes.', 'societypress' ); ?></li>
         </ul>
         <p><?php printf(
+            /* translators: %s: contact email address */
             esc_html__( 'To request a data export or erasure, contact us at %s. We will respond within 30 days.', 'societypress' ),
             '<a href="mailto:' . $org_email . '">' . $org_email . '</a>'
         ); ?></p>
@@ -84175,7 +84232,7 @@ function sp_render_newsletter_archive_page(): void {
                 if (!del || !form) return;
 
                 var MSG_ONE  = <?php echo wp_json_encode( __( "Delete this newsletter?\n\nIts PDF and cover image are deleted too. This cannot be undone.", 'societypress' ) ); ?>;
-                var MSG_MANY = <?php echo wp_json_encode( __( "Delete %d newsletters?\n\nTheir PDFs and cover images are deleted too. This cannot be undone.", 'societypress' ) ); ?>;
+                var MSG_MANY = <?php /* translators: %d: number of newsletters */ echo wp_json_encode( __( "Delete %d newsletters?\n\nTheir PDFs and cover images are deleted too. This cannot be undone.", 'societypress' ) ); ?>;
 
                 del.addEventListener('click', function (e) {
                     /* Checked inside the handler, not at bind time: spConfirm is
@@ -85329,7 +85386,9 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
             'nonce' => wp_create_nonce( 'sp_nl_archive_search' ),
         ] : null ); ?>;
         var STR = <?php echo wp_json_encode( [
+            /* translators: %d: total number of issues */
             'showingAll' => __( 'Showing all %d issues.', 'societypress' ),
+            /* translators: 1: number shown, 2: total number of issues */
             'showing'    => __( 'Showing %1$d of %2$d issues.', 'societypress' ),
             'searching'  => __( 'Searching…', 'societypress' ),
         ] ); ?>;
@@ -87716,6 +87775,7 @@ function sp_render_record_import_page(): void {
                                 echo esc_html( $err ) . '<br>';
                             }
                             if ( count( $results['errors'] ) > 10 ) {
+                                /* translators: %d: number of further errors not listed */
                                 printf( '<br>' . esc_html__( '...and %d more.', 'societypress' ), count( $results['errors'] ) - 10 );
                             }
                             echo '</p></div>';
@@ -87966,7 +88026,7 @@ function sp_render_record_import_page(): void {
             </style>
             <div class="wrap">
                 <h1><?php esc_html_e( 'Import Records — Map Fields', 'societypress' ); ?></h1>
-                <p><?php printf( esc_html__( 'Importing into: %s', 'societypress' ), '<strong>' . esc_html( $collection->name ) . '</strong>' ); ?></p>
+                <p><?php /* translators: %s: record collection name */ printf( esc_html__( 'Importing into: %s', 'societypress' ), '<strong>' . esc_html( $collection->name ) . '</strong>' ); ?></p>
 
                 <form method="post" class="sp-record-import-map-form">
                     <?php wp_nonce_field( 'sp_record_import' ); ?>
@@ -88660,9 +88720,13 @@ function sp_render_record_import_progress( string $temp_file, int $collection_id
         var BATCH = 100;
 
         var STR = <?php echo wp_json_encode( [
+            /* translators: 1: current record number, 2: total records */
             'working' => __( 'Importing %1$s of %2$s records…', 'societypress' ),
+            /* translators: 1: records imported, 2: duplicates skipped, 3: empty rows skipped */
             'counts'  => __( 'Imported %1$s records. %2$s duplicates skipped, %3$s empty rows skipped.', 'societypress' ),
+            /* translators: %s: number of records imported before the connection dropped */
             'network' => __( 'Lost contact with the server. %s records were imported before it stopped.', 'societypress' ),
+            /* translators: %s: number of further items not listed */
             'more'    => __( '…and %s more.', 'societypress' ),
         ] ); ?>;
 
@@ -90025,6 +90089,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     if ( $login_required && ! is_user_logged_in() ) {
         echo '<div class="sp-widget-login-required">';
         echo '<p>' . sprintf(
+            /* translators: %s: log in URL */
             __( 'Please <a href="%s">log in</a> to search genealogical records.', 'societypress' ),
             esc_url( wp_login_url( get_permalink() ) )
         ) . '</p>';
@@ -91057,7 +91122,7 @@ function sp_render_store_frontend(): void {
                                 <?php endif; ?>
                                 <div class="sp-store-actions">
                                     <?php if ( $entry['in_stock'] ) : ?>
-                                        <input type="number" class="sp-store-qty" value="1" min="1" max="99" aria-label="<?php echo esc_attr( sprintf( __( 'Quantity for %s', 'societypress' ), $entry['title'] ) ); ?>">
+                                        <input type="number" class="sp-store-qty" value="1" min="1" max="99" aria-label="<?php /* translators: %s: product title */ echo esc_attr( sprintf( __( 'Quantity for %s', 'societypress' ), $entry['title'] ) ); ?>">
                                         <button type="button" class="sp-store-add-to-cart"><?php esc_html_e( 'Add to Cart', 'societypress' ); ?></button>
                                     <?php else : ?>
                                         <span class="sp-store-soldout"><?php esc_html_e( 'Sold out', 'societypress' ); ?></span>
@@ -91855,6 +91920,7 @@ function sp_send_store_order_email( int $order_id ): void {
     ) );
 
     $site_name = get_bloginfo( 'name' );
+    /* translators: 1: site name, 2: order number */
     $subject   = sprintf( __( '[%s] Order #%d Confirmation', 'societypress' ), $site_name, $order_id );
 
     // Build item list HTML
@@ -92675,7 +92741,7 @@ function sp_render_store_products_page(): void {
                         $stock_label = ( $p->stock_qty === null ) ? __( 'Unlimited', 'societypress' ) : (string) (int) $p->stock_qty;
                         ?>
                         <tr>
-                            <td><input type="number" name="sort[<?php echo (int) $p->id; ?>]" value="<?php echo esc_attr( (int) $p->sort_order ); ?>" min="0" class="sp-w-80" aria-label="<?php echo esc_attr( sprintf( __( 'Sort order for %s', 'societypress' ), $p->title ) ); ?>"></td>
+                            <td><input type="number" name="sort[<?php /* translators: %s: product title */ echo (int) $p->id; ?>]" value="<?php echo esc_attr( (int) $p->sort_order ); ?>" min="0" class="sp-w-80" aria-label="<?php echo esc_attr( sprintf( __( 'Sort order for %s', 'societypress' ), $p->title ) ); ?>"></td>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $p->title ); ?></a></strong>
                                 <div class="row-actions">
@@ -93234,6 +93300,7 @@ function sp_render_order_detail_page(): void {
         $order_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}orders WHERE id = %d", $order_id ) );
         if ( $order_row && ! in_array( $order_row->status, [ 'refunded', 'failed' ], true ) ) {
             $tag  = $reason !== ''
+                /* translators: %s: reason the order was marked complimentary */
                 ? sprintf( __( '[Complimentary: %s]', 'societypress' ), $reason )
                 : __( '[Complimentary]', 'societypress' );
             $note = trim( $tag . ( $order_row->admin_note ? "\n" . $order_row->admin_note : '' ) );
@@ -93362,7 +93429,7 @@ function sp_render_order_detail_page(): void {
         }
     </style>
     <div class="wrap sp-admin-wrap">
-        <h1><?php printf( esc_html__( 'Order #%d', 'societypress' ), $order_id ); ?></h1>
+        <h1><?php /* translators: %d: order number */ printf( esc_html__( 'Order #%d', 'societypress' ), $order_id ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-orders' ) ); ?>">&larr; <?php esc_html_e( 'Back to Orders', 'societypress' ); ?></a></p>
 
         <?php if ( $updated === '1' ) : ?>
@@ -93501,7 +93568,7 @@ function sp_render_order_detail_page(): void {
                 ); ?>
             </p>
             <button type="button" id="sp-order-refund-btn" class="button button-secondary" data-order-id="<?php echo (int) $order_id; ?>">
-                <?php printf( esc_html__( 'Refund %s', 'societypress' ), esc_html( sp_format_currency( $order->total ) ) ); ?>
+                <?php /* translators: %s: formatted refund amount */ printf( esc_html__( 'Refund %s', 'societypress' ), esc_html( sp_format_currency( $order->total ) ) ); ?>
             </button>
             <span id="sp-order-refund-status" class="sp-order-refund-status"></span>
             <script>
@@ -93540,7 +93607,7 @@ function sp_render_order_detail_page(): void {
                             });
                     };
                     spConfirm(
-                        <?php echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>,
+                        <?php /* translators: %s: formatted refund amount */ echo wp_json_encode( sprintf( __( 'Issue a full refund of %s? This cannot be undone.', 'societypress' ), sp_format_currency( $order->total ) ) ); ?>,
                         doRefund
                     );
                 });
@@ -94362,7 +94429,7 @@ function sp_render_files_page(): void {
                             <li class="sp-file-card" draggable="true" data-file-id="<?php echo esc_attr( (int) $file->id ); ?>" data-uses="<?php echo esc_attr( $uses ); ?>">
                                 <label class="sp-file-pick">
                                     <input type="checkbox" class="sp-file-check" value="<?php echo esc_attr( (int) $file->id ); ?>">
-                                    <span class="screen-reader-text"><?php echo esc_html( sprintf( __( 'Select %s', 'societypress' ), $file->title ) ); ?></span>
+                                    <span class="screen-reader-text"><?php /* translators: %s: file title */ echo esc_html( sprintf( __( 'Select %s', 'societypress' ), $file->title ) ); ?></span>
                                 </label>
 
                                 <div class="sp-file-thumb">
@@ -94379,6 +94446,7 @@ function sp_render_files_page(): void {
                                         <button type="button" class="sp-file-uses" data-file-id="<?php echo esc_attr( (int) $file->id ); ?>">
                                             <?php
                                             printf(
+                                                /* translators: %s: number of places the file is used */
                                                 esc_html( _n( 'Used by %s thing', 'Used by %s things', $uses, 'societypress' ) ),
                                                 esc_html( number_format_i18n( $uses ) )
                                             );
@@ -94408,6 +94476,7 @@ function sp_render_files_page(): void {
                                 <span class="displaying-num">
                                     <?php
                                     printf(
+                                        /* translators: %s: number of files found */
                                         esc_html( _n( '%s file', '%s files', $found, 'societypress' ) ),
                                         esc_html( number_format_i18n( $found ) )
                                     );
@@ -95375,7 +95444,7 @@ function sp_render_documents_page(): void {
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Document deleted.', 'societypress' ); ?></p></div>
         <?php endif; ?>
         <?php if ( ! empty( $_GET['sp_bulk_count'] ) ) : ?>
-            <div class="notice notice-success is-dismissible"><p><?php printf( esc_html( _n( '%d document uploaded.', '%d documents uploaded.', (int) $_GET['sp_bulk_count'], 'societypress' ) ), (int) $_GET['sp_bulk_count'] ); ?></p></div>
+            <div class="notice notice-success is-dismissible"><p><?php /* translators: %d: number of documents uploaded */ printf( esc_html( _n( '%d document uploaded.', '%d documents uploaded.', (int) $_GET['sp_bulk_count'], 'societypress' ) ), (int) $_GET['sp_bulk_count'] ); ?></p></div>
         <?php endif; ?>
 
         <!-- Filters -->
@@ -95459,7 +95528,7 @@ function sp_render_documents_page(): void {
         </table>
 
         <p class="sp-documents-count">
-            <?php printf( esc_html__( '%d document(s)', 'societypress' ), count( $docs ) ); ?>
+            <?php /* translators: %d: number of documents */ printf( esc_html__( '%d document(s)', 'societypress' ), count( $docs ) ); ?>
         </p>
 
         <script>
@@ -97104,6 +97173,7 @@ function sp_sync_ical_feed( int $feed_id ): array {
 
     $status_code = wp_remote_retrieve_response_code( $response );
     if ( $status_code !== 200 ) {
+        /* translators: %d: HTTP status code */
         $error_msg = sprintf( __( 'HTTP %d response from feed URL.', 'societypress' ), $status_code );
         $wpdb->update( $feeds_table, [
             'last_synced_at' => current_time( 'mysql' ),
@@ -97403,11 +97473,13 @@ function sp_render_external_calendars_page(): void {
                 $sync_result = sp_sync_ical_feed( $new_feed_id );
                 if ( ! empty( $sync_result['error'] ) ) {
                     $error = sprintf(
+                        /* translators: %s: error message */
                         __( 'Feed added but initial sync failed: %s', 'societypress' ),
                         $sync_result['error']
                     );
                 } else {
                     $message = sprintf(
+                        /* translators: %d: number of events imported */
                         __( 'Feed added and synced: %d events imported.', 'societypress' ),
                         $sync_result['added']
                     );
@@ -97925,6 +97997,7 @@ add_action( 'wp_ajax_sp_sync_ical_feed_now', function () {
     }
 
     $message = sprintf(
+        /* translators: 1: events added, 2: events updated, 3: events removed */
         __( 'Synced: %d added, %d updated, %d removed.', 'societypress' ),
         $result['added'],
         $result['updated'],
@@ -97977,6 +98050,7 @@ add_action( 'wp_ajax_sp_delete_ical_feed', function () {
 
     wp_send_json_success( [
         'message' => sprintf(
+            /* translators: %d: number of imported events removed with the feed */
             __( 'Feed deleted. %d imported events removed.', 'societypress' ),
             $deleted_count
         ),
@@ -98516,6 +98590,7 @@ add_filter( 'template_include', function ( $template ) {
         // Non-members / logged-out users see a login prompt
         echo '<div class="sp-voting-login-required">';
         echo '<p>' . sprintf(
+            /* translators: %s: log in link */
             esc_html__( 'Please %s to participate in voting.', 'societypress' ),
             '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
         ) . '</p>';
@@ -98742,6 +98817,7 @@ function sp_render_vote_form( object $ballot ): void {
 
         if ( $question->question_type === 'multi_choice' && $question->max_selections > 1 ) {
             echo '<p class="sp-vote-hint">' . sprintf(
+                /* translators: %d: maximum number of options that may be selected */
                 esc_html__( 'Select up to %d option(s).', 'societypress' ),
                 (int) $question->max_selections
             ) . '</p>';
@@ -98905,6 +98981,7 @@ function sp_render_ballot_results_frontend( object $ballot ): void {
             $abstain_count = $q_counts[0] ?? 0;
             if ( $abstain_count > 0 ) {
                 echo '<p class="sp-results-abstain">';
+                /* translators: %d: number of abstentions */
                 echo esc_html( sprintf( __( 'Abstained: %d', 'societypress' ), $abstain_count ) );
                 echo '</p>';
             }
@@ -98980,18 +99057,23 @@ class SP_Ballots_List_Table extends WP_List_Table {
 
         $views = [];
         $views['all']       = '<a href="' . esc_url( $base_url ) . '"' . ( empty( $current ) ? ' class="current"' : '' ) . '>'
+                             /* translators: %d: total number of ballots */
                              . sprintf( esc_html__( 'All (%d)', 'societypress' ), $total ) . '</a>';
         $views['draft']     = '<a href="' . esc_url( add_query_arg( 'ballot_status', 'draft', $base_url ) ) . '"'
                              . ( $current === 'draft' ? ' class="current"' : '' ) . '>'
+                             /* translators: %d: number of draft ballots */
                              . sprintf( esc_html__( 'Draft (%d)', 'societypress' ), $draft_count ) . '</a>';
         $views['open']      = '<a href="' . esc_url( add_query_arg( 'ballot_status', 'open', $base_url ) ) . '"'
                              . ( $current === 'open' ? ' class="current"' : '' ) . '>'
+                             /* translators: %d: number of open ballots */
                              . sprintf( esc_html__( 'Open (%d)', 'societypress' ), $open_count ) . '</a>';
         $views['closed']    = '<a href="' . esc_url( add_query_arg( 'ballot_status', 'closed', $base_url ) ) . '"'
                              . ( $current === 'closed' ? ' class="current"' : '' ) . '>'
+                             /* translators: %d: number of closed ballots */
                              . sprintf( esc_html__( 'Closed (%d)', 'societypress' ), $closed_count ) . '</a>';
         $views['cancelled'] = '<a href="' . esc_url( add_query_arg( 'ballot_status', 'cancelled', $base_url ) ) . '"'
                              . ( $current === 'cancelled' ? ' class="current"' : '' ) . '>'
+                             /* translators: %d: number of cancelled ballots */
                              . sprintf( esc_html__( 'Cancelled (%d)', 'societypress' ), $cancelled_count ) . '</a>';
 
         return $views;
@@ -99668,7 +99750,7 @@ function sp_render_ballot_question_card( int $q_index, ?object $question ): void
         <input type="hidden" name="sp_questions[<?php echo esc_attr( $q_index ); ?>][id]" value="<?php echo esc_attr( $q_id ); ?>">
 
         <div class="sp-question-card-header">
-            <strong><?php echo esc_html( sprintf( __( 'Question %d', 'societypress' ), $q_index + 1 ) ); ?></strong>
+            <strong><?php /* translators: %d: question number */ echo esc_html( sprintf( __( 'Question %d', 'societypress' ), $q_index + 1 ) ); ?></strong>
             <button type="button" class="button sp-remove-question sp-btn-danger"><?php esc_html_e( 'Remove Question', 'societypress' ); ?></button>
         </div>
 
@@ -99773,7 +99855,7 @@ function sp_render_ballot_results_page(): void {
         .sp-ballot-results-bar-track   { background: #e5e7eb; border-radius: 4px; height: 20px; overflow: hidden; }
     </style>
     <div class="wrap">
-        <h1><?php echo esc_html( sprintf( __( 'Results: %s', 'societypress' ), $ballot->title ) ); ?></h1>
+        <h1><?php /* translators: %s: ballot title */ echo esc_html( sprintf( __( 'Results: %s', 'societypress' ), $ballot->title ) ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ballots' ) ); ?>">&larr; <?php esc_html_e( 'Back to Ballots', 'societypress' ); ?></a></p>
 
         <!-- Ballot Info Summary -->
@@ -100062,6 +100144,7 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
         if ( $submitted === null || $submitted === '' ) {
             if ( ! $ballot->allow_abstain ) {
                 wp_send_json_error( sprintf(
+                    /* translators: %s: question text */
                     __( 'Please select an answer for: %s', 'societypress' ),
                     $question->question_text
                 ) );
@@ -100095,6 +100178,7 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
         // Validate max_selections for multi-choice
         if ( $question->question_type === 'multi_choice' && count( $selections ) > (int) $question->max_selections ) {
             wp_send_json_error( sprintf(
+                /* translators: 1: question text, 2: maximum number of selections allowed */
                 __( 'Too many selections for: %s (max %d)', 'societypress' ),
                 $question->question_text,
                 $question->max_selections
@@ -101571,27 +101655,35 @@ function sp_lineage_notify_status_change( int $application_id, string $new_statu
     $ancestor = trim( $app->ancestor_first_name . ' ' . $app->ancestor_last_name );
 
     $subjects = [
+        /* translators: %s: lineage program name */
         'approved'       => sprintf( __( '%s — Lineage application APPROVED', 'societypress' ), $app->program_name ),
+        /* translators: %s: lineage program name */
         'rejected'       => sprintf( __( '%s — Lineage application not approved', 'societypress' ), $app->program_name ),
+        /* translators: %s: lineage program name */
         'info_requested' => sprintf( __( '%s — More information requested', 'societypress' ), $app->program_name ),
     ];
 
+    /* translators: %s: lineage program name */
     $subject = $subjects[ $new_status ] ?? sprintf( __( 'Update on your %s application', 'societypress' ), $app->program_name );
 
+    /* translators: %s: applicant name */
     $body  = sprintf( __( 'Dear %s,', 'societypress' ), esc_html( $user->display_name ) ) . "\n\n";
 
     if ( $new_status === 'approved' ) {
         $body .= sprintf(
+            /* translators: 1: program name, 2: ancestor name, 3: certificate number */
             __( 'Your application to %1$s for ancestor %2$s has been APPROVED. Your certificate number is: %3$s', 'societypress' ),
             $app->program_name, $ancestor ?: __( '(unnamed ancestor)', 'societypress' ), $app->certificate_number
         ) . "\n\n";
     } elseif ( $new_status === 'rejected' ) {
         $body .= sprintf(
+            /* translators: 1: program name, 2: ancestor name */
             __( 'After review, your application to %1$s for ancestor %2$s was not approved at this time.', 'societypress' ),
             $app->program_name, $ancestor ?: __( '(unnamed ancestor)', 'societypress' )
         ) . "\n\n";
     } else {
         $body .= sprintf(
+            /* translators: 1: program name, 2: ancestor name */
             __( 'The reviewers need additional information for your application to %1$s for ancestor %2$s.', 'societypress' ),
             $app->program_name, $ancestor ?: __( '(unnamed ancestor)', 'societypress' )
         ) . "\n\n";
@@ -101601,6 +101693,7 @@ function sp_lineage_notify_status_change( int $application_id, string $new_statu
         $body .= __( 'Reviewer notes:', 'societypress' ) . "\n" . wp_strip_all_tags( $app->review_note ) . "\n\n";
     }
 
+    /* translators: %s: organization name */
     $body .= sprintf( __( '— %s', 'societypress' ), $org_name );
 
     wp_mail( $user->user_email, $subject, $body );
@@ -102104,6 +102197,7 @@ function sp_render_lineage_application_edit_page(): void {
                                             <?php
                                             echo $app->arrival_year <= $app->cutoff_year
                                                 ? '✓ ' . esc_html__( 'meets cutoff', 'societypress' )
+                                                /* translators: %d: cutoff year */
                                                 : '✗ ' . sprintf( esc_html__( 'after cutoff (%d)', 'societypress' ), (int) $app->cutoff_year );
                                             ?>
                                         </span>
@@ -102572,8 +102666,10 @@ add_action( 'init', function () {
             $admin_email = sp_settings()['admin_email'] ?? get_bloginfo( 'admin_email' );
             $user = get_user_by( 'id', $user_id );
             $review_url = admin_url( 'admin.php?page=sp-lineage-application-edit&id=' . $app_id );
+            /* translators: 1: organization name, 2: lineage program name */
             $subject = sprintf( __( '[%1$s] New lineage application — %2$s', 'societypress' ), $org, $program->name );
             $body = sprintf(
+                /* translators: 1: applicant name, 2: lineage program name, 3: review URL */
                 __( "%1\$s submitted an application for %2\$s.\n\nReview it here:\n%3\$s", 'societypress' ),
                 $user ? $user->display_name : __( 'A member', 'societypress' ),
                 $program->name,
@@ -102647,6 +102743,7 @@ add_action( 'init', function () {
                     'line_items[0][quantity]'              => 1,
                     'line_items[0][price_data][currency]'  => $currency,
                     'line_items[0][price_data][unit_amount]' => (int) round( $fee * 100 ),
+                    /* translators: 1: organization name, 2: lineage program name */
                     'line_items[0][price_data][product_data][name]' => sprintf( __( '%1$s — Application Fee (%2$s)', 'societypress' ), $org_name, $program->name ),
                 ],
             ] );
@@ -103249,8 +103346,10 @@ add_action( 'init', function () {
             $user = get_user_by( 'id', get_current_user_id() );
             wp_mail(
                 $admin_email,
+                /* translators: %s: organization name */
                 sprintf( __( '[%s] New Picture Wall submission', 'societypress' ), $org ),
                 sprintf(
+                    /* translators: 1: submitter name, 2: album title, 3: review URL */
                     __( "%1\$s submitted a photo to %2\$s.\n\nReview pending submissions:\n%3\$s", 'societypress' ),
                     $user ? $user->display_name : __( 'A member', 'societypress' ),
                     $album->title,
@@ -103360,7 +103459,7 @@ add_shortcode( 'sp_picture_wall', function ( $atts ) {
                                 <p class="sp-pw-caption"><?php echo esc_html( $r->caption ); ?></p>
                             <?php endif; ?>
                             <?php if ( $atts['show_submitter'] === '1' && $r->submitter_name ) : ?>
-                                <p class="sp-pw-submitter"><?php printf( esc_html__( 'Submitted by %s', 'societypress' ), esc_html( $r->submitter_name ) ); ?></p>
+                                <p class="sp-pw-submitter"><?php /* translators: %s: name of the person who submitted the photo */ printf( esc_html__( 'Submitted by %s', 'societypress' ), esc_html( $r->submitter_name ) ); ?></p>
                             <?php endif; ?>
                         </figcaption>
                     </figure>
@@ -103385,6 +103484,7 @@ add_shortcode( 'sp_picture_wall_submit', function ( $atts ) {
     if ( ! is_user_logged_in() ) {
         return '<p>' . sprintf(
             wp_kses(
+                /* translators: %s: log in URL */
                 __( 'Please <a href="%s">log in</a> to submit a photo.', 'societypress' ),
                 [ 'a' => [ 'href' => [] ] ]
             ),
@@ -103541,10 +103641,14 @@ add_action( 'admin_init', function () {
         if ( $user && $user->user_email ) {
             $org = trim( sp_settings()['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
             $subject = $action === 'approved'
+                /* translators: %s: organization name */
                 ? sprintf( __( '[%s] Your Picture Wall submission was approved', 'societypress' ), $org )
+                /* translators: %s: organization name */
                 : sprintf( __( '[%s] Your Picture Wall submission was not approved', 'societypress' ), $org );
             $body = $action === 'approved'
+                /* translators: 1: ancestor name, 2: album title */
                 ? sprintf( __( 'Your photo of %1$s has been approved and is now visible on %2$s.', 'societypress' ), $item->ancestor_name ?: __( 'your ancestor', 'societypress' ), $item->album_title )
+                /* translators: %s: album title */
                 : sprintf( __( 'Thank you for your submission to %s. After review, the photo was not approved at this time. Please contact us if you would like more information.', 'societypress' ), $item->album_title );
             wp_mail( $user->user_email, $subject, $body );
         }
@@ -103674,6 +103778,7 @@ add_action( 'admin_notices', function () {
 
     printf(
         '<div class="notice notice-info"><p>%s <a href="%s">%s</a></p></div>',
+        /* translators: %d: number of pending submissions */
         esc_html( sprintf( _n( '%d Picture Wall submission is pending review.', '%d Picture Wall submissions are pending review.', $count, 'societypress' ), $count ) ),
         esc_url( admin_url( 'admin.php?page=sp-picture-wall-pending' ) ),
         esc_html__( 'Review now →', 'societypress' )
@@ -104210,6 +104315,7 @@ function sp_donation_thank_you( int $donation_id, string $session_id, array $set
                 <?php
                 echo esc_html(
                     $first_name !== ''
+                        /* translators: %s: donor first name */
                         ? sprintf( __( 'Thank you, %s.', 'societypress' ), $first_name )
                         : __( 'Thank you.', 'societypress' )
                 );
@@ -104219,6 +104325,7 @@ function sp_donation_thank_you( int $donation_id, string $session_id, array $set
             <p class="sp-donate-thanks-lead">
                 <?php
                 echo esc_html( sprintf(
+                    /* translators: %s: organization name */
                     __( 'Your gift to %s came through.', 'societypress' ),
                     $org_name
                 ) );
@@ -104233,6 +104340,7 @@ function sp_donation_thank_you( int $donation_id, string $session_id, array $set
                     <p class="sp-donate-thanks-detail">
                         <?php
                         echo esc_html( sprintf(
+                            /* translators: %s: donor email address */
                             __( 'A receipt is on its way to %s.', 'societypress' ),
                             $d->donor_email
                         ) );
@@ -104249,6 +104357,7 @@ function sp_donation_thank_you( int $donation_id, string $session_id, array $set
                     <p class="sp-donate-thanks-detail">
                         <?php
                         echo esc_html( sprintf(
+                            /* translators: %s: name the gift was dedicated to */
                             __( 'Given in honor of %s.', 'societypress' ),
                             $d->dedication
                         ) );
@@ -104267,6 +104376,7 @@ function sp_donation_thank_you( int $donation_id, string $session_id, array $set
                 <p class="sp-donate-thanks-fine">
                     <?php
                     echo esc_html( sprintf(
+                        /* translators: 1: organization name, 2: tax ID (EIN) */
                         __( '%1$s is a 501(c)(3) tax-exempt organization. EIN: %2$s. No goods or services were provided in exchange for this contribution.', 'societypress' ),
                         $org_name,
                         $tax_id
@@ -104467,7 +104577,7 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                 <input type="hidden" name="campaign_id" value="<?php echo (int) $campaign->id; ?>">
             <?php endif; ?>
 
-            <h3><?php echo esc_html( $campaign ? sprintf( __( 'Support %s', 'societypress' ), $campaign->name ) : sprintf( __( 'Support %s', 'societypress' ), $org_name ) ); ?></h3>
+            <h3><?php /* translators: %s: campaign name, or organization name */ echo esc_html( $campaign ? sprintf( __( 'Support %s', 'societypress' ), $campaign->name ) : sprintf( __( 'Support %s', 'societypress' ), $org_name ) ); ?></h3>
             <?php if ( $campaign && $campaign->description ) : ?>
                 <p class="sp-donate-sub"><?php echo esc_html( wp_strip_all_tags( $campaign->description ) ); ?></p>
             <?php else : ?>
@@ -104880,7 +104990,9 @@ add_action( 'init', function () {
 
     $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
     $line_name = $frequency === 'one_time'
+        /* translators: %s: organization name */
         ? sprintf( __( 'Donation to %s', 'societypress' ), $org_name )
+        /* translators: %s: organization name */
         : sprintf( __( 'Recurring donation to %s', 'societypress' ), $org_name );
 
     $body = [
@@ -105073,23 +105185,32 @@ function sp_donation_notify_society( object $d, array $settings, bool $is_pledge
     $amount   = number_format( (float) ( $d->gross_amount ?: $d->amount ), 2 );
 
     $subject = $is_pledge
+        /* translators: %s: organization name */
         ? sprintf( __( '[%s] Mail-in donation pledged', 'societypress' ), $org_name )
+        /* translators: %s: organization name */
         : sprintf( __( '[%s] New donation received', 'societypress' ), $org_name );
 
     $body = $is_pledge
+        /* translators: %s: pledged amount */
         ? sprintf( __( 'A donor pledged $%s by mailed check. Mark it received in the admin when the check arrives.', 'societypress' ), $amount ) . "\n\n"
+        /* translators: %s: donation amount */
         : sprintf( __( 'A donation of $%s was just received.', 'societypress' ), $amount ) . "\n\n";
+    /* translators: %s: donor name, or Anonymous */
     $body .= sprintf( __( 'Donor: %s', 'societypress' ), $anon ? __( 'Anonymous', 'societypress' ) : $d->donor_name ) . "\n";
     if ( ! $anon && ! empty( $d->donor_email ) ) {
+        /* translators: %s: donor email address */
         $body .= sprintf( __( 'Email: %s', 'societypress' ), $d->donor_email ) . "\n";
     }
     if ( ! empty( $d->payment_method ) ) {
+        /* translators: %s: payment method */
         $body .= sprintf( __( 'Method: %s', 'societypress' ), $d->payment_method ) . "\n";
     }
     if ( ! empty( $d->dedication ) ) {
+        /* translators: %s: name the gift was dedicated to */
         $body .= sprintf( __( 'Dedication: %s', 'societypress' ), $d->dedication ) . "\n";
     }
     if ( ! empty( $d->note ) ) {
+        /* translators: %s: note left by the donor */
         $body .= sprintf( __( 'Note: %s', 'societypress' ), $d->note ) . "\n";
     }
 
@@ -105111,10 +105232,13 @@ function sp_donation_send_receipt( int $donation_id ): void {
     $freq_label = $d->frequency === 'monthly' ? __( 'monthly', 'societypress' )
         : ( $d->frequency === 'annually' ? __( 'annual', 'societypress' ) : __( 'one-time', 'societypress' ) );
 
+    /* translators: %s: organization name */
     $subject = sprintf( __( '[%s] Thank you for your donation', 'societypress' ), $org_name );
 
+    /* translators: %s: donor name */
     $body  = sprintf( __( 'Dear %s,', 'societypress' ), $d->donor_name ) . "\n\n";
     $body .= sprintf(
+        /* translators: 1: how often the gift repeats, 2: amount */
         __( "Thank you for your %1\$s donation of \$%2\$s.", 'societypress' ),
         $freq_label,
         number_format( (float) $d->gross_amount, 2 )
@@ -105122,6 +105246,7 @@ function sp_donation_send_receipt( int $donation_id ): void {
 
     if ( (float) $d->fee_amount > 0 ) {
         $body .= sprintf(
+            /* translators: 1: amount to the society, 2: organization name, 3: amount covering fees */
             __( "Your gift breaks down as \$%1\$s to %2\$s plus \$%3\$s to cover processing fees.", 'societypress' ),
             number_format( (float) $d->amount, 2 ),
             $org_name,
@@ -105144,6 +105269,7 @@ function sp_donation_send_receipt( int $donation_id ): void {
         $body .= __( 'This is a recurring donation. You can cancel at any time by replying to this email.', 'societypress' ) . "\n\n";
     }
 
+    /* translators: 1: line break, 2: organization name */
     $body .= sprintf( __( 'With gratitude,%1$sThe %2$s team', 'societypress' ), "\n", $org_name );
 
     wp_mail( $d->donor_email, $subject, $body );
@@ -105860,6 +105986,7 @@ function sp_render_builder_widget_research_guide_v2( array $s ): void {
             return;
         }
         echo '<p class="sp-text-quiet">' . sprintf(
+            /* translators: %s: research guide slug that could not be found */
             esc_html__( 'Research guide "%s" not found.', 'societypress' ),
             esc_html( $slug )
         ) . '</p>';
@@ -106230,8 +106357,10 @@ add_action( 'template_redirect', function () {
         $review_url = admin_url( 'admin.php?page=sp-lineage-application-edit&id=' . $app_id );
         wp_mail(
             $admin_email,
+            /* translators: %s: organization name */
             sprintf( __( '[%s] Lineage application — fee paid', 'societypress' ), $org ),
             sprintf(
+                /* translators: 1: application number, 2: review URL */
                 __( "Application fee for application #%1\$d cleared.\n\nReview:\n%2\$s", 'societypress' ),
                 $app_id, $review_url
             )
@@ -106361,6 +106490,7 @@ function sp_privacy_erase_lineage_data( string $email_address, int $page = 1 ): 
         'items_retained' => $items_retained,
         'messages'       => $items_removed
             ? [ sprintf(
+                /* translators: %d: number of lineage applications */
                 _n(
                     '%d lineage application pseudonymized. Personal narrative and applicant link removed; ancestor record, program, and certificate number retained as organizational records.',
                     '%d lineage applications pseudonymized. Personal narrative and applicant link removed; ancestor record, program, and certificate number retained as organizational records.',
@@ -106520,7 +106650,7 @@ add_action( 'init', function () {
 <html lang="<?php echo esc_attr( get_locale() ); ?>">
 <head>
 <meta charset="UTF-8">
-<title><?php echo esc_html( sprintf( __( '%1$s — Certificate %2$s', 'societypress' ), $app->program_name, $app->certificate_number ) ); ?></title>
+<title><?php /* translators: 1: lineage program name, 2: certificate number */ echo esc_html( sprintf( __( '%1$s — Certificate %2$s', 'societypress' ), $app->program_name, $app->certificate_number ) ); ?></title>
 <style>
     @page { size: letter landscape; margin: 0.5in; }
     * { box-sizing: border-box; }
@@ -106679,6 +106809,7 @@ add_action( 'init', function () {
                 echo $bits ? '<br>' : '';
                 echo esc_html( $app->geographic_scope );
                 if ( $app->cutoff_year && $app->arrival_year && $app->arrival_year <= $app->cutoff_year ) {
+                    /* translators: %d: year the ancestor was in residence by */
                     echo ' &nbsp;·&nbsp; ' . esc_html( sprintf( __( 'in residence by %d', 'societypress' ), $app->arrival_year ) );
                 }
             }
@@ -106687,7 +106818,7 @@ add_action( 'init', function () {
 
         <?php if ( $app->relationship ) : ?>
             <div class="sp-cert-citation sp-cert-citation-note">
-                <?php printf( esc_html__( 'as %s', 'societypress' ), esc_html( $app->relationship ) ); ?>
+                <?php /* translators: %s: relationship to the ancestor */ printf( esc_html__( 'as %s', 'societypress' ), esc_html( $app->relationship ) ); ?>
             </div>
         <?php endif; ?>
     </div>
@@ -107101,7 +107232,7 @@ function sp_render_member_volunteer_hours_summary( int $user_id, int $year = 0 )
         <h4><?php esc_html_e( 'Volunteer Hours', 'societypress' ); ?></h4>
         <div>
             <span class="sp-vh-total"><?php echo esc_html( number_format( $grand_hours, 1 ) ); ?></span>
-            <span class="sp-vh-period"><?php echo esc_html( sprintf( __( 'hours in %d', 'societypress' ), $year ) ); ?></span>
+            <span class="sp-vh-period"><?php /* translators: %d: year */ echo esc_html( sprintf( __( 'hours in %d', 'societypress' ), $year ) ); ?></span>
         </div>
         <ul>
             <?php foreach ( $rows as $r ) :
@@ -107341,7 +107472,7 @@ add_shortcode( 'sp_help_request_submit', function () {
             <input type="text" name="question_tags" maxlength="500">
 
             <div class="captcha-row">
-                <span><?php printf( esc_html__( 'Quick check: what is %1$d + %2$d?', 'societypress' ), (int) $captcha['a'], (int) $captcha['b'] ); ?></span>
+                <span><?php /* translators: 1: first number, 2: second number */ printf( esc_html__( 'Quick check: what is %1$d + %2$d?', 'societypress' ), (int) $captcha['a'], (int) $captcha['b'] ); ?></span>
                 <input type="number" name="captcha_answer" required>
             </div>
 
@@ -107425,13 +107556,16 @@ add_action( 'init', function () {
     ], $referer );
 
     $org = trim( sp_settings()['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    /* translators: %s: name of the person who asked */
     $body = sprintf( __( 'Hi %s,', 'societypress' ), $name ) . "\n\n";
     $body .= sprintf(
+        /* translators: 1: organization name, 2: question title, 3: verification URL */
         __( "We received your research question on %1\$s:\n\n  %2\$s\n\nClick the link below to publish it. The link is valid for 24 hours.\n\n%3\$s\n\nIf you did not submit this question, ignore this email.", 'societypress' ),
         $org, $title, $verify_url
     );
     wp_mail(
         $email,
+        /* translators: %s: organization name */
         sprintf( __( '[%s] Verify your research question', 'societypress' ), $org ),
         $body
     );
@@ -107491,8 +107625,10 @@ add_action( 'init', function () {
         $verb = $needs_review ? __( 'awaiting moderation', 'societypress' ) : __( 'published', 'societypress' );
         wp_mail(
             $admin_email,
+            /* translators: 1: organization name, 2: submitted or updated, 3: question title */
             sprintf( __( '[%1$s] Research question %2$s: %3$s', 'societypress' ), $org, $verb, $row->title ),
             sprintf(
+                /* translators: 1: requester name, 2: question title, 3: question description, 4: admin URL */
                 __( "%1\$s asked: %2\$s\n\n%3\$s\n\nReview / respond:\n%4\$s", 'societypress' ),
                 $row->requester_name, $row->title, $row->description, $admin_url
             )
@@ -107604,6 +107740,7 @@ add_shortcode( 'sp_help_requests_archive', function ( $atts ) {
                     <p class="sp-help-meta">
                         <?php
                         printf(
+                            /* translators: 1: how long ago it was asked, 2: number of responses, 3: plural suffix */
                             esc_html__( 'Asked %1$s · %2$d response%3$s', 'societypress' ),
                             esc_html( human_time_diff( strtotime( $r->created_at ), time() ) . ' ago' ),
                             (int) $r->responses_count,
@@ -107709,12 +107846,14 @@ add_action( 'admin_notices', function () {
     $msgs = [];
     if ( $pr > 0 ) {
         $msgs[] = sprintf(
+            /* translators: %d: number of questions awaiting approval */
             esc_html( _n( '%d question is awaiting moderator approval.', '%d questions are awaiting moderator approval.', $pr, 'societypress' ) ),
             $pr
         );
     }
     if ( $pv > 0 ) {
         $msgs[] = sprintf(
+            /* translators: %d: number of submitters who have not verified */
             esc_html( _n( '%d submitter has not yet clicked the email-verification link.', '%d submitters have not yet clicked the email-verification link.', $pv, 'societypress' ) ),
             $pv
         );
@@ -108107,6 +108246,7 @@ add_action( 'admin_init', function () {
         }
 
         $activity = sprintf(
+            /* translators: %s: research case title */
             __( 'Research case: %s', 'societypress' ),
             wp_trim_words( $case->title, 12 )
         );
@@ -108630,12 +108770,13 @@ add_shortcode( 'sp_research_request', function () {
                 <?php
                 $estimate = $rate * $hours;
                 printf(
+                    /* translators: 1: estimated cost, 2: number of hours, 3: hourly rate */
                     esc_html__( '$%1$.2f for %2$.2f hour(s) at $%3$.2f/hour', 'societypress' ),
                     $estimate, $hours, $rate
                 );
                 ?>
                 <br>
-                <span class="help"><?php printf( esc_html__( 'You will receive an initial response within %d days. If additional hours are required, we will request authorization for the extra time before continuing.', 'societypress' ), $sla_days ); ?></span>
+                <span class="help"><?php /* translators: %d: number of days in the response window */ printf( esc_html__( 'You will receive an initial response within %d days. If additional hours are required, we will request authorization for the extra time before continuing.', 'societypress' ), $sla_days ); ?></span>
             </div>
 
             <button type="submit"><?php esc_html_e( 'Place Order', 'societypress' ); ?></button>
@@ -108739,6 +108880,7 @@ add_action( 'init', function () {
             'line_items[0][price_data][currency]'                  => $currency,
             'line_items[0][price_data][unit_amount]'               => (int) round( $amount * 100 ),
             'line_items[0][price_data][product_data][name]'        => $line_name,
+            /* translators: 1: number of hours, 2: hourly rate, 3: organization name */
             'line_items[0][price_data][product_data][description]' => sprintf( __( 'Up-front payment for %1$.2f hour(s) at $%2$.2f/hour — %3$s', 'societypress' ), $max_hours, $rate, $org_name ),
         ],
     ] );
@@ -108812,8 +108954,10 @@ add_action( 'template_redirect', function () {
         $review_url = admin_url( 'admin.php?page=sp-research-case-edit&id=' . $case_id );
         wp_mail(
             $admin_email,
+            /* translators: %s: organization name */
             sprintf( __( '[%s] New paid research case', 'societypress' ), $org ),
             sprintf(
+                /* translators: 1: requester name, 2: amount paid, 3: case title, 4: admin URL */
                 __( "%1\$s paid \$%2\$s for a research case:\n\n%3\$s\n\nReview / assign:\n%4\$s", 'societypress' ),
                 $case->requester_name,
                 number_format( $paid, 2 ),
@@ -108870,12 +109014,19 @@ function sp_research_send_status_email( int $case_id, string $new_status ): void
     $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
 
     $subjects = [
+        /* translators: %s: organization name */
         'open'             => sprintf( __( '[%s] Your research case is in the queue', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'claimed'          => sprintf( __( '[%s] A researcher has claimed your case', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'in_progress'      => sprintf( __( '[%s] Work has started on your research case', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'needs_more_hours' => sprintf( __( '[%s] Authorization needed for additional research hours', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'completed'        => sprintf( __( '[%s] Your research case is complete', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'cancelled'        => sprintf( __( '[%s] Research case cancelled', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'refunded'         => sprintf( __( '[%s] Research case refunded', 'societypress' ), $org ),
     ];
     if ( ! isset( $subjects[ $new_status ] ) ) return;
@@ -108890,9 +109041,12 @@ function sp_research_send_status_email( int $case_id, string $new_status ): void
         'refunded'         => __( "A refund has been issued for your case. Please allow 5–10 business days for it to appear on your card or bank statement.", 'societypress' ),
     ];
 
+    /* translators: %s: requester name */
     $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $case->requester_name );
+    /* translators: %s: research case title */
     $body .= sprintf( __( "Case: %s\n\n", 'societypress' ), $case->title );
     $body .= $bodies[ $new_status ] . "\n\n";
+    /* translators: %s: organization name */
     $body .= sprintf( __( "— The %s team", 'societypress' ), $org );
 
     wp_mail( $case->requester_email, $subjects[ $new_status ], $body );
@@ -108962,6 +109116,7 @@ add_shortcode( 'sp_my_research_cases', function () {
     if ( ! is_user_logged_in() ) {
         return '<p>' . sprintf(
             wp_kses(
+                /* translators: %s: log in URL */
                 __( 'Please <a href="%s">log in</a> to see your research cases.', 'societypress' ),
                 [ 'a' => [ 'href' => [] ] ]
             ),
@@ -109040,9 +109195,9 @@ add_shortcode( 'sp_my_research_cases', function () {
                     <div>
                         <h4><?php echo esc_html( $r->title ); ?></h4>
                         <p class="meta">
-                            <?php printf( esc_html__( 'Submitted %s', 'societypress' ), esc_html( human_time_diff( strtotime( $r->created_at ), time() ) . ' ago' ) ); ?>
+                            <?php /* translators: %s: how long ago it was submitted */ printf( esc_html__( 'Submitted %s', 'societypress' ), esc_html( human_time_diff( strtotime( $r->created_at ), time() ) . ' ago' ) ); ?>
                             <?php if ( $r->researcher_name ) : ?>
-                                · <?php printf( esc_html__( 'Researcher: %s', 'societypress' ), esc_html( $r->researcher_name ) ); ?>
+                                · <?php /* translators: %s: researcher name */ printf( esc_html__( 'Researcher: %s', 'societypress' ), esc_html( $r->researcher_name ) ); ?>
                             <?php endif; ?>
                         </p>
                     </div>
@@ -109059,6 +109214,7 @@ add_shortcode( 'sp_my_research_cases', function () {
                         <strong><?php esc_html_e( 'Authorization needed:', 'societypress' ); ?></strong>
                         <?php
                         printf(
+                            /* translators: 1: number of additional hours, 2: hourly rate, 3: total */
                             esc_html__( '%1$s additional hour(s) at $%2$s/hr — total $%3$s', 'societypress' ),
                             esc_html( number_format( (float) $pending_inv->hours, 2 ) ),
                             esc_html( number_format( (float) $r->hourly_rate, 2 ) ),
@@ -109074,6 +109230,7 @@ add_shortcode( 'sp_my_research_cases', function () {
                 <p class="sp-rc-case-meta">
                     <?php
                     printf(
+                        /* translators: 1: amount paid, 2: hours authorized, 3: SLA in days */
                         esc_html__( '$%1$s paid · %2$s hour(s) authorized · %3$d day SLA', 'societypress' ),
                         esc_html( number_format( (float) $r->paid_amount, 2 ) ),
                         esc_html( number_format( (float) $r->max_hours_authorized, 2 ) ),
@@ -109195,6 +109352,7 @@ add_action( 'init', function () {
     ], $referer );
 
     $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    /* translators: %s: research case title */
     $line_name = sprintf( __( 'Additional research hours: %s', 'societypress' ), $case->title );
     if ( strlen( $line_name ) > 100 ) $line_name = substr( $line_name, 0, 97 ) . '...';
 
@@ -109218,6 +109376,7 @@ add_action( 'init', function () {
             'line_items[0][price_data][currency]'   => strtolower( $settings['stripe_currency'] ?? 'usd' ),
             'line_items[0][price_data][unit_amount]' => (int) round( (float) $inv->amount * 100 ),
             'line_items[0][price_data][product_data][name]'        => $line_name,
+            /* translators: 1: number of hours, 2: hourly rate, 3: organization name */
             'line_items[0][price_data][product_data][description]' => sprintf( __( '%1$s additional hour(s) at $%2$.2f/hour — %3$s', 'societypress' ), $inv->hours, (float) $case->hourly_rate, $org ),
         ],
     ] );
@@ -109292,8 +109451,10 @@ add_action( 'template_redirect', function () {
             $org = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
             wp_mail(
                 $researcher->user_email,
+                /* translators: %s: organization name */
                 sprintf( __( '[%s] Additional hours authorized', 'societypress' ), $org ),
                 sprintf(
+                    /* translators: 1: requester name, 2: number of additional hours, 3: case title, 4: case URL */
                     __( "%1\$s authorized %2\$s additional hour(s) on:\n\n%3\$s\n\nThe case is back in progress.\n\n%4\$s",
                         'societypress' ),
                     $case->requester_name,
@@ -109363,6 +109524,7 @@ add_action( 'admin_footer', function () {
             <div class="inside">
                 <p class="description"><?php
                 printf(
+                    /* translators: 1: hours authorized, 2: hours logged so far */
                     esc_html__( 'Authorized: %1$s · Logged so far: %2$s. If the case needs more time, submit a request here and the requester will receive an email with a Stripe payment link.', 'societypress' ),
                     esc_html( number_format( (float) $case->max_hours_authorized, 2 ) ),
                     esc_html( number_format( $hours_total, 2 ) )
@@ -109374,7 +109536,7 @@ add_action( 'admin_footer', function () {
                     <p>
                         <label><strong><?php esc_html_e( 'Additional hours', 'societypress' ); ?></strong></label>
                         <input type="number" step="0.25" min="0.25" max="40" name="additional_hours" value="1.00" class="sp-rmh-hours-input">
-                        <span class="sp-rmh-rate-note"><?php printf( esc_html__( 'at $%s/hour', 'societypress' ), esc_html( number_format( (float) $case->hourly_rate, 2 ) ) ); ?></span>
+                        <span class="sp-rmh-rate-note"><?php /* translators: %s: hourly rate */ printf( esc_html__( 'at $%s/hour', 'societypress' ), esc_html( number_format( (float) $case->hourly_rate, 2 ) ) ); ?></span>
                     </p>
                     <p>
                         <label><strong><?php esc_html_e( 'Why is more time needed?', 'societypress' ); ?></strong></label>
@@ -109431,6 +109593,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
     if ( ! is_user_logged_in() ) {
         return '<p>' . sprintf(
             wp_kses(
+                /* translators: %s: log in URL */
                 __( 'Please <a href="%s">log in</a> to view your research assignments.', 'societypress' ),
                 [ 'a' => [ 'href' => [] ] ]
             ),
@@ -109593,6 +109756,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
                 <p class="meta">
                     <?php
                     printf(
+                        /* translators: 1: requester name, 2: hours authorized, 3: hours logged, 4: hours remaining */
                         esc_html__( 'Requester: %1$s · Authorized: %2$s hr · Logged: %3$s hr · Remaining: %4$s hr', 'societypress' ),
                         esc_html( $c->requester_name ),
                         esc_html( number_format( $authorized, 2 ) ),
@@ -109640,6 +109804,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
                 <p class="meta">
                     <?php
                     printf(
+                        /* translators: 1: how long ago it was requested, 2: hours authorized, 3: hourly rate, 4: SLA in days */
                         esc_html__( 'Requested %1$s · Authorized: %2$s hr at $%3$s/hr · SLA: %4$d days', 'societypress' ),
                         esc_html( human_time_diff( strtotime( $c->created_at ), time() ) . ' ago' ),
                         esc_html( number_format( (float) $c->max_hours_authorized, 2 ) ),
@@ -109825,6 +109990,7 @@ add_action( 'admin_init', function () {
         'request_id'    => $req_id,
         'user_id'       => get_current_user_id(),
         'content'       => sprintf(
+            /* translators: %d: research case number */
             __( 'This question has been escalated to a paid Research Case (#%d). The requester has been emailed a payment link to authorize formal research.', 'societypress' ),
             $case_id
         ),
@@ -109851,6 +110017,7 @@ add_action( 'admin_init', function () {
         // pre-prepared a case for them.
         $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $name );
         $body .= sprintf(
+            /* translators: %s: research question title */
             __( "We talked through your research question on the free Help Forum:\n\n  %s\n\nIt looks like the work needs more time than free volunteer help can provide. We've prepared a paid Research Case at $%s/hour. To authorize and pay for the initial %s hour(s), reply to this email or visit:\n\n%s\n\nWe will assign a researcher as soon as the initial fee is in.\n\n— The %s team",
                 'societypress' ),
             $req->title,
@@ -109861,6 +110028,7 @@ add_action( 'admin_init', function () {
         );
         wp_mail(
             $email,
+            /* translators: %s: organization name */
             sprintf( __( '[%s] Your research question has been escalated', 'societypress' ), $org ),
             $body
         );
@@ -109882,6 +110050,7 @@ add_action( 'admin_notices', function () {
     echo '<div class="notice notice-success is-dismissible"><p>'
        . sprintf(
             wp_kses(
+                /* translators: 1: help request URL, 2: help request number */
                 __( 'Case created from <a href="%s">Help Request #%d</a>. The requester has been emailed an authorization link.', 'societypress' ),
                 [ 'a' => [ 'href' => [] ] ]
             ),
@@ -110110,12 +110279,14 @@ add_action( 'init', function () {
         $msg_excerpt = wp_trim_words( wp_strip_all_tags( $body ), 30 );
         $email_body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $recipient_name );
         $email_body .= sprintf(
+            /* translators: 1: sender name, 2: case title, 3: message excerpt, 4: admin URL */
             __( "%1\$s posted a message on the research case: %2\$s\n\n  \"%3\$s\"\n\nReply in-system here:\n%4\$s",
                 'societypress' ),
             $sender_label, $case->title, $msg_excerpt, $admin_url
         );
         wp_mail(
             $recipient_email,
+            /* translators: 1: organization name, 2: research case title */
             sprintf( __( '[%1$s] New message on research case: %2$s', 'societypress' ), $org, $case->title ),
             $email_body
         );
@@ -110199,6 +110370,7 @@ add_filter( 'do_shortcode_tag', function ( $output, $tag ) {
 
     $thread = sp_research_render_messages( $case_id, true, false );
     return $output . '<h3 class="sp-mt-24">'
+        /* translators: %s: research case title */
         . esc_html( sprintf( __( 'Messages — %s', 'societypress' ), $case->title ) )
         . '</h3>' . $thread;
 }, 12, 2 );
@@ -111587,7 +111759,7 @@ function sp_render_theme_presets_page(): void {
 
         <?php if ( $imported_name ) : ?>
             <div class="notice notice-success is-dismissible"><p>
-                <?php printf( esc_html__( 'Preset "%s" applied. Your site\'s appearance has been updated.', 'societypress' ), esc_html( $imported_name ) ); ?>
+                <?php /* translators: %s: preset name */ printf( esc_html__( 'Preset "%s" applied. Your site\'s appearance has been updated.', 'societypress' ), esc_html( $imported_name ) ); ?>
                 <a href="<?php echo esc_url( home_url() ); ?>" target="_blank"><?php esc_html_e( 'View site →', 'societypress' ); ?></a>
             </p></div>
         <?php endif; ?>
@@ -111606,7 +111778,7 @@ function sp_render_theme_presets_page(): void {
 
         <?php if ( isset( $_GET['sp_preset_saved'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p>
-                <?php printf( esc_html__( 'Saved look "%s".', 'societypress' ), esc_html( sanitize_text_field( urldecode( wp_unslash( $_GET['sp_preset_name'] ?? '' ) ) ) ) ); ?>
+                <?php /* translators: %s: name of the saved look */ printf( esc_html__( 'Saved look "%s".', 'societypress' ), esc_html( sanitize_text_field( urldecode( wp_unslash( $_GET['sp_preset_name'] ?? '' ) ) ) ) ); ?>
             </p></div>
         <?php endif; ?>
         <?php if ( isset( $_GET['sp_preset_deleted'] ) ) : ?>
@@ -111779,7 +111951,7 @@ function sp_render_theme_presets_page(): void {
                         $bundle_imp     = isset( $_GET['sp_bundle_imported'] ) ? sanitize_text_field( urldecode( wp_unslash( $_GET['sp_bundle_name'] ?? '' ) ) ) : '';
                         ?>
                         <?php if ( $bundle_imp ) : ?>
-                            <p class="notice notice-success sp-tp-inline-notice"><?php printf( esc_html__( 'Bundle "%s" applied.', 'societypress' ), esc_html( $bundle_imp ) ); ?></p>
+                            <p class="notice notice-success sp-tp-inline-notice"><?php /* translators: %s: bundle name */ printf( esc_html__( 'Bundle "%s" applied.', 'societypress' ), esc_html( $bundle_imp ) ); ?></p>
                         <?php endif; ?>
                         <?php if ( $bundle_err === 'no_file' ) : ?>
                             <p class="notice notice-error sp-tp-inline-notice"><?php esc_html_e( 'Please choose a bundle file to import.', 'societypress' ); ?></p>
@@ -111983,6 +112155,7 @@ function sp_render_society_sidebar( array $args = [] ): string {
                     printf(
                         /* translators: 1: member name, 2: logout URL */
                         wp_kses(
+                            /* translators: 1: signed-in user name, 2: sign out URL */
                             __( 'Signed in as %1$s · <a href="%2$s">Sign out</a>', 'societypress' ),
                             [ 'a' => [ 'href' => [] ] ]
                         ),
@@ -111993,6 +112166,7 @@ function sp_render_society_sidebar( array $args = [] ): string {
                     printf(
                         /* translators: %s is login URL */
                         wp_kses(
+                            /* translators: %s: sign in URL */
                             __( '<a href="%s">Sign in</a> to your member account', 'societypress' ),
                             [ 'a' => [ 'href' => [] ] ]
                         ),
@@ -112194,9 +112368,13 @@ function sp_help_send_status_email( int $request_id, string $new_status ): void 
     $org      = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
 
     $subjects = [
+        /* translators: %s: organization name */
         'approved' => sprintf( __( '[%s] Your research question is now public', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'reopened' => sprintf( __( '[%s] Your research question is open again', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'resolved' => sprintf( __( '[%s] Your research question is resolved', 'societypress' ), $org ),
+        /* translators: %s: organization name */
         'closed'   => sprintf( __( '[%s] Your research question is closed', 'societypress' ), $org ),
     ];
     $bodies = [
@@ -112209,10 +112387,14 @@ function sp_help_send_status_email( int $request_id, string $new_status ): void 
 
     $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $request_id ], home_url() );
 
+    /* translators: %s: name of the person who asked, or Friend */
     $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $name ?: __( 'Friend', 'societypress' ) );
+    /* translators: %s: question title */
     $body .= sprintf( __( "Question: %s\n\n", 'societypress' ), $req->title );
     $body .= $bodies[ $new_status ] . "\n\n";
+    /* translators: %s: URL of the question thread */
     $body .= sprintf( __( "Read the full thread:\n%s\n\n", 'societypress' ), $thread_url );
+    /* translators: %s: organization name */
     $body .= sprintf( __( '— The %s team', 'societypress' ), $org );
 
     wp_mail( $email, $subjects[ $new_status ], $body );
@@ -112379,8 +112561,11 @@ function sp_render_help_tags_admin_page(): void {
                 }
             }
 
+            /* translators: 1: old tag, 2: new tag, 3: number of threads changed */
             $msg = $action === 'rename' ? sprintf( __( 'Renamed "%1$s" to "%2$s" in %3$d threads.', 'societypress' ), $from, $to, $touched )
+                /* translators: 1: tag merged from, 2: tag merged into, 3: number of threads changed */
                 : ( $action === 'merge'  ? sprintf( __( 'Merged "%1$s" into "%2$s" in %3$d threads.', 'societypress' ), $from, $to, $touched )
+                /* translators: 1: tag removed, 2: number of threads changed */
                 : sprintf( __( 'Removed "%1$s" from %2$d threads.', 'societypress' ), $from, $touched ) );
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $msg ) . '</p></div>';
         }
@@ -112450,7 +112635,7 @@ function sp_render_help_tags_admin_page(): void {
 
             <!-- Tag list -->
             <div class="sp-2col-flex__main">
-                <h2 class="sp-mt-only-0"><?php printf( esc_html__( 'All Tags (%d unique)', 'societypress' ), count( $counts ) ); ?></h2>
+                <h2 class="sp-mt-only-0"><?php /* translators: %d: number of unique tags */ printf( esc_html__( 'All Tags (%d unique)', 'societypress' ), count( $counts ) ); ?></h2>
                 <?php if ( empty( $counts ) ) : ?>
                     <p class="sp-ht-empty-note"><?php esc_html_e( 'No tags yet. Tags appear once members submit questions with them.', 'societypress' ); ?></p>
                 <?php else : ?>
@@ -113111,8 +113296,11 @@ function sp_render_ens_pages_import_page(): void {
     if ( $results !== null ) {
         echo '<h2>' . esc_html__( 'Import complete', 'societypress' ) . '</h2>';
         echo '<ul class="ul-disc">';
+        /* translators: %d: number of pages created */
         echo '<li>' . sprintf( esc_html( _n( '%d page created', '%d pages created', (int) $results['pages_created'], 'societypress' ) ), (int) $results['pages_created'] ) . '</li>';
+        /* translators: %d: number of pages reused */
         echo '<li>' . sprintf( esc_html( _n( '%d page reused', '%d pages reused', (int) $results['pages_reused'], 'societypress' ) ), (int) $results['pages_reused'] ) . '</li>';
+        /* translators: %d: number of menu items added */
         echo '<li>' . sprintf( esc_html( _n( '%d menu item added', '%d menu items added', (int) $results['menu_items'], 'societypress' ) ), (int) $results['menu_items'] ) . '</li>';
         echo '</ul>';
         if ( ! empty( $results['errors'] ) ) {
@@ -113130,6 +113318,7 @@ function sp_render_ens_pages_import_page(): void {
     // ----- Preview screen -----
     if ( $preview !== null ) {
         echo '<h2>' . esc_html__( 'Preview', 'societypress' ) . '</h2>';
+        /* translators: %d: number of rows detected */
         echo '<p>' . sprintf( esc_html( _n( 'Detected %d row in the ENS file.', 'Detected %d rows in the ENS file.', count( $preview ), 'societypress' ) ), count( $preview ) ) . '</p>';
 
         echo '<form method="post">';
@@ -113966,8 +114155,11 @@ function sp_newsletter_index_runner( array $ids, bool $autostart = false ): void
         var AJAX  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
         var NONCE = <?php echo wp_json_encode( wp_create_nonce( 'sp_nl_index' ) ); ?>;
         var STR   = <?php echo wp_json_encode( [
+            /* translators: 1: current newsletter number, 2: total newsletters */
             'working' => __( 'Indexing %1$d of %2$d…', 'societypress' ),
+            /* translators: 1: number indexed, 2: total, 3: tables of contents filled in */
             'done'    => __( 'Done — %1$d of %2$d indexed, %3$d tables of contents filled in.', 'societypress' ),
+            /* translators: 1: number indexed, 2: total */
             'stopped' => __( 'Stopped early — %1$d of %2$d indexed.', 'societypress' ),
             'network' => __( 'Lost contact with the server.', 'societypress' ),
         ] ); ?>;
@@ -114426,9 +114618,8 @@ function sp_newsletter_import_bulk_visibility_bar(): void {
         if ( ! bar ) { return; }
         bar.hidden = false;
 
-        /* translators: 1: number of newsletters, 2: visibility name */
-        var template = <?php echo wp_json_encode( __( '%1$d newsletters set to %2$s.', 'societypress' ) ); ?>;
-        var one      = <?php echo wp_json_encode( __( '1 newsletter set to %2$s.', 'societypress' ) ); ?>;
+        var template = <?php /* translators: 1: number of newsletters, 2: visibility name */ echo wp_json_encode( __( '%1$d newsletters set to %2$s.', 'societypress' ) ); ?>;
+        var one      = <?php /* translators: %2$s: visibility name */ echo wp_json_encode( __( '1 newsletter set to %2$s.', 'societypress' ) ); ?>;
 
         document.getElementById( 'sp-nl-bulk-apply' ).addEventListener( 'click', function () {
             var choice = document.getElementById( 'sp-nl-bulk-visibility' );
@@ -115296,6 +115487,7 @@ function sp_render_import_records_bulk_page(): void {
             var submitBtn  = form.querySelector('input[type="submit"], button[type="submit"]');
 
             var STR = <?php echo wp_json_encode( [
+                /* translators: 1: album name, 2: current file number, 3: total files */
                 'working' => __( 'Importing %1$s — file %2$d of %3$d…', 'societypress' ),
                 'none'    => __( 'Nothing selected to import.', 'societypress' ),
                 'network' => __( 'Lost contact with the server.', 'societypress' ),
@@ -115989,8 +116181,11 @@ function sp_render_import_gallery_form(): void {
         var submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
 
         var STR = <?php echo wp_json_encode( [
+            /* translators: 1: current number, 2: total */
             'working'  => __( 'Adding %1$d of %2$d…', 'societypress' ),
+            /* translators: %d: number added */
             'done'     => __( 'Done — %d added.', 'societypress' ),
+            /* translators: %d: number added before the import failed */
             'failed'   => __( 'The import stopped early. %d added before it failed.', 'societypress' ),
             'network'  => __( 'Lost contact with the server.', 'societypress' ),
             'noTitle'  => __( 'Album title is required.', 'societypress' ),
@@ -116201,12 +116396,17 @@ function sp_render_import_newsletters_upload_form(): void {
         var submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
 
         var STR = <?php echo wp_json_encode( [
+            /* translators: 1: current file number, 2: total files */
             'working' => __( 'Uploading %1$d of %2$d…', 'societypress' ),
+            /* translators: %d: number ready to review */
             'done'    => __( 'Done — %d ready to review.', 'societypress' ),
+            /* translators: %d: number ready to review */
             'failed'  => __( 'The upload stopped early. %d ready to review.', 'societypress' ),
             'none'    => __( 'No valid PDFs were uploaded.', 'societypress' ),
             'network' => __( 'Lost contact with the server.', 'societypress' ),
+            /* translators: %d: number already in the archive */
             'dupeOne'  => __( '%d of these is already in the archive. It is highlighted below and left unticked — leave it that way unless you truly want a second copy.', 'societypress' ),
+            /* translators: %d: number already in the archive */
             'dupeMany' => __( '%d of these are already in the archive. They are highlighted below and left unticked — leave them that way unless you truly want second copies.', 'societypress' ),
         ] ); ?>;
 
@@ -117503,7 +117703,7 @@ function sp_render_form_edit_page(): void {
                             <tr>
                                 <th scope="row"><label for="sp-form-subject"><?php esc_html_e( 'Email subject', 'societypress' ); ?></label></th>
                                 <td>
-                                    <input type="text" id="sp-form-subject" name="email_subject" value="<?php echo esc_attr( $subject ); ?>" class="large-text" placeholder="<?php echo esc_attr( sprintf( __( 'e.g. New %s submission', 'societypress' ), $name ? $name : __( 'form', 'societypress' ) ) ); ?>">
+                                    <input type="text" id="sp-form-subject" name="email_subject" value="<?php /* translators: %s: form name */ echo esc_attr( $subject ); ?>" class="large-text" placeholder="<?php echo esc_attr( sprintf( __( 'e.g. New %s submission', 'societypress' ), $name ? $name : __( 'form', 'societypress' ) ) ); ?>">
                                     <p class="description"><?php esc_html_e( 'The subject line of the notification email. Leave blank to use the form name.', 'societypress' ); ?></p>
                                 </td>
                             </tr>

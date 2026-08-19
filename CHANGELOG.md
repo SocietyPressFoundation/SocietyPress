@@ -19,6 +19,22 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.52] — 2026-08-18
+
+### Changed
+
+**Every translatable message now tells its translator what the blanks are**
+
+Messages that fill in a name, a count or an amount reach a translator as
+something like "Imported %1$s records. %2$s duplicates skipped" — with nothing
+to say what each blank will hold. Guessing wrong reorders the sentence and puts
+the wrong number in the wrong place, and the translator has no way to know.
+
+Every one of those messages now carries a note explaining each blank. No visible
+change to the software.
+
+---
+
 ## [1.1.51] — 2026-08-18
 
 ### Changed

@@ -19,6 +19,89 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.50] — 2026-08-18
+
+### Security
+
+**The surname contact form can only reach researchers who asked to be reachable**
+
+The "contact this researcher" button on surname search carried the recipient's
+identity in the page itself, and the site would mail whoever it named — a member
+who had never listed a surname, someone who had switched surname alerts off, or
+the administrator. Only guests were limited to five messages an hour; a signed-in
+member had no limit at all.
+
+The recipient is now looked up through the surname registry: they must be an
+active member, must actually list a surname, and must still have "Surname match
+alerts" switched on. Members are capped at twenty messages an hour, well above
+what real research looks like.
+
+### Fixed
+
+**Adding a member no longer throws away everything you typed**
+
+The Add Member form has more than forty fields. Leaving out a required one — or
+using an email address already on file — cleared the whole form and returned an
+empty page with an error at the top, so the only way forward was to type it all
+again. Everything entered now comes back exactly as it was, research surnames
+included, with the error explaining what needs attention.
+
+**Deleting a form submission asks first**
+
+Every other Delete in SocietyPress asks before it acts. Form submissions were the
+exception: one click on the Delete link removed a message somebody had sent the
+society, with nothing in between and no way back.
+
+**Store orders are recorded at the right amount**
+
+Every order written to the history log was recorded as $0.00 when it was created,
+whatever the customer actually paid. The amount shown when the order was later
+paid was correct, so the two halves of the record disagreed.
+
+**Small text and empty-state guidance are readable**
+
+Several labels on Menu Layout were too faint against the white panel behind
+them to meet the contrast standard, including the instructions shown when a
+group is empty.
+
+**Album and newsletter covers announce themselves to screen readers**
+
+The cover image on a gallery album and on a newsletter issue was the only thing
+inside its link, and it carried no description, so anyone using a screen reader
+heard "link" with no indication of which album or issue it led to. Covers now
+carry their title, and so does the placeholder shown when there is no cover.
+
+### Changed
+
+**Buttons say what they add**
+
+Members, Groups, Pages, Events, Volunteer Opportunities, Campaigns, Newsletters
+and Documents each had a button labelled "Add New". They now read "Add Member",
+"Add Event", and so on.
+
+**Putting a form on a page no longer starts with a line of code**
+
+The Forms screen led with `[societypress_form id="7"]` — as a column in the list
+and as the first instruction in the form editor. It now points to the Form widget
+in the page builder, which is how most people will place a form. The paste-in code
+is still there, folded away for anyone who wants it.
+
+**Importing members talks about extra information, not custom fields**
+
+Columns in your file that do not match one of the built-in fields were offered as
+"Store as custom field", and were grouped afterwards under "Custom Fields". They
+are now "Keep as extra info" and "Extra Info".
+
+**A great deal more of SocietyPress can be translated**
+
+The pages and menu created when SocietyPress is first installed, the wording of
+the welcome, renewal, expiry, donation and mailing-list emails, the Events import
+screen, the Library catalogue's totals and paging, and several smaller labels were
+all written in English in a way that no translation could reach. They now go
+through the same translation system as the rest of the product.
+
+---
+
 ## [1.1.49] — 2026-08-18
 
 ### Fixed

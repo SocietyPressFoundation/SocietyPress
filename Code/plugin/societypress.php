@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.49
+ * Version:     1.1.50
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.49' );
+define( 'SOCIETYPRESS_VERSION', '1.1.50' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -349,10 +349,9 @@ function sp_maybe_create_default_pages(): void {
 
     // ---- Home Page ----
     $home_id = wp_insert_post( [
-        'post_title'   => 'Home',
+        'post_title'   => __( 'Home', 'societypress' ),
         'post_content' => '<!-- wp:paragraph -->'
-                        . '<p>Welcome to our website. This page can be customized '
-                        . 'from the Pages menu in your admin panel.</p>'
+                        . '<p>' . __( 'Welcome to our website. This page can be customized from the Pages menu in your admin panel.', 'societypress' ) . '</p>'
                         . '<!-- /wp:paragraph -->',
         'post_status'  => 'publish',
         'post_type'    => 'page',
@@ -402,7 +401,7 @@ function sp_maybe_create_default_pages(): void {
     } else {
         // No existing privacy page — create one with our template
         $privacy_id = wp_insert_post( [
-            'post_title'   => 'Privacy Policy',
+            'post_title'   => __( 'Privacy Policy', 'societypress' ),
             'post_content' => '',
             'post_status'  => 'publish',
             'post_type'    => 'page',
@@ -423,13 +422,13 @@ function sp_maybe_create_default_pages(): void {
     //      common sections (mission, history, meetings) so the admin can
     //      fill in details rather than starting from a blank page.
     wp_insert_post( [
-        'post_title'   => 'About',
-        'post_content' => '<h2>Our Mission</h2>'
-                        . '<p>[Describe your society\'s mission and purpose here.]</p>'
-                        . '<h2>Our History</h2>'
-                        . '<p>[When was your society founded? Share its story.]</p>'
-                        . '<h2>Meetings</h2>'
-                        . '<p>[Where and when does your society meet? Include address and schedule.]</p>',
+        'post_title'   => __( 'About', 'societypress' ),
+        'post_content' => '<h2>' . __( 'Our Mission', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Describe your society\'s mission and purpose here.]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Our History', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[When was your society founded? Share its story.]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Meetings', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Where and when does your society meet? Include address and schedule.]', 'societypress' ) . '</p>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'about',
@@ -439,13 +438,17 @@ function sp_maybe_create_default_pages(): void {
     // WHY: Societies need to explain membership benefits and how to join.
     //      This gives admins a head start with common sections.
     wp_insert_post( [
-        'post_title'   => 'Membership',
-        'post_content' => '<h2>Why Join?</h2>'
-                        . '<p>[List the benefits of membership — access to resources, events, publications, networking, etc.]</p>'
-                        . '<h2>Membership Levels</h2>'
-                        . '<p>Our membership tiers and dues are shown on the join page.</p>'
-                        . '<h2>How to Join</h2>'
-                        . '<p>Visit our <a href="/join">Join</a> page to sign up online.</p>',
+        'post_title'   => __( 'Membership', 'societypress' ),
+        'post_content' => '<h2>' . __( 'Why Join?', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[List the benefits of membership — access to resources, events, publications, networking, etc.]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Membership Levels', 'societypress' ) . '</h2>'
+                        . '<p>' . __( 'Our membership tiers and dues are shown on the join page.', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'How to Join', 'societypress' ) . '</h2>'
+                        . '<p>' . sprintf(
+                            /* translators: %s: link to the Join page, already wrapped in an anchor tag */
+                            __( 'Visit our %s page to sign up online.', 'societypress' ),
+                            '<a href="/join">' . __( 'Join', 'societypress' ) . '</a>'
+                          ) . '</p>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'membership',
@@ -454,12 +457,12 @@ function sp_maybe_create_default_pages(): void {
     // ---- Events Page ----
     // WHY: A landing page for the events calendar and upcoming programs.
     wp_insert_post( [
-        'post_title'   => 'Events',
-        'post_content' => '<p>Check our calendar for upcoming meetings, workshops, and special events.</p>'
-                        . '<h2>Regular Meetings</h2>'
-                        . '<p>[Describe your regular meeting schedule — e.g., "We meet the first Saturday of every month at 10 AM."]</p>'
-                        . '<h2>Special Programs</h2>'
-                        . '<p>[Highlight any upcoming guest speakers, workshops, or special events.]</p>',
+        'post_title'   => __( 'Events', 'societypress' ),
+        'post_content' => '<p>' . __( 'Check our calendar for upcoming meetings, workshops, and special events.', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Regular Meetings', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Describe your regular meeting schedule — e.g., "We meet the first Saturday of every month at 10 AM."]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Special Programs', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Highlight any upcoming guest speakers, workshops, or special events.]', 'societypress' ) . '</p>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'events',
@@ -468,12 +471,12 @@ function sp_maybe_create_default_pages(): void {
     // ---- Contact Us Page ----
     // WHY: Visitors and prospective members need a way to reach the society.
     wp_insert_post( [
-        'post_title'   => 'Contact Us',
-        'post_content' => '<p>We\'d love to hear from you. Use the information below to get in touch.</p>'
-                        . '<h2>Mailing Address</h2>'
-                        . '<p>[Your society\'s mailing address]</p>'
-                        . '<h2>Email</h2>'
-                        . '<p>[Your society\'s contact email address]</p>',
+        'post_title'   => __( 'Contact Us', 'societypress' ),
+        'post_content' => '<p>' . __( 'We\'d love to hear from you. Use the information below to get in touch.', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Mailing Address', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Your society\'s mailing address]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Email', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Your society\'s contact email address]', 'societypress' ) . '</p>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'contact-us',
@@ -483,12 +486,12 @@ function sp_maybe_create_default_pages(): void {
     // WHY: A hub page for logged-in members to access member-only content.
     //      The theme can restrict this page to logged-in users.
     wp_insert_post( [
-        'post_title'   => 'Member Portal',
-        'post_content' => '<p>Welcome, members! Use the links below to access your member resources.</p>'
+        'post_title'   => __( 'Member Portal', 'societypress' ),
+        'post_content' => '<p>' . __( 'Welcome, members! Use the links below to access your member resources.', 'societypress' ) . '</p>'
                         . '<ul>'
-                        . '<li><a href="/events">Events &amp; Calendar</a></li>'
-                        . '<li><a href="/resources">Resources &amp; Documents</a></li>'
-                        . '<li><a href="/directory">Member Directory</a></li>'
+                        . '<li><a href="/events">' . __( 'Events &amp; Calendar', 'societypress' ) . '</a></li>'
+                        . '<li><a href="/resources">' . __( 'Resources &amp; Documents', 'societypress' ) . '</a></li>'
+                        . '<li><a href="/directory">' . __( 'Member Directory', 'societypress' ) . '</a></li>'
                         . '</ul>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
@@ -499,14 +502,14 @@ function sp_maybe_create_default_pages(): void {
     // WHY: Societies often have research materials, guides, and documents
     //      to share with members.
     wp_insert_post( [
-        'post_title'   => 'Resources',
-        'post_content' => '<p>Browse our collection of research materials and guides.</p>'
-                        . '<h2>Research Databases</h2>'
-                        . '<p>[List any databases or online resources your society provides access to.]</p>'
-                        . '<h2>How-To Guides</h2>'
-                        . '<p>[Link to any beginner guides, research tips, or tutorials.]</p>'
-                        . '<h2>Society Library</h2>'
-                        . '<p>[Describe your society\'s library holdings and how members can access them.]</p>',
+        'post_title'   => __( 'Resources', 'societypress' ),
+        'post_content' => '<p>' . __( 'Browse our collection of research materials and guides.', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Research Databases', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[List any databases or online resources your society provides access to.]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'How-To Guides', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Link to any beginner guides, research tips, or tutorials.]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Society Library', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Describe your society\'s library holdings and how members can access them.]', 'societypress' ) . '</p>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'resources',
@@ -515,12 +518,12 @@ function sp_maybe_create_default_pages(): void {
     // ---- Leadership Page ----
     // WHY: Members and visitors want to know who runs the society.
     wp_insert_post( [
-        'post_title'   => 'Leadership',
-        'post_content' => '<p>Meet the people who keep our society running.</p>'
-                        . '<h2>Officers</h2>'
-                        . '<p>[This page will be populated automatically once officers are assigned in the admin panel.]</p>'
-                        . '<h2>Committees</h2>'
-                        . '<p>[Committee information will appear here once committees are set up.]</p>',
+        'post_title'   => __( 'Leadership', 'societypress' ),
+        'post_content' => '<p>' . __( 'Meet the people who keep our society running.', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Officers', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[This page will be populated automatically once officers are assigned in the admin panel.]', 'societypress' ) . '</p>'
+                        . '<h2>' . __( 'Committees', 'societypress' ) . '</h2>'
+                        . '<p>' . __( '[Committee information will appear here once committees are set up.]', 'societypress' ) . '</p>',
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'leadership',
@@ -533,19 +536,19 @@ function sp_maybe_create_default_pages(): void {
     //      renders the appropriate frontend. Without these pages, the admin
     //      would have to manually create each one and assign the template.
     $sp_pages = [
-        [ 'title' => 'Events',              'slug' => 'events',      'template' => 'sp-events' ],
-        [ 'title' => 'Calendar',            'slug' => 'calendar',    'template' => 'sp-calendar' ],
-        [ 'title' => 'Directory',           'slug' => 'directory',   'template' => 'sp-directory' ],
-        [ 'title' => 'My Account',          'slug' => 'my-account',  'template' => 'sp-my-account' ],
-        [ 'title' => 'Newsletters',         'slug' => 'newsletters', 'template' => 'sp-newsletter-archive' ],
-        [ 'title' => 'Library',             'slug' => 'library',     'template' => 'sp-library-catalog' ],
+        [ 'title' => __( 'Events', 'societypress' ),              'slug' => 'events',      'template' => 'sp-events' ],
+        [ 'title' => __( 'Calendar', 'societypress' ),            'slug' => 'calendar',    'template' => 'sp-calendar' ],
+        [ 'title' => __( 'Directory', 'societypress' ),           'slug' => 'directory',   'template' => 'sp-directory' ],
+        [ 'title' => __( 'My Account', 'societypress' ),          'slug' => 'my-account',  'template' => 'sp-my-account' ],
+        [ 'title' => __( 'Newsletters', 'societypress' ),         'slug' => 'newsletters', 'template' => 'sp-newsletter-archive' ],
+        [ 'title' => __( 'Library', 'societypress' ),             'slug' => 'library',     'template' => 'sp-library-catalog' ],
         // WHY: Every other module that has a front end gets a page here, but
         // Records didn't — so a society could transcribe and import thousands
         // of records and have no page a visitor could reach them from. The
         // sp-records template is public (it's in the no-login-required list),
         // which is the point: searchable records are what draws researchers in.
-        [ 'title' => 'Records',             'slug' => 'records',     'template' => 'sp-records' ],
-        [ 'title' => 'Search',              'slug' => 'search',      'template' => 'sp-search' ],
+        [ 'title' => __( 'Records', 'societypress' ),             'slug' => 'records',     'template' => 'sp-records' ],
+        [ 'title' => __( 'Search', 'societypress' ),              'slug' => 'search',      'template' => 'sp-search' ],
     ];
 
     // Track page IDs for the nav menu
@@ -569,7 +572,7 @@ function sp_maybe_create_default_pages(): void {
 
     // ---- Join Page (shortcode-based) ----
     $join_id = wp_insert_post( [
-        'post_title'   => 'Join',
+        'post_title'   => __( 'Join', 'societypress' ),
         'post_content' => '[societypress_join]',
         'post_status'  => 'publish',
         'post_type'    => 'page',
@@ -582,7 +585,7 @@ function sp_maybe_create_default_pages(): void {
     // ---- News / Blog Page ----
     // WHY: Societies need a place for announcements and posts.
     $news_id = wp_insert_post( [
-        'post_title'   => 'News',
+        'post_title'   => __( 'News', 'societypress' ),
         'post_content' => '',
         'post_status'  => 'publish',
         'post_type'    => 'page',
@@ -3853,9 +3856,9 @@ function sp_maybe_seed_event_categories(): void {
  */
 function sp_maybe_create_newsletter_category(): void {
     if ( ! term_exists( 'newsletter', 'category' ) ) {
-        wp_insert_term( 'Newsletter', 'category', [
+        wp_insert_term( __( 'Newsletter', 'societypress' ), 'category', [
             'slug'        => 'newsletter',
-            'description' => 'Newsletter posts displayed in the Newsletter Archive widget.',
+            'description' => __( 'Newsletter posts displayed in the Newsletter Archive widget.', 'societypress' ),
         ] );
     }
 }
@@ -11551,6 +11554,13 @@ add_action( 'admin_head', function () {
 /* ---------- Flex ---------- */
 .sp-flex-1  { flex: 1; }
 
+/* Collapsed paste-in code for a form. The bracket syntax still works and is
+   still reachable, but it is folded away so it stops reading as the
+   instruction for how to put a form on a page. */
+.sp-form-place-code { margin-top: 6px; }
+.sp-form-place-code summary { cursor: pointer; font-size: 12px; color: #646970; }
+.sp-form-place-code code { display: block; margin-top: 6px; padding: 6px; user-select: all; }
+
 /* ---------- Colors — text ---------- */
 .sp-text-danger    { color: #b32d2e; }
 .sp-text-error     { color: #d63638; }
@@ -13088,18 +13098,23 @@ function sp_render_menu_layout_page(): void {
             border-radius: 5px;
         }
         .sp-ml-item-label { font-weight: 500; }
-        .sp-ml-slug { color: #8c8f94; font-size: 11px; background: #f6f7f7; padding: 1px 6px; border-radius: 3px; }
+        /* #646970 rather than the old #8c8f94: at 10-11px these read as normal
+           text, where #8c8f94's ~3.2:1 fails AA. #646970 clears it at ~5.5:1. */
+        .sp-ml-slug { color: #646970; font-size: 11px; background: #f6f7f7; padding: 1px 6px; border-radius: 3px; }
         .sp-ml-item .sp-ml-hide { margin-left: auto; }
         .sp-ml-dragging { opacity: 0.45; outline: 2px dashed #2271b1; }
         .sp-ml-subhead { background: #f6f7f7; border-style: dashed; }
-        .sp-ml-subhead-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #8c8f94; }
+        .sp-ml-subhead-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #646970; }
         .sp-ml-subhead-input { flex: 1; max-width: 260px; font-weight: 600; }
         .sp-ml-add-sub { font-size: 12px; white-space: nowrap; }
         .sp-ml-item.sp-ml-indented { margin-left: 30px; }
         .sp-ml-items.sp-ml-empty::after,
         .sp-ml-ungrouped.sp-ml-empty::after {
             content: attr(data-empty);
-            color: #a7aaad;
+            /* WHY #646970 and not the lighter #a7aaad this used to be: the empty
+               state carries real instructions, and #a7aaad on white is ~2.3:1 —
+               under the 4.5:1 WCAG AA floor. #646970 clears it at ~5.5:1. */
+            color: #646970;
             font-style: italic;
             font-size: 12px;
         }
@@ -19504,7 +19519,7 @@ function sp_render_members_page(): void {
         </style>
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Members', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-member-edit' ) ); ?>" class="page-title-action">
-            <?php esc_html_e( 'Add New', 'societypress' ); ?>
+            <?php esc_html_e( 'Add Member', 'societypress' ); ?>
         </a>
         <?php
         // Only show the nuclear button if there are other members to delete.
@@ -20033,12 +20048,10 @@ add_action( 'admin_init', function () {
     // Validate required fields — orgs need organization name, individuals need first+last
     if ( $member_type === 'organization' ) {
         if ( empty( $organization_name ) || empty( $email ) ) {
-            set_transient( 'sp_member_error', __( 'Organization name and email are required.', 'societypress' ), 30 );
             $redirect_url = $_POST['user_id']
                 ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . absint( $_POST['user_id'] ) . '&error=1' )
                 : admin_url( 'admin.php?page=sp-member-edit&error=1' );
-            wp_redirect( $redirect_url );
-            exit;
+            sp_member_save_reject( __( 'Organization name and email are required.', 'societypress' ), $redirect_url, absint( $_POST['user_id'] ?? 0 ) );
         }
         // WHY: Org members still need first_name and last_name in the DB because
         //      those columns are NOT NULL. We store the organization name there too
@@ -20050,13 +20063,10 @@ add_action( 'admin_init', function () {
             $last_name = $organization_name;
         }
     } elseif ( empty( $first_name ) || empty( $last_name ) || empty( $email ) ) {
-        // Store error in transient so we can show it after redirect
-        set_transient( 'sp_member_error', __( 'First name, last name, and email are required.', 'societypress' ), 30 );
         $redirect_url = $_POST['user_id']
             ? admin_url( 'admin.php?page=sp-member-edit&user_id=' . absint( $_POST['user_id'] ) . '&error=1' )
             : admin_url( 'admin.php?page=sp-member-edit&error=1' );
-        wp_redirect( $redirect_url );
-        exit;
+        sp_member_save_reject( __( 'First name, last name, and email are required.', 'societypress' ), $redirect_url, absint( $_POST['user_id'] ?? 0 ) );
     }
 
     // Default join_date to today if not provided
@@ -20213,7 +20223,7 @@ add_action( 'admin_init', function () {
                 $self_id
             ) );
             if ( $already_member ) {
-                set_transient( 'sp_member_error', __( 'You already have a member record.', 'societypress' ), 30 );
+                set_transient( sp_member_reject_key( 'error' ), __( 'You already have a member record.', 'societypress' ), 300 );
                 wp_redirect( admin_url( 'admin.php?page=sp-member-edit&user_id=' . $self_id . '&error=1' ) );
                 exit;
             }
@@ -20236,9 +20246,11 @@ add_action( 'admin_init', function () {
                 $existing_user->ID
             ) );
             if ( $already_member ) {
-                set_transient( 'sp_member_error', __( 'A member with this email address already exists.', 'societypress' ), 30 );
-                wp_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
-                exit;
+                sp_member_save_reject(
+                    __( 'A member with this email address already exists.', 'societypress' ),
+                    admin_url( 'admin.php?page=sp-member-edit&error=1' ),
+                    0
+                );
             }
             // User exists but isn't a member yet — link them
             $user_id = $existing_user->ID;
@@ -20262,9 +20274,11 @@ add_action( 'admin_init', function () {
             ] );
 
             if ( is_wp_error( $user_id ) ) {
-                set_transient( 'sp_member_error', $user_id->get_error_message(), 30 );
-                wp_redirect( admin_url( 'admin.php?page=sp-member-edit&error=1' ) );
-                exit;
+                sp_member_save_reject(
+                    $user_id->get_error_message(),
+                    admin_url( 'admin.php?page=sp-member-edit&error=1' ),
+                    0
+                );
             }
 
             // Send the new user their credentials
@@ -20488,6 +20502,105 @@ add_action( 'admin_init', function () {
  * needs, OR null if the requested user isn't a member (in which case the
  * caller should print a "not found" notice and stop).
  */
+/**
+ * Field names on the member form that are checkboxes.
+ *
+ * WHY this list exists: an unchecked box sends nothing at all, so "absent from
+ * $_POST" and "the user cleared it" look identical. The refill snapshot has to
+ * record a real 0 for a cleared box, otherwise re-showing a rejected form would
+ * silently re-tick every box the user had just turned off.
+ *
+ * Keep in step with the checkbox reads in the sp_save_member handler.
+ *
+ * @return string[]
+ */
+function sp_member_form_checkbox_fields(): array {
+    return [
+        'receive_print', 'pref_email_notices', 'pref_email_events',
+        'pref_email_newsletters', 'pref_email_surnames', 'blast_email_opt_out',
+        'dir_show_name', 'dir_show_address', 'dir_show_phone',
+        'dir_show_email', 'dir_show_website', 'dir_show_photo',
+        'seasonal', 'joint_member',
+    ];
+}
+
+/**
+ * Take a sanitized copy of the submitted member form so it can be put back.
+ *
+ * Nonces and the referer are dropped because they are re-issued on the next
+ * render, and the photo upload is dropped because no browser will let us
+ * repopulate a file input.
+ *
+ * TRADEOFF: this parks contact and address details in a transient in the clear,
+ * where the same columns are encrypted at rest in sp_members. It is accepted
+ * because the row is written only for a save that just failed, is readable only
+ * by the admin who typed it, and is deleted on their next load of the member
+ * screen — but it is a deliberate choice, not an oversight. Anything genuinely
+ * secret must not be added to this form without revisiting it.
+ *
+ * @return array
+ */
+function sp_member_form_snapshot(): array {
+    $skip = [ 'sp_member_nonce', '_wp_http_referer', 'user_id', 'link_to_self' ];
+    $out  = [];
+
+    foreach ( $_POST as $key => $value ) {
+        if ( in_array( $key, $skip, true ) || ! preg_match( '/^[a-z0-9_]+$/', $key ) ) {
+            continue;
+        }
+        // sanitize_textarea_field rather than sanitize_text_field: the member
+        // form carries note and address fields where newlines are meaningful.
+        $out[ $key ] = is_array( $value )
+            ? array_map( 'sanitize_textarea_field', wp_unslash( $value ) )
+            : sanitize_textarea_field( wp_unslash( $value ) );
+    }
+
+    foreach ( sp_member_form_checkbox_fields() as $box ) {
+        $out[ $box ] = isset( $_POST[ $box ] ) ? 1 : 0;
+    }
+
+    return $out;
+}
+
+/**
+ * Reject a member submission: park it, say why, and go back to the form.
+ *
+ * WHY the redirect can't simply be dropped: the save runs on admin_init, and
+ * rendering the error inline would leave a POST in the browser's history that
+ * a refresh resubmits. WHY the snapshot: before this existed, the redirect
+ * threw away everything that had been typed into the longest form in the
+ * product — forty-odd fields — for one missing required value.
+ *
+ * @param string $message      Reason to show above the form.
+ * @param string $redirect_url Where to send the user back to.
+ */
+function sp_member_save_reject( string $message, string $redirect_url, int $target_user_id ): void {
+    $snapshot = sp_member_form_snapshot();
+
+    // Remember which record this was typed for. The refill in
+    // sp_member_edit_load_context() refuses to replay a snapshot onto any other
+    // member — without that check, a rejected save for one member would bleed
+    // onto the next member the admin happened to open.
+    $snapshot['_sp_target_user'] = $target_user_id;
+
+    // Both transients are keyed per admin: two people doing member admin at once
+    // must not see each other's error, let alone each other's typing. Matching
+    // lifetimes keep the banner and the refilled data from outliving each other.
+    set_transient( sp_member_reject_key( 'error' ), $message, 300 );
+    set_transient( sp_member_reject_key( 'form' ), $snapshot, 300 );
+    wp_redirect( $redirect_url );
+    exit;
+}
+
+/**
+ * Transient key for a rejected member submission, scoped to the current admin.
+ *
+ * @param string $which 'error' for the message, 'form' for the field snapshot.
+ */
+function sp_member_reject_key( string $which ): string {
+    return 'sp_member_' . $which . '_' . get_current_user_id();
+}
+
 function sp_member_edit_load_context(): ?array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -20574,9 +20687,74 @@ function sp_member_edit_load_context(): ?array {
         $current_tier_id
     ) );
 
-    $error = get_transient( 'sp_member_error' );
+    $error = get_transient( sp_member_reject_key( 'error' ) );
     if ( $error ) {
-        delete_transient( 'sp_member_error' );
+        delete_transient( sp_member_reject_key( 'error' ) );
+    }
+
+    // Put a rejected submission back on the form. See sp_member_save_reject().
+    //
+    // WHY overlay onto $member rather than teaching the markup a new variable:
+    // the renderer below is ~1600 lines that already read every field off
+    // $member / $wp_user / $surnames. Refilling those three is the whole fix,
+    // and it stays correct as fields are added to the form later.
+    $retry_key = sp_member_reject_key( 'form' );
+    $retry     = get_transient( $retry_key );
+
+    // Clear it whether or not it gets used. A snapshot left sitting in the
+    // options table could otherwise surface on some unrelated later visit to
+    // this screen, long after the save it belonged to.
+    if ( $retry !== false ) {
+        delete_transient( $retry_key );
+    }
+
+    // Replay ONLY onto the record it was typed for, and ONLY on the bounce from
+    // a rejected save. Overlaying it on whatever member happened to be open next
+    // would show one member's details on another member's screen — and the next
+    // Save would write them there for real.
+    $retry_is_for_this_member = is_array( $retry )
+        && isset( $_GET['error'] )
+        && (int) ( $retry['_sp_target_user'] ?? -1 ) === (int) $user_id;
+
+    if ( $retry_is_for_this_member ) {
+        unset( $retry['_sp_target_user'] );
+
+        if ( ! $member ) {
+            $member = new stdClass();
+        }
+        foreach ( $retry as $field => $value ) {
+            // Surname rows are parallel arrays and are rebuilt separately below.
+            if ( ! is_array( $value ) ) {
+                $member->$field = $value;
+            }
+        }
+
+        // The email input is the one field that reads off the WP user record.
+        if ( isset( $retry['email'] ) ) {
+            if ( ! $wp_user ) {
+                $wp_user = new stdClass();
+            }
+            $wp_user->user_email = $retry['email'];
+        }
+
+        // Research surnames post as seven parallel arrays; the markup wants rows.
+        if ( ! empty( $retry['surname'] ) && is_array( $retry['surname'] ) ) {
+            $surnames = [];
+            foreach ( $retry['surname'] as $i => $surname_value ) {
+                if ( trim( $surname_value ) === '' ) {
+                    continue;
+                }
+                $surnames[] = (object) [
+                    'surname'             => $surname_value,
+                    'county'              => $retry['surname_county'][ $i ]     ?? '',
+                    'state'               => $retry['surname_state'][ $i ]      ?? '',
+                    'country'             => $retry['surname_country'][ $i ]    ?? '',
+                    'year_from'           => $retry['surname_year_from'][ $i ]  ?? '',
+                    'year_to'             => $retry['surname_year_to'][ $i ]    ?? '',
+                    'alternate_spellings' => $retry['surname_alternates'][ $i ] ?? '',
+                ];
+            }
+        }
     }
 
     // WHY: Org members display their organization name in the title instead of
@@ -24777,7 +24955,7 @@ function sp_render_import_page(): void {
                                             </option>
                                             <option value="__meta"
                                                 <?php selected( $selected_value, '__meta' ); ?>>
-                                                &#128190; <?php esc_html_e( 'Store as custom field', 'societypress' ); ?>
+                                                &#128190; <?php esc_html_e( 'Keep as extra info', 'societypress' ); ?>
                                             </option>
                                             <?php foreach ( $target_fields as $group => $fields ) : ?>
                                                 <optgroup label="<?php echo esc_attr( $group ); ?>">
@@ -25672,7 +25850,7 @@ function sp_render_export_page(): void {
             }
         }
         if ( ! empty( $custom_keys ) ) {
-            $groups[ __( 'Custom Fields', 'societypress' ) ] = $custom_keys;
+            $groups[ __( 'Extra Info', 'societypress' ) ] = $custom_keys;
         }
         if ( ! empty( $legacy_keys ) ) {
             $groups[ __( 'Legacy / Import Data', 'societypress' ) ] = $legacy_keys;
@@ -29773,7 +29951,7 @@ function sp_render_audit_log_page(): void {
                         <tr>
                             <!-- WHY: wp_date() respects the site's timezone setting; PHP date() uses server timezone. -->
                             <td class="sp-audit-date"><?php echo esc_html( sp_format_wall_clock( $row->created_at, 'M j, Y g:i A' ) ); ?></td>
-                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span class="sp-text-muted">System</span>'; ?></td>
+                            <td><?php echo $row->user_name ? esc_html( $row->user_name ) : '<span class="sp-text-muted">' . esc_html__( 'System', 'societypress' ) . '</span>'; ?></td>
                             <td><span class="sp-audit-action"><?php echo esc_html( $row->action ); ?></span></td>
                             <td><?php echo $row->description ? esc_html( $row->description ) : ''; ?></td>
                             <td class="sp-audit-obj">
@@ -30177,7 +30355,11 @@ function sp_breadcrumbs( bool $echo = true ): string {
 
     $settings  = sp_settings();
     $home_label = $settings['breadcrumb_home_label'] ?? 'Home';
-    $separator  = $settings['breadcrumb_separator'] ?? '›';
+    // esc_html() even though the settings sanitizer already strips tags on save:
+    // that is one line of defence in one code path, and an import or migration
+    // that ever writes this option directly would turn the output site below
+    // into a stored-XSS sink with nothing left to catch it.
+    $separator  = esc_html( $settings['breadcrumb_separator'] ?? '›' );
 
     $crumbs = [];
 
@@ -30399,7 +30581,7 @@ function sp_render_groups_page(): void {
     ?>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Groups', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-group-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Group', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Group deleted.', 'societypress' ); ?></p></div>
@@ -31984,7 +32166,7 @@ function sp_render_pages_page(): void {
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Pages', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-page-edit' ) ); ?>" class="page-title-action">
-            <?php esc_html_e( 'Add New', 'societypress' ); ?>
+            <?php esc_html_e( 'Add Page', 'societypress' ); ?>
         </a>
         <hr class="wp-header-end">
 
@@ -34454,7 +34636,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.49',
+            'version'     => '1.1.50',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34462,7 +34644,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.49',
+            'version'     => '1.1.50',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34470,7 +34652,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.49',
+            'version'     => '1.1.50',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34478,7 +34660,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.49',
+            'version'     => '1.1.50',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34486,7 +34668,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.49',
+            'version'     => '1.1.50',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -37931,7 +38113,7 @@ function sp_render_settings_design_page(): void {
                                    max="500"
                                    step="1"
                                    class="sp-design-input-narrow-sm"
-                                   placeholder="Auto">
+                                   placeholder="<?php echo esc_attr__( 'Auto', 'societypress' ); ?>">
                             <span>px</span>
                             <p class="description">
                                 <?php esc_html_e( 'Leave blank for automatic height (based on logo and content). Set a value to match a specific design — e.g., 175 for a tall header with a large logo.', 'societypress' ); ?>
@@ -37950,7 +38132,7 @@ function sp_render_settings_design_page(): void {
                                    max="300"
                                    step="1"
                                    class="sp-design-input-narrow-sm"
-                                   placeholder="Auto">
+                                   placeholder="<?php echo esc_attr__( 'Auto', 'societypress' ); ?>">
                             <span>px</span>
                             <p class="description"><?php esc_html_e( 'Height of the logo in the header. Leave blank to use the image\'s natural size.', 'societypress' ); ?></p>
                         </td>
@@ -37967,7 +38149,7 @@ function sp_render_settings_design_page(): void {
                                    max="100"
                                    step="1"
                                    class="sp-design-input-narrow-sm"
-                                   placeholder="Auto">
+                                   placeholder="<?php echo esc_attr__( 'Auto', 'societypress' ); ?>">
                             <span>px</span>
                             <p class="description"><?php esc_html_e( 'Vertical padding above and below the header content. Leave blank for theme default.', 'societypress' ); ?></p>
                         </td>
@@ -37984,7 +38166,7 @@ function sp_render_settings_design_page(): void {
                                    max="72"
                                    step="1"
                                    class="sp-design-input-narrow-sm"
-                                   placeholder="Auto">
+                                   placeholder="<?php echo esc_attr__( 'Auto', 'societypress' ); ?>">
                             <span>px</span>
                             <p class="description"><?php esc_html_e( 'Size of navigation menu links. Leave blank for theme default.', 'societypress' ); ?></p>
                         </td>
@@ -38001,7 +38183,7 @@ function sp_render_settings_design_page(): void {
                                    max="40"
                                    step="1"
                                    class="sp-design-input-narrow-sm"
-                                   placeholder="Auto">
+                                   placeholder="<?php echo esc_attr__( 'Auto', 'societypress' ); ?>">
                             <span>px</span>
                             <p class="description"><?php esc_html_e( 'Horizontal padding on each side of navigation links.', 'societypress' ); ?></p>
                         </td>
@@ -41453,7 +41635,7 @@ function sp_directory_detail_script(): void {
             // Header: photo + name + status badge
             html += '<div class="sp-member-detail-header">';
             if (d.photo_url) {
-                html += '<img src="' + escHtml(d.photo_url) + '" alt="" class="sp-member-detail-photo">';
+                html += '<img src="' + escHtml(d.photo_url) + '" alt="' + escHtml(d.display_name) + '" class="sp-member-detail-photo">';
             }
             html += '<div class="sp-member-detail-identity">';
             html += '<h2 id="sp-member-detail-name" class="sp-member-detail-name">' + escHtml(d.display_name) + '</h2>';
@@ -41570,12 +41752,20 @@ function sp_directory_detail_script(): void {
 
         /**
          * Simple HTML escaping — prevents XSS from member-entered data.
+         *
+         * WHY the explicit quote replacement: a text node only has to escape
+         * <, > and &, so innerHTML alone leaves " and ' untouched. Everything
+         * this modal builds is concatenated into quoted attributes (src, alt,
+         * href, class), where an unescaped quote in a member-entered value —
+         * a display name is enough — closes the attribute and lets the rest of
+         * the value be read as markup. Escaping quotes here is harmless for the
+         * text-node uses and closes every attribute site at once.
          */
         function escHtml(str) {
             if (!str) return '';
             var div = document.createElement('div');
             div.appendChild(document.createTextNode(str));
-            return div.innerHTML;
+            return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
     })();
     </script>
@@ -47449,7 +47639,7 @@ function sp_render_events_page(): void {
         }
         ?>
         <a href="<?php echo esc_url( $sp_add_event_url ); ?>" class="page-title-action">
-            <?php esc_html_e( 'Add New', 'societypress' ); ?>
+            <?php esc_html_e( 'Add Event', 'societypress' ); ?>
         </a>
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_events&nonce=' . wp_create_nonce( 'sp_export_events' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
@@ -52979,9 +53169,7 @@ function sp_render_import_events_page(): void {
         <?php if ( ! $preview && ! $results ) : ?>
             <div class="card sp-import-events-card-upload">
                 <h2 class="sp-import-events-card-heading"><?php esc_html_e( 'Upload Events', 'societypress' ); ?></h2>
-                <p>Upload a file containing your events. CSV, tab-delimited (TSV/TXT), and
-                   Excel (.xlsx) files are all supported. The file should have a header row
-                   with column names.</p>
+                <p><?php esc_html_e( 'Upload a file containing your events. CSV, tab-delimited (TSV/TXT), and Excel (.xlsx) files are all supported. The file should have a header row with column names.', 'societypress' ); ?></p>
 
                 <form method="post" enctype="multipart/form-data">
                     <?php wp_nonce_field( 'sp_import_events' ); ?>
@@ -53030,23 +53218,23 @@ function sp_render_import_events_page(): void {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td><code>title</code></td><td>Yes</td><td>March General Meeting: FamilySearch</td></tr>
-                        <tr><td><code>date</code></td><td>Yes</td><td>2026-03-14 <em>or</em> 3/14/2026</td></tr>
-                        <tr><td><code>start_time</code></td><td>No</td><td>10:00 <em>or</em> 10:00 AM</td></tr>
-                        <tr><td><code>end_time</code></td><td>No</td><td>12:00</td></tr>
-                        <tr><td><code>category</code></td><td>No</td><td>Workshop (created if new)</td></tr>
-                        <tr><td><code>location_name</code></td><td>No</td><td>Dwyer Memorial Center</td></tr>
-                        <tr><td><code>location_address</code></td><td>No</td><td>19100 Goldenwest St, HB, CA</td></tr>
-                        <tr><td><code>description</code></td><td>No</td><td>Full event description...</td></tr>
-                        <tr><td><code>contact_name</code></td><td>No</td><td>Martha Colvin</td></tr>
-                        <tr><td><code>contact_email</code></td><td>No</td><td>programs@yoursociety.org</td></tr>
-                        <tr><td><code>registration_enabled</code></td><td>No</td><td>1 <em>or</em> yes</td></tr>
-                        <tr><td><code>registration_limit</code></td><td>No</td><td>25 (blank = unlimited)</td></tr>
-                        <tr><td><code>member_price</code></td><td>No</td><td>5.00 (0 = free)</td></tr>
-                        <tr><td><code>nonmember_price</code></td><td>No</td><td>10.00</td></tr>
-                        <tr><td><code>visibility</code></td><td>No</td><td>public <em>or</em> members_only</td></tr>
-                        <tr><td><code>is_virtual</code></td><td>No</td><td>0 <em>or</em> 1</td></tr>
-                        <tr><td><code>virtual_url</code></td><td>No</td><td>https://zoom.us/j/...</td></tr>
+                        <tr><td><code>title</code></td><td><?php esc_html_e( 'Yes', 'societypress' ); ?></td><td>March General Meeting: FamilySearch</td></tr>
+                        <tr><td><code>date</code></td><td><?php esc_html_e( 'Yes', 'societypress' ); ?></td><td>2026-03-14 <em>or</em> 3/14/2026</td></tr>
+                        <tr><td><code>start_time</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>10:00 <em>or</em> 10:00 AM</td></tr>
+                        <tr><td><code>end_time</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>12:00</td></tr>
+                        <tr><td><code>category</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>Workshop (created if new)</td></tr>
+                        <tr><td><code>location_name</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>Dwyer Memorial Center</td></tr>
+                        <tr><td><code>location_address</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>19100 Goldenwest St, HB, CA</td></tr>
+                        <tr><td><code>description</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>Full event description...</td></tr>
+                        <tr><td><code>contact_name</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>Martha Colvin</td></tr>
+                        <tr><td><code>contact_email</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>programs@yoursociety.org</td></tr>
+                        <tr><td><code>registration_enabled</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>1 <em>or</em> yes</td></tr>
+                        <tr><td><code>registration_limit</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>25 (blank = unlimited)</td></tr>
+                        <tr><td><code>member_price</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>5.00 (0 = free)</td></tr>
+                        <tr><td><code>nonmember_price</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>10.00</td></tr>
+                        <tr><td><code>visibility</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>public <em>or</em> members_only</td></tr>
+                        <tr><td><code>is_virtual</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>0 <em>or</em> 1</td></tr>
+                        <tr><td><code>virtual_url</code></td><td><?php esc_html_e( 'No', 'societypress' ); ?></td><td>https://zoom.us/j/...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -66304,6 +66492,13 @@ function sp_handle_surname_contact(): void {
         if ( $sender_status !== 'active' ) {
             wp_send_json_error( __( 'Active membership required to contact other researchers.', 'societypress' ) );
         }
+        // WHY members are capped as well as guests: being a member is not a
+        // licence to run the society's mail server. The ceiling is set well
+        // above what real surname research looks like, so an ordinary member
+        // working through a results page will never see it.
+        if ( sp_rate_limit_hit( 'sp_surname_contact_user_' . get_current_user_id(), 20, HOUR_IN_SECONDS ) ) {
+            wp_send_json_error( __( 'Too many messages have been sent recently. Please try again later.', 'societypress' ) );
+        }
     } else {
         // Guests may contact only if the society runs a public registry, and are
         // rate-limited by IP to deter spam (same posture as the contact form).
@@ -66327,9 +66522,27 @@ function sp_handle_surname_contact(): void {
         wp_send_json_error( __( 'Please enter a valid email address.', 'societypress' ) );
     }
 
-    // Members link to WP users via user_id; the WP user record holds the email.
+    // Resolve the researcher through the surname registry rather than straight
+    // off the WP users table.
+    //
+    // WHY: researcher_id is an ordinary hidden form field, so the sender picks
+    // its value. Looking it up in $wpdb->users alone meant ANY id resolved —
+    // put the administrator's user id in the field and the site would mail them
+    // whatever you wrote, as often as you liked. Requiring an active member who
+    // actually lists a surname and who still has "Surname match alerts" switched
+    // on means the field can only ever name someone who opted into being
+    // reachable this way. The generic failure message below is deliberate: it
+    // reads the same whether the id is unknown, inactive, or opted out, so this
+    // cannot be used to enumerate user ids.
     $researcher_email = $wpdb->get_var( $wpdb->prepare(
-        "SELECT user_email FROM {$wpdb->users} WHERE ID = %d",
+        "SELECT u.user_email
+           FROM {$prefix}members m
+           INNER JOIN {$wpdb->users} u ON u.ID = m.user_id
+          WHERE m.user_id = %d
+            AND m.status = 'active'
+            AND m.pref_email_surnames = 1
+            AND EXISTS ( SELECT 1 FROM {$prefix}member_surnames s WHERE s.user_id = m.user_id )
+          LIMIT 1",
         $researcher_id
     ) );
 
@@ -66440,10 +66653,11 @@ function sp_render_gallery_page(): void {
                     <div class="sp-gallery-admin-card">
                         <a href="<?php echo esc_url( $edit_url ); ?>" class="sp-block">
                             <?php if ( $cover_url ) : ?>
-                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="" class="sp-gallery-admin-cover">
+                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="<?php echo esc_attr( $album->title ); ?>" class="sp-gallery-admin-cover">
                             <?php else : ?>
                                 <div class="sp-gallery-admin-no-cover">
-                                    <span class="dashicons dashicons-format-gallery sp-gallery-admin-no-cover-icon"></span>
+                                    <span class="dashicons dashicons-format-gallery sp-gallery-admin-no-cover-icon" aria-hidden="true"></span>
+                                    <span class="screen-reader-text"><?php echo esc_html( $album->title ); ?></span>
                                 </div>
                             <?php endif; ?>
                         </a>
@@ -70628,19 +70842,19 @@ function sp_render_library_catalog_page(): void {
         <div class="sp-library-stats sp-catalog-stats-grid">
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--total"><?php echo number_format( $stats_total ); ?></div>
-                <div class="sp-catalog-stat-label">Total Items</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Total Items', 'societypress' ); ?></div>
             </div>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--available"><?php echo number_format( $stats_available ); ?></div>
-                <div class="sp-catalog-stat-label">Available</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Available', 'societypress' ); ?></div>
             </div>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--value"><?php echo esc_html( sp_format_currency( $stats_value ) ); ?></div>
-                <div class="sp-catalog-stat-label">Collection Value</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Collection Value', 'societypress' ); ?></div>
             </div>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--types"><?php echo count( $media_types ); ?></div>
-                <div class="sp-catalog-stat-label">Media Types</div>
+                <div class="sp-catalog-stat-label"><?php esc_html_e( 'Media Types', 'societypress' ); ?></div>
             </div>
         </div>
 
@@ -70762,17 +70976,24 @@ function sp_render_library_catalog_page(): void {
                 // Show smarter pagination for large catalogs — first, prev, current, next, last
                 $base_url = remove_query_arg( 'paged' );
                 if ( $page_num > 1 ) : ?>
-                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', 1, $base_url ) ); ?>">&laquo; First</a>
-                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $page_num - 1, $base_url ) ); ?>">&lsaquo; Prev</a>
+                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', 1, $base_url ) ); ?>">&laquo; <?php esc_html_e( 'First', 'societypress' ); ?></a>
+                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $page_num - 1, $base_url ) ); ?>">&lsaquo; <?php esc_html_e( 'Prev', 'societypress' ); ?></a>
                 <?php endif; ?>
 
                 <span class="tablenav-pages-navspan button disabled">
-                    Page <?php echo $page_num; ?> of <?php echo number_format( $total_pages ); ?>
+                    <?php
+                    printf(
+                        /* translators: 1: current page number, 2: total number of pages */
+                        esc_html__( 'Page %1$s of %2$s', 'societypress' ),
+                        esc_html( $page_num ),
+                        esc_html( number_format( $total_pages ) )
+                    );
+                    ?>
                 </span>
 
                 <?php if ( $page_num < $total_pages ) : ?>
-                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $page_num + 1, $base_url ) ); ?>">Next &rsaquo;</a>
-                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $total_pages, $base_url ) ); ?>">Last &raquo;</a>
+                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $page_num + 1, $base_url ) ); ?>"><?php esc_html_e( 'Next', 'societypress' ); ?> &rsaquo;</a>
+                    <a class="button" href="<?php echo esc_url( add_query_arg( 'paged', $total_pages, $base_url ) ); ?>"><?php esc_html_e( 'Last', 'societypress' ); ?> &raquo;</a>
                 <?php endif; ?>
             </div></div>
         <?php endif; ?>
@@ -72629,13 +72850,13 @@ function sp_render_links_import_page(): void {
     //     URL, description, category, and sort order. No ISBN, call number, etc.
     // ------------------------------------------------------------------
     $target_fields = [
-        'title'               => 'Link Title',
-        'url'                 => 'URL',
-        'description'         => 'Description',
-        'sort_order'          => 'Sort Order',
-        'updated_at'          => 'Last Updated Date',
-        'category'            => 'Category Name',
-        'category_sort_order' => 'Category Sort Order',
+        'title'               => __( 'Link Title', 'societypress' ),
+        'url'                 => __( 'URL', 'societypress' ),
+        'description'         => __( 'Description', 'societypress' ),
+        'sort_order'          => __( 'Sort Order', 'societypress' ),
+        'updated_at'          => __( 'Last Updated Date', 'societypress' ),
+        'category'            => __( 'Category Name', 'societypress' ),
+        'category_sort_order' => __( 'Category Sort Order', 'societypress' ),
     ];
 
     // ------------------------------------------------------------------
@@ -73818,7 +74039,7 @@ function sp_render_volunteer_opportunities_page(): void {
     </style>
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Volunteer Opportunities', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunity-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Opportunity', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <p class="description"><?php esc_html_e( 'Post volunteer needs for your members to browse and sign up for.', 'societypress' ); ?></p>
@@ -76808,50 +77029,58 @@ function sp_replace_merge_tags( string $content, object $member, array $extra = 
  */
 function sp_get_default_email_template( string $type ): string {
     switch ( $type ) {
+        // WHY each paragraph is wrapped separately rather than the whole body as
+        // one string: these go out verbatim to members and donors until an admin
+        // edits them, so they have to translate — but a translator should not be
+        // handed a block of HTML to reproduce tag-for-tag.
+        //
+        /* translators: the {{...}} placeholders in the strings below are replaced
+           automatically with real member and society details. Leave them exactly
+           as they are — translating or retyping one stops it being substituted. */
         case 'welcome':
-            return '<p>Dear {{preferred_name}},</p>
-<p>Welcome to {{organization_name}}! We\'re glad to have you as a member.</p>
-<p><strong>Your Membership Details:</strong></p>
-<ul>
-    <li>Membership Level: {{tier}}</li>
-    <li>Joined: {{join_date}}</li>
-    <li>Expires: {{expiration_date}}</li>
-</ul>
-<p>If you have any questions, feel free to reach out to us at {{admin_email}}.</p>
-<p>We look forward to seeing you at our events!</p>
-<p>Best regards,<br>{{organization_name}}</p>';
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Welcome to {{organization_name}}! We\'re glad to have you as a member.', 'societypress' ) . '</p>' . "\n"
+                 . '<p><strong>' . __( 'Your Membership Details:', 'societypress' ) . '</strong></p>' . "\n"
+                 . '<ul>' . "\n"
+                 . '    <li>' . __( 'Membership Level: {{tier}}', 'societypress' ) . '</li>' . "\n"
+                 . '    <li>' . __( 'Joined: {{join_date}}', 'societypress' ) . '</li>' . "\n"
+                 . '    <li>' . __( 'Expires: {{expiration_date}}', 'societypress' ) . '</li>' . "\n"
+                 . '</ul>' . "\n"
+                 . '<p>' . __( 'If you have any questions, feel free to reach out to us at {{admin_email}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'We look forward to seeing you at our events!', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Best regards,', 'societypress' ) . '<br>{{organization_name}}</p>';
 
         case 'renewal_reminder':
-            return '<p>Dear {{preferred_name}},</p>
-<p>Your membership with {{organization_name}} expires on <strong>{{expiration_date}}</strong> — that\'s {{days_until_expiration}} days from now.</p>
-<p>To continue enjoying your member benefits, please renew at your earliest convenience.</p>
-<p><a href="{{site_url}}" style="display:inline-block; padding:12px 24px; background:{{primary_color}}; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">Visit Our Website</a></p>
-<p>Questions? Contact us at {{admin_email}}.</p>
-<p>Thank you for being a valued member!</p>
-<p>Best regards,<br>{{organization_name}}</p>';
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Your membership with {{organization_name}} expires on <strong>{{expiration_date}}</strong> — that\'s {{days_until_expiration}} days from now.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'To continue enjoying your member benefits, please renew at your earliest convenience.', 'societypress' ) . '</p>' . "\n"
+                 . '<p><a href="{{site_url}}" style="display:inline-block; padding:12px 24px; background:{{primary_color}}; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">' . __( 'Visit Our Website', 'societypress' ) . '</a></p>' . "\n"
+                 . '<p>' . __( 'Questions? Contact us at {{admin_email}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Thank you for being a valued member!', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Best regards,', 'societypress' ) . '<br>{{organization_name}}</p>';
 
         case 'expired':
-            return '<p>Dear {{preferred_name}},</p>
-<p>Your membership with {{organization_name}} expired on {{expiration_date}}.</p>
-<p>We\'d love to have you back! Renewing is easy — just contact us at {{admin_email}} or visit our website.</p>
-<p><a href="{{site_url}}" style="display:inline-block; padding:12px 24px; background:{{primary_color}}; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">Visit Our Website</a></p>
-<p>We hope to see you again soon!</p>
-<p>Best regards,<br>{{organization_name}}</p>';
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Your membership with {{organization_name}} expired on {{expiration_date}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'We\'d love to have you back! Renewing is easy — just contact us at {{admin_email}} or visit our website.', 'societypress' ) . '</p>' . "\n"
+                 . '<p><a href="{{site_url}}" style="display:inline-block; padding:12px 24px; background:{{primary_color}}; color:#fff; text-decoration:none; border-radius:6px; font-weight:600;">' . __( 'Visit Our Website', 'societypress' ) . '</a></p>' . "\n"
+                 . '<p>' . __( 'We hope to see you again soon!', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Best regards,', 'societypress' ) . '<br>{{organization_name}}</p>';
 
         case 'donation_acknowledgment':
-            return '<p>Dear {{donor_name}},</p>
-<p>Thank you for your generous donation of <strong>{{amount}}</strong> to {{organization_name}} on {{donation_date}}.</p>
-<p>{{campaign}}</p>
-<p>Your support helps {{organization_name}} continue its mission of preserving and sharing our community\'s history and heritage. Please keep this email for your tax records.</p>
-<p>If you have any questions, please contact us at {{admin_email}}.</p>
-<p>With gratitude,<br>{{organization_name}}</p>';
+            return '<p>' . __( 'Dear {{donor_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Thank you for your generous donation of <strong>{{amount}}</strong> to {{organization_name}} on {{donation_date}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>{{campaign}}</p>' . "\n"
+                 . '<p>' . __( 'Your support helps {{organization_name}} continue its mission of preserving and sharing our community\'s history and heritage. Please keep this email for your tax records.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'If you have any questions, please contact us at {{admin_email}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'With gratitude,', 'societypress' ) . '<br>{{organization_name}}</p>';
 
         case 'subscribe_confirm':
             // The confirmation button and the "if you didn\'t request this"
             // disclaimer are appended automatically by the sender, so the
             // critical confirm link can never be edited away by accident.
-            return '<p>Hi {{name}},</p>
-<p>Thanks for signing up for the {{organization_name}} mailing list! Please confirm your email address using the button below to start receiving our updates.</p>';
+            return '<p>' . __( 'Hi {{name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Thanks for signing up for the {{organization_name}} mailing list! Please confirm your email address using the button below to start receiving our updates.', 'societypress' ) . '</p>';
 
         default:
             return '';
@@ -80646,7 +80875,7 @@ function sp_render_campaigns_page(): void {
     </style>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Campaigns', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-campaign-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Campaign', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Campaign deleted. Donations have been unlinked.', 'societypress' ); ?></p></div>
@@ -83790,7 +84019,7 @@ function sp_render_newsletter_archive_page(): void {
 
     <div class="wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Newsletter Archive', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Add Newsletter', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <!-- Search bar -->
@@ -83884,10 +84113,11 @@ function sp_render_newsletter_archive_page(): void {
                         <!-- Cover image area -->
                         <a href="<?php echo esc_url( $edit_url ); ?>" class="sp-newsletter-archive-cover-link">
                             <?php if ( $cover_url ) : ?>
-                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="" class="sp-newsletter-archive-cover-img">
+                                <img src="<?php echo esc_url( $cover_url ); ?>" alt="<?php echo esc_attr( $nl->title ); ?>" class="sp-newsletter-archive-cover-img">
                             <?php else : ?>
                                 <div class="sp-newsletter-archive-cover-placeholder">
-                                    <span class="dashicons dashicons-media-document sp-newsletter-archive-cover-placeholder-icon"></span>
+                                    <span class="dashicons dashicons-media-document sp-newsletter-archive-cover-placeholder-icon" aria-hidden="true"></span>
+                                    <span class="screen-reader-text"><?php echo esc_html( $nl->title ); ?></span>
                                 </div>
                             <?php endif; ?>
                         </a>
@@ -91380,7 +91610,7 @@ add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
 
     sp_audit(
         'store_order_created',
-        sprintf( 'Order #%d created ($%s) — Stripe PaymentIntent %s', $order_id, number_format( $subtotal, 2 ), $body['id'] ),
+        sprintf( 'Order #%d created ($%s) — Stripe PaymentIntent %s', $order_id, number_format( $total, 2 ), $body['id'] ),
         'order',
         $order_id
     );
@@ -91544,7 +91774,7 @@ add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
 
     sp_audit(
         'store_order_created',
-        sprintf( 'Order #%d created ($%s) — PayPal order %s', $order_id, number_format( $subtotal, 2 ), $paypal['id'] ),
+        sprintf( 'Order #%d created ($%s) — PayPal order %s', $order_id, number_format( $total, 2 ), $paypal['id'] ),
         'order',
         $order_id
     );
@@ -95133,7 +95363,7 @@ function sp_render_documents_page(): void {
             $sp_add_doc_url = add_query_arg( 'cat', $filter_cat, $sp_add_doc_url );
         }
         ?>
-        <a href="<?php echo esc_url( $sp_add_doc_url ); ?>" class="page-title-action"><?php esc_html_e( 'Add New', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( $sp_add_doc_url ); ?>" class="page-title-action"><?php esc_html_e( 'Add Document', 'societypress' ); ?></a>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-bulk-upload' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Bulk Upload', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
@@ -117081,7 +117311,7 @@ function sp_render_forms_admin_page(): void {
         <a href="<?php echo $new_url; ?>" class="page-title-action"><?php esc_html_e( 'Add New Form', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
-        <p class="description"><?php esc_html_e( 'Build a form once, then place it on any page with the Form widget in the page builder, or with its shortcode. Every submission is saved here and emailed to the people you choose.', 'societypress' ); ?></p>
+        <p class="description"><?php esc_html_e( 'Build a form once, then drop it onto any page with the Form widget in the page builder. Every submission is saved here and emailed to the people you choose.', 'societypress' ); ?></p>
 
         <?php if ( empty( $forms ) ) : ?>
             <div class="sp-empty-state" style="text-align:center; padding:48px 20px;">
@@ -117096,7 +117326,7 @@ function sp_render_forms_admin_page(): void {
                         <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Fields', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Submissions', 'societypress' ); ?></th>
-                        <th scope="col"><?php esc_html_e( 'Shortcode', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Add to a page', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -117139,7 +117369,13 @@ function sp_render_forms_admin_page(): void {
                                     <span class="awaiting-mod" style="display:inline-block; min-width:18px; height:18px; line-height:18px; text-align:center; border-radius:9px; background:#d63638; color:#fff; font-size:11px; padding:0 5px;"><?php echo (int) $unread; ?></span>
                                 <?php endif; ?>
                             </td>
-                            <td><code style="user-select:all;"><?php echo esc_html( $shortcode ); ?></code></td>
+                            <td>
+                                <?php esc_html_e( 'Page builder → Form widget', 'societypress' ); ?>
+                                <details class="sp-form-place-code">
+                                    <summary><?php esc_html_e( 'Paste-in code', 'societypress' ); ?></summary>
+                                    <code><?php echo esc_html( $shortcode ); ?></code>
+                                </details>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -117315,9 +117551,11 @@ function sp_render_form_edit_page(): void {
                             </select>
                         </p>
                         <?php if ( $form_id ) : ?>
-                            <p class="description"><?php esc_html_e( 'Place this form with:', 'societypress' ); ?></p>
-                            <p><code style="user-select:all; display:block; padding:6px;">[societypress_form id="<?php echo (int) $form_id; ?>"]</code></p>
-                            <p class="description"><?php esc_html_e( '…or add the "Form" widget in the page builder.', 'societypress' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'To put this form on a page, edit the page and add the Form widget in the page builder, then pick this form.', 'societypress' ); ?></p>
+                            <details class="sp-form-place-code">
+                                <summary><?php esc_html_e( 'Paste-in code', 'societypress' ); ?></summary>
+                                <code><?php echo esc_html( '[societypress_form id="' . (int) $form_id . '"]' ); ?></code>
+                            </details>
                         <?php endif; ?>
                         <p style="margin-top:16px;">
                             <button type="submit" name="sp_save_form" class="button button-primary button-large" style="width:100%;"><?php esc_html_e( 'Save Form', 'societypress' ); ?></button>
@@ -117614,7 +117852,11 @@ class SP_Form_Submissions_List_Table extends WP_List_Table {
 
         $actions = [
             'view'   => '<a href="' . $view_url . '">' . esc_html__( 'View', 'societypress' ) . '</a>',
-            'delete' => '<a href="' . esc_url( $delete_url ) . '" style="color:#b32d2e;">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
+            // WHY the confirm: a submission is something a visitor actually sent —
+            // a contact enquiry, a membership application — and deleting it is
+            // permanent. Every other delete in the plugin confirms first; this one
+            // was the lone bare link straight to the nonced delete URL.
+            'delete' => '<a href="' . esc_url( $delete_url ) . '" class="sp-text-danger" data-sp-confirm="' . esc_attr__( 'Delete this form submission? This cannot be undone.', 'societypress' ) . '">' . esc_html__( 'Delete', 'societypress' ) . '</a>',
         ];
         return $out . $this->row_actions( $actions );
     }
@@ -118127,6 +118369,9 @@ function sp_forms_print_frontend_assets(): void {
     <script id="sp-forms-frontend-js">
     (function(){
         var endpoint = '<?php echo $ajax; ?>';
+        // Shown only when the AJAX reply carries no message of its own.
+        var fallbackThanks = '<?php echo esc_js( __( 'Thank you!', 'societypress' ) ); ?>';
+        var fallbackError  = '<?php echo esc_js( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>';
         document.addEventListener('submit', function(e){
             var form = e.target;
             if ( ! form.matches || ! form.matches('form.sp-form[data-sp-form]') ) return;
@@ -118148,20 +118393,20 @@ function sp_forms_print_frontend_assets(): void {
                     if ( res && res.success ) {
                         if ( msg ) {
                             msg.className = 'sp-form-message sp-form-success';
-                            msg.textContent = res.data && res.data.message ? res.data.message : 'Thank you!';
+                            msg.textContent = res.data && res.data.message ? res.data.message : fallbackThanks;
                         }
                         form.style.display = 'none';
                         if ( msg ) msg.focus && msg.focus();
                     } else {
                         if ( msg ) {
                             msg.className = 'sp-form-message sp-form-error';
-                            msg.textContent = ( res && res.data && res.data.message ) ? res.data.message : 'Something went wrong. Please try again.';
+                            msg.textContent = ( res && res.data && res.data.message ) ? res.data.message : fallbackError;
                         }
                         if ( btn ) btn.disabled = false;
                     }
                 })
                 .catch(function(){
-                    if ( msg ) { msg.className = 'sp-form-message sp-form-error'; msg.textContent = 'Something went wrong. Please try again.'; }
+                    if ( msg ) { msg.className = 'sp-form-message sp-form-error'; msg.textContent = fallbackError; }
                     if ( btn ) btn.disabled = false;
                 });
         });

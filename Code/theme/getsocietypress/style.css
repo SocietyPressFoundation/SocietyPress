@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 1.1.11
+Version: 1.1.12
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -4111,7 +4111,7 @@ body.bbpress .page-content .container {
     line-height: 1.4;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .req-capacity__grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 480px) {
@@ -4389,7 +4389,7 @@ body.bbpress .page-content .container {
     flex-wrap: wrap;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .about-who__grid { grid-template-columns: 1fr; }
     .about-mission__statement { font-size: var(--font-size-xl); }
 }
@@ -4597,7 +4597,7 @@ body.bbpress .page-content .container {
     flex-wrap: wrap;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .ens-why__grid,
     .ens-migrates__grid { grid-template-columns: 1fr; }
 }
@@ -4732,7 +4732,7 @@ body.bbpress .page-content .container {
     border-top: 1px solid var(--color-border);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .changelog-current__box {
         flex-direction: column;
         align-items: flex-start;
@@ -5465,13 +5465,13 @@ body.bbpress .page-content .container {
     text-decoration: underline;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
     .footer-grid--five {
         grid-template-columns: 1fr 1fr;
     }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .footer-grid--five {
         grid-template-columns: 1fr;
     }
@@ -5725,7 +5725,7 @@ body.bbpress .page-content .container {
     color: var(--color-text-secondary);
 }
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
     .onepager__compare { grid-template-columns: 1fr; }
     .onepager__title { font-size: var(--font-size-2xl); }
 }
@@ -6551,7 +6551,7 @@ select:focus-visible,
 
 
 /* --- Responsive --- */
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
     .cmp-quick-grid { grid-template-columns: repeat(2, 1fr); }
     .cmp-pricing-grid { grid-template-columns: 1fr; }
 }
@@ -6718,7 +6718,7 @@ select:focus-visible,
 .tg-cta p { color: rgba(255,255,255,0.85); margin-bottom: var(--spacing-lg); font-size: var(--font-size-lg); }
 
 /* --- Responsive --- */
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .tg-grid { grid-template-columns: 1fr; }
     .tg-how-grid { grid-template-columns: 1fr; }
 }
@@ -6853,10 +6853,15 @@ select:focus-visible,
 }
 .gsp-search-submit:hover { color: var(--color-nav-hover, #C9973A); }
 
+/* Search narrows at 1024 and goes away at 768, where the hamburger takes over
+   the whole nav. WHY 768 rather than the 900 this used to be: there is no search
+   in the mobile overlay, so this rule is the point where site search stops being
+   reachable at all — it belongs at the documented nav cutover, not 132px above
+   it, and certainly not higher. */
 @media (max-width: 1024px) {
     .gsp-search-form input[type="search"] { width: 140px; }
 }
-@media (max-width: 900px) {
+@media (max-width: 768px) {
     .gsp-search-form { display: none; }
 }
 
@@ -6906,7 +6911,7 @@ select:focus-visible,
 .gsp-search-sidebar__links { list-style: none; padding: 0; margin: 0; }
 .gsp-search-sidebar__links li { padding: 4px 0; }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
     .gsp-search-layout { grid-template-columns: 1fr; }
     .gsp-search-sidebar { position: static; }
 }

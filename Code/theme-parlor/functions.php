@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'PARLOR_THEME_VERSION' ) ) {
-    define( 'PARLOR_THEME_VERSION', '1.1.50' );
+    define( 'PARLOR_THEME_VERSION', '1.1.51' );
 }
 
 /**

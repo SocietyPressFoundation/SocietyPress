@@ -19,6 +19,18 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.51] — 2026-08-18
+
+### Changed
+
+**Groundwork for translators**
+
+Two of the menu-editor's confirmation messages, and the note explaining why two
+faint labels on Menu Layout were darkened, carried no guidance for anyone
+translating or maintaining them. No visible change.
+
+---
+
 ## [1.1.50] — 2026-08-18
 
 ### Security

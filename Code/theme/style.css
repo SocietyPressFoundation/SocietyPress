@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.52
+Version: 1.1.53
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -379,11 +379,16 @@ img {
        this list, and a child stylesheet loads after the parent — matching
        specificity would lose on source order alone.
 
-       WHY nowrap and space-between: one wide line is the point. The items
-       spread across the full width instead of bunching in the middle under a
-       left-aligned logo. */
+       WHY centered rather than the space-between this once hardcoded: spreading
+       the items edge to edge only reads as deliberate with a long menu. A
+       society with six items got six links flung to the far corners with holes
+       between them. Spreading is still available — Settings → Design → Menu
+       Position — and the plugin writes the chosen value over this one.
+
+       WHY nowrap: the row must stay one line; see the white-space note on the
+       links below. */
     .site-header.sp-header-stacked .main-navigation.main-navigation:not(.sp-user-menu) > ul {
-        justify-content: space-between;
+        justify-content: center;
         flex-wrap: nowrap;
         width: 100%;
     }

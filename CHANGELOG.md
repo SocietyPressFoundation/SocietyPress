@@ -19,6 +19,24 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.53] — 2026-08-20
+
+### Added
+
+**You choose where the menu sits when the logo is above it**
+
+Putting the logo on its own row hands the whole width to the menu, and until now
+the menu always spread itself edge to edge across that width. That suits a long
+menu. A short one ended up with its handful of links flung to the far corners of
+the header and wide holes between them, and there was no setting that changed it.
+
+Settings → Design now offers **Menu Position** whenever the logo sits above the
+menu: centered under the logo, lined up with the logo on the left, or spread
+across the full width as before. Centered is the new default, and the preview
+updates as you change it.
+
+---
+
 ## [1.1.52] — 2026-08-18
 
 ### Changed

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.52
+ * Version:     1.1.53
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.52' );
+define( 'SOCIETYPRESS_VERSION', '1.1.53' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8653,6 +8653,35 @@ body { padding-top: " . ( $header_height + 3 ) . 'px !important; }';
     $nav_spacing = (int) ( $settings['design_nav_spacing'] ?? 0 );
     if ( $nav_spacing ) {
         $css .= "\n.main-navigation a { padding-left: {$nav_spacing}px !important; padding-right: {$nav_spacing}px !important; }";
+    }
+
+    // Menu position on the stacked header's second row.
+    // WHY only stacked: on one row the menu starts where the logo ends and
+    //      there is no leftover width to distribute, so the choice has nothing
+    //      to act on. The control is hidden in that layout for the same reason.
+    // WHY the 1025px floor: it matches the theme's stacking breakpoint. Below
+    //      it the menu is a hamburger panel and horizontal alignment is moot.
+    if ( 'stacked' === ( $settings['design_header_layout'] ?? 'inline' ) ) {
+        $align_map = [ 'spread' => 'space-between', 'center' => 'center', 'left' => 'flex-start' ];
+        $nav_align = $settings['design_nav_align'] ?? 'center';
+        $justify   = $align_map[ $nav_align ] ?? 'center';
+
+        $css .= "
+@media (min-width: 1025px) {
+.site-header.sp-header-stacked .main-navigation:not(.sp-user-menu) > ul { justify-content: {$justify} !important; }";
+
+        // WHY the margin reset: items carrying .sp-nav-right are pushed over by
+        // margin-left:auto, and an auto margin eats the free space before
+        // justify-content ever sees it. Without this, picking Centered on a menu
+        // with one right-aligned item would appear to do nothing at all. The
+        // explicit, site-wide choice wins over the per-item nudge.
+        if ( 'spread' !== $nav_align ) {
+            $css .= "
+.site-header.sp-header-stacked .main-navigation:not(.sp-user-menu) > ul > li.sp-nav-right { margin-left: 0 !important; }";
+        }
+
+        $css .= "
+}";
     }
     if ( $nav_font_weight ) {
         $css .= "
@@ -28479,6 +28508,15 @@ function sp_sanitize_settings( array $input ): array {
         'design_show_header_title'    => fn() => ! empty( $input['design_show_header_title'] ) ? 1 : 0,
         'design_header_layout'        => fn() => ( ( $input['design_header_layout'] ?? '' ) === 'stacked' ) ? 'stacked' : 'inline',
 
+        // Where the menu sits on its own row when the logo is stacked above it.
+        // WHY the default is 'center' rather than the 'spread' the theme used to
+        //      hardcode: spreading only reads as deliberate with a long menu. A
+        //      society with six items got six links fanned to the far corners of
+        //      the header with holes between them, and no way to say otherwise.
+        'design_nav_align'            => fn() => in_array( $input['design_nav_align'] ?? '', [ 'spread', 'center', 'left' ], true )
+            ? (string) $input['design_nav_align']
+            : 'center',
+
         // Header height in pixels. 0 = auto (no explicit height set).
         // WHY: Some societies want to match a specific header size from a
         //      reference design. Clamped to 50–500px to prevent absurd values.
@@ -28603,7 +28641,7 @@ function sp_sanitize_settings( array $input ): array {
             'design_font_heading', 'design_font_size',
             'design_heading_scale', 'design_content_width',
             'design_logo_id', 'design_show_header_title',
-            'design_header_layout',
+            'design_header_layout', 'design_nav_align',
             'design_header_height', 'design_content_width_px',
             'design_logo_height', 'design_header_padding',
             'design_nav_font_size', 'design_nav_spacing', 'design_nav_font_weight',
@@ -34656,7 +34694,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.52',
+            'version'     => '1.1.53',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34664,7 +34702,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.52',
+            'version'     => '1.1.53',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34672,7 +34710,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.52',
+            'version'     => '1.1.53',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34680,7 +34718,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.52',
+            'version'     => '1.1.53',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34688,7 +34726,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.52',
+            'version'     => '1.1.53',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -38112,6 +38150,20 @@ function sp_render_settings_design_page(): void {
                             </p>
                         </td>
                     </tr>
+                    <tr id="sp-nav-align-row">
+                        <th scope="row"><label for="sp-design-nav-align"><?php esc_html_e( 'Menu Position', 'societypress' ); ?></label></th>
+                        <td>
+                            <?php $nav_align = in_array( $settings['design_nav_align'] ?? 'center', [ 'spread', 'center', 'left' ], true ) ? $settings['design_nav_align'] : 'center'; ?>
+                            <select id="sp-design-nav-align" name="societypress_settings[design_nav_align]" class="sp-design-control">
+                                <option value="center" <?php selected( $nav_align, 'center' ); ?>><?php esc_html_e( 'Centered under the logo', 'societypress' ); ?></option>
+                                <option value="left" <?php selected( $nav_align, 'left' ); ?>><?php esc_html_e( 'Lined up with the logo on the left', 'societypress' ); ?></option>
+                                <option value="spread" <?php selected( $nav_align, 'spread' ); ?>><?php esc_html_e( 'Spread across the full width', 'societypress' ); ?></option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e( 'Where the menu sits on its own row. Spreading it edge to edge suits a long menu; a short one looks better centered or left. Only applies when the logo is above the menu.', 'societypress' ); ?>
+                            </p>
+                        </td>
+                    </tr>
                     <tr>
                         <th scope="row"><?php esc_html_e( 'Header Text', 'societypress' ); ?></th>
                         <td>
@@ -38697,6 +38749,19 @@ function sp_render_settings_design_page(): void {
                         : (widthMap[contentWidth] || '1100px')) + ';\n'
                     + '}\n';
 
+                // Menu position on a stacked header. Scoped to .sp-header-stacked,
+                // so it is inert on a one-row header and needs no layout check.
+                var navAlignEl = document.getElementById('sp-design-nav-align');
+                var navAlign   = navAlignEl ? navAlignEl.value : 'center';
+                var justifyMap = { 'spread': 'space-between', 'center': 'center', 'left': 'flex-start' };
+                css += '@media (min-width: 1025px) {\n'
+                    + '  .site-header.sp-header-stacked .main-navigation:not(.sp-user-menu) > ul'
+                    + ' { justify-content: ' + (justifyMap[navAlign] || 'center') + ' !important; }\n'
+                    + (navAlign === 'spread' ? '' :
+                        '  .site-header.sp-header-stacked .main-navigation:not(.sp-user-menu) > ul > li.sp-nav-right'
+                        + ' { margin-left: 0 !important; }\n')
+                    + '}\n';
+
                 // Remove any existing preview override style
                 var existing = doc.getElementById('sp-design-preview-override');
                 if (existing) existing.remove();
@@ -38786,6 +38851,21 @@ function sp_render_settings_design_page(): void {
         var styleTag = document.createElement('style');
         styleTag.textContent = '.sp-preview-device-active { background: #2271b1 !important; color: #fff !important; border-color: #2271b1 !important; }';
         document.head.appendChild(styleTag);
+
+        // ---- Menu position row toggle ----
+        // WHY: the choice only has an effect on the two-row header, and a
+        // control that does nothing is worse than no control at all.
+        var layoutRadios = document.querySelectorAll('input[name="societypress_settings[design_header_layout]"]');
+        var navAlignRow  = document.getElementById('sp-nav-align-row');
+        function spSyncNavAlignRow() {
+            if (!navAlignRow) return;
+            var stacked = document.querySelector('input[name="societypress_settings[design_header_layout]"]:checked');
+            navAlignRow.style.display = (stacked && stacked.value === 'stacked') ? '' : 'none';
+        }
+        layoutRadios.forEach(function(radio) {
+            radio.addEventListener('change', spSyncNavAlignRow);
+        });
+        spSyncNavAlignRow();
 
         // ---- Custom width row toggle ----
         // WHY: The Custom Width field should only show when "Custom" is selected
@@ -110434,6 +110514,7 @@ function sp_theme_preset_token_keys(): array {
         'design_content_width_px',
         'design_show_header_title',
         'design_header_layout',
+        'design_nav_align',
         'design_header_height',
         'design_logo_height',
         'design_header_padding',
@@ -110540,6 +110621,9 @@ function sp_theme_preset_apply( array $payload ) {
                 // Anything unrecognised falls back to the long-standing single
                 // row, so a malformed preset cannot rearrange someone's header.
                 $clean[ $k ] = ( (string) $v === 'stacked' ) ? 'stacked' : 'inline';
+                break;
+            case 'design_nav_align':
+                if ( in_array( (string) $v, [ 'spread', 'center', 'left' ], true ) ) $clean[ $k ] = (string) $v;
                 break;
             case 'design_show_header_title':
             case 'design_show_social_icons':

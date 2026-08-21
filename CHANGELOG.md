@@ -19,6 +19,62 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.54] — 2026-08-21
+
+### Added
+
+**Volunteering no longer happens in silence**
+
+Signing up to volunteer used to save the row and say nothing else. The member got
+no acknowledgment, and whoever had to staff the job found out only by opening the
+admin and counting. Event registration has written to both sides since the
+beginning; volunteering now gets the same treatment.
+
+A member who takes a spot gets a thank-you. A member who lands on the waitlist is
+told that, and told again when somebody drops out and their spot comes free —
+which used to happen entirely without their knowledge. Cancel a volunteer
+opportunity and everyone signed up hears about it.
+
+All four of those are yours to reword under **Communications → Email Templates**,
+where they join the welcome, renewal, expiration, donation and subscription
+messages. Each one has its own merge tags for the opportunity's title, date, time
+and place, plus a `{{opportunity_details}}` tag that drops the whole thing in as a
+tidy card.
+
+**The person running the opportunity gets told too**
+
+Every signup, waitlist placement and cancellation now emails a short notice — who
+it was, how to reach them, how many spots are filled, and a link straight to the
+list of everyone signed up. It goes to the Contact Person named on the
+opportunity, so a committee chair hears about their own jobs rather than the
+whole society hearing about all of them. With no contact named it falls back to
+the society's own address.
+
+### Changed
+
+**Saving a volunteer opportunity takes you back to the list**
+
+The Save button used to redraw the same form with a notice on top, which left no
+signal that the job was finished and no way back except the sidebar. It now
+returns you to Volunteer Opportunities with the confirmation there.
+
+**A way back from four more editing screens**
+
+Volunteer opportunities, events, speakers and documents were the editing screens
+without a "Back to…" link at the top. Every other one in SocietyPress had one.
+Now they all do.
+
+### Fixed
+
+**Resetting the subscription confirmation email works**
+
+"Reset to Default" on the Subscription Confirmation template returned an error
+instead of the default text, because that message was missing from the list the
+Reset button consults. Every template's default now comes from one list, so the
+two cannot disagree again.
+
+---
+
 ## [1.1.53] — 2026-08-20
 
 ### Added

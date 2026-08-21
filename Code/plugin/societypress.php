@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.53
+ * Version:     1.1.54
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.53' );
+define( 'SOCIETYPRESS_VERSION', '1.1.54' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34694,7 +34694,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.53',
+            'version'     => '1.1.54',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34702,7 +34702,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.53',
+            'version'     => '1.1.54',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34710,7 +34710,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.53',
+            'version'     => '1.1.54',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34718,7 +34718,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.53',
+            'version'     => '1.1.54',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34726,7 +34726,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.53',
+            'version'     => '1.1.54',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -48190,6 +48190,8 @@ function sp_render_event_edit_page(): void {
     <div class="wrap">
         <h1><?php echo esc_html( $page_title ); ?></h1>
 
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-events' ) ); ?>">&larr; <?php esc_html_e( 'Back to Events', 'societypress' ); ?></a></p>
+
         <?php if ( isset( $_GET['duplicated'] ) ) : ?>
             <div class="notice notice-info is-dismissible">
                 <p><?php esc_html_e( 'Event duplicated. Update the details below and save.', 'societypress' ); ?></p>
@@ -60908,6 +60910,8 @@ function sp_render_speaker_edit_page(): void {
     <div class="wrap">
         <h1><?php echo esc_html( $page_title ); ?></h1>
 
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-speakers' ) ); ?>">&larr; <?php esc_html_e( 'Back to Speakers', 'societypress' ); ?></a></p>
+
         <?php if ( isset( $_GET['error'] ) && $_GET['error'] === 'name' ) : ?>
             <div class="notice notice-error"><p><?php esc_html_e( 'Speaker name is required.', 'societypress' ); ?></p></div>
         <?php endif; ?>
@@ -73497,26 +73501,360 @@ function sp_volunteer_promote_waitlist( int $opp_id ): void {
         return;
     }
 
-    // If null capacity (unlimited), promote all waitlisted
-    if ( $remaining === null ) {
-        $wpdb->query( $wpdb->prepare(
-            "UPDATE {$table} SET status = 'confirmed' WHERE opportunity_id = %d AND status = 'waitlisted'",
-            $opp_id
-        ) );
-        return;
-    }
-
-    // Promote oldest waitlisted one at a time
+    // Promote oldest waitlisted first. A null capacity means unlimited, so
+    // everyone still waiting moves up at once.
     $waitlisted = $wpdb->get_results( $wpdb->prepare(
-        "SELECT id FROM {$table} WHERE opportunity_id = %d AND status = 'waitlisted' ORDER BY signed_up_at ASC",
+        "SELECT id, user_id FROM {$table} WHERE opportunity_id = %d AND status = 'waitlisted' ORDER BY signed_up_at ASC",
         $opp_id
     ) );
 
-    $promoted = 0;
+    if ( empty( $waitlisted ) ) {
+        return;
+    }
+
+    $slots    = $remaining === null ? count( $waitlisted ) : $remaining;
+    $promoted = [];
+
     foreach ( $waitlisted as $w ) {
-        if ( $promoted >= $remaining ) break;
+        if ( count( $promoted ) >= $slots ) break;
         $wpdb->update( $table, [ 'status' => 'confirmed' ], [ 'id' => $w->id ] );
-        $promoted++;
+        $promoted[] = (int) $w->user_id;
+    }
+
+    if ( empty( $promoted ) ) {
+        return;
+    }
+
+    // WHY the email fires here rather than at the call site: promotion only
+    // ever happens inside this function, and a volunteer moved off the
+    // waitlist in silence has no way to learn they are now expected to show up.
+    $opp = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_volunteer_opportunities WHERE id = %d", $opp_id
+    ) );
+    if ( ! $opp ) {
+        return;
+    }
+
+    foreach ( $promoted as $promoted_user_id ) {
+        $recipient = sp_volunteer_email_recipient( $promoted_user_id );
+        if ( $recipient ) {
+            sp_send_volunteer_template_email( 'volunteer_promoted', $opp, $recipient );
+        }
+    }
+}
+
+// ============================================================================
+// VOLUNTEER EMAIL — WHO HEARS WHAT, AND WHEN
+// ============================================================================
+//
+// WHY this exists at all: signing up to volunteer used to be completely
+//      silent. The member got no acknowledgment, and whoever had to staff the
+//      job found out only by opening the admin and counting rows. Event
+//      registration has told both sides since the beginning; volunteering is
+//      the same transaction and gets the same treatment.
+// ============================================================================
+
+/**
+ * Format an opportunity's start and end time as one readable range.
+ *
+ * @param object $opp Opportunity row.
+ * @return string Empty string when no start time is set.
+ */
+function sp_volunteer_opp_time_range( object $opp ): string {
+    if ( empty( $opp->start_time ) ) {
+        return '';
+    }
+
+    $range = sp_format_wall_clock( $opp->start_time, 'g:i A' );
+    if ( ! empty( $opp->end_time ) ) {
+        $range .= ' – ' . sp_format_wall_clock( $opp->end_time, 'g:i A' );
+    }
+
+    return $range;
+}
+
+/**
+ * Resolve who hears about signups for one opportunity.
+ *
+ * WHY the Contact Person comes first: the opportunity form already asks for
+ *      one, and on a committee-run job that person is the coordinator. A
+ *      single society-wide address would route a committee chair's signups to
+ *      somebody who can do nothing about them. The society's own address is
+ *      the fallback so a signup can never land nowhere.
+ *
+ * @param object $opp Opportunity row.
+ * @return string Email address, or '' when the society has none configured.
+ */
+function sp_volunteer_coordinator_email( object $opp ): string {
+    if ( ! empty( $opp->contact_user_id ) ) {
+        $contact = get_userdata( (int) $opp->contact_user_id );
+        if ( $contact && is_email( $contact->user_email ) ) {
+            return $contact->user_email;
+        }
+    }
+
+    $settings = sp_settings();
+    $fallback = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
+
+    return is_email( $fallback ) ? $fallback : '';
+}
+
+/**
+ * Format one opportunity as the shaded detail card used in volunteer emails.
+ *
+ * WHY it mirrors sp_email_event_details_block(): a member who volunteers and
+ *      also registers for events should recognize the same card in both
+ *      messages instead of learning two layouts.
+ *
+ * @param object $opp Opportunity row.
+ * @return string HTML block.
+ */
+function sp_volunteer_opp_details_block( object $opp ): string {
+    $html  = '<div style="background: #f6f7f7; border: 1px solid #e0e0e0; border-radius: 6px; padding: 16px; margin: 16px 0;">';
+    $html .= '<p style="margin: 0 0 6px; font-size: 16px; font-weight: 600; color: #1d2327;">' . esc_html( $opp->title ) . '</p>';
+
+    if ( ! empty( $opp->event_date ) ) {
+        $html .= '<p style="margin: 0 0 4px; color: #3c434a;">' . esc_html( sp_format_wall_clock( $opp->event_date, 'l, F j, Y' ) );
+        $time  = sp_volunteer_opp_time_range( $opp );
+        if ( $time !== '' ) {
+            $html .= '<br>' . esc_html( $time );
+        }
+        $html .= '</p>';
+    }
+
+    if ( ! empty( $opp->location ) ) {
+        $html .= '<p style="margin: 4px 0 0; color: #3c434a;">' . esc_html( $opp->location ) . '</p>';
+    }
+
+    $html .= '</div>';
+
+    return $html;
+}
+
+/**
+ * Fetch the person a volunteer email is addressed to.
+ *
+ * WHY the WordPress-user fallback: signing up requires an active membership
+ *      today, but the roll can be edited underneath an existing signup. An
+ *      email addressed to a name the software still knows beats one addressed
+ *      to "{{first_name}}".
+ *
+ * @param int $user_id WordPress user ID.
+ * @return object|null Member row (decrypted) or a user stub; null with no usable address.
+ */
+function sp_volunteer_email_recipient( int $user_id ): ?object {
+    global $wpdb;
+
+    $row = $wpdb->get_row( $wpdb->prepare(
+        "SELECT m.*, u.user_email
+         FROM {$wpdb->prefix}sp_members m
+         INNER JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.user_id = %d",
+        $user_id
+    ) );
+
+    if ( $row ) {
+        $row = sp_member_decrypt_row( $row );
+        return is_email( $row->user_email ) ? $row : null;
+    }
+
+    $user = get_userdata( $user_id );
+    if ( ! $user || ! is_email( $user->user_email ) ) {
+        return null;
+    }
+
+    return (object) [
+        'user_id'    => $user_id,
+        'first_name' => $user->first_name ?: $user->display_name,
+        'last_name'  => $user->last_name,
+        'user_email' => $user->user_email,
+    ];
+}
+
+/**
+ * Replace merge tags in a volunteer email template.
+ *
+ * WHY it layers on sp_replace_merge_tags(): volunteers are members, so every
+ *      member tag an admin already learned keeps working here. This only adds
+ *      the tags that describe the opportunity itself.
+ *
+ * @param string $content   Template body or subject.
+ * @param object $recipient Member row or user stub.
+ * @param object $opp       Opportunity row.
+ * @return string
+ */
+function sp_replace_volunteer_merge_tags( string $content, object $recipient, object $opp ): string {
+    $content = sp_replace_merge_tags( $content, $recipient );
+
+    $settings = sp_settings();
+    $contact  = ! empty( $opp->contact_user_id ) ? get_userdata( (int) $opp->contact_user_id ) : null;
+
+    $tags = [
+        // WHY a tag rather than an automatic card: the admin decides where the
+        // details sit, and an admin who deletes the tag gets a plain letter.
+        '{{opportunity_details}}'     => sp_volunteer_opp_details_block( $opp ),
+        '{{opportunity_title}}'       => $opp->title ?? '',
+        '{{opportunity_description}}' => wp_strip_all_tags( $opp->description ?? '' ),
+        '{{opportunity_date}}'        => ! empty( $opp->event_date ) ? sp_format_wall_clock( $opp->event_date, 'l, F j, Y' ) : '',
+        '{{opportunity_time}}'        => sp_volunteer_opp_time_range( $opp ),
+        '{{opportunity_location}}'    => $opp->location ?? '',
+        '{{contact_name}}'            => $contact ? $contact->display_name : '',
+        '{{contact_email}}'           => sp_volunteer_coordinator_email( $opp ),
+    ];
+
+    return str_replace( array_keys( $tags ), array_values( $tags ), $content );
+}
+
+/**
+ * Send one templated volunteer email.
+ *
+ * WHY one sender behind four templates: the only thing that differs between
+ *      "you're signed up", "you're on the waitlist", "a spot opened up" and
+ *      "this was cancelled" is which template the admin edited. Routing them
+ *      all through here means a new merge tag reaches every one of them, and
+ *      every send lands in the email log under the same type.
+ *
+ * @param string $template  Template slug, e.g. 'volunteer_signup'.
+ * @param object $opp       Opportunity row.
+ * @param object $recipient Member row or user stub from sp_volunteer_email_recipient().
+ * @return bool Whether wp_mail accepted the message.
+ */
+function sp_send_volunteer_template_email( string $template, object $opp, object $recipient ): bool {
+    if ( empty( $recipient->user_email ) || ! is_email( $recipient->user_email ) ) {
+        return false;
+    }
+
+    $settings = sp_settings();
+
+    // Subjects are stripped of markup because {{opportunity_details}} renders a
+    // card — harmless in a body, unreadable in a subject line.
+    $subject = $settings[ $template . '_subject' ] ?? sp_get_default_email_subject( $template );
+    $subject = wp_strip_all_tags( sp_replace_volunteer_merge_tags( $subject, $recipient, $opp ) );
+
+    $body = $settings[ 'email_template_' . $template ] ?? sp_get_default_email_template( $template );
+    $body = sp_replace_volunteer_merge_tags( $body, $recipient, $opp );
+
+    return (bool) wp_mail(
+        $recipient->user_email,
+        $subject,
+        sp_build_email_html( $subject, $body ),
+        sp_get_email_headers()
+    );
+}
+
+/**
+ * Tell the coordinator that somebody signed up — or dropped out.
+ *
+ * WHY plain text instead of an editable template: this is internal mail to the
+ *      one volunteer running the job, the same treatment
+ *      sp_donation_notify_society() gives the treasurer. Templating it would
+ *      add a tab to the Email Templates page that nobody outside the society
+ *      ever reads.
+ *
+ * @param object $opp       Opportunity row.
+ * @param object $recipient The volunteer this is about.
+ * @param string $event     'confirmed', 'waitlisted', or 'cancelled'.
+ */
+function sp_volunteer_notify_coordinator( object $opp, object $recipient, string $event ): void {
+    $to = sp_volunteer_coordinator_email( $opp );
+    if ( $to === '' ) {
+        return;
+    }
+
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    $name = trim( ( $recipient->first_name ?? '' ) . ' ' . ( $recipient->last_name ?? '' ) );
+    if ( $name === '' ) {
+        $name = $recipient->user_email ?? __( 'A member', 'societypress' );
+    }
+
+    switch ( $event ) {
+        case 'waitlisted':
+            /* translators: %s: organization name */
+            $subject = sprintf( __( '[%s] Volunteer added to the waitlist', 'societypress' ), $org_name );
+            /* translators: 1: volunteer name, 2: opportunity title */
+            $opening = sprintf( __( '%1$s joined the waitlist for "%2$s".', 'societypress' ), $name, $opp->title );
+            break;
+
+        case 'cancelled':
+            /* translators: %s: organization name */
+            $subject = sprintf( __( '[%s] Volunteer cancelled', 'societypress' ), $org_name );
+            /* translators: 1: volunteer name, 2: opportunity title */
+            $opening = sprintf( __( '%1$s cancelled their signup for "%2$s".', 'societypress' ), $name, $opp->title );
+            break;
+
+        default:
+            /* translators: %s: organization name */
+            $subject = sprintf( __( '[%s] New volunteer signup', 'societypress' ), $org_name );
+            /* translators: 1: volunteer name, 2: opportunity title */
+            $opening = sprintf( __( '%1$s signed up for "%2$s".', 'societypress' ), $name, $opp->title );
+    }
+
+    $body = $opening . "\n\n";
+
+    if ( ! empty( $recipient->user_email ) ) {
+        /* translators: %s: volunteer email address */
+        $body .= sprintf( __( 'Email: %s', 'societypress' ), $recipient->user_email ) . "\n";
+    }
+
+    if ( ! empty( $opp->event_date ) ) {
+        /* translators: %s: date of the volunteer opportunity */
+        $body .= sprintf( __( 'When: %s', 'societypress' ), sp_format_wall_clock( $opp->event_date, 'l, F j, Y' ) );
+        $time  = sp_volunteer_opp_time_range( $opp );
+        $body .= ( $time !== '' ? ' ' . $time : '' ) . "\n";
+    }
+
+    if ( ! empty( $opp->location ) ) {
+        /* translators: %s: where the volunteer opportunity takes place */
+        $body .= sprintf( __( 'Where: %s', 'societypress' ), $opp->location ) . "\n";
+    }
+
+    $confirmed = sp_volunteer_opp_signup_count( (int) $opp->id );
+    $body .= ! empty( $opp->capacity )
+        ? sprintf(
+            /* translators: 1: number of confirmed signups, 2: total spots available */
+            __( 'Filled: %1$d of %2$d spots', 'societypress' ),
+            $confirmed,
+            (int) $opp->capacity
+        ) . "\n"
+        : sprintf(
+            /* translators: %d: number of confirmed signups */
+            _n( 'Signed up so far: %d volunteer', 'Signed up so far: %d volunteers', $confirmed, 'societypress' ),
+            $confirmed
+        ) . "\n";
+
+    $body .= "\n" . __( 'See everyone who signed up:', 'societypress' ) . "\n"
+           . admin_url( 'admin.php?page=sp-volunteer-opportunity-edit&opp_id=' . (int) $opp->id ) . "\n";
+
+    wp_mail( $to, $subject, $body );
+}
+
+/**
+ * Tell everyone signed up that an opportunity was cancelled.
+ *
+ * WHY the preference check here but not on the signup confirmation: this is a
+ *      broadcast the member never asked for, which is the same distinction
+ *      sp_send_event_cancellation_emails() draws. A confirmation answers an
+ *      action the member just took, so it always goes.
+ *
+ * @param object $opp Opportunity row, already carrying the cancelled status.
+ */
+function sp_send_volunteer_cancellation_emails( object $opp ): void {
+    global $wpdb;
+
+    $signups = $wpdb->get_results( $wpdb->prepare(
+        "SELECT user_id FROM {$wpdb->prefix}sp_volunteer_signups
+         WHERE opportunity_id = %d AND status IN ('confirmed', 'waitlisted')",
+        (int) $opp->id
+    ) );
+
+    foreach ( $signups as $signup ) {
+        $recipient = sp_volunteer_email_recipient( (int) $signup->user_id );
+        if ( ! $recipient || ! sp_member_wants_email( $recipient, 'pref_email_notices' ) ) {
+            continue;
+        }
+        sp_send_volunteer_template_email( 'volunteer_cancelled', $opp, $recipient );
     }
 }
 
@@ -73589,6 +73927,18 @@ add_action( 'wp_ajax_sp_volunteer_signup', function () {
         );
     }
 
+    // Tell the volunteer where they stand, and tell whoever has to staff the
+    // job that somebody stepped forward. Both were silent before 1.1.54.
+    $recipient = sp_volunteer_email_recipient( $user_id );
+    if ( $recipient ) {
+        sp_send_volunteer_template_email(
+            $status === 'waitlisted' ? 'volunteer_waitlist' : 'volunteer_signup',
+            $opp,
+            $recipient
+        );
+        sp_volunteer_notify_coordinator( $opp, $recipient, $status );
+    }
+
     wp_send_json_success( [
         'signup_id' => $signup_id,
         'status'    => $status,
@@ -73638,6 +73988,17 @@ add_action( 'wp_ajax_sp_volunteer_cancel', function () {
              WHERE id = %d AND status = 'filled'",
             $signup->opportunity_id
         ) );
+    }
+
+    // A freed slot is something the coordinator can act on — they may need to
+    // recruit a replacement before the date.
+    $opp = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_volunteer_opportunities WHERE id = %d",
+        $signup->opportunity_id
+    ) );
+    $recipient = sp_volunteer_email_recipient( $user_id );
+    if ( $opp && $recipient ) {
+        sp_volunteer_notify_coordinator( $opp, $recipient, 'cancelled' );
     }
 
     wp_send_json_success( [ 'cancelled' => true ] );
@@ -74121,6 +74482,17 @@ function sp_render_volunteer_opportunities_page(): void {
         }
     }
 
+    // The save handler redirects here rather than redrawing the form, so the
+    // confirmation has to be reported on this screen.
+    $saved = sanitize_key( $_GET['sp_saved'] ?? '' );
+    if ( $saved === 'created' || $saved === 'updated' ) {
+        echo '<div class="notice notice-success is-dismissible"><p>'
+           . ( $saved === 'created'
+               ? esc_html__( 'Opportunity created.', 'societypress' )
+               : esc_html__( 'Opportunity updated.', 'societypress' ) )
+           . '</p></div>';
+    }
+
     // Chair scope: non-admin chairs see only opportunities tagged to their
     // committees. Admins see everything including society-wide (null committee).
     $chair_scope_sql = '';
@@ -74239,6 +74611,116 @@ function sp_render_volunteer_opportunities_page(): void {
 // VOLUNTEER OPPORTUNITIES — ADD/EDIT PAGE
 // ============================================================================
 
+/**
+ * Save the volunteer opportunity form, then return to the list.
+ *
+ * WHY this runs on admin_init instead of inside the render function: saving
+ *      used to redraw the same form with a notice on top, so there was no
+ *      signal the job was finished and no way back to the list except the
+ *      sidebar. Landing back on the list is what every other list-and-edit
+ *      pair does, and a redirect is only possible before output starts.
+ */
+function sp_handle_volunteer_opportunity_save(): void {
+    global $wpdb;
+
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-volunteer-opportunity-edit' ) {
+        return;
+    }
+    if ( ! isset( $_POST['sp_save_opp_nonce'] ) ||
+         ! wp_verify_nonce( $_POST['sp_save_opp_nonce'], 'sp_save_opportunity' ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_governance' ) ) {
+        wp_die(
+            esc_html__( 'You are not allowed to manage volunteer opportunities.', 'societypress' ),
+            esc_html__( 'Not Authorized', 'societypress' ),
+            [ 'response' => 403, 'back_link' => true ]
+        );
+    }
+
+    $prefix = $wpdb->prefix . 'sp_';
+    $opp_id = (int) ( $_GET['opp_id'] ?? 0 );
+
+    // Chair scope: a non-admin chair may only touch opportunities tagged to a
+    // committee they chair — on the row they are editing and on the one they
+    // are posting to.
+    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $chair_ids     = $is_chair_only ? sp_user_chaired_committee_ids() : [];
+    $posted_cid    = ! empty( $_POST['opp_committee_id'] ) ? (int) $_POST['opp_committee_id'] : null;
+
+    if ( $is_chair_only ) {
+        if ( $opp_id > 0 ) {
+            $existing_cid = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT committee_id FROM {$prefix}volunteer_opportunities WHERE id = %d", $opp_id
+            ) );
+            if ( ! $existing_cid || ! in_array( $existing_cid, $chair_ids, true ) ) {
+                wp_die(
+                    esc_html__( 'You can only edit volunteer opportunities for a committee you chair.', 'societypress' ),
+                    esc_html__( 'Not Authorized', 'societypress' ),
+                    [ 'response' => 403, 'back_link' => true ]
+                );
+            }
+        }
+        if ( ! $posted_cid || ! in_array( $posted_cid, $chair_ids, true ) ) {
+            wp_die(
+                esc_html__( 'As a committee chair you must post volunteer opportunities for a committee you chair.', 'societypress' ),
+                esc_html__( 'Not Authorized', 'societypress' ),
+                [ 'response' => 403, 'back_link' => true ]
+            );
+        }
+    }
+
+    $data = [
+        'title'            => sanitize_text_field( wp_unslash( $_POST['opp_title'] ?? '' ) ),
+        'description'      => wp_kses_post( wp_unslash( $_POST['opp_description'] ?? '' ) ),
+        'committee_id'     => $posted_cid,
+        'opportunity_type' => in_array( $_POST['opp_type'] ?? '', [ 'one_time', 'recurring', 'ongoing' ], true )
+                              ? $_POST['opp_type'] : 'one_time',
+        'event_date'       => ! empty( $_POST['opp_date'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_date'] ) ) : null,
+        'start_time'       => ! empty( $_POST['opp_start_time'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_start_time'] ) ) : null,
+        'end_time'         => ! empty( $_POST['opp_end_time'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_end_time'] ) ) : null,
+        'location'         => sanitize_text_field( wp_unslash( $_POST['opp_location'] ?? '' ) ),
+        'capacity'         => ( $_POST['opp_capacity'] ?? '' ) !== '' ? absint( $_POST['opp_capacity'] ) : null,
+        'skills_needed'    => sanitize_textarea_field( wp_unslash( $_POST['opp_skills'] ?? '' ) ),
+        'contact_user_id'  => ! empty( $_POST['opp_contact'] ) ? (int) $_POST['opp_contact'] : null,
+        'status'           => in_array( $_POST['opp_status'] ?? '', [ 'open', 'filled', 'closed', 'cancelled' ], true )
+                              ? $_POST['opp_status'] : 'open',
+    ];
+
+    if ( $opp_id > 0 ) {
+        // Read the old status before writing: cancelling is the one status
+        // change anybody signed up needs to hear about, and only the previous
+        // value can tell a fresh cancellation from a re-save of one.
+        $was_cancelled = 'cancelled' === $wpdb->get_var( $wpdb->prepare(
+            "SELECT status FROM {$prefix}volunteer_opportunities WHERE id = %d", $opp_id
+        ) );
+
+        $wpdb->update( $prefix . 'volunteer_opportunities', $data, [ 'id' => $opp_id ] );
+        $saved = 'updated';
+
+        if ( 'cancelled' === $data['status'] && ! $was_cancelled ) {
+            $opp = $wpdb->get_row( $wpdb->prepare(
+                "SELECT * FROM {$prefix}volunteer_opportunities WHERE id = %d", $opp_id
+            ) );
+            if ( $opp ) {
+                sp_send_volunteer_cancellation_emails( $opp );
+            }
+        }
+    } else {
+        $data['created_by'] = get_current_user_id();
+        $wpdb->insert( $prefix . 'volunteer_opportunities', $data );
+        $saved = 'created';
+    }
+
+    wp_safe_redirect( add_query_arg(
+        'sp_saved',
+        $saved,
+        admin_url( 'admin.php?page=sp-volunteer-opportunities' )
+    ) );
+    exit;
+}
+add_action( 'admin_init', 'sp_handle_volunteer_opportunity_save' );
+
 function sp_render_volunteer_opportunity_edit_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -74261,48 +74743,6 @@ function sp_render_volunteer_opportunity_edit_page(): void {
                 esc_html__( 'Not Authorized', 'societypress' ),
                 [ 'response' => 403, 'back_link' => true ]
             );
-        }
-    }
-
-    // Handle save
-    if ( isset( $_POST['sp_save_opp_nonce'] ) && wp_verify_nonce( $_POST['sp_save_opp_nonce'], 'sp_save_opportunity' ) ) {
-        $posted_cid = ! empty( $_POST['opp_committee_id'] ) ? (int) $_POST['opp_committee_id'] : null;
-
-        if ( $is_chair_only ) {
-            if ( ! $posted_cid || ! in_array( $posted_cid, $chair_ids, true ) ) {
-                wp_die(
-                    esc_html__( 'As a committee chair you must post volunteer opportunities for a committee you chair.', 'societypress' ),
-                    esc_html__( 'Not Authorized', 'societypress' ),
-                    [ 'response' => 403, 'back_link' => true ]
-                );
-            }
-        }
-
-        $data = [
-            'title'            => sanitize_text_field( wp_unslash( $_POST['opp_title'] ?? '' ) ),
-            'description'      => wp_kses_post( wp_unslash( $_POST['opp_description'] ?? '' ) ),
-            'committee_id'     => $posted_cid,
-            'opportunity_type' => in_array( $_POST['opp_type'] ?? '', [ 'one_time', 'recurring', 'ongoing' ], true )
-                                  ? $_POST['opp_type'] : 'one_time',
-            'event_date'       => ! empty( $_POST['opp_date'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_date'] ) ) : null,
-            'start_time'       => ! empty( $_POST['opp_start_time'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_start_time'] ) ) : null,
-            'end_time'         => ! empty( $_POST['opp_end_time'] ) ? sanitize_text_field( wp_unslash( $_POST['opp_end_time'] ) ) : null,
-            'location'         => sanitize_text_field( wp_unslash( $_POST['opp_location'] ?? '' ) ),
-            'capacity'         => ( $_POST['opp_capacity'] ?? '' ) !== '' ? absint( $_POST['opp_capacity'] ) : null,
-            'skills_needed'    => sanitize_textarea_field( wp_unslash( $_POST['opp_skills'] ?? '' ) ),
-            'contact_user_id'  => ! empty( $_POST['opp_contact'] ) ? (int) $_POST['opp_contact'] : null,
-            'status'           => in_array( $_POST['opp_status'] ?? '', [ 'open', 'filled', 'closed', 'cancelled' ], true )
-                                  ? $_POST['opp_status'] : 'open',
-        ];
-
-        if ( $opp_id > 0 ) {
-            $wpdb->update( $prefix . 'volunteer_opportunities', $data, [ 'id' => $opp_id ] );
-            echo '<div class="notice notice-success"><p>' . esc_html__( 'Opportunity updated.', 'societypress' ) . '</p></div>';
-        } else {
-            $data['created_by'] = get_current_user_id();
-            $wpdb->insert( $prefix . 'volunteer_opportunities', $data );
-            $opp_id = $wpdb->insert_id;
-            echo '<div class="notice notice-success"><p>' . esc_html__( 'Opportunity created.', 'societypress' ) . '</p></div>';
         }
     }
 
@@ -74336,6 +74776,8 @@ function sp_render_volunteer_opportunity_edit_page(): void {
     ?>
     <div class="wrap">
         <h1><?php echo esc_html( $page_title ); ?></h1>
+
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-volunteer-opportunities' ) ); ?>">&larr; <?php esc_html_e( 'Back to Volunteer Opportunities', 'societypress' ); ?></a></p>
 
         <form method="post">
             <?php wp_nonce_field( 'sp_save_opportunity', 'sp_save_opp_nonce' ); ?>
@@ -77156,6 +77598,34 @@ function sp_replace_merge_tags( string $content, object $member, array $extra = 
  * @param string $type Template type: welcome, renewal_reminder, expired.
  * @return string HTML template content.
  */
+/**
+ * Get the factory default subject line for an automated email.
+ *
+ * WHY a function rather than three copies: the subjects lived in the tab
+ *      definitions, again in the Reset-to-Default endpoint, and again in each
+ *      sender. They had already drifted — resetting the subscription
+ *      confirmation returned an error because that type was never added to the
+ *      endpoint's list. One list cannot drift from itself.
+ *
+ * @param string $type Template type, e.g. 'welcome' or 'volunteer_signup'.
+ * @return string Subject line, possibly containing merge tags.
+ */
+function sp_get_default_email_subject( string $type ): string {
+    $subjects = [
+        'welcome'                 => __( 'Welcome to {{organization_name}}!', 'societypress' ),
+        'renewal_reminder'        => __( 'Your membership expires soon', 'societypress' ),
+        'expired'                 => __( 'Your membership has expired', 'societypress' ),
+        'donation_acknowledgment' => __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' ),
+        'subscribe_confirm'       => __( 'Please confirm your subscription to {{organization_name}}', 'societypress' ),
+        'volunteer_signup'        => __( 'You\'re signed up — {{opportunity_title}}', 'societypress' ),
+        'volunteer_waitlist'      => __( 'You\'re on the waitlist — {{opportunity_title}}', 'societypress' ),
+        'volunteer_promoted'      => __( 'A spot opened up — {{opportunity_title}}', 'societypress' ),
+        'volunteer_cancelled'     => __( 'Cancelled — {{opportunity_title}}', 'societypress' ),
+    ];
+
+    return $subjects[ $type ] ?? '';
+}
+
 function sp_get_default_email_template( string $type ): string {
     switch ( $type ) {
         // WHY each paragraph is wrapped separately rather than the whole body as
@@ -77203,6 +77673,38 @@ function sp_get_default_email_template( string $type ): string {
                  . '<p>' . __( 'Your support helps {{organization_name}} continue its mission of preserving and sharing our community\'s history and heritage. Please keep this email for your tax records.', 'societypress' ) . '</p>' . "\n"
                  . '<p>' . __( 'If you have any questions, please contact us at {{admin_email}}.', 'societypress' ) . '</p>' . "\n"
                  . '<p>' . __( 'With gratitude,', 'societypress' ) . '<br>{{organization_name}}</p>';
+
+        case 'volunteer_signup':
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Thank you for volunteering with {{organization_name}}. You are signed up for:', 'societypress' ) . '</p>' . "\n"
+                 . '{{opportunity_details}}' . "\n"
+                 . '<p>' . __( 'If something comes up and you cannot make it, please let us know at {{contact_email}} so we can offer your spot to someone else.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Societies like ours run on volunteers. We appreciate your time.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'With thanks,', 'societypress' ) . '<br>{{organization_name}}</p>';
+
+        case 'volunteer_waitlist':
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Thank you for offering to help with the following. Every spot is taken right now, so you are on the waitlist:', 'societypress' ) . '</p>' . "\n"
+                 . '{{opportunity_details}}' . "\n"
+                 . '<p>' . __( 'If someone drops out we will email you right away, and nothing is expected of you until then.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Questions? Write to us at {{contact_email}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'With thanks,', 'societypress' ) . '<br>{{organization_name}}</p>';
+
+        case 'volunteer_promoted':
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . wp_kses_post( __( 'Good news — a spot opened up and you are now <strong>signed up</strong> for:', 'societypress' ) ) . '</p>' . "\n"
+                 . '{{opportunity_details}}' . "\n"
+                 . '<p>' . __( 'If you can no longer help, please tell us at {{contact_email}} so we can pass the spot along.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'We look forward to seeing you there.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'With thanks,', 'societypress' ) . '<br>{{organization_name}}</p>';
+
+        case 'volunteer_cancelled':
+            return '<p>' . __( 'Dear {{preferred_name}},', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . wp_kses_post( __( 'We are sorry to let you know that the following volunteer opportunity has been <strong>cancelled</strong>:', 'societypress' ) ) . '</p>' . "\n"
+                 . '{{opportunity_details}}' . "\n"
+                 . '<p>' . __( 'Nothing is needed from you. If you have questions, please contact us at {{contact_email}}.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'Thank you for being willing to help.', 'societypress' ) . '</p>' . "\n"
+                 . '<p>' . __( 'With thanks,', 'societypress' ) . '<br>{{organization_name}}</p>';
 
         case 'subscribe_confirm':
             // The confirmation button and the "if you didn\'t request this"
@@ -77318,6 +77820,10 @@ function sp_render_email_templates_page(): void {
             'expired'                  => 'expired_notice_subject',
             'donation_acknowledgment'  => 'donation_acknowledgment_subject',
             'subscribe_confirm'        => 'subscribe_confirm_subject',
+            'volunteer_signup'         => 'volunteer_signup_subject',
+            'volunteer_waitlist'       => 'volunteer_waitlist_subject',
+            'volunteer_promoted'       => 'volunteer_promoted_subject',
+            'volunteer_cancelled'      => 'volunteer_cancelled_subject',
         ];
         foreach ( $subject_keys as $type => $subj_key ) {
             $body_key = 'email_template_' . $type;
@@ -77340,7 +77846,10 @@ function sp_render_email_templates_page(): void {
 
     // Determine active tab — default to 'welcome'
     $active_tab = sanitize_key( $_GET['tab'] ?? 'welcome' );
-    if ( ! in_array( $active_tab, [ 'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment', 'subscribe_confirm' ], true ) ) {
+    if ( ! in_array( $active_tab, [
+        'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment', 'subscribe_confirm',
+        'volunteer_signup', 'volunteer_waitlist', 'volunteer_promoted', 'volunteer_cancelled',
+    ], true ) ) {
         $active_tab = 'welcome';
     }
 
@@ -77351,34 +77860,49 @@ function sp_render_email_templates_page(): void {
     // place without conflicts.
     $tabs = [
         'welcome'          => [
-            'label'           => __( 'Welcome Email', 'societypress' ),
-            'subject_key'     => 'welcome_email_subject',
-            'default_subject' => __( 'Welcome to {{organization_name}}!', 'societypress' ),
-            'description'     => __( 'Sent when a new member is approved or created with active status.', 'societypress' ),
+            'label'       => __( 'Welcome Email', 'societypress' ),
+            'subject_key' => 'welcome_email_subject',
+            'description' => __( 'Sent when a new member is approved or created with active status.', 'societypress' ),
         ],
         'renewal_reminder' => [
-            'label'           => __( 'Renewal Reminder', 'societypress' ),
-            'subject_key'     => 'renewal_reminder_subject',
-            'default_subject' => __( 'Your membership expires soon', 'societypress' ),
-            'description'     => __( 'Sent automatically at 30, 15, and 7 days before membership expiration (based on your settings).', 'societypress' ),
+            'label'       => __( 'Renewal Reminder', 'societypress' ),
+            'subject_key' => 'renewal_reminder_subject',
+            'description' => __( 'Sent automatically at 30, 15, and 7 days before membership expiration (based on your settings).', 'societypress' ),
         ],
         'expired'          => [
-            'label'           => __( 'Expiration Notice', 'societypress' ),
-            'subject_key'     => 'expired_notice_subject',
-            'default_subject' => __( 'Your membership has expired', 'societypress' ),
-            'description'     => __( 'Sent after a membership expires and the member\'s status changes to expired.', 'societypress' ),
+            'label'       => __( 'Expiration Notice', 'societypress' ),
+            'subject_key' => 'expired_notice_subject',
+            'description' => __( 'Sent after a membership expires and the member\'s status changes to expired.', 'societypress' ),
         ],
         'donation_acknowledgment' => [
-            'label'           => __( 'Donation Acknowledgment', 'societypress' ),
-            'subject_key'     => 'donation_acknowledgment_subject',
-            'default_subject' => __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' ),
-            'description'     => __( 'Sent to donors when the treasurer clicks "Send Acknowledgment" on one or more donations. Supports donation-specific merge tags.', 'societypress' ),
+            'label'       => __( 'Donation Acknowledgment', 'societypress' ),
+            'subject_key' => 'donation_acknowledgment_subject',
+            'description' => __( 'Sent to donors when the treasurer clicks "Send Acknowledgment" on one or more donations. Supports donation-specific merge tags.', 'societypress' ),
         ],
         'subscribe_confirm' => [
-            'label'           => __( 'Subscription Confirmation', 'societypress' ),
-            'subject_key'     => 'subscribe_confirm_subject',
-            'default_subject' => __( 'Please confirm your subscription to {{organization_name}}', 'societypress' ),
-            'description'     => __( 'Sent when someone signs up for your public mailing list, asking them to confirm their address (double opt-in). The confirmation button and disclaimer are added automatically — you only edit the message text. Merge tags: {{name}}, {{organization_name}}.', 'societypress' ),
+            'label'       => __( 'Subscription Confirmation', 'societypress' ),
+            'subject_key' => 'subscribe_confirm_subject',
+            'description' => __( 'Sent when someone signs up for your public mailing list, asking them to confirm their address (double opt-in). The confirmation button and disclaimer are added automatically — you only edit the message text. Merge tags: {{name}}, {{organization_name}}.', 'societypress' ),
+        ],
+        'volunteer_signup' => [
+            'label'       => __( 'Volunteer Signup', 'societypress' ),
+            'subject_key' => 'volunteer_signup_subject',
+            'description' => __( 'Sent to a member the moment they take a volunteer spot. The person running the opportunity gets their own plain notice at the same time — that one is not edited here.', 'societypress' ),
+        ],
+        'volunteer_waitlist' => [
+            'label'       => __( 'Volunteer Waitlist', 'societypress' ),
+            'subject_key' => 'volunteer_waitlist_subject',
+            'description' => __( 'Sent when every spot is already taken and the member goes on the waitlist instead.', 'societypress' ),
+        ],
+        'volunteer_promoted' => [
+            'label'       => __( 'Volunteer Spot Opened', 'societypress' ),
+            'subject_key' => 'volunteer_promoted_subject',
+            'description' => __( 'Sent when somebody drops out and a waitlisted member moves up to a confirmed spot.', 'societypress' ),
+        ],
+        'volunteer_cancelled' => [
+            'label'       => __( 'Volunteer Opportunity Cancelled', 'societypress' ),
+            'subject_key' => 'volunteer_cancelled_subject',
+            'description' => __( 'Sent to everyone signed up when you set a volunteer opportunity to Cancelled. Members who turned off email notices do not receive it.', 'societypress' ),
         ],
     ];
 
@@ -77387,7 +77911,7 @@ function sp_render_email_templates_page(): void {
     $body_key = 'email_template_' . $active_tab;
 
     // Load saved values or defaults
-    $subject = $settings[ $subj_key ] ?? $tab_info['default_subject'];
+    $subject = $settings[ $subj_key ] ?? sp_get_default_email_subject( $active_tab );
     $body    = $settings[ $body_key ] ?? sp_get_default_email_template( $active_tab );
 
     $page_url = admin_url( 'admin.php?page=sp-email-templates' );
@@ -77495,7 +78019,28 @@ function sp_render_email_templates_page(): void {
                 // (for member-based emails) or sp_replace_donation_merge_tags() (for
                 // donation acknowledgments). We show the appropriate set for each tab
                 // so the admin knows what's available.
-                if ( $active_tab === 'donation_acknowledgment' ) {
+                if ( strpos( $active_tab, 'volunteer_' ) === 0 ) {
+                    // Volunteers are members, so the member tags all still work.
+                    // These are the extra ones that describe the opportunity.
+                    $merge_tags = [
+                        '{{preferred_name}}'          => __( 'Preferred name (or first name)', 'societypress' ),
+                        '{{first_name}}'              => __( 'First name', 'societypress' ),
+                        '{{last_name}}'               => __( 'Last name', 'societypress' ),
+                        '{{full_name}}'               => __( 'Full name', 'societypress' ),
+                        '{{email}}'                   => __( 'Member email', 'societypress' ),
+                        '{{opportunity_details}}'     => __( 'Title, date, time and place as a boxed card', 'societypress' ),
+                        '{{opportunity_title}}'       => __( 'Opportunity title', 'societypress' ),
+                        '{{opportunity_description}}' => __( 'Opportunity description', 'societypress' ),
+                        '{{opportunity_date}}'        => __( 'Date of the opportunity', 'societypress' ),
+                        '{{opportunity_time}}'        => __( 'Start and end time', 'societypress' ),
+                        '{{opportunity_location}}'    => __( 'Where it takes place', 'societypress' ),
+                        '{{contact_name}}'            => __( 'Contact person for the opportunity', 'societypress' ),
+                        '{{contact_email}}'           => __( 'Where the volunteer should write back', 'societypress' ),
+                        '{{organization_name}}'       => __( 'Organization name', 'societypress' ),
+                        '{{site_url}}'                => __( 'Website URL', 'societypress' ),
+                        '{{admin_email}}'             => __( 'Admin email address', 'societypress' ),
+                    ];
+                } elseif ( $active_tab === 'donation_acknowledgment' ) {
                     // Donation-specific merge tags — donors aren't always members,
                     // so we use a separate set tailored to donation data.
                     $merge_tags = [
@@ -77630,19 +78175,14 @@ add_action( 'wp_ajax_sp_get_default_template', function() {
 
     $type = sanitize_key( $_POST['type'] ?? '' );
 
-    $default_subjects = [
-        'welcome'                 => __( 'Welcome to {{organization_name}}!', 'societypress' ),
-        'renewal_reminder'        => __( 'Your membership expires soon', 'societypress' ),
-        'expired'                 => __( 'Your membership has expired', 'societypress' ),
-        'donation_acknowledgment' => __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' ),
-    ];
+    $subject = sp_get_default_email_subject( $type );
 
-    if ( ! isset( $default_subjects[ $type ] ) ) {
+    if ( $subject === '' ) {
         wp_send_json_error( __( 'Invalid type', 'societypress' ), 400 );
     }
 
     wp_send_json_success( [
-        'subject' => $default_subjects[ $type ],
+        'subject' => $subject,
         'body'    => sp_get_default_email_template( $type ),
     ] );
 } );
@@ -95847,6 +96387,8 @@ function sp_render_document_edit_page(): void {
     </style>
     <div class="wrap">
         <h1><?php echo $is_edit ? esc_html__( 'Edit Document', 'societypress' ) : esc_html__( 'Add Document', 'societypress' ); ?></h1>
+
+        <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents' ) ); ?>">&larr; <?php esc_html_e( 'Back to Documents', 'societypress' ); ?></a></p>
 
         <?php if ( ! empty( $_GET['sp_error'] ) && $_GET['sp_error'] === 'missing_fields' ) : ?>
             <div class="notice notice-error"><p><?php esc_html_e( 'Title and file are required.', 'societypress' ); ?></p></div>

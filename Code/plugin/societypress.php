@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.54
+ * Version:     1.1.55
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.54' );
+define( 'SOCIETYPRESS_VERSION', '1.1.55' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34694,7 +34694,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.54',
+            'version'     => '1.1.55',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34702,7 +34702,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.54',
+            'version'     => '1.1.55',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34710,7 +34710,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.54',
+            'version'     => '1.1.55',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34718,7 +34718,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.54',
+            'version'     => '1.1.55',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34726,7 +34726,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.54',
+            'version'     => '1.1.55',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -56081,6 +56081,9 @@ function sp_events_frontend_scripts(): void {
                             row.innerHTML = '<span class="sp-text-muted-italic"><?php echo esc_js( __( "Cancelled", "societypress" ) ); ?></span>';
                         }
                     });
+                }, {
+                    confirmText: '<?php echo esc_js( __( 'Cancel Registration', 'societypress' ) ); ?>',
+                    cancelText:  '<?php echo esc_js( __( 'Keep Registration', 'societypress' ) ); ?>'
                 });
             });
         });
@@ -56159,6 +56162,9 @@ function sp_events_frontend_scripts(): void {
                     btn.disabled = false;
                     btn.textContent = '<?php echo esc_js( __( "Cancel My Registration", "societypress" ) ); ?>';
                 });
+                }, {
+                    confirmText: '<?php echo esc_js( __( 'Cancel Registration', 'societypress' ) ); ?>',
+                    cancelText:  '<?php echo esc_js( __( 'Keep Registration', 'societypress' ) ); ?>'
                 });
             });
         }
@@ -57620,6 +57626,9 @@ function sp_render_event_registrations_section( object $event ): void {
                             spAlert(data.data || '<?php echo esc_js( __( 'Could not cancel.', 'societypress' ) ); ?>');
                         }
                     });
+                }, {
+                    confirmText: '<?php echo esc_js( __( 'Cancel Registration', 'societypress' ) ); ?>',
+                    cancelText:  '<?php echo esc_js( __( 'Keep Registration', 'societypress' ) ); ?>'
                 });
             });
         });
@@ -74349,7 +74358,7 @@ function sp_render_volunteer_opportunities_frontend(): string {
                                 <button type="button" class="sp-vol-cancel-btn"
                                         data-signup-id="<?php echo esc_attr( $user_signup->signup_id ); ?>"
 >
-                                    <?php esc_html_e( 'Cancel', 'societypress' ); ?>
+                                    <?php esc_html_e( 'Cancel Signup', 'societypress' ); ?>
                                 </button>
                             </div>
                         <?php elseif ( $is_full ) : ?>
@@ -74436,9 +74445,12 @@ function sp_render_volunteer_opportunities_frontend(): string {
                         } else {
                             spAlert(data.data || '<?php echo esc_js( __( "Could not cancel.", "societypress" ) ); ?>');
                             btn.disabled = false;
-                            btn.textContent = '<?php echo esc_js( __( "Cancel", "societypress" ) ); ?>';
+                            btn.textContent = '<?php echo esc_js( __( "Cancel Signup", "societypress" ) ); ?>';
                         }
                     });
+                }, {
+                    confirmText: '<?php echo esc_js( __( 'Cancel Signup', 'societypress' ) ); ?>',
+                    cancelText:  '<?php echo esc_js( __( 'Keep Signup', 'societypress' ) ); ?>'
                 });
             });
         });
@@ -101570,6 +101582,14 @@ function sp_render_modal_module(): void {
     </style>
     <script>
     <?php echo sp_modal_inert_js(); ?>
+    /* Default button wording, kept here so every dialog starts from a known
+     * label instead of inheriting the previous caller's. */
+    var SP_CONFIRM_LABELS = {
+        confirm:   <?php echo wp_json_encode( __( 'Confirm', 'societypress' ) ); ?>,
+        dismiss:   <?php echo wp_json_encode( __( 'Cancel', 'societypress' ) ); ?>,
+        neverMind: <?php echo wp_json_encode( __( 'Never Mind', 'societypress' ) ); ?>
+    };
+
     /**
      * Custom confirmation modal.
      *
@@ -101599,8 +101619,22 @@ function sp_render_modal_module(): void {
             var firstWord = String(message).trim().split(/[\s,.?!:;]+/)[0] || '';
             if (firstWord) confirmLabel = firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
         }
-        if (confirmLabel) yesBtn.textContent = confirmLabel;
-        if (opts.cancelText)  noBtn.textContent  = opts.cancelText;
+        // WHY assign unconditionally: both buttons are reused for every call,
+        // so a label left behind by the previous dialog would otherwise stick
+        // and mislabel the next one.
+        yesBtn.textContent = confirmLabel || SP_CONFIRM_LABELS.confirm;
+
+        // WHY: the action being confirmed is sometimes itself a cancellation
+        // ("Cancel your volunteer signup?"), which names the confirm button
+        // "Cancel" and leaves the dialog showing two buttons that read the
+        // same and no way to tell which one calls off what. When the labels
+        // collide, the dismiss button gets wording that can only mean
+        // "do nothing."
+        var dismissLabel = opts.cancelText || SP_CONFIRM_LABELS.dismiss;
+        if (dismissLabel.toLowerCase() === yesBtn.textContent.toLowerCase()) {
+            dismissLabel = SP_CONFIRM_LABELS.neverMind;
+        }
+        noBtn.textContent = dismissLabel;
 
         yesBtn.className = 'button sp-confirm-btn sp-confirm-btn--' + (opts.type || 'danger');
         // WHY reparent to <body>: other modals (member-detail, login-ack)

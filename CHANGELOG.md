@@ -19,6 +19,30 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.55] — 2026-08-22
+
+### Fixed
+
+**Two buttons that both said Cancel**
+
+Calling off a volunteer signup asked you to confirm, and the confirmation box
+offered you a choice between "Cancel" and "Cancel." One called off the signup and
+the other called off the question, and nothing on the screen told you which was
+which. The same thing happened when cancelling an event registration, in three
+places.
+
+The buttons now say what they do: **Cancel Signup** beside **Keep Signup**,
+**Cancel Registration** beside **Keep Registration**. The confirmation box also
+refuses, on its own, to ever show two buttons with the same wording again — so a
+future screen can't reintroduce it.
+
+The button on the volunteer page itself now reads **Cancel Signup** rather than a
+bare "Cancel" sitting next to your "Signed Up" badge.
+
+*Reported by a SocietyPress user.*
+
+---
+
 ## [1.1.54] — 2026-08-21
 
 ### Added

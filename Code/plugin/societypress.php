@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.55
+ * Version:     1.1.56
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.55' );
+define( 'SOCIETYPRESS_VERSION', '1.1.56' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7912,6 +7912,10 @@ function sp_get_menu_capability_map(): array {
         'sp-pages'                 => 'sp_manage_content',
         'sp-page-edit'             => 'sp_manage_content',
         'upload.php'               => 'sp_manage_content',
+        // sp_render_files_page() already gates on sp_user_can( 'content' ), so
+        // without this entry the screen kept its placeholder manage_options and
+        // was invisible in the sidebar to the very people allowed to open it.
+        'sp-files'                 => 'sp_manage_content',
         'sp-menus'                 => 'sp_manage_content',
         'sp-affiliations'          => 'sp_manage_content',
         'widgets.php'              => 'sp_manage_settings',
@@ -12628,7 +12632,14 @@ function sp_default_menu_config(): array {
               // Settings under "Back office", named for what it actually edits.
               // WHY customize.php is gone entirely: see the menu registration
               // block — nothing SocietyPress ships populates the Customizer.
-              'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'sp-affiliations', 'upload.php', 'widgets.php', 'sp-short-links',
+              // WHY sp-files sits beside Media rather than with Documents: it
+              // registers next to the Documents screens, but the two answer
+              // different questions. Documents is the society's minutes, bylaws
+              // and policies with per-document access control; Files is every
+              // upload the site holds, in folders, which is the same shelf
+              // Media occupies. Filed anywhere else it would be a third place
+              // to look for a picture.
+              'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-gallery', 'sp-affiliations', 'upload.php', 'sp-files', 'widgets.php', 'sp-short-links',
                            [ 'heading' => __( 'How it looks', 'societypress' ) ],
                            'sp-appearance',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
@@ -34694,7 +34705,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.55',
+            'version'     => '1.1.56',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34702,7 +34713,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.55',
+            'version'     => '1.1.56',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34710,7 +34721,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.55',
+            'version'     => '1.1.56',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34718,7 +34729,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.55',
+            'version'     => '1.1.56',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34726,7 +34737,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.55',
+            'version'     => '1.1.56',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

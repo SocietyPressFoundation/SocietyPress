@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.56] — 2026-08-22
+
+### Fixed
+
+**The Files screen was missing from the menu, and hidden from the people allowed
+to use it**
+
+Files — every upload the society holds, in folders you keep — was built and
+working, but it had never been added to the sidebar's arrangement. It fell out of
+every drop down group and sat loose at the bottom of the menu, below the groups,
+where nobody would think to look for it.
+
+It also carried the wrong permission. The screen itself lets in anyone with
+Website access, but the sidebar entry still demanded a full WordPress
+administrator, so the volunteers who run the website could not see the row at all.
+
+Files now sits in the **Website** group beside Media, and anyone with Website
+access can see and open it.
+
 ## [1.1.55] — 2026-08-22
 
 ### Fixed

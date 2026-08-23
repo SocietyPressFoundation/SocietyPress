@@ -63,16 +63,88 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          # Stage the same flat shape v1.0.0 ships:
+          # This zip is what WordPress installs when a society clicks Update.
+          # WordPress DELETES the existing plugin directory and extracts this in
+          # its place, so a file missing here is not merely absent from a new
+          # install — it is removed from a site that was working.
+          #
+          # That is what happened from v1.0.0 to v1.1.11: the assets directory
+          # was never staged, so every update stripped the CSS, JavaScript and
+          # icons the plugin loads at runtime. Nothing failed and nothing warned;
+          # the plugin went on requesting files that were no longer there and the
+          # browser quietly 404'd them. The photo viewer stopped opening, the
+          # public events pages lost their styling, the editor's table and picture
+          # buttons and the governance member pickers stopped responding, and the
+          # web-app icons disappeared.
+          #
+          # Fresh installs were unaffected throughout, which is why it went
+          # unnoticed for eleven releases — scripts/deploy.sh builds the
+          # installer bundle separately and has always included assets/.
+          #
+          # Shape:
           #   societypress/societypress.php
+          #   societypress/assets/...              (everything sp_asset_url() serves)
           #   societypress/languages/societypress.pot
           mkdir -p stage/societypress/languages
           cp Code/plugin/societypress.php             stage/societypress/societypress.php
           if [ -f Code/plugin/languages/societypress.pot ]; then
             cp Code/plugin/languages/societypress.pot stage/societypress/languages/societypress.pot
           fi
+          if [ -d Code/plugin/assets ]; then
+            cp -r Code/plugin/assets                  stage/societypress/assets
+          fi
           ( cd stage && zip -rq "../societypress-${VERSION}.zip" societypress )
           ls -la societypress-${VERSION}.zip
+
+      - name: "Verify the zip carries everything the plugin loads at runtime"
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          # WHY a check and not just the fixed copy above: the bug this guards
+          # against produced no error for eleven releases. A build that silently
+          # omits a file looks exactly like a build that succeeds, so the only
+          # thing that catches it is comparing what went in against what came
+          # out. Anything added under Code/plugin/assets/ later is covered
+          # automatically — there is no list here to keep in step.
+          zip_name="societypress-${VERSION}.zip"
+          status=0
+
+          # unzip -Z1 lists one entry name per line and nothing else.
+          unzip -Z1 "$zip_name" | sed -n 's|^societypress/||p' | sort > /tmp/in_zip.txt
+
+          if ! grep -qx 'societypress.php' /tmp/in_zip.txt; then
+            echo "::error::${zip_name} has no societypress.php."
+            status=1
+          fi
+
+          if [ -f Code/plugin/languages/societypress.pot ] \
+             && ! grep -qx 'languages/societypress.pot' /tmp/in_zip.txt; then
+            echo "::error::${zip_name} is missing languages/societypress.pot."
+            status=1
+          fi
+
+          if [ -d Code/plugin/assets ]; then
+            ( cd Code/plugin && find assets -type f | sort ) > /tmp/expected_assets.txt
+            # Trailing '/' entries are the directories zip stores; drop them
+            # so the comparison is file-against-file.
+            grep '^assets/' /tmp/in_zip.txt | grep -v '/$' | sort > /tmp/zipped_assets.txt
+
+            if ! diff -u /tmp/expected_assets.txt /tmp/zipped_assets.txt > /tmp/assets_diff.txt; then
+              echo "::error::${zip_name} does not carry the same asset files as Code/plugin/assets."
+              echo "Lines starting '-' are in the repository but missing from the zip:"
+              cat /tmp/assets_diff.txt
+              status=1
+            else
+              echo "assets: $(wc -l < /tmp/expected_assets.txt) file(s), all present."
+            fi
+          fi
+
+          if [ "$status" -ne 0 ]; then
+            echo "A society updating from inside WordPress would have lost the files listed above."
+            exit 1
+          fi
+
+          echo "$zip_name carries everything the plugin loads at runtime."
 
       - name: Extract CHANGELOG section for this version
         id: notes

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.56
+ * Version:     1.1.57
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.56' );
+define( 'SOCIETYPRESS_VERSION', '1.1.57' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3719,6 +3719,124 @@ function sp_backfill_file_records(): array {
 }
 
 /**
+ * Put one media library upload on the Files screen.
+ *
+ * WHY this is needed on top of the usage backfill: sp_files began as an index
+ *      of files SocietyPress was already referencing, so a picture uploaded
+ *      and not yet used anywhere was invisible on the Files screen while
+ *      sitting in plain view in the media library. That left two screens
+ *      answering "what files does this site have" with two different numbers,
+ *      and the smaller number belonged to the screen built to be the filing
+ *      cabinet. Files cannot replace the media library until it holds
+ *      everything the media library holds.
+ *
+ * The row lands with no folder, which the screen shows as Unfiled — a real
+ * place a file can be, not a hiding place.
+ *
+ * @param int $attachment_id Media library id.
+ * @return int The sp_files row id, or 0 if there was nothing to register.
+ */
+function sp_register_attachment_file( int $attachment_id ): int {
+    if ( $attachment_id <= 0 || 'attachment' !== get_post_type( $attachment_id ) ) {
+        return 0;
+    }
+
+    $url = wp_get_attachment_url( $attachment_id );
+    if ( ! $url ) {
+        return 0;
+    }
+
+    // sp_register_file() keys on the address and returns the existing row when
+    // it finds one, so running this twice on the same upload is free.
+    return sp_register_file( $url, $attachment_id );
+}
+add_action( 'add_attachment', 'sp_register_attachment_file' );
+
+/**
+ * Forget a file when its media library entry is deleted.
+ *
+ * WHY this arrived with the hook above and not before: while Files only listed
+ *      what something was using, a deleted attachment was usually already
+ *      unlinked and the stale row rarely surfaced. Registering every upload
+ *      makes the gap routine instead of rare — delete a picture from the media
+ *      library and Files would go on offering it forever, pointing at nothing.
+ *
+ * The file on disk is WordPress's to remove and it is already doing that; the
+ * only job here is dropping our record of it and the links that named it.
+ *
+ * @param int $attachment_id Media library id being deleted.
+ */
+function sp_forget_attachment_file( int $attachment_id ): void {
+    global $wpdb;
+
+    if ( $attachment_id <= 0 ) {
+        return;
+    }
+
+    $file_ids = $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_files WHERE attachment_id = %d",
+        $attachment_id
+    ) );
+
+    foreach ( $file_ids as $file_id ) {
+        $file_id = (int) $file_id;
+        $wpdb->delete( $wpdb->prefix . 'sp_file_links', [ 'file_id' => $file_id ], [ '%d' ] );
+        $wpdb->delete( $wpdb->prefix . 'sp_files', [ 'id' => $file_id ], [ '%d' ] );
+    }
+}
+add_action( 'delete_attachment', 'sp_forget_attachment_file' );
+
+/**
+ * Bring every upload already in the media library onto the Files screen.
+ *
+ * WHY it must run after sp_backfill_file_records(): that pass files each file
+ *      into the folder named for whatever is using it. Anything still
+ *      unregistered once it has finished is, by definition, used by nothing,
+ *      so it belongs in Unfiled. Running this first would claim every file as
+ *      Unfiled before the usage pass ever got to sort them.
+ *
+ * WHY it reads ids and not posts: a society twenty years old has thousands of
+ *      attachments, and hydrating them all into post objects to read one
+ *      address each is how a one-time upgrade becomes a memory error on shared
+ *      hosting. Ids in batches, one address at a time.
+ *
+ * @return int How many uploads were newly registered.
+ */
+function sp_backfill_attachment_files(): int {
+    global $wpdb;
+
+    $table  = $wpdb->prefix . 'sp_files';
+    $before = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+
+    $offset = 0;
+    $batch  = 500;
+
+    do {
+        $ids = (array) $wpdb->get_col( $wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_type = 'attachment'
+             ORDER BY ID ASC
+             LIMIT %d OFFSET %d",
+            $batch,
+            $offset
+        ) );
+
+        foreach ( $ids as $id ) {
+            sp_register_attachment_file( (int) $id );
+        }
+
+        $offset += $batch;
+    } while ( count( $ids ) === $batch );
+
+    // Counting rows either side is the honest measure: sp_register_file()
+    // returns the existing id for a file already known, so tallying its return
+    // value would report every attachment as newly added on every run.
+    $after = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
+
+    return max( 0, $after - $before );
+}
+
+/**
  * Find a top-level folder by name, creating it if it is not there yet.
  *
  * WHY by name: the backfill and the seeder both want "the Store folder" and
@@ -4015,6 +4133,15 @@ add_action( 'admin_init', function () {
         if ( ! get_option( 'sp_files_backfilled' ) ) {
             sp_backfill_file_records();
             update_option( 'sp_files_backfilled', 1 );
+        }
+
+        // Then everything else in the media library. Guarded on its own flag
+        // rather than folded into the one above, because an install that
+        // already ran the usage pass would otherwise never pick this up — and
+        // that install is every society currently running SocietyPress.
+        if ( ! get_option( 'sp_files_attachments_backfilled' ) ) {
+            sp_backfill_attachment_files();
+            update_option( 'sp_files_attachments_backfilled', 1 );
         }
 
         // WHY: Without saving the new version, the upgrade check fires on every admin
@@ -34705,7 +34832,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.56',
+            'version'     => '1.1.57',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34713,7 +34840,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.56',
+            'version'     => '1.1.57',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34721,7 +34848,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.56',
+            'version'     => '1.1.57',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34729,7 +34856,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.56',
+            'version'     => '1.1.57',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34737,7 +34864,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.56',
+            'version'     => '1.1.57',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

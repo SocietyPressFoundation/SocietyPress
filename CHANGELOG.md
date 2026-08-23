@@ -19,6 +19,27 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.57] — 2026-08-22
+
+### Changed
+
+**Files now shows every upload, not just the ones something is using**
+
+The Files screen listed a file once SocietyPress had a reason to know about it —
+something on the site used it, or somebody added it by hand. A picture uploaded
+and not yet used anywhere was missing from Files while sitting in plain view in
+the Media library, so the two screens gave different answers to "what files does
+this site have," and the smaller number belonged to the screen meant to be the
+filing cabinet.
+
+Every upload now appears in Files. Ones nothing is using land in **Unfiled**,
+ready to be dragged wherever they belong. Existing uploads are swept in once,
+automatically, on update — files already sorted into folders by what uses them
+stay where they are.
+
+Deleting a file from the Media library now also removes it from Files, instead
+of leaving a row pointing at a file that is gone.
+
 ## [1.1.56] — 2026-08-22
 
 ### Fixed

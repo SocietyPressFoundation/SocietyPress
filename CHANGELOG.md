@@ -19,6 +19,21 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.58] — 2026-08-22
+
+### Fixed
+
+**A newly uploaded file could be listed twice in Files**
+
+WordPress announces a new upload before it has finished recording where the
+file lives, so the address SocietyPress saw at that moment and the address it
+saw a fraction of a second later were not always the same one. Files matched on
+the address, so a file whose two addresses differed was recorded twice and
+appeared as two copies of one picture with nothing to tell them apart.
+
+Files now recognises an upload by its media library entry rather than by its
+address, and corrects the address in place when it settles.
+
 ## [1.1.57] — 2026-08-22
 
 ### Changed

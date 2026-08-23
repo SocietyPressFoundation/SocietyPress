@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.57
+ * Version:     1.1.58
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.57' );
+define( 'SOCIETYPRESS_VERSION', '1.1.58' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3737,6 +3737,8 @@ function sp_backfill_file_records(): array {
  * @return int The sp_files row id, or 0 if there was nothing to register.
  */
 function sp_register_attachment_file( int $attachment_id ): int {
+    global $wpdb;
+
     if ( $attachment_id <= 0 || 'attachment' !== get_post_type( $attachment_id ) ) {
         return 0;
     }
@@ -3746,11 +3748,58 @@ function sp_register_attachment_file( int $attachment_id ): int {
         return 0;
     }
 
-    // sp_register_file() keys on the address and returns the existing row when
-    // it finds one, so running this twice on the same upload is free.
+    // WHY this looks up by attachment id before touching sp_register_file():
+    // core fires add_attachment from inside wp_insert_post(), BEFORE
+    // wp_insert_attachment() has called update_attached_file(). At that moment
+    // _wp_attached_file is not set yet and wp_get_attachment_url() falls back
+    // to the post's guid. Once the metadata pass runs the same call returns the
+    // address derived from _wp_attached_file, which is normally identical but
+    // is not guaranteed to be. sp_register_file() keys on the address, so a
+    // drift between the two would quietly insert a SECOND row for one upload
+    // and the Files screen would list the same picture twice with no way to
+    // tell them apart. Matching on the id instead makes the later pass correct
+    // the address in place.
+    $table    = $wpdb->prefix . 'sp_files';
+    $existing = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, url FROM {$table} WHERE attachment_id = %d",
+        $attachment_id
+    ) );
+
+    if ( $existing ) {
+        if ( (string) $existing->url !== $url ) {
+            $wpdb->update(
+                $table,
+                [ 'url' => $url ],
+                [ 'id' => (int) $existing->id ],
+                [ '%s' ],
+                [ '%d' ]
+            );
+        }
+
+        return (int) $existing->id;
+    }
+
     return sp_register_file( $url, $attachment_id );
 }
 add_action( 'add_attachment', 'sp_register_attachment_file' );
+
+/**
+ * Second pass at the same upload, once its file is really in place.
+ *
+ * WHY: see the ordering note in sp_register_attachment_file(). This is a
+ *      filter, so it must hand the metadata back untouched — it is being used
+ *      purely as a "the file is settled now" signal.
+ *
+ * @param mixed $data          Attachment metadata, returned unchanged.
+ * @param int   $attachment_id Media library id.
+ * @return mixed The metadata, exactly as it arrived.
+ */
+function sp_reconcile_attachment_file( $data, $attachment_id ) {
+    sp_register_attachment_file( (int) $attachment_id );
+
+    return $data;
+}
+add_filter( 'wp_update_attachment_metadata', 'sp_reconcile_attachment_file', 10, 2 );
 
 /**
  * Forget a file when its media library entry is deleted.
@@ -34832,7 +34881,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.57',
+            'version'     => '1.1.58',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34840,7 +34889,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.57',
+            'version'     => '1.1.58',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34848,7 +34897,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.57',
+            'version'     => '1.1.58',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34856,7 +34905,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.57',
+            'version'     => '1.1.58',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34864,7 +34913,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.57',
+            'version'     => '1.1.58',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

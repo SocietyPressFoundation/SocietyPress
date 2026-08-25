@@ -26,6 +26,8 @@ The storefront shows both sources merged together — buyers don't know (or care
 
 **Page builder:** drop the "Store" widget. **Shortcode:** `[sp_store]`. The storefront renders a grid of products with category filters and a search box. Each card has Add to Cart.
 
+The grid shows 20 products to a page. A **Show** menu above the grid lets the visitor switch to 50, 100, or All (everything on one page, no pagination). The choice sticks as they move between categories, and choosing a category starts again at page one. The category list on the left stays beside the grid as the page scrolls, so a visitor deep in a long list can switch categories without scrolling back up.
+
 You'll also want a cart page. Drop `[sp_cart]` on a `/cart/` page; the cart page handles checkout (Stripe Element + PayPal Smart Buttons appear when the cart has items).
 
 ## How shipping fees work

@@ -19,6 +19,32 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.59] — 2026-08-25
+
+### Added
+
+**The storefront pages, and the visitor chooses how many products to a page**
+
+A society that sells its whole back catalogue put every title on one page. Two
+hundred cards is a long scroll on a desktop and a punishing one on a phone, and
+there was nothing a visitor could do about it.
+
+The storefront now shows twenty products to a page, with a **Show** menu above
+the grid offering 20, 50, 100 or All. All is the old behaviour, kept for anyone
+who would rather have the lot in front of them and use their browser's own find.
+The choice carries across categories, and picking a category starts again at the
+first page.
+
+### Changed
+
+**The store's category list stays beside the products as you scroll**
+
+The category list sits in a column to the left of the grid, and it scrolled away
+with the page, so somebody two screenfuls into the books who wanted maps instead
+had to scroll all the way back up to say so. The list now stays level with whatever part of the grid is on
+screen. On a phone, where the categories are a row of chips above the grid rather
+than a column beside it, nothing changes.
+
 ## [1.1.58] — 2026-08-22
 
 ### Fixed

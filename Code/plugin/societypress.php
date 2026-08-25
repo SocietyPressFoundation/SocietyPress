@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.58
+ * Version:     1.1.59
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.58' );
+define( 'SOCIETYPRESS_VERSION', '1.1.59' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34881,7 +34881,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.58',
+            'version'     => '1.1.59',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34889,7 +34889,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.58',
+            'version'     => '1.1.59',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34897,7 +34897,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.58',
+            'version'     => '1.1.59',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34905,7 +34905,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.58',
+            'version'     => '1.1.59',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34913,7 +34913,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.58',
+            'version'     => '1.1.59',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -91554,6 +91554,32 @@ function sp_render_store_frontend(): void {
         $categories[] = (object) [ 'store_category' => $cat_name, 'cnt' => $cnt ];
     }
 
+    // ---- How many products to a page ----
+    //
+    // WHY the storefront pages at all: a society that sells its whole back
+    // catalogue can list hundreds of items, and a single page of that many
+    // cards is a long scroll on a desktop and a punishing one on a phone.
+    // WHY the visitor picks: what counts as too much is theirs to say —
+    // somebody browsing wants a screenful at a time, somebody looking for one
+    // title they half-remember would rather have the lot in front of them and
+    // use the browser's own find. 0 is that last choice: everything, no pages.
+    $per_page_choices = [ 20, 50, 100, 0 ];
+    $per_page         = isset( $_GET['sp_store_per'] ) ? (int) $_GET['sp_store_per'] : 20;
+    if ( ! in_array( $per_page, $per_page_choices, true ) ) {
+        $per_page = 20;
+    }
+
+    $shown_count = count( $items );
+    $total_pages = ( $per_page > 0 ) ? max( 1, (int) ceil( $shown_count / $per_page ) ) : 1;
+    // A page number left over from a wider setting or a bigger category would
+    // otherwise land the visitor on an empty grid.
+    $page = isset( $_GET['sp_store_page'] ) ? max( 1, (int) $_GET['sp_store_page'] ) : 1;
+    if ( $page > $total_pages ) {
+        $page = $total_pages;
+    }
+    $offset     = ( $per_page > 0 ) ? ( $page - 1 ) * $per_page : 0;
+    $page_items = ( $per_page > 0 ) ? array_slice( $items, $offset, $per_page ) : $items;
+
     ?>
     <style>
         .sp-store-intro { text-align: center; margin-bottom: 32px; }
@@ -91562,8 +91588,34 @@ function sp_render_store_frontend(): void {
 
         .sp-store-layout { display: flex; gap: 32px; align-items: flex-start; }
 
-        /* Category sidebar */
-        .sp-store-sidebar { flex: 0 0 220px; }
+        /* Category sidebar.
+
+           WHY it sticks: the grid can run to hundreds of cards, and a
+           category list pinned to the top of the page is out of reach by
+           the second screenful — someone deciding they want Maps instead
+           of Books has to scroll all the way back up to say so. Sticking
+           it keeps the list beside whatever part of the grid is on screen.
+           align-self keeps the column its own height rather than stretching
+           to the grid's, which is what lets it stick at all inside a flex
+           row; the max-height and scroll are for a society with more
+           categories than fit a screen. --sp-sticky-top is there for a
+           theme with a fixed header of its own to push the list clear of it. */
+        .sp-store-sidebar {
+            flex: 0 0 220px;
+            position: sticky;
+            top: var(--sp-sticky-top, 24px);
+            align-self: flex-start;
+            max-height: calc(100vh - var(--sp-sticky-top, 24px) - 24px);
+            overflow-y: auto;
+        }
+        /* The admin bar is fixed over the top of the page for a signed-in
+           visitor, so the list has to start below it. */
+        body.admin-bar .sp-store-sidebar { top: calc(var(--sp-sticky-top, 24px) + 32px); }
+        /* The bar is taller on a narrow screen, up to the width where it stops
+           being fixed at all and the list has stopped sticking anyway. */
+        @media screen and (max-width: 782px) {
+            body.admin-bar .sp-store-sidebar { top: calc(var(--sp-sticky-top, 24px) + 46px); }
+        }
         .sp-store-sidebar h3 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #555; margin: 0 0 12px; }
         .sp-store-cat-list { list-style: none; margin: 0; padding: 0; }
         .sp-store-cat-list li { margin-bottom: 4px; }
@@ -91579,7 +91631,71 @@ function sp_render_store_frontend(): void {
 
         /* Main content */
         .sp-store-main { flex: 1; min-width: 0; }
-        .sp-store-count { font-size: 14px; color: var(--sp-color-text-secondary, #6d7175); margin-bottom: 20px; }
+        .sp-store-count { font-size: 14px; color: var(--sp-color-text-secondary, #6d7175); }
+
+        /* Toolbar: how many are shown, and how many to show. */
+        .sp-store-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .sp-store-perpage-form {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+        }
+        .sp-store-perpage-form label {
+            font-size: 14px;
+            color: var(--sp-color-text-secondary, #6d7175);
+        }
+        .sp-store-perpage-form select {
+            padding: 6px 10px;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: #fff;
+            color: #333;
+        }
+
+        /* Pagination */
+        .sp-store-pagination {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            justify-content: center;
+            margin: 28px 0 0;
+            padding-top: 20px;
+            border-top: 1px solid var(--sp-color-border, #e5e7eb);
+        }
+        .sp-store-pagination .sp-page-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px;
+            height: 36px;
+            padding: 0 10px;
+            font-size: 14px;
+            color: var(--sp-color-primary, #2271b1);
+            text-decoration: none;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            transition: background-color 0.15s, border-color 0.15s;
+        }
+        .sp-store-pagination .sp-page-link:hover {
+            background: #f0f0f0;
+            border-color: var(--sp-color-primary, #2271b1);
+        }
+        .sp-store-pagination .sp-page-current {
+            background: var(--sp-color-primary, #2271b1);
+            color: #fff;
+            border-color: var(--sp-color-primary, #2271b1);
+        }
+        .sp-store-pagination .sp-page-ellipsis { padding: 0 6px; color: #6d7175; }
 
         .sp-store-grid {
             display: grid;
@@ -91763,7 +91879,10 @@ function sp_render_store_frontend(): void {
 
         @media (max-width: 768px) {
             .sp-store-layout { flex-direction: column; }
-            .sp-store-sidebar { flex: none; width: 100%; }
+            /* Stacked, the category list is a row of chips above the grid.
+               There is nothing beside it to stay level with, so it scrolls
+               away with the rest of the page. */
+            .sp-store-sidebar { flex: none; width: 100%; position: static; max-height: none; overflow: visible; }
             .sp-store-cat-list { display: flex; flex-wrap: wrap; gap: 6px; }
             .sp-store-cat-list li { margin: 0; }
             .sp-store-cat-list a { padding: 6px 12px; font-size: 13px; background: #f0f0f0; border-radius: 20px; }
@@ -91803,19 +91922,24 @@ function sp_render_store_frontend(): void {
     </div>
 
     <div class="sp-store-layout">
-        <!-- Category sidebar -->
+        <!-- Category sidebar.
+             Every link here is built from the current URL so the rest of the
+             view — how many to a page, anything else in the address — survives
+             the click. The page number is the exception: it is dropped, because
+             page two of Books is not page two of everything. Handing
+             add_query_arg() a false value is how a key gets dropped. -->
         <aside class="sp-store-sidebar">
             <h3><?php esc_html_e( 'Categories', 'societypress' ); ?></h3>
             <ul class="sp-store-cat-list">
                 <li>
-                    <a href="<?php echo esc_url( remove_query_arg( 'sp_store_cat' ) ); ?>"<?php echo ! $active_cat ? ' class="active"' : ''; ?>>
+                    <a href="<?php echo esc_url( remove_query_arg( [ 'sp_store_cat', 'sp_store_page' ] ) ); ?>"<?php echo ! $active_cat ? ' class="active"' : ''; ?>>
                         <?php esc_html_e( 'All Items', 'societypress' ); ?>
                         <span class="sp-store-cat-count"><?php echo $total_count; ?></span>
                     </a>
                 </li>
                 <?php foreach ( $categories as $cat ) : ?>
                     <li>
-                        <a href="<?php echo esc_url( add_query_arg( 'sp_store_cat', urlencode( $cat->store_category ) ) ); ?>"<?php echo $active_cat === $cat->store_category ? ' class="active"' : ''; ?>>
+                        <a href="<?php echo esc_url( add_query_arg( [ 'sp_store_cat' => urlencode( $cat->store_category ), 'sp_store_page' => false ] ) ); ?>"<?php echo $active_cat === $cat->store_category ? ' class="active"' : ''; ?>>
                             <?php echo esc_html( $cat->store_category ); ?>
                             <span class="sp-store-cat-count"><?php echo (int) $cat->cnt; ?></span>
                         </a>
@@ -91829,18 +91953,53 @@ function sp_render_store_frontend(): void {
             <?php if ( empty( $items ) ) : ?>
                 <p class="sp-text-secondary sp-italic"><?php esc_html_e( 'Nothing found in this category.', 'societypress' ); ?></p>
             <?php else : ?>
-                <div class="sp-store-count">
+                <div class="sp-store-toolbar">
+                    <div class="sp-store-count">
+                        <?php if ( $per_page > 0 && $shown_count > $per_page ) : ?>
+                            <?php
+                            /* translators: 1: first item shown, 2: last item shown, 3: total items */
+                            echo esc_html( sprintf(
+                                __( 'Showing %1$s–%2$s of %3$s items', 'societypress' ),
+                                number_format_i18n( $offset + 1 ),
+                                number_format_i18n( $offset + count( $page_items ) ),
+                                number_format_i18n( $shown_count )
+                            ) );
+                            ?>
+                        <?php else : ?>
+                            <?php
+                            /* translators: %d: count of store items shown */
+                            echo esc_html( sprintf( _n( '%d item', '%d items', $shown_count, 'societypress' ), $shown_count ) );
+                            ?>
+                        <?php endif; ?>
+                        <?php if ( $active_cat ) : ?>
+                            <?php esc_html_e( 'in', 'societypress' ); ?> <strong><?php echo esc_html( $active_cat ); ?></strong>
+                        <?php endif; ?>
+                    </div>
+
                     <?php
-                    /* translators: %d: count of store items shown */
-                    echo esc_html( sprintf( _n( '%d item', '%d items', count( $items ), 'societypress' ), count( $items ) ) );
+                    // A plain GET form, so the picker works with JavaScript
+                    // switched off — the hidden fields carry the category and
+                    // anything else in the address along with it, and the
+                    // noscript button does the submitting. With JavaScript on,
+                    // the sp-autosubmit handler on the page template submits on
+                    // change. Changing the size starts back at the first page.
                     ?>
-                    <?php if ( $active_cat ) : ?>
-                        <?php esc_html_e( 'in', 'societypress' ); ?> <strong><?php echo esc_html( $active_cat ); ?></strong>
-                    <?php endif; ?>
+                    <form method="get" class="sp-store-perpage-form">
+                        <?php sp_carry_query_args( [ 'sp_store_per', 'sp_store_page' ] ); ?>
+                        <label for="sp-store-perpage"><?php esc_html_e( 'Show:', 'societypress' ); ?></label>
+                        <select name="sp_store_per" id="sp-store-perpage" class="sp-autosubmit">
+                            <?php foreach ( $per_page_choices as $choice ) : ?>
+                                <option value="<?php echo (int) $choice; ?>"<?php selected( $per_page, $choice ); ?>>
+                                    <?php echo $choice > 0 ? esc_html( number_format_i18n( $choice ) ) : esc_html__( 'All', 'societypress' ); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <noscript><button type="submit" class="sp-btn sp-btn-outline"><?php esc_html_e( 'Go', 'societypress' ); ?></button></noscript>
+                    </form>
                 </div>
 
                 <div class="sp-store-grid">
-                    <?php foreach ( $items as $entry ) :
+                    <?php foreach ( $page_items as $entry ) :
                         // Each entry is a normalized dict from
                         // sp_store_get_unified_listing(). 'source' tells the
                         // cart which table to look up at Add-to-Cart time.
@@ -91951,6 +92110,52 @@ function sp_render_store_frontend(): void {
                         </div>
                     <?php endforeach; ?>
                 </div>
+
+                <?php if ( $total_pages > 1 ) : ?>
+                    <?php
+                    // Numbered pages with the far ends always reachable, the
+                    // same shape the directory and events listings use, so a
+                    // long store reads the way the rest of the site does.
+                    $range = 2;
+                    $start = max( 1, $page - $range );
+                    $end   = min( $total_pages, $page + $range );
+                    ?>
+                    <nav class="sp-store-pagination" aria-label="<?php echo esc_attr__( 'Store pagination', 'societypress' ); ?>">
+                        <?php if ( $page > 1 ) : ?>
+                            <a href="<?php echo esc_url( add_query_arg( 'sp_store_page', $page - 1 ) ); ?>"
+                               class="sp-page-link sp-page-prev">&laquo; <?php esc_html_e( 'Previous', 'societypress' ); ?></a>
+                        <?php endif; ?>
+
+                        <?php if ( $start > 1 ) : ?>
+                            <a href="<?php echo esc_url( add_query_arg( 'sp_store_page', 1 ) ); ?>" class="sp-page-link">1</a>
+                            <?php if ( $start > 2 ) : ?>
+                                <span class="sp-page-ellipsis">&hellip;</span>
+                            <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php for ( $p = $start; $p <= $end; $p++ ) : ?>
+                            <?php if ( $p === $page ) : ?>
+                                <span class="sp-page-link sp-page-current" aria-current="page"><?php echo (int) $p; ?></span>
+                            <?php else : ?>
+                                <a href="<?php echo esc_url( add_query_arg( 'sp_store_page', $p ) ); ?>"
+                                   class="sp-page-link"><?php echo (int) $p; ?></a>
+                            <?php endif; ?>
+                        <?php endfor; ?>
+
+                        <?php if ( $end < $total_pages ) : ?>
+                            <?php if ( $end < $total_pages - 1 ) : ?>
+                                <span class="sp-page-ellipsis">&hellip;</span>
+                            <?php endif; ?>
+                            <a href="<?php echo esc_url( add_query_arg( 'sp_store_page', $total_pages ) ); ?>"
+                               class="sp-page-link"><?php echo (int) $total_pages; ?></a>
+                        <?php endif; ?>
+
+                        <?php if ( $page < $total_pages ) : ?>
+                            <a href="<?php echo esc_url( add_query_arg( 'sp_store_page', $page + 1 ) ); ?>"
+                               class="sp-page-link sp-page-next"><?php esc_html_e( 'Next', 'societypress' ); ?> &raquo;</a>
+                        <?php endif; ?>
+                    </nav>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>

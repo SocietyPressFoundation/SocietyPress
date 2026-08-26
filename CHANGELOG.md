@@ -19,6 +19,26 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.62] — 2026-08-26
+
+### Changed
+
+**The admin sidebar is one surface again**
+
+WordPress painted the opened SocietyPress menu onto a flat near-black panel,
+still sized to the narrower sidebar it assumed before ours was widened — a box
+sitting on the menu, with the colour scheme's highlight showing down its right
+edge. The panel is gone. The menu is one continuous surface, and the only thing
+that changes colour is whatever the mouse is on. Nothing stays lit behind it;
+the heading at the top of the page is what tells you where you are.
+
+**Page templates follow the content width you set**
+
+The store, cart, catalogue, records and documents pages were fixed at 960px
+wide no matter what Design settings said. A society that widened or narrowed
+its site found them ignoring it and hanging past the header on both sides. They
+now size themselves from the same setting as everything else.
+
 ## [1.1.61] — 2026-08-25
 
 ### Fixed

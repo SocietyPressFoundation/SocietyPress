@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.61
+ * Version:     1.1.62
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.61' );
+define( 'SOCIETYPRESS_VERSION', '1.1.62' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -12143,14 +12143,116 @@ add_action( 'admin_head', function () {
 }
 
 /* ==========================================================================
-   CURRENT-PAGE GROUP — highlight the group you're currently in
+   THE WHOLE SIDEBAR, NOT JUST OUR PART OF IT
+   WHY: the colour scheme fills the current item — and the collapse button —
+        with its highlight colour. Quieting only the SocietyPress menu left
+        those sitting there in blue underneath it, which looked like a mistake
+        rather than a choice. One rule for the whole sidebar: nothing carries a
+        fill of its own, and the mouse is the only thing that lights anything.
+   ========================================================================== */
+#adminmenu li.menu-top,
+#adminmenu li.menu-top > a,
+#adminmenu li.wp-has-current-submenu > a.wp-has-current-submenu,
+#adminmenu li.current > a.menu-top,
+#adminmenu a.wp-has-current-submenu:focus,
+#collapse-menu,
+#collapse-button {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+#adminmenu li.menu-top > a:hover,
+#adminmenu li.menu-top > a:focus,
+#collapse-menu:hover,
+#collapse-menu:focus {
+    background-color: rgba(255,255,255,0.08) !important;
+    color: #fff !important;
+}
+/* The pointer triangle the scheme hangs off whichever item is current. */
+#adminmenu li.menu-top > a::after,
+#adminmenu .wp-menu-arrow,
+#adminmenu .wp-menu-arrow div {
+    display: none !important;
+}
+
+/* ==========================================================================
+   NO PANEL BEHIND THE MENU
+   WHY: WordPress paints the opened submenu its own flat near-black and leaves
+        it at the 160px it assumed before we widened the sidebar to 220px. The
+        result is a black box sitting on top of the menu — narrower than the
+        menu around it, with the sidebar colour showing down its right-hand
+        edge and the box stopping short above the items below it. It reads as
+        a panel dropped onto the sidebar rather than as the sidebar's own list.
+        The menu should be one continuous surface, and the only thing that
+        changes colour is whatever the mouse is on.
+   ========================================================================== */
+#adminmenu #toplevel_page_societypress,
+#adminmenu #toplevel_page_societypress .wp-submenu {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+/* The colour scheme paints the whole current top-level item, and with the
+   panel above made see-through that colour came through the entire list.
+   The row that opens the menu gets the same treatment as everything in it:
+   nothing but the sidebar behind it until the mouse arrives. */
+#adminmenu #toplevel_page_societypress > a.toplevel_page_societypress,
+#adminmenu #toplevel_page_societypress.wp-has-current-submenu > a,
+#adminmenu #toplevel_page_societypress.wp-menu-open > a {
+    background: transparent !important;
+    color: #eee !important;
+    box-shadow: none !important;
+}
+#adminmenu #toplevel_page_societypress > a:hover,
+#adminmenu #toplevel_page_societypress > a:focus {
+    background-color: rgba(255,255,255,0.08) !important;
+    color: #fff !important;
+}
+/* The scheme also hangs a pointer triangle off the current item. */
+#adminmenu #toplevel_page_societypress > a::after,
+#adminmenu #toplevel_page_societypress .wp-menu-arrow,
+#adminmenu #toplevel_page_societypress .wp-menu-arrow div {
+    display: none !important;
+}
+#adminmenu #toplevel_page_societypress .wp-menu-image,
+#adminmenu #toplevel_page_societypress .wp-menu-image::before {
+    color: #eee !important;
+}
+@media screen and (min-width: 961px) {
+    /* Fill the sidebar instead of stopping at WordPress's old 160px edge. */
+    body:not(.folded) #adminmenu #toplevel_page_societypress .wp-submenu {
+        width: 220px !important;
+        min-width: 0 !important;
+        box-sizing: border-box;
+    }
+}
+
+/* Every item lights up under the mouse, and goes dark again behind it —
+   the same highlight the group headers use, so the whole list behaves alike. */
+#adminmenu #toplevel_page_societypress .wp-submenu a:hover,
+#adminmenu #toplevel_page_societypress .wp-submenu a:focus {
+    background-color: rgba(255,255,255,0.08);
+    color: #fff !important;
+    box-shadow: none;
+}
+
+/* ==========================================================================
+   NOTHING STAYS LIT
+   WHY: with the panel gone, a permanently shaded row is the only thing left
+        that looks like a box, and it puts one item in a different colour from
+        its neighbours for as long as you sit on that screen. The heading at
+        the top of the page already says where you are. Hover follows the
+        mouse; nothing is left behind.
    ========================================================================== */
 .sp-group-has-current > .sp-menu-group-header {
-    color: #fff !important;
-    background-color: rgba(255,255,255,0.1);
+    background-color: transparent !important;
 }
 .sp-group-has-current > .sp-menu-group-header .sp-group-icon {
-    opacity: 1;
+    opacity: 0.8;
+}
+#adminmenu #toplevel_page_societypress .wp-submenu li.current a,
+#adminmenu #toplevel_page_societypress .wp-submenu a.current {
+    background: transparent !important;
+    color: #eee !important;
+    font-weight: 400 !important;
 }
 
 /* ==========================================================================
@@ -34881,7 +34983,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.61',
+            'version'     => '1.1.62',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34889,7 +34991,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.61',
+            'version'     => '1.1.62',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34897,7 +34999,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.61',
+            'version'     => '1.1.62',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34905,7 +35007,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.61',
+            'version'     => '1.1.62',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34913,7 +35015,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.61',
+            'version'     => '1.1.62',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -68959,7 +69061,12 @@ add_filter( 'template_include', function( $template ) {
     get_header();
     // WHY: .sp-page-template-content provides consistent layout for every
     // SocietyPress page template without coupling to entry-content theme rules.
-    echo '<style>.sp-page-template-content { max-width: 960px; margin: 40px auto; padding: 0 20px; }</style>';
+    // WHY the setting rather than a fixed 960: every other part of the site —
+    // header, footer, widgets, the calendar, the newsletter archive — sizes
+    // itself from the content width in Design settings. These templates did not,
+    // so a society that widened or narrowed its site found the store, the cart
+    // and the catalog ignoring it and hanging past the header on both sides.
+    echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 960px); margin: 40px auto; padding: 0 20px; }</style>';
     echo '<div class="entry-content sp-page-template-content">';
 
     // WHY output the page's own content first: these templates replace the

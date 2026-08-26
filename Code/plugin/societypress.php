@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.64
+ * Version:     1.1.65
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.64' );
+define( 'SOCIETYPRESS_VERSION', '1.1.65' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -17029,14 +17029,15 @@ add_action( 'wp_ajax_sp_reset_dashboard_tiles', 'sp_ajax_reset_dashboard_tiles' 
 
 
 /**
- * Render the SocietyPress Dashboard — the user's home base.
+ * The old dashboard, kept whole as the parts bin for the new one.
  *
- * WHY: This is the first thing the user sees when they log in. It provides
- *      quick links to common tasks and basic site information. We'll expand
- *      this with member stats, upcoming events, and notifications as the
- *      plugin grows.
+ * WHY it is still here: the page is being rebuilt from an empty screen, and
+ *      each piece earns its way back one at a time. The queries behind upcoming
+ *      events, expiring memberships, recent signups and the activity feed are
+ *      worth keeping; the arrangement they sat in is what is being thrown away.
+ *      Nothing calls this. It goes when the rebuild is finished.
  */
-function sp_render_dashboard_page(): void {
+function sp_render_dashboard_page_legacy(): void {
     global $wpdb;
     $prefix       = $wpdb->prefix . 'sp_';
     $settings     = sp_settings();
@@ -18089,6 +18090,45 @@ function sp_render_dashboard_page(): void {
         </div>
 
     </div>
+    <?php
+}
+
+/**
+ * Render the SocietyPress Dashboard.
+ *
+ * WHY it is nearly empty: the old one had grown into a wall — a notepad, two
+ *      dozen tiles, four lists and a panel of site information, all arriving at
+ *      once and none of it chosen. It is being rebuilt from nothing, and every
+ *      piece has to justify its place before it goes back on. An empty screen
+ *      is the honest starting point for that; a page half-cleared is just the
+ *      old page with holes in it.
+ */
+function sp_render_dashboard_page(): void {
+    $settings  = sp_settings();
+    $org_name  = $settings['organization_name'] ?? '';
+    $site_name = get_option( 'blogname', '' );
+    $who       = $org_name !== '' ? $org_name : $site_name;
+    ?>
+    <div class="wrap sp-dashboard">
+        <h1 class="sp-dash-title">
+            <?php esc_html_e( 'Dashboard', 'societypress' ); ?>
+            <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="page-title-action"><?php esc_html_e( 'View Site', 'societypress' ); ?></a>
+        </h1>
+        <p class="sp-dash-who">
+            <?php
+            printf(
+                /* translators: 1: society name, 2: SocietyPress version */
+                esc_html__( '%1$s — SocietyPress %2$s', 'societypress' ),
+                esc_html( $who ),
+                esc_html( SOCIETYPRESS_VERSION )
+            );
+            ?>
+        </p>
+    </div>
+
+    <style>
+        .sp-dash-who { color: #646970; margin: 4px 0 24px; }
+    </style>
     <?php
 }
 
@@ -35568,7 +35608,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.64',
+            'version'     => '1.1.65',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35576,7 +35616,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.64',
+            'version'     => '1.1.65',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35584,7 +35624,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.64',
+            'version'     => '1.1.65',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35592,7 +35632,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.64',
+            'version'     => '1.1.65',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35600,7 +35640,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.64',
+            'version'     => '1.1.65',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

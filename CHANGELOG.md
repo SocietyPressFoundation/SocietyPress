@@ -19,6 +19,21 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.65] — 2026-08-26
+
+### Changed
+
+**The dashboard is being rebuilt, and starts empty**
+
+The dashboard had grown into a wall — a notepad, two dozen tiles, four lists and
+a panel of site information, all arriving at once and none of it chosen by the
+person reading it. It has been cleared back to an empty screen, and each piece
+now has to earn its way back on one at a time.
+
+Nothing has been deleted. Members, events, the library, the activity log and
+everything else are untouched and still reached from the menu; what has gone is
+the arrangement that put all of them on one page at once.
+
 ## [1.1.64] — 2026-08-26
 
 ### Added

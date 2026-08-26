@@ -19,6 +19,26 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.59] — 2026-08-25
+
+### Changed
+
+**The store's category list now follows you down the page**
+
+Reading down a long store meant scrolling all the way back to the top to switch
+to another category. The category list now stays alongside the items as you
+scroll, so any category is one click away wherever you are on the page. On a
+phone the categories still sit above the items as they always have.
+
+### Added
+
+**Choose how many store items to see at once**
+
+A store with hundreds of publications handed a visitor one enormous page. The
+store now shows twenty items to start with and offers Show 20, 50, 100, 500 or
+Unlimited above the grid, with page links underneath. A store small enough to
+fit on one screen never shows either control.
+
 ## [1.1.58] — 2026-08-22
 
 ### Fixed

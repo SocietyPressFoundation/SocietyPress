@@ -19,6 +19,41 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.63] — 2026-08-26
+
+### Changed
+
+**The dashboard starts with a handful of tiles, not all of them**
+
+Every tile SocietyPress knows how to draw was on the dashboard from the first
+login — two dozen of them, half reading zero. It now opens with the ones where
+somebody is waiting on you (renewals due, orders to fill, requests unanswered)
+plus the few numbers a board asks for at every meeting. Everything else is one
+click away under Customize tiles.
+
+It also follows the job. Somebody responsible for one or two areas of the
+society's work gets those areas in full, so a treasurer's first login opens on
+money without her setting anything up.
+
+**Tiles are gathered under headings**
+
+Related tiles now sit together under a heading, and the heading carries the
+subject so the tile underneath doesn't have to — Records, then Collections and
+Indexed, rather than two tiles both starting with the same word. A group with
+only one tile in it shows no heading and keeps the tile's full name.
+
+**Members don't expire**
+
+"Expiring Soon" and "Expired" are now "Renewals Due" and "Lapsed". A
+membership lapses; a person doesn't expire.
+
+### Removed
+
+**The "Nothing hidden." note**
+
+A row that drew itself only to announce it had nothing in it. It now appears
+when there is a tile to add back, and not before.
+
 ## [1.1.62] — 2026-08-26
 
 ### Changed

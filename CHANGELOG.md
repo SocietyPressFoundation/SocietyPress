@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.67] — 2026-08-26
+
+### Changed
+
+**The dashboard opens on the numbers again**
+
+A page that starts with nothing on it asks a volunteer to make a decision before
+she has seen anything to decide about. The numbers are back on by default —
+nothing there asks her to do anything, and taking them off is one tick under
+Screen Options.
+
 ## [1.1.66] — 2026-08-26
 
 ### Added

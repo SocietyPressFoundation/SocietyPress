@@ -19,6 +19,23 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.75] — 2026-08-26
+
+### Changed
+
+**The dashboard boxes are WordPress's own boxes now**
+
+Every card is a WordPress meta box, the same kind the WordPress dashboard has
+used since 2007. That means drag a box by its title bar to move it — between
+columns as well as within one — click the title bar to close it up, and use
+Screen Options to take boxes off the page, put them back, and choose whether
+they sit in one, two, three or four columns. Where you leave everything is
+remembered for you and nobody else.
+
+The hand-written version of all of this has been removed. Core's has keyboard
+support, screen-reader announcements and translations we were never going to
+match.
+
 ## [1.1.74] — 2026-08-26
 
 ### Fixed

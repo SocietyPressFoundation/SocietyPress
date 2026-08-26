@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.74
+ * Version:     1.1.75
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.74' );
+define( 'SOCIETYPRESS_VERSION', '1.1.75' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16646,282 +16646,104 @@ function sp_render_dashboard_actions(): void {
 }
 
 /**
- * One person's own card arrangement.
+ * Render one card's numbers — the body of a dashboard postbox.
  *
- * Stored per user rather than per society, for the same reason the choice of
- * cards is: the treasurer and the librarian are looking for different things,
- * and making one of them win puts us back where the rebuild started.
+ * WHY every card shares one callback: a card is the same object each time — a
+ * handful of numbers, each linking to the list it was counted from. What
+ * differs is which numbers, and that comes from the registry.
  *
- * @return array{order:string[],collapsed:string[]}
+ * @param mixed $object Unused; WordPress passes the screen object here.
+ * @param array $box    The meta box, carrying the card id in its args.
  */
-function sp_dashboard_card_prefs(): array {
-    $saved = get_user_meta( get_current_user_id(), 'sp_dashboard_cards', true );
+function sp_render_dashboard_card( $object, array $box ): void {
+    $key   = $box['args']['card'] ?? '';
+    $cards = sp_available_dashboard_cards();
 
-    return [
-        'order'     => is_array( $saved['order'] ?? null ) ? array_values( array_map( 'strval', $saved['order'] ) ) : [],
-        'collapsed' => is_array( $saved['collapsed'] ?? null ) ? array_values( array_map( 'strval', $saved['collapsed'] ) ) : [],
-    ];
-}
-
-/**
- * Save one person's card arrangement.
- */
-function sp_ajax_save_dashboard_cards(): void {
-    check_ajax_referer( 'sp_dashboard_cards', 'nonce' );
-
-    if ( ! sp_user_can_access_admin() ) {
-        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
-    }
-
-    $known = array_keys( sp_dashboard_cards() );
-    $clean = static function ( string $field ) use ( $known ): array {
-        $in = isset( $_POST[ $field ] ) && is_array( $_POST[ $field ] ) ? wp_unslash( $_POST[ $field ] ) : [];
-        return array_values( array_intersect( array_map( 'sanitize_key', $in ), $known ) );
-    };
-
-    update_user_meta( get_current_user_id(), 'sp_dashboard_cards', [
-        'order'     => $clean( 'order' ),
-        'collapsed' => $clean( 'collapsed' ),
-    ] );
-
-    wp_send_json_success();
-}
-add_action( 'wp_ajax_sp_save_dashboard_cards', 'sp_ajax_save_dashboard_cards' );
-
-/**
- * Render one row of dashboard cards.
- *
- * WHY one function for all of them rather than one per card: every card is the
- * same object — a heading, a way through to the screen behind it, and a handful
- * of numbers that link to the list they came from. What differs is the numbers,
- * and those come from the registry. A card per function would be eight places
- * to fix the same layout.
- *
- * @param string[] $keys Card ids, in the order they should appear.
- */
-function sp_render_dashboard_cards( array $keys ): void {
-    $available = sp_available_dashboard_cards();
-
-    $cards = [];
-    foreach ( $keys as $key ) {
-        if ( isset( $available[ $key ] ) ) {
-            $cards[ $key ] = $available[ $key ];
-        }
-    }
-    if ( ! $cards ) {
+    if ( ! isset( $cards[ $key ] ) ) {
         return;
     }
 
-    // The reader's own order first, then anything they have never seen — a card
-    // added by a later release lands at the end rather than shouldering its way
-    // into the middle of an arrangement somebody has already settled.
-    $prefs   = sp_dashboard_card_prefs();
-    $ordered = [];
-    foreach ( $prefs['order'] as $key ) {
-        if ( isset( $cards[ $key ] ) ) {
-            $ordered[ $key ] = $cards[ $key ];
-            unset( $cards[ $key ] );
-        }
-    }
-    $cards = $ordered + $cards;
-
-    // One pass for every number on the page, so the five-minute cache is asked
-    // once rather than once per card.
-    $tiles = [];
-    foreach ( $cards as $card ) {
-        $tiles += $card['tiles'];
-    }
-    $values = sp_dashboard_tile_values( $tiles );
+    $card   = $cards[ $key ];
+    $values = sp_dashboard_tile_values( $card['tiles'] );
+    $rows   = ( ( $card['layout'] ?? 'numbers' ) === 'rows' );
     ?>
-    <div class="sp-dash-cards">
-        <?php foreach ( $cards as $key => $card ) :
-            $rows = ( ( $card['layout'] ?? 'numbers' ) === 'rows' );
+    <div class="<?php echo $rows ? 'sp-dash-rows' : 'sp-dash-figures'; ?>">
+    <?php foreach ( $card['tiles'] as $id => $tile ) :
+        $value = $values[ $id ] ?? 0;
+        $shown = ( ( $tile['format'] ?? 'number' ) === 'currency' )
+            ? sp_format_currency( (float) $value )
+            : number_format_i18n( (int) $value );
 
-            // A card only calls for somebody's attention when something inside
-            // it is actually waiting. Zero requests outstanding is good news,
-            // and good news should not be painted red.
-            $urgent = ! empty( $card['urgent'] );
-            if ( $urgent ) {
-                $urgent = (bool) array_filter(
-                    array_keys( $card['tiles'] ),
-                    static fn( $id ) => (float) ( $values[ $id ] ?? 0 ) > 0
-                );
-            }
-
-            $shut     = in_array( $key, $prefs['collapsed'], true );
-            $body_id  = 'sp-dash-card-body-' . sanitize_html_class( $key );
-
-            $classes  = 'sp-dash-card';
-            $classes .= $urgent ? ' sp-dash-card-urgent' : '';
-            $classes .= $shut ? ' sp-dash-card-shut' : '';
-        ?>
-        <section class="<?php echo esc_attr( $classes ); ?>" data-card="<?php echo esc_attr( $key ); ?>">
-            <div class="sp-dash-card-head" draggable="true">
-                <button type="button" class="sp-dash-card-toggle" aria-expanded="<?php echo $shut ? 'false' : 'true'; ?>" aria-controls="<?php echo esc_attr( $body_id ); ?>">
-                    <span class="dashicons <?php echo esc_attr( $card['icon'] ?? 'dashicons-marker' ); ?>" aria-hidden="true"></span>
-                    <span class="sp-dash-card-title"><?php echo esc_html( $card['label'] ); ?></span>
-                    <span class="dashicons dashicons-arrow-up-alt2 sp-dash-card-chev" aria-hidden="true"></span>
-                </button>
-                <span class="sp-dash-card-tools">
-                    <?php if ( ! empty( $card['link'] ) ) : ?>
-                        <a class="sp-dash-card-more" href="<?php echo esc_url( admin_url( 'admin.php?page=' . $card['link']['page'] ) ); ?>">
-                            <?php echo esc_html( $card['link']['label'] ); ?> <span aria-hidden="true">&rarr;</span>
-                        </a>
-                    <?php endif; ?>
-                    <?php
-                    // WHY arrows as well as dragging: dragging needs a steady
-                    // hand on a trackpad, cannot be done from the keyboard, and
-                    // does not fire at all on a tablet. The arrows work
-                    // everywhere and cost one small button each.
-                    ?>
-                    <button type="button" class="sp-dash-card-move" data-dir="-1"
-                            aria-label="<?php echo esc_attr( sprintf( /* translators: %s: card name */ __( 'Move %s earlier', 'societypress' ), $card['label'] ) ); ?>">&uarr;</button>
-                    <button type="button" class="sp-dash-card-move" data-dir="1"
-                            aria-label="<?php echo esc_attr( sprintf( /* translators: %s: card name */ __( 'Move %s later', 'societypress' ), $card['label'] ) ); ?>">&darr;</button>
-                </span>
-            </div>
-
-            <div class="sp-dash-card-body <?php echo $rows ? 'sp-dash-rows' : 'sp-dash-figures'; ?>" id="<?php echo esc_attr( $body_id ); ?>">
-            <?php foreach ( $card['tiles'] as $id => $tile ) :
-                $value = $values[ $id ] ?? 0;
-                $shown = ( ( $tile['format'] ?? 'number' ) === 'currency' )
-                    ? sp_format_currency( (float) $value )
-                    : number_format_i18n( (int) $value );
-
-                // A row has the width for the full name. A figure sits under a
-                // heading that already says the subject, so it drops it —
-                // "Records", then "Collections" and "Indexed".
-                $caption = ( ! $rows && ! empty( $tile['short'] ) ) ? $tile['short'] : $tile['label'];
-                $accent  = ! empty( $tile['accent'] ) ? ' sp-dash-v-' . sanitize_html_class( $tile['accent'] ) : '';
-            ?>
-                <a class="<?php echo $rows ? 'sp-dash-row' : 'sp-dash-figure'; ?>" href="<?php echo esc_url( call_user_func( $tile['url'] ) ); ?>">
-                    <span class="<?php echo $rows ? 'sp-dash-row-label' : 'sp-dash-figure-label'; ?>"><?php echo esc_html( $caption ); ?></span>
-                    <span class="<?php echo $rows ? 'sp-dash-row-value' : 'sp-dash-figure-value'; ?><?php echo esc_attr( $accent ); ?>"><?php echo esc_html( $shown ); ?></span>
-                </a>
-            <?php endforeach; ?>
-            </div>
-        </section>
-        <?php endforeach; ?>
+        // A row has the width for the full name. A figure sits under a heading
+        // that already says the subject, so it drops it — "Records", then
+        // "Collections" and "Indexed".
+        $caption = ( ! $rows && ! empty( $tile['short'] ) ) ? $tile['short'] : $tile['label'];
+        $accent  = ! empty( $tile['accent'] ) ? ' sp-dash-v-' . sanitize_html_class( $tile['accent'] ) : '';
+    ?>
+        <a class="<?php echo $rows ? 'sp-dash-row' : 'sp-dash-figure'; ?>" href="<?php echo esc_url( call_user_func( $tile['url'] ) ); ?>">
+            <span class="<?php echo $rows ? 'sp-dash-row-label' : 'sp-dash-figure-label'; ?>"><?php echo esc_html( $caption ); ?></span>
+            <span class="<?php echo $rows ? 'sp-dash-row-value' : 'sp-dash-figure-value'; ?><?php echo esc_attr( $accent ); ?>"><?php echo esc_html( $shown ); ?></span>
+        </a>
+    <?php endforeach; ?>
     </div>
+    <?php
+}
 
+/**
+ * Does this card have anything in it that is actually waiting on somebody?
+ *
+ * Only cards that declare themselves urgent are asked. Zero requests
+ * outstanding is good news, and good news should not be painted red.
+ */
+function sp_dashboard_card_is_urgent( string $key ): bool {
+    $cards = sp_available_dashboard_cards();
+    if ( empty( $cards[ $key ]['urgent'] ) ) {
+        return false;
+    }
+
+    $values = sp_dashboard_tile_values( $cards[ $key ]['tiles'] );
+    foreach ( array_keys( $cards[ $key ]['tiles'] ) as $id ) {
+        if ( (float) ( $values[ $id ] ?? 0 ) > 0 ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * How the numbers inside a card are laid out.
+ *
+ * WHY so little of it: the card itself — its border, its heading, the button
+ * that closes it, the outline that shows where a dragged card will land — is
+ * WordPress's own postbox, styled by WordPress. All that is left for us is
+ * what goes inside one.
+ */
+function sp_dashboard_card_css(): void {
+    ?>
     <style>
-        /* WHY columns rather than a grid of rows: in a grid every card in a row
-           is as tall as the tallest one in it, so a short card leaves a hole
-           underneath that nothing can fill. Columns let each card start where
-           the one above it ended, and the holes close by themselves. */
-        .sp-dash-cards {
-            column-count: 3;
-            column-gap: 16px;
-            margin: 20px 0 30px;
-        }
-        .sp-dash-card {
-            /* A card split across a column break would be unreadable, so it is
-               kept whole. */
-            break-inside: avoid;
-            -webkit-column-break-inside: avoid;
-            page-break-inside: avoid;
-            display: block;
-            /* WHY this is spelled out rather than inherited: the padding and
-               the border have to come out of the column's width, not be added
-               to it. Without it every card is forty pixels wider than the
-               column holding it and the whole set walks off the right edge. */
-            box-sizing: border-box;
-            width: auto;
-            margin: 0 0 16px;
+        .sp-dash-who { color: #646970; margin: 4px 0 20px; }
+        .sp-dash-empty {
             background: #fff;
-            border: 1px solid #dcdcde;
-            border-radius: 10px;
-            padding: 18px 20px 20px;
-        }
-        .sp-dash-card-urgent { border-left: 4px solid #d63638; }
-        .sp-dash-card-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-            border-bottom: 1px solid #f0f0f1;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-            cursor: grab;
-        }
-        .sp-dash-card-head:active { cursor: grabbing; }
-        .sp-dash-card-toggle {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1 1 auto;
-            min-width: 0;
-            margin: 0;
-            padding: 0;
-            background: none;
-            border: 0;
-            cursor: pointer;
-            text-align: left;
-            color: #1d2327;
-        }
-        .sp-dash-card-title {
-            font-size: 17px;
-            font-weight: 600;
-            line-height: 1.3;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .sp-dash-card-toggle .dashicons { color: #2271b1; flex: none; }
-        .sp-dash-card-urgent .sp-dash-card-toggle .dashicons { color: #d63638; }
-        .sp-dash-card-chev {
-            color: #8c8f94 !important;
-            font-size: 16px;
-            width: 16px;
-            height: 16px;
-            transition: transform 0.15s ease;
-        }
-        .sp-dash-card-shut .sp-dash-card-chev { transform: rotate(180deg); }
-        /* Closed means closed: the rule under the heading is the bottom of the
-           card, not a line with nothing beneath it. */
-        .sp-dash-card-shut .sp-dash-card-head {
-            border-bottom: 0;
-            padding-bottom: 0;
-            margin-bottom: 0;
-        }
-        .sp-dash-card-shut .sp-dash-card-body { display: none; }
-        .sp-dash-card-tools {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex: none;
-        }
-        .sp-dash-card-more {
-            font-size: 13px;
-            text-decoration: none;
-            white-space: nowrap;
-        }
-        .sp-dash-card-move {
-            width: 22px;
-            height: 22px;
-            padding: 0;
-            line-height: 1;
-            font-size: 12px;
-            color: #646970;
-            background: #fff;
-            border: 1px solid #dcdcde;
+            border: 1px solid #c3c4c7;
             border-radius: 4px;
-            cursor: pointer;
+            padding: 22px 24px;
+            max-width: 640px;
+            color: #50575e;
+            font-size: 15px;
+            line-height: 1.6;
         }
-        .sp-dash-card-move:hover { background: #f0f0f1; color: #1d2327; }
-        .sp-dash-card-toggle:focus, .sp-dash-card-move:focus {
-            outline: 2px solid #2271b1;
-            outline-offset: 1px;
-        }
-        /* Where the card being dragged would land. */
-        .sp-dash-card-dragging { opacity: 0.45; }
-        .sp-dash-card-drop-before { box-shadow: 0 -4px 0 -1px #2271b1; }
-        .sp-dash-card-drop-after  { box-shadow: 0 4px 0 -1px #2271b1; }
+
+        /* A card with something waiting in it says so. */
+        .sp-dash-card-urgent { border-left: 4px solid #d63638; }
+        .postbox .hndle .dashicons { color: #2271b1; margin-right: 6px; }
+        .sp-dash-card-urgent .hndle .dashicons { color: #d63638; }
+
         .sp-dash-figures {
             display: flex;
             flex-wrap: wrap;
             gap: 18px 30px;
+            padding: 12px;
         }
         .sp-dash-figure { text-decoration: none; color: inherit; }
         .sp-dash-figure-label {
@@ -16935,11 +16757,12 @@ function sp_render_dashboard_cards( array $keys ): void {
         }
         .sp-dash-figure-value {
             display: block;
-            font-size: 30px;
+            font-size: 28px;
             font-weight: 700;
             line-height: 1.1;
             color: #1d2327;
         }
+        .sp-dash-rows { padding: 4px 12px 8px; }
         .sp-dash-row {
             display: flex;
             align-items: baseline;
@@ -16970,144 +16793,12 @@ function sp_render_dashboard_cards( array $keys ): void {
         .sp-dash-v-expiring { color: #d63638; }
         .sp-dash-v-expired  { color: #646970; }
 
-        @media screen and (max-width: 1200px) {
-            .sp-dash-cards { column-count: 2; }
-        }
         @media screen and (max-width: 782px) {
-            .sp-dash-cards { column-count: 1; }
             .sp-dash-figure-value { font-size: 26px; }
         }
     </style>
-
-    <script>
-    /**
-     * Dashboard cards — closing them and moving them about.
-     *
-     * Everything here saves the moment it happens. There is no Save button and
-     * no editing mode to enter first: a volunteer who drags a card somewhere
-     * and closes the tab has moved it, and expects to find it there tomorrow.
-     */
-    (function() {
-        'use strict';
-
-        var wrap = document.querySelector('.sp-dash-cards');
-        if (!wrap) return;
-
-        var nonce = '<?php echo esc_js( wp_create_nonce( 'sp_dashboard_cards' ) ); ?>';
-
-        // The arrangement is read back off the page rather than tracked
-        // alongside it, so the two can never disagree about what is where.
-        function save() {
-            var body = new FormData();
-            body.append('action', 'sp_save_dashboard_cards');
-            body.append('nonce', nonce);
-            wrap.querySelectorAll('.sp-dash-card').forEach(function(card) {
-                body.append('order[]', card.getAttribute('data-card'));
-                if (card.classList.contains('sp-dash-card-shut')) {
-                    body.append('collapsed[]', card.getAttribute('data-card'));
-                }
-            });
-            fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' });
-        }
-
-        wrap.addEventListener('click', function(e) {
-            var toggle = e.target.closest('.sp-dash-card-toggle');
-            if (toggle) {
-                var card = toggle.closest('.sp-dash-card');
-                var shut = card.classList.toggle('sp-dash-card-shut');
-                toggle.setAttribute('aria-expanded', shut ? 'false' : 'true');
-                save();
-                return;
-            }
-
-            var move = e.target.closest('.sp-dash-card-move');
-            if (move) {
-                var moving = move.closest('.sp-dash-card');
-                var dir    = parseInt(move.getAttribute('data-dir'), 10);
-                var sib    = dir < 0 ? moving.previousElementSibling : moving.nextElementSibling;
-                if (!sib) return;
-                if (dir < 0) { wrap.insertBefore(moving, sib); }
-                else         { wrap.insertBefore(sib, moving); }
-                // Keep the focus on the arrow that moved, so pressing it again
-                // carries on moving the same card.
-                var again = moving.querySelector('.sp-dash-card-move[data-dir="' + dir + '"]');
-                if (again) again.focus();
-                save();
-            }
-        });
-
-        // ---- dragging ----------------------------------------------------
-        var dragged = null;
-
-        function clearMarkers() {
-            wrap.querySelectorAll('.sp-dash-card-drop-before, .sp-dash-card-drop-after').forEach(function(c) {
-                c.classList.remove('sp-dash-card-drop-before', 'sp-dash-card-drop-after');
-            });
-        }
-
-        // Nearest card to the pointer, and whether the pointer is above or
-        // below its middle. Measured to the centre in both directions because
-        // the cards sit in columns — "above" alone would pick from the wrong one.
-        function targetFor(x, y) {
-            var best = null, bestDist = Infinity;
-            wrap.querySelectorAll('.sp-dash-card').forEach(function(c) {
-                if (c === dragged) return;
-                var b  = c.getBoundingClientRect();
-                var dx = x - (b.left + b.width / 2);
-                var dy = y - (b.top + b.height / 2);
-                var d  = dx * dx + dy * dy;
-                if (d < bestDist) { bestDist = d; best = c; }
-            });
-            if (!best) return null;
-            var bb = best.getBoundingClientRect();
-            return { card: best, before: y < bb.top + bb.height / 2 };
-        }
-
-        wrap.addEventListener('dragstart', function(e) {
-            var head = e.target.closest('.sp-dash-card-head');
-            if (!head) return;
-            dragged = head.closest('.sp-dash-card');
-            dragged.classList.add('sp-dash-card-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            // Firefox refuses to start a drag unless something is set here.
-            try { e.dataTransfer.setData('text/plain', dragged.getAttribute('data-card') || ''); } catch (err) {}
-        });
-
-        wrap.addEventListener('dragover', function(e) {
-            if (!dragged) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            var t = targetFor(e.clientX, e.clientY);
-            clearMarkers();
-            if (t) t.card.classList.add(t.before ? 'sp-dash-card-drop-before' : 'sp-dash-card-drop-after');
-        });
-
-        wrap.addEventListener('drop', function(e) {
-            if (!dragged) return;
-            e.preventDefault();
-            var t = targetFor(e.clientX, e.clientY);
-            if (t) {
-                if (t.before) { wrap.insertBefore(dragged, t.card); }
-                else          { wrap.insertBefore(dragged, t.card.nextElementSibling); }
-            }
-            clearMarkers();
-        });
-
-        // Fires whether the card landed or the drag was abandoned, so the
-        // tidying up and the saving belong here rather than in drop alone.
-        wrap.addEventListener('dragend', function() {
-            if (!dragged) return;
-            dragged.classList.remove('sp-dash-card-dragging');
-            dragged = null;
-            clearMarkers();
-            save();
-        });
-    })();
-    </script>
     <?php
 }
-
-
 /**
  * The old dashboard, kept whole as the parts bin for the new one.
  *
@@ -17842,9 +17533,9 @@ function sp_render_dashboard_page_legacy(): void {
         // than to read a number.
         sp_render_dashboard_actions();
 
-        // Stat tiles. What appears here depends on which modules the society
-        // runs and what this person is allowed to see — see the registry above.
-        sp_render_dashboard_cards( array_keys( sp_available_dashboard_cards() ) );
+        // The stat tiles that used to sit here are now WordPress meta boxes,
+        // drawn by sp_render_dashboard_card() one card at a time. Nothing calls
+        // this function; the queries below it are what it is still kept for.
         ?>
 
         <!-- Quick Links -->
@@ -18174,112 +17865,24 @@ function sp_render_dashboard_page_legacy(): void {
 }
 
 // ---------------------------------------------------------------------------
-// WHAT THE DASHBOARD CAN SHOW
+// WHAT THE DASHBOARD SHOWS
 //
-// WHY a registry rather than a page that draws itself: the dashboard is being
-// rebuilt one piece at a time, and every piece has to be something a person can
-// switch off. Declaring them in one place means Screen Options is generated
-// from the same list the page renders from, so a piece can never exist on the
-// page without a way to be rid of it.
+// WHY the cards are WordPress meta boxes rather than something of our own:
+// WordPress has had this exact screen since 2007. Its own dashboard is a set of
+// boxes that drag between columns, close when you click their heading, hide
+// from Screen Options, and remember all three per person — and every one of
+// those behaviours is already written, already accessible, already translated,
+// and already familiar to anybody who has used WordPress. Registering our cards
+// as meta boxes hands the whole lot over to core. What is left for us is the
+// numbers inside a card.
 //
-// WHY per person: the treasurer and the librarian do not want the same screen,
-// and the society should not have to choose on their behalf.
+// Core stores the state in three pieces of user meta, keyed by our screen:
+// closedpostboxes_toplevel_page_societypress, metaboxhidden_… and
+// meta-box-order_…, saved over its own AJAX endpoints.
 // ---------------------------------------------------------------------------
 
 /**
- * Every piece the dashboard knows how to put on the page.
- *
- * Each entry carries:
- *   label      What it is called in Screen Options.
- *   describe   One line saying what it puts on the page.
- *   capability What the reader must be able to do to be offered it; '' for all.
- *   default    Whether somebody who has never chosen sees it.
- *   render     The function that draws it, for a piece that stands alone.
- *   card       The card id, for a piece that belongs in the row of cards.
- *
- * @return array<string,array<string,mixed>>
- */
-function sp_dashboard_sections(): array {
-    $sections = [
-        'todo' => [
-            'label'      => __( 'What needs doing', 'societypress' ),
-            'describe'   => __( 'Anything waiting on you, written as a sentence, with the button that deals with it.', 'societypress' ),
-            'capability' => '',
-            'default'    => false,
-            'render'     => 'sp_render_dashboard_actions',
-        ],
-    ];
-
-    // WHY the cards are folded into the same registry rather than given a
-    // control of their own: Screen Options is generated from this list, so a
-    // card cannot end up on the page without a tick box beside it, and there is
-    // only ever one place a person goes to change what they see.
-    //
-    // WHY they start ticked: a card is already gated by what its reader is
-    // allowed to see and by which modules the society runs, so what arrives is
-    // her own work rather than everything the software can count. Somebody who
-    // wants less unticks; nobody has to build a dashboard before using one.
-    foreach ( sp_available_dashboard_cards() as $key => $card ) {
-        $sections[ 'card_' . $key ] = [
-            'label'      => $card['label'],
-            'describe'   => $card['describe'],
-            'capability' => '',
-            'default'    => true,
-            'card'       => $key,
-        ];
-    }
-
-    /**
-     * Filter the pieces the dashboard can show.
-     *
-     * @param array $sections Section definitions keyed by id.
-     */
-    return apply_filters( 'sp_dashboard_sections', $sections );
-}
-
-/**
- * The pieces this person has switched on.
- *
- * @return array<string,array<string,mixed>>
- */
-function sp_dashboard_visible_sections(): array {
-    $saved = get_user_meta( get_current_user_id(), 'sp_dashboard_sections', true );
-
-    // An array — even an empty one — means somebody has been to Screen Options
-    // and made a choice, and an empty choice is a legitimate one. Anything else
-    // means they have never been, and the defaults apply.
-    $chosen = is_array( $saved ) ? $saved : null;
-
-    // Before the rebuild all the numbers sat under one tick called "Numbers".
-    // Anybody who had ticked it would otherwise open an empty dashboard on the
-    // release that split it into cards, so the old tick still means what it
-    // meant: show me the numbers.
-    if ( $chosen !== null && in_array( 'tiles', $chosen, true ) ) {
-        foreach ( array_keys( sp_available_dashboard_cards() ) as $key ) {
-            $chosen[] = 'card_' . $key;
-        }
-    }
-
-    $on = [];
-    foreach ( sp_dashboard_sections() as $id => $section ) {
-        if ( ! empty( $section['capability'] ) && ! current_user_can( $section['capability'] ) ) {
-            continue;
-        }
-        $wanted = ( $chosen === null ) ? ! empty( $section['default'] ) : in_array( $id, $chosen, true );
-        if ( $wanted ) {
-            $on[ $id ] = $section;
-        }
-    }
-
-    return $on;
-}
-
-/**
- * Screen Options and Help on the dashboard.
- *
- * WHY WordPress's own two tabs rather than controls of our own: they are in the
- * corner of every other screen a volunteer has ever used, they behave the same
- * way here, and anything we invented would be one more thing to learn.
+ * Register the dashboard's boxes, and ask core for everything that drives them.
  */
 add_action( 'load-toplevel_page_societypress', function () {
     $screen = get_current_screen();
@@ -18287,133 +17890,144 @@ add_action( 'load-toplevel_page_societypress', function () {
         return;
     }
 
-    // ---- Saving the Screen Options form ----
-    // WHY WordPress's nonce: our checkboxes are rendered inside the panel's own
-    // form, so they arrive with the form's own nonce and no second one is
-    // needed. An empty tick list is a real answer — it means an empty page.
-    if ( isset( $_POST['screenoptionnonce'] )
-        && wp_verify_nonce( sanitize_key( wp_unslash( $_POST['screenoptionnonce'] ) ), 'screen-options-nonce' )
-        && isset( $_POST['sp_dashboard_sections_form'] ) ) {
+    // The Layout chooser under Screen Options. Two columns to begin with, the
+    // same as WordPress's own dashboard.
+    add_screen_option( 'layout_columns', [ 'max' => 4, 'default' => 2 ] );
 
-        $picked = [];
-        if ( isset( $_POST['sp_dashboard_section'] ) && is_array( $_POST['sp_dashboard_section'] ) ) {
-            $picked = array_map( 'sanitize_key', array_keys( $_POST['sp_dashboard_section'] ) );
+    // WHY this comes first: a person arriving at the dashboard is far more
+    // often here to deal with something than to read a number.
+    add_meta_box(
+        'sp_dash_todo',
+        __( 'What needs doing', 'societypress' ),
+        'sp_render_dashboard_actions',
+        $screen,
+        'normal',
+        'high'
+    );
+
+    // Cards alternate between the two starting columns so neither opens empty.
+    // Anybody who drags one somewhere else keeps it there.
+    $column = 0;
+    foreach ( sp_available_dashboard_cards() as $key => $card ) {
+        $title = '<span class="dashicons ' . esc_attr( $card['icon'] ?? 'dashicons-marker' ) . '" aria-hidden="true"></span>'
+               . esc_html( $card['label'] );
+
+        // Core's own way of putting a link in a box's heading — it is what the
+        // "Configure" link on the WordPress Events box uses, and core's script
+        // already stops a click on it from closing the box.
+        if ( ! empty( $card['link'] ) ) {
+            $title .= ' <span class="postbox-title-action"><a href="'
+                    . esc_url( admin_url( 'admin.php?page=' . $card['link']['page'] ) ) . '">'
+                    . esc_html( $card['link']['label'] ) . '</a></span>';
         }
 
-        update_user_meta(
-            get_current_user_id(),
-            'sp_dashboard_sections',
-            array_values( array_intersect( $picked, array_keys( sp_dashboard_sections() ) ) )
+        add_meta_box(
+            'sp_card_' . $key,
+            $title,
+            'sp_render_dashboard_card',
+            $screen,
+            ( $column % 2 === 0 ) ? 'normal' : 'side',
+            'default',
+            [ 'card' => $key ]
+        );
+        $column++;
+    }
+
+    // A card with something actually waiting in it says so. Core builds this
+    // filter's name from the screen and the box, so one closure per card is all
+    // it takes — no markup of ours involved.
+    foreach ( array_keys( sp_dashboard_cards() ) as $key ) {
+        add_filter(
+            'postbox_classes_' . $screen->id . '_sp_card_' . $key,
+            static function ( $classes ) use ( $key ) {
+                if ( sp_dashboard_card_is_urgent( $key ) ) {
+                    $classes[] = 'sp-dash-card-urgent';
+                }
+                return $classes;
+            }
         );
     }
 
+    // Dragging, closing and the Screen Options tick boxes all come from here.
+    wp_enqueue_script( 'postbox' );
+    wp_enqueue_style( 'dashboard' );
+    wp_add_inline_script(
+        'postbox',
+        'jQuery( function() { postboxes.add_postbox_toggles( ' . wp_json_encode( $screen->id ) . ' ); } );'
+    );
+
     // ---- Help ----
+    // WHY the wording follows WordPress's own Layout tab: a volunteer who has
+    // read it once on the WordPress dashboard should not have to learn it twice.
     $screen->add_help_tab( [
         'id'      => 'sp-dash-what',
         'title'   => __( 'This page', 'societypress' ),
         'content' =>
-            '<p>' . esc_html__( 'This is your own dashboard. What is on it is up to you, and changing it changes nothing for anybody else in the society.', 'societypress' ) . '</p>' .
-            '<p>' . esc_html__( 'Each card covers one part of the society\'s work. You are only shown the cards for the work you are responsible for. Open Screen Options at the top right to take one off, or to put it back.', 'societypress' ) . '</p>',
+            '<p>' . esc_html__( 'This is your own dashboard. What is on it, and where each box sits, is up to you — and changing it changes nothing for anybody else in the society.', 'societypress' ) . '</p>' .
+            '<p>' . esc_html__( 'Each box covers one part of the society\'s work. You are only offered the boxes for work you are responsible for, from the parts of SocietyPress your society has switched on.', 'societypress' ) . '</p>',
     ] );
 
     $screen->add_help_tab( [
-        'id'      => 'sp-dash-arrange',
-        'title'   => __( 'Moving cards about', 'societypress' ),
+        'id'      => 'sp-dash-layout',
+        'title'   => __( 'Layout', 'societypress' ),
         'content' =>
-            '<p>' . esc_html__( 'Click a card\'s name to close it up, and click again to open it. A closed card keeps its place and stays closed the next time you come back.', 'societypress' ) . '</p>' .
-            '<p>' . esc_html__( 'Drag a card by its heading to move it, or use the two small arrows beside the heading. The cards fill in around whatever you move, so there are never gaps left behind.', 'societypress' ) . '</p>',
-    ] );
-
-    $screen->add_help_tab( [
-        'id'      => 'sp-dash-choose',
-        'title'   => __( 'Choosing what you see', 'societypress' ),
-        'content' =>
-            '<p>' . esc_html__( 'Screen Options lists every card this page can show you. Tick a box to put a card on the page, untick it to take it off, then press Apply.', 'societypress' ) . '</p>' .
-            '<p>' . esc_html__( 'You will not be offered anything you are not allowed to see, and nothing from a part of SocietyPress your society has switched off.', 'societypress' ) . '</p>',
+            '<p>' . esc_html__( 'Screen Options, at the top right of this page, lists every box. Untick one to take it off your dashboard and tick it again to bring it back. It also sets how many columns the boxes sit in.', 'societypress' ) . '</p>' .
+            '<p>' . esc_html__( 'To move a box, drag it by its title bar and let go when the dotted outline appears where you want it. To close a box up, click its title bar; click again to open it.', 'societypress' ) . '</p>',
     ] );
 
     $screen->set_help_sidebar(
         '<p><strong>' . esc_html__( 'Stuck?', 'societypress' ) . '</strong></p>' .
-        '<p>' . esc_html__( 'Nothing here can be broken by ticking a box. Untick it again and the page goes back.', 'societypress' ) . '</p>'
+        '<p>' . esc_html__( 'Nothing here can be broken by moving a box or unticking one. Put it back and the page goes back.', 'societypress' ) . '</p>'
     );
 } );
 
 /**
- * The Screen Options panel — a tick box per piece the dashboard can show.
+ * Keep "What needs doing" off the page until somebody asks for it.
  *
- * @param string    $html   Panel markup so far.
- * @param WP_Screen $screen The screen being rendered.
- * @return string
+ * Core's own hook for this. The numbers are the safe first thing to meet;
+ * a list of jobs is not.
+ *
+ * @param string[]  $hidden Box ids hidden by default.
+ * @param WP_Screen $screen The screen being set up.
+ * @return string[]
  */
-add_filter( 'screen_settings', function ( $html, $screen ) {
-    if ( ! $screen instanceof WP_Screen || $screen->id !== 'toplevel_page_societypress' ) {
-        return $html;
-    }
-
-    $sections = sp_dashboard_sections();
-    $showing  = sp_dashboard_visible_sections();
-
-    $out  = '<fieldset class="sp-dash-sections">';
-    $out .= '<legend>' . esc_html__( 'Show on this page', 'societypress' ) . '</legend>';
-    $out .= '<p class="sp-dash-sections-note">' . esc_html__( 'Only you see these changes.', 'societypress' ) . '</p>';
-
-    foreach ( $sections as $id => $section ) {
-        if ( ! empty( $section['capability'] ) && ! current_user_can( $section['capability'] ) ) {
-            continue;
-        }
-        $out .= '<label class="sp-dash-section-choice">';
-        $out .= '<input type="checkbox" name="sp_dashboard_section[' . esc_attr( $id ) . ']" value="1" ' . checked( isset( $showing[ $id ] ), true, false ) . '> ';
-        $out .= esc_html( $section['label'] );
-        if ( ! empty( $section['describe'] ) ) {
-            $out .= '<span>' . esc_html( $section['describe'] ) . '</span>';
-        }
-        $out .= '</label>';
-    }
-
-    // Marks the form as ours, so an Apply from some other panel on some other
-    // screen can never be mistaken for an answer to this one.
-    $out .= '<input type="hidden" name="sp_dashboard_sections_form" value="1">';
-    $out .= '</fieldset>';
-
-    return $html . $out;
-}, 10, 2 );
-
-/**
- * Put an Apply button under the Screen Options panel.
- *
- * WHY this is needed at all: WordPress draws the panel, our tick boxes and the
- * form around them, but leaves the submit button out unless a screen asks for
- * it — most screens save their column choices over AJAX and never submit. Ours
- * are ordinary check boxes in an ordinary form, so without this the panel opens,
- * takes a tick, and has no way to send it anywhere. Nothing looked broken and
- * nothing was saved.
- *
- * @param bool      $show   Whether to draw the button.
- * @param WP_Screen $screen The screen being rendered.
- * @return bool
- */
-add_filter( 'screen_options_show_submit', function ( $show, $screen ) {
+add_filter( 'default_hidden_meta_boxes', function ( $hidden, $screen ) {
     if ( $screen instanceof WP_Screen && $screen->id === 'toplevel_page_societypress' ) {
-        return true;
+        $hidden[] = 'sp_dash_todo';
     }
-    return $show;
+    return $hidden;
 }, 10, 2 );
 
 /**
  * Render the SocietyPress Dashboard.
  *
- * WHY it is nearly empty: the old one had grown into a wall — a notepad, two
- *      dozen tiles, four lists and a panel of site information, all arriving at
- *      once and none of it chosen. It is being rebuilt from nothing, and every
- *      piece has to justify its place before it goes back on. An empty screen
- *      is the honest starting point for that; a page half-cleared is just the
- *      old page with holes in it.
+ * The markup is WordPress's own dashboard markup, down to the container ids,
+ * because core's stylesheet and core's script both look for them by name.
  */
 function sp_render_dashboard_page(): void {
     $settings  = sp_settings();
     $org_name  = $settings['organization_name'] ?? '';
     $site_name = get_option( 'blogname', '' );
     $who       = $org_name !== '' ? $org_name : $site_name;
+
+    $screen      = get_current_screen();
+    $columns     = $screen ? absint( $screen->get_columns() ) : 2;
+    $columns_css = $columns ? ' columns-' . $columns : '';
+
+    // Everything registered, less whatever this person has unticked. Used only
+    // to tell an empty page apart from a broken one.
+    $registered = [];
+    global $wp_meta_boxes;
+    foreach ( (array) ( $wp_meta_boxes[ $screen->id ] ?? [] ) as $context ) {
+        foreach ( (array) $context as $priority ) {
+            foreach ( (array) $priority as $box ) {
+                if ( $box ) {
+                    $registered[] = $box['id'];
+                }
+            }
+        }
+    }
+    $showing = array_diff( $registered, get_hidden_meta_boxes( $screen ) );
     ?>
     <div class="wrap sp-dashboard">
         <h1 class="sp-dash-title">
@@ -18431,12 +18045,8 @@ function sp_render_dashboard_page(): void {
             ?>
         </p>
 
-        <?php
-        // Whatever this person has switched on under Screen Options, in the
-        // order the registry lists them.
-        $sections = sp_dashboard_visible_sections();
-
-        if ( ! $sections ) :
+        <?php if ( ! $showing ) : ?>
+            <?php
             // WHY say it rather than leave a blank: an empty screen with no
             // explanation reads as broken. This one is empty on purpose, and
             // the sentence points at the control that fills it.
@@ -18444,47 +18054,31 @@ function sp_render_dashboard_page(): void {
             <p class="sp-dash-empty">
                 <?php esc_html_e( 'Your dashboard is empty. Open Screen Options, at the top right of this page, and tick what you would like to see here.', 'societypress' ); ?>
             </p>
-        <?php else : ?>
-            <?php
-            // Cards live in a shared grid, so consecutive ones are handed over
-            // together — drawn one at a time they would each open a grid of
-            // their own and stack down the page a column wide.
-            $pending = [];
-            foreach ( $sections as $section ) {
-                if ( isset( $section['card'] ) ) {
-                    $pending[] = $section['card'];
-                    continue;
-                }
-                if ( $pending ) {
-                    sp_render_dashboard_cards( $pending );
-                    $pending = [];
-                }
-                call_user_func( $section['render'] );
-            }
-            if ( $pending ) {
-                sp_render_dashboard_cards( $pending );
-            }
-            ?>
         <?php endif; ?>
-    </div>
 
-    <style>
-        .sp-dash-who { color: #646970; margin: 4px 0 24px; }
-        .sp-dash-empty {
-            background: #fff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 22px 24px;
-            max-width: 640px;
-            color: #50575e;
-            font-size: 15px;
-            line-height: 1.6;
-        }
-        .sp-dash-sections-note { margin: 2px 0 10px; color: #646970; }
-        .sp-dash-section-choice { display: block; margin-bottom: 10px; }
-        .sp-dash-section-choice span { color: #646970; display: block; margin: 0 0 0 25px; font-size: 12px; }
-    </style>
+        <div id="dashboard-widgets-wrap">
+            <div id="dashboard-widgets" class="metabox-holder<?php echo esc_attr( $columns_css ); ?>">
+                <div id="postbox-container-1" class="postbox-container">
+                    <?php do_meta_boxes( $screen->id, 'normal', '' ); ?>
+                </div>
+                <div id="postbox-container-2" class="postbox-container">
+                    <?php do_meta_boxes( $screen->id, 'side', '' ); ?>
+                </div>
+                <div id="postbox-container-3" class="postbox-container">
+                    <?php do_meta_boxes( $screen->id, 'column3', '' ); ?>
+                </div>
+                <div id="postbox-container-4" class="postbox-container">
+                    <?php do_meta_boxes( $screen->id, 'column4', '' ); ?>
+                </div>
+            </div>
+            <?php
+            wp_nonce_field( 'closedpostboxes', 'closedpostboxesnonce', false );
+            wp_nonce_field( 'meta-box-order', 'meta-box-order-nonce', false );
+            ?>
+        </div>
+    </div>
     <?php
+    sp_dashboard_card_css();
 }
 
 
@@ -35963,7 +35557,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.74',
+            'version'     => '1.1.75',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35971,7 +35565,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.74',
+            'version'     => '1.1.75',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35979,7 +35573,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.74',
+            'version'     => '1.1.75',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35987,7 +35581,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.74',
+            'version'     => '1.1.75',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35995,7 +35589,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.74',
+            'version'     => '1.1.75',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

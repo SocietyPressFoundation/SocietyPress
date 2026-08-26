@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.75
+ * Version:     1.1.76
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.75' );
+define( 'SOCIETYPRESS_VERSION', '1.1.76' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16138,9 +16138,7 @@ function sp_get_dashboard_tiles(): array {
  * Each card carries:
  *   label     What it is called, on the card and in Screen Options.
  *   describe  One line in Screen Options saying what it puts on the page.
- *   icon      Dashicon shown beside the title.
  *   layout    'numbers' for a few large figures, 'rows' for a labelled list.
- *   link      Optional shortcut out to the screen behind the card.
  *   urgent    Whether a non-zero total should mark the card as needing somebody.
  *
  * WHY no capability of its own: a card is offered when at least one number
@@ -16155,58 +16153,44 @@ function sp_dashboard_cards(): array {
         'inbox' => [
             'label'    => __( 'Waiting on You', 'societypress' ),
             'describe' => __( 'Research requests and form submissions nobody has answered yet.', 'societypress' ),
-            'icon'     => 'dashicons-bell',
             'layout'   => 'numbers',
             'urgent'   => true,
         ],
         'members' => [
             'label'    => __( 'Members', 'societypress' ),
             'describe' => __( 'How many members there are, how many are active, and who is due to renew.', 'societypress' ),
-            'icon'     => 'dashicons-groups',
             'layout'   => 'numbers',
-            'link'     => [ 'label' => __( 'View Directory', 'societypress' ), 'page' => 'sp-members' ],
         ],
         'money' => [
             'label'    => __( 'Financials', 'societypress' ),
             'describe' => __( 'Dues and donations taken so far this year, and orders still to be filled.', 'societypress' ),
-            'icon'     => 'dashicons-money-alt',
             // Rows rather than figures: money runs to seven characters and a
             // row of large dollar amounts stops being readable at a glance.
             'layout'   => 'rows',
-            'link'     => [ 'label' => __( 'Payments', 'societypress' ), 'page' => 'sp-payments' ],
         ],
         'events' => [
             'label'    => __( 'Events', 'societypress' ),
             'describe' => __( 'Events still to come and how many people have signed up lately.', 'societypress' ),
-            'icon'     => 'dashicons-calendar-alt',
             'layout'   => 'numbers',
-            'link'     => [ 'label' => __( 'Calendar', 'societypress' ), 'page' => 'sp-events' ],
         ],
         'board' => [
             'label'    => __( 'Volunteers', 'societypress' ),
             'describe' => __( 'Volunteer openings, committees without a chair, and ballots still open.', 'societypress' ),
-            'icon'     => 'dashicons-heart',
             'layout'   => 'rows',
-            'link'     => [ 'label' => __( 'Opportunities', 'societypress' ), 'page' => 'sp-volunteer-opportunities' ],
         ],
         'library' => [
             'label'    => __( 'Library', 'societypress' ),
             'describe' => __( 'What is in the catalog and what is currently off the shelf.', 'societypress' ),
-            'icon'     => 'dashicons-book-alt',
             'layout'   => 'numbers',
-            'link'     => [ 'label' => __( 'Catalog', 'societypress' ), 'page' => 'sp-library-catalog' ],
         ],
         'records' => [
             'label'    => __( 'Records', 'societypress' ),
             'describe' => __( 'Record collections held and how many entries have been indexed.', 'societypress' ),
-            'icon'     => 'dashicons-archive',
             'layout'   => 'numbers',
-            'link'     => [ 'label' => __( 'Archive', 'societypress' ), 'page' => 'sp-record-collections' ],
         ],
         'content' => [
             'label'    => __( 'Content', 'societypress' ),
             'describe' => __( 'Subscribers, newsletters, documents and photos the society has published.', 'societypress' ),
-            'icon'     => 'dashicons-media-document',
             // Four counts nobody acts on, so they get a list rather than four
             // large numbers competing with the work on the rest of the page.
             'layout'   => 'rows',
@@ -16736,8 +16720,6 @@ function sp_dashboard_card_css(): void {
 
         /* A card with something waiting in it says so. */
         .sp-dash-card-urgent { border-left: 4px solid #d63638; }
-        .postbox .hndle .dashicons { color: #2271b1; margin-right: 6px; }
-        .sp-dash-card-urgent .hndle .dashicons { color: #d63638; }
 
         .sp-dash-figures {
             display: flex;
@@ -17909,21 +17891,15 @@ add_action( 'load-toplevel_page_societypress', function () {
     // Anybody who drags one somewhere else keeps it there.
     $column = 0;
     foreach ( sp_available_dashboard_cards() as $key => $card ) {
-        $title = '<span class="dashicons ' . esc_attr( $card['icon'] ?? 'dashicons-marker' ) . '" aria-hidden="true"></span>'
-               . esc_html( $card['label'] );
-
-        // Core's own way of putting a link in a box's heading — it is what the
-        // "Configure" link on the WordPress Events box uses, and core's script
-        // already stops a click on it from closing the box.
-        if ( ! empty( $card['link'] ) ) {
-            $title .= ' <span class="postbox-title-action"><a href="'
-                    . esc_url( admin_url( 'admin.php?page=' . $card['link']['page'] ) ) . '">'
-                    . esc_html( $card['link']['label'] ) . '</a></span>';
-        }
-
+        // WHY the title is nothing but the name: every box on every WordPress
+        // screen has a plain-text title bar. An icon on some and a link on
+        // others gives each box a heading of a different height and weight,
+        // and a column of them stops looking like one thing. The numbers inside
+        // already link to the lists they were counted from, so a link up here
+        // was saying the same thing twice.
         add_meta_box(
             'sp_card_' . $key,
-            $title,
+            $card['label'],
             'sp_render_dashboard_card',
             $screen,
             ( $column % 2 === 0 ) ? 'normal' : 'side',
@@ -35557,7 +35533,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.75',
+            'version'     => '1.1.76',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35565,7 +35541,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.75',
+            'version'     => '1.1.76',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35573,7 +35549,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.75',
+            'version'     => '1.1.76',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35581,7 +35557,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.75',
+            'version'     => '1.1.76',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35589,7 +35565,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.75',
+            'version'     => '1.1.76',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

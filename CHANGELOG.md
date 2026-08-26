@@ -19,6 +19,18 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.76] — 2026-08-26
+
+### Changed
+
+**Every dashboard box has a plain title bar**
+
+Some boxes carried an icon and a link in their title bar and some did not, so no
+two headings were the same height or weight and a column of them stopped reading
+as one thing. Titles are now plain text, the way every other box on every other
+WordPress screen has always been. The numbers inside each box still link to the
+lists they were counted from, which is what the title-bar links were duplicating.
+
 ## [1.1.75] — 2026-08-26
 
 ### Changed

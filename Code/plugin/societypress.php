@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.60
+ * Version:     1.1.61
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.60' );
+define( 'SOCIETYPRESS_VERSION', '1.1.61' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34881,7 +34881,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.60',
+            'version'     => '1.1.61',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34889,7 +34889,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.60',
+            'version'     => '1.1.61',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34897,7 +34897,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.60',
+            'version'     => '1.1.61',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34905,7 +34905,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.60',
+            'version'     => '1.1.61',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34913,7 +34913,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.60',
+            'version'     => '1.1.61',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -91628,7 +91628,12 @@ function sp_render_store_frontend(): void {
         .sp-store-cat-count { font-size: 12px; background: #eee; padding: 1px 8px; border-radius: 10px; color: #666; }
 
         /* Main content */
-        .sp-store-main { flex: 1; min-width: 0; }
+        .sp-store-main {
+            flex: 1; min-width: 0;
+            /* Page links jump to this element, so it has to clear whatever the
+               theme keeps pinned at the top of the window. */
+            scroll-margin-top: calc(var(--sp-store-sticky-top, 24px) + 8px);
+        }
         .sp-store-toolbar {
             display: flex; flex-wrap: wrap; align-items: center;
             justify-content: space-between; gap: 12px; margin-bottom: 20px;
@@ -92116,6 +92121,41 @@ function sp_render_store_frontend(): void {
         </div>
     </div>
 
+    <script>
+    // WHY measured rather than a fixed number: a child theme is free to pin its
+    // header to the top of the window, and every theme's header is a different
+    // height. A sidebar told to stop 24px from the top of the window would slide
+    // under that header and the categories would disappear behind it. The plugin
+    // cannot know the height, so it reads it — on load, and again when the window
+    // changes size, because most headers get shorter on a narrow screen.
+    (function () {
+        var root = document.documentElement;
+        if ( ! document.querySelector( '.sp-store-sidebar' ) ) { return; }
+
+        function pinnedHeaderHeight() {
+            var tallest    = 0;
+            var candidates = document.querySelectorAll( 'header, .site-header, #masthead' );
+            for ( var i = 0; i < candidates.length; i++ ) {
+                var position = window.getComputedStyle( candidates[ i ] ).position;
+                if ( position !== 'sticky' && position !== 'fixed' ) { continue; }
+                var box = candidates[ i ].getBoundingClientRect();
+                // Only a header actually parked against the top of the window
+                // pushes the sidebar down; one pinned further down does not.
+                if ( box.top > 4 ) { continue; }
+                if ( box.height > tallest ) { tallest = box.height; }
+            }
+            return tallest;
+        }
+
+        function place() {
+            root.style.setProperty( '--sp-store-sticky-top', ( pinnedHeaderHeight() + 24 ) + 'px' );
+        }
+
+        place();
+        window.addEventListener( 'load', place );
+        window.addEventListener( 'resize', place );
+    })();
+    </script>
 
     <?php sp_pdf_reader(); ?>
 

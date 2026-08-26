@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.61] — 2026-08-25
+
+### Fixed
+
+**Store categories hid behind the site header while scrolling**
+
+On a theme whose header stays pinned to the top of the window, the store's
+category list parked underneath it and disappeared from view. The list now
+measures the header and stops just below it, at whatever height that header
+happens to be on the screen it is being read on.
+
 ## [1.1.60] — 2026-08-25
 
 ### Fixed

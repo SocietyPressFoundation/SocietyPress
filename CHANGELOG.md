@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.70] — 2026-08-26
+
+### Changed
+
+**The store's Show control is a box you type in**
+
+Show 20 / 50 / 100 / 500 / Unlimited has become a single box with 20 in it.
+Whatever number you type is how many publications appear on a page, and typing
+0 shows every one of them. A society with a hundred and forty titles no longer
+has to settle for a hundred or five hundred.
+
 ## [1.1.69] — 2026-08-26
 
 ### Added

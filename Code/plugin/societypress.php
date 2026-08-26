@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.69
+ * Version:     1.1.70
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.69' );
+define( 'SOCIETYPRESS_VERSION', '1.1.70' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -35673,7 +35673,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.69',
+            'version'     => '1.1.70',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35681,7 +35681,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.69',
+            'version'     => '1.1.70',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35689,7 +35689,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.69',
+            'version'     => '1.1.70',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35697,7 +35697,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.69',
+            'version'     => '1.1.70',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35705,7 +35705,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.69',
+            'version'     => '1.1.70',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92343,12 +92343,23 @@ function sp_render_store_frontend(): void {
     //
     // WHY it lives in the URL rather than a cookie: a filtered, sized view can
     // then be bookmarked or passed to somebody else and come back the same.
-    $per_page_choices = [ 20, 50, 100, 500 ];
+    //
+    // WHY a box to type in rather than a row of fixed choices: whatever four or
+    // five numbers we picked would be the wrong ones for somebody. A society
+    // with a hundred and forty publications wants a hundred and forty, and had
+    // to settle for 100 or 500. Typing it takes the same one action as clicking
+    // a choice and always lands where the reader meant.
+    //
+    // WHY zero means everything: it is one keystroke, it needs no extra
+    // control beside the box, and there is no other sensible thing a request
+    // for zero items could mean.
+    $per_page_default = 20;
     $requested_show   = isset( $_GET['sp_store_show'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_store_show'] ) ) : '';
-    $show_everything  = ( $requested_show === 'all' );
-    $per_page         = in_array( (int) $requested_show, $per_page_choices, true ) ? (int) $requested_show : $per_page_choices[0];
+    $requested_size   = is_numeric( $requested_show ) ? max( 0, (int) $requested_show ) : $per_page_default;
+    $show_everything  = ( $requested_size === 0 );
 
     $shown_total = count( $items );
+    $per_page    = $show_everything ? max( 1, $shown_total ) : $requested_size;
     $total_pages = $show_everything ? 1 : (int) max( 1, ceil( $shown_total / $per_page ) );
     $paged       = isset( $_GET['sp_store_page'] ) ? max( 1, (int) $_GET['sp_store_page'] ) : 1;
     if ( $paged > $total_pages ) {
@@ -92443,21 +92454,33 @@ function sp_render_store_frontend(): void {
             color: var(--sp-color-text-secondary, #6d7175);
             margin-right: 8px; white-space: nowrap;
         }
-        .sp-store-show a {
-            display: inline-block; padding: 5px 11px; text-decoration: none;
-            color: #333; background: #fff; white-space: nowrap;
-            border: 1px solid var(--sp-color-border, #e5e7eb); border-right-width: 0;
-            transition: background 0.15s ease;
+        .sp-store-show-field {
+            width: 5.5em; padding: 5px 8px; font-size: 13px; color: #333;
+            background: #fff; border: 1px solid var(--sp-color-border, #e5e7eb);
+            border-radius: 6px 0 0 6px; border-right-width: 0;
         }
-        .sp-store-show a:first-of-type { border-radius: 6px 0 0 6px; }
-        .sp-store-show a:last-of-type { border-radius: 0 6px 6px 0; border-right-width: 1px; }
-        .sp-store-show a:hover { background: #f0f0f0; }
-        .sp-store-show a.active {
-            background: var(--sp-color-primary, #2271b1);
-            border-color: var(--sp-color-primary, #2271b1);
-            color: #fff; font-weight: 600;
+        .sp-store-show-go {
+            padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+            color: #fff; background: var(--sp-color-primary, #2271b1);
+            border: 1px solid var(--sp-color-primary, #2271b1);
+            border-radius: 0 6px 6px 0;
+            transition: opacity 0.15s ease;
         }
-        .sp-store-show a.active + a { border-left-color: var(--sp-color-primary, #2271b1); }
+        .sp-store-show-go:hover { opacity: 0.9; }
+        .sp-store-show-field:focus, .sp-store-show-go:focus {
+            outline: 2px solid var(--sp-color-primary, #2271b1);
+            outline-offset: 1px;
+        }
+        /* The rule that makes zero mean everything has to be visible, not
+           discovered — a volunteer will never guess it. */
+        .sp-store-show-hint {
+            margin-left: 10px; white-space: nowrap;
+            color: var(--sp-color-text-secondary, #6d7175);
+        }
+        @media (max-width: 600px) {
+            .sp-store-show { flex-wrap: wrap; }
+            .sp-store-show-hint { margin: 6px 0 0; width: 100%; }
+        }
 
         /* Page links */
         .sp-store-pager {
@@ -92757,29 +92780,34 @@ function sp_render_store_frontend(): void {
                     </div>
 
                     <?php
-                    // The chooser only earns its place once there is more to see
-                    // than the smallest choice would show.
-                    if ( $shown_total > $per_page_choices[0] ) :
-                        // WHY a list of pairs rather than value => label: PHP
-                        // turns a numeric-string array key back into an integer,
-                        // which would break the comparison that marks the
-                        // current choice.
-                        $size_options = [];
-                        foreach ( $per_page_choices as $choice ) {
-                            $size_options[] = [ (string) $choice, number_format_i18n( $choice ) ];
+                    // The box only earns its place once there is more to see
+                    // than the default already shows — or once somebody has
+                    // typed something, so their own number does not vanish on
+                    // them the moment it makes the list short.
+                    if ( $shown_total > $per_page_default || $requested_show !== '' ) :
+                        // A GET form drops anything already in its action's
+                        // query string, so the category being browsed is carried
+                        // across as hidden fields instead of being lost.
+                        $size_action = strtok( $size_base, '?' );
+                        $size_keep   = [];
+                        $size_query  = wp_parse_url( $size_base, PHP_URL_QUERY );
+                        if ( $size_query ) {
+                            wp_parse_str( $size_query, $size_keep );
                         }
-                        $size_options[] = [ 'all', __( 'Unlimited', 'societypress' ) ];
-                        $current_size   = $show_everything ? 'all' : (string) $per_page;
                     ?>
-                        <div class="sp-store-show" role="group" aria-label="<?php esc_attr_e( 'How many items to show', 'societypress' ); ?>">
-                            <span class="sp-store-show-label"><?php esc_html_e( 'Show', 'societypress' ); ?></span>
-                            <?php foreach ( $size_options as list( $size_value, $size_label ) ) :
-                                $is_current = ( $current_size === $size_value );
-                            ?>
-                                <a href="<?php echo esc_url( add_query_arg( 'sp_store_show', $size_value, $size_base ) ); ?>#sp-store-items"
-                                   class="<?php echo $is_current ? 'active' : ''; ?>"<?php echo $is_current ? ' aria-current="true"' : ''; ?>><?php echo esc_html( $size_label ); ?></a>
+                        <form class="sp-store-show" method="get" action="<?php echo esc_url( $size_action ); ?>">
+                            <?php foreach ( $size_keep as $keep_name => $keep_value ) : ?>
+                                <?php if ( is_scalar( $keep_value ) ) : ?>
+                                    <input type="hidden" name="<?php echo esc_attr( $keep_name ); ?>" value="<?php echo esc_attr( (string) $keep_value ); ?>">
+                                <?php endif; ?>
                             <?php endforeach; ?>
-                        </div>
+                            <label class="sp-store-show-label" for="sp-store-show-field"><?php esc_html_e( 'Show', 'societypress' ); ?></label>
+                            <input type="number" id="sp-store-show-field" name="sp_store_show"
+                                   class="sp-store-show-field" min="0" step="1" inputmode="numeric"
+                                   value="<?php echo esc_attr( (string) ( $show_everything ? 0 : $per_page ) ); ?>">
+                            <button type="submit" class="sp-store-show-go"><?php esc_html_e( 'Go', 'societypress' ); ?></button>
+                            <span class="sp-store-show-hint"><?php esc_html_e( 'Type 0 to show everything.', 'societypress' ); ?></span>
+                        </form>
                     <?php endif; ?>
                 </div>
 

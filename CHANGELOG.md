@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.72] — 2026-08-26
+
+### Changed
+
+**The store describes what it actually sells**
+
+The line under the store heading used to promise "publications, apparel, and
+other items" to every society, including the many that sell nothing but their
+own books. It now looks at what is on the shelves: publications only, items
+only, or both. Societies that have written their own intro text keep it.
+
 ## [1.1.71] — 2026-08-26
 
 ### Fixed

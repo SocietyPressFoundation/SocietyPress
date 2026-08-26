@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.68
+ * Version:     1.1.69
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.68' );
+define( 'SOCIETYPRESS_VERSION', '1.1.69' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -15905,6 +15905,18 @@ function sp_get_dashboard_tiles(): array {
             // Paid but not yet shipped — the pile somebody has to go and pack.
             'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}orders WHERE status = 'paid'" ),
         ],
+        'research_unpaid' => [
+            'label'      => __( 'Research Invoices Unpaid', 'societypress' ),
+            'group'      => 'money',
+            'module'     => 'research_services',
+            'capability' => 'sp_manage_finances',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-research-cases' ),
+            // Extra hours already worked and invoiced. Money the society has
+            // earned and not been paid, which is the treasurer's business even
+            // though the case itself is somebody else's.
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}research_invoices WHERE status = 'pending'" ),
+        ],
 
         // ---- Events -------------------------------------------------------
         'events_upcoming' => [
@@ -16039,6 +16051,14 @@ function sp_get_dashboard_tiles(): array {
             'url'        => static fn() => admin_url( 'admin.php?page=sp-gallery' ),
             'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}photo_album_items" ),
         ],
+        'resources_count' => [
+            'label'      => __( 'Resource Links', 'societypress' ),
+            'group'      => 'content',
+            'module'     => 'resources',
+            'capability' => 'sp_manage_content',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-library' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}resources" ),
+        ],
 
         // ---- Things waiting on somebody -------------------------------------
         // WHY these two sit last: they are the tiles most likely to be nonzero
@@ -16063,6 +16083,34 @@ function sp_get_dashboard_tiles(): array {
             'accent'     => 'expiring',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-form-submissions' ),
             'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}form_submissions WHERE is_read = 0" ),
+        ],
+        'lineage_pending' => [
+            'label'      => __( 'Lineage Applications to Review', 'societypress' ),
+            'group'      => 'inbox',
+            'short'      => __( 'Lineage Applications', 'societypress' ),
+            'module'     => 'lineage',
+            'capability' => 'sp_manage_content',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-lineage-applications' ),
+            // Only the two states where the society holds the paperwork. An
+            // application waiting on the applicant for more information is not
+            // something anybody here can move.
+            'value'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}lineage_applications WHERE status IN ('submitted','in_review')"
+            ),
+        ],
+        'research_open' => [
+            'label'      => __( 'Unclaimed Research Cases', 'societypress' ),
+            'group'      => 'inbox',
+            'short'      => __( 'Unclaimed Cases', 'societypress' ),
+            'module'     => 'research_services',
+            'capability' => 'sp_manage_content',
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-research-cases' ),
+            // Paid for and nobody has picked it up. The worst thing on the
+            // dashboard to leave sitting, since somebody has already been
+            // charged for the work.
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}research_cases WHERE status = 'open'" ),
         ],
     ];
 
@@ -35625,7 +35673,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.68',
+            'version'     => '1.1.69',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35633,7 +35681,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.68',
+            'version'     => '1.1.69',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35641,7 +35689,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.68',
+            'version'     => '1.1.69',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35649,7 +35697,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.68',
+            'version'     => '1.1.69',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35657,7 +35705,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.68',
+            'version'     => '1.1.69',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

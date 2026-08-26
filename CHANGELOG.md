@@ -19,6 +19,18 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.69] — 2026-08-26
+
+### Added
+
+**Four numbers that had nowhere to be**
+
+Lineage, Paid Research Services and Resource Links were running with nothing to
+show for them anywhere on the dashboard. Lineage applications waiting to be
+reviewed and research cases nobody has claimed now sit under Waiting on You,
+research invoices still unpaid under Financials, and the resource links
+directory under Content.
+
 ## [1.1.68] — 2026-08-26
 
 ### Changed

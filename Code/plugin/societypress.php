@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.59
+ * Version:     1.1.60
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.59' );
+define( 'SOCIETYPRESS_VERSION', '1.1.60' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34881,7 +34881,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.59',
+            'version'     => '1.1.60',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -34889,7 +34889,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.59',
+            'version'     => '1.1.60',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -34897,7 +34897,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.59',
+            'version'     => '1.1.60',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -34905,7 +34905,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.59',
+            'version'     => '1.1.60',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -34913,7 +34913,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.59',
+            'version'     => '1.1.60',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -91958,19 +91958,24 @@ function sp_render_store_frontend(): void {
                     // The chooser only earns its place once there is more to see
                     // than the smallest choice would show.
                     if ( $shown_total > $per_page_choices[0] ) :
-                        $size_labels = [];
+                        // WHY a list of pairs rather than value => label: PHP
+                        // turns a numeric-string array key back into an integer,
+                        // which would break the comparison that marks the
+                        // current choice.
+                        $size_options = [];
                         foreach ( $per_page_choices as $choice ) {
-                            $size_labels[ (string) $choice ] = number_format_i18n( $choice );
+                            $size_options[] = [ (string) $choice, number_format_i18n( $choice ) ];
                         }
-                        $size_labels['all'] = __( 'Unlimited', 'societypress' );
-                        $current_size       = $show_everything ? 'all' : (string) $per_page;
+                        $size_options[] = [ 'all', __( 'Unlimited', 'societypress' ) ];
+                        $current_size   = $show_everything ? 'all' : (string) $per_page;
                     ?>
                         <div class="sp-store-show" role="group" aria-label="<?php esc_attr_e( 'How many items to show', 'societypress' ); ?>">
                             <span class="sp-store-show-label"><?php esc_html_e( 'Show', 'societypress' ); ?></span>
-                            <?php foreach ( $size_labels as $size_value => $size_label ) : ?>
+                            <?php foreach ( $size_options as list( $size_value, $size_label ) ) :
+                                $is_current = ( $current_size === $size_value );
+                            ?>
                                 <a href="<?php echo esc_url( add_query_arg( 'sp_store_show', $size_value, $size_base ) ); ?>#sp-store-items"
-                                   class="<?php echo $current_size === $size_value ? 'active' : ''; ?>"
-                                   <?php echo $current_size === $size_value ? ' aria-current="true"' : ''; ?>><?php echo esc_html( $size_label ); ?></a>
+                                   class="<?php echo $is_current ? 'active' : ''; ?>"<?php echo $is_current ? ' aria-current="true"' : ''; ?>><?php echo esc_html( $size_label ); ?></a>
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>

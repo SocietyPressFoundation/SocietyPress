@@ -19,6 +19,15 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.60] — 2026-08-25
+
+### Fixed
+
+**The store's Show control did not mark which choice was in effect**
+
+All five choices looked alike, so there was no way to tell whether you were
+looking at twenty items or five hundred. The one in effect is now highlighted.
+
 ## [1.1.59] — 2026-08-25
 
 ### Changed

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.63
+ * Version:     1.1.64
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.63' );
+define( 'SOCIETYPRESS_VERSION', '1.1.64' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16282,6 +16282,340 @@ function sp_dashboard_tile_values( array $tiles ): array {
     return $values;
 }
 
+
+// ---------------------------------------------------------------------------
+// WHAT NEEDS DOING
+//
+// WHY this exists alongside the tiles: a tile reports a number and leaves the
+// rest to the reader. "8" under the word Renewals tells a volunteer nothing
+// about whether that is good, bad, or hers to deal with. A line that reads
+// "8 memberships come up for renewal in the next 30 days" and carries a button
+// saying "Send renewal notices" tells her what the number means and what to do
+// about it, and the doing happens without leaving the page she landed on.
+//
+// WHY it is short: a line only appears when its count is above zero, so the
+// list is the work outstanding rather than a catalogue of everything the
+// software can count. On a quiet week it is empty, and empty is the correct
+// answer — it means nobody is waiting.
+//
+// WHY it is hand-written rather than generated: somebody has to decide what
+// the action is and where the button goes. Anything that cannot be given a
+// verb does not belong here; it belongs in a tile.
+// ---------------------------------------------------------------------------
+
+/**
+ * Everything the software knows how to ask somebody to do.
+ *
+ * Each entry carries:
+ *   module     Module slug this belongs to; '' for work that always applies.
+ *   capability What the reader must be able to do to be asked.
+ *   urgency    'now' for people already waiting, 'soon' for work that keeps.
+ *   count      Callable returning how many. A zero means no line.
+ *   line       Callable taking the count, returning the sentence.
+ *   do         The verb on the button.
+ *   url        Where the button goes, as a callable.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_get_dashboard_actions(): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $today      = current_time( 'Y-m-d' );
+    $in_30_days = date( 'Y-m-d', strtotime( '+30 days', strtotime( $today ) ) );
+
+    $count = static function ( string $sql, ...$args ) use ( $wpdb ): int {
+        return (int) ( $args
+            ? $wpdb->get_var( $wpdb->prepare( $sql, ...$args ) )
+            : $wpdb->get_var( $sql ) );
+    };
+
+    $actions = [
+
+        'applications' => [
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'urgency'    => 'now',
+            'count'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'pending'" ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of membership applications */
+                _n( '%s person has applied to join and is waiting to be approved',
+                    '%s people have applied to join and are waiting to be approved',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'Review applications', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&member_status=pending' ),
+        ],
+
+        'requests' => [
+            'module'     => 'help_requests',
+            'capability' => 'sp_manage_content',
+            'urgency'    => 'now',
+            'count'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}help_requests WHERE status = 'open'" ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of research requests */
+                _n( '%s research request is waiting for an answer',
+                    '%s research requests are waiting for an answer',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'Answer them', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-help-requests' ),
+        ],
+
+        'forms' => [
+            'module'     => 'forms',
+            'capability' => 'sp_manage_content',
+            'urgency'    => 'now',
+            'count'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}form_submissions WHERE is_read = 0" ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of form submissions */
+                _n( '%s message came in through a form and has not been read',
+                    '%s messages came in through forms and have not been read',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'Read them', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-form-submissions' ),
+        ],
+
+        'orders' => [
+            'module'     => 'store',
+            'capability' => 'sp_manage_finances',
+            'urgency'    => 'now',
+            'count'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}orders WHERE status = 'paid'" ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of orders */
+                _n( '%s order has been paid for and is waiting to be sent',
+                    '%s orders have been paid for and are waiting to be sent',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'Fill orders', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-orders' ),
+        ],
+
+        'renewals' => [
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'urgency'    => 'now',
+            'count'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}members
+                 WHERE status = 'active'
+                   AND expiration_date IS NOT NULL
+                   AND expiration_date BETWEEN %s AND %s",
+                $today, $in_30_days
+            ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of memberships */
+                _n( '%s membership comes up for renewal in the next 30 days',
+                    '%s memberships come up for renewal in the next 30 days',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'Send renewal notices', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&sp_filter=expiring_30' ),
+        ],
+
+        'lapsed' => [
+            'module'     => '',
+            'capability' => 'sp_manage_members',
+            'urgency'    => 'soon',
+            'count'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}members WHERE status = 'expired'" ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of lapsed memberships */
+                _n( '%s membership has lapsed and nobody has been asked back',
+                    '%s memberships have lapsed and nobody has been asked back',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'See who', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-members&member_status=expired' ),
+        ],
+
+        'chairless' => [
+            'module'     => 'governance',
+            'capability' => 'sp_manage_governance',
+            'urgency'    => 'soon',
+            'count'      => static fn() => $count(
+                "SELECT COUNT(*) FROM {$prefix}committees WHERE active = 1 AND (chair_user_id IS NULL OR chair_user_id = 0)"
+            ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of committees */
+                _n( '%s committee has nobody down as its chair',
+                    '%s committees have nobody down as their chair',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'Put someone in charge', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-committees' ),
+        ],
+
+        'ballots' => [
+            'module'     => 'voting',
+            'capability' => 'sp_manage_governance',
+            'urgency'    => 'soon',
+            'count'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}ballots WHERE status = 'open'" ),
+            'line'       => static fn( int $n ) => sprintf(
+                /* translators: %s: number of ballots */
+                _n( '%s vote is open and still taking answers',
+                    '%s votes are open and still taking answers',
+                    $n, 'societypress' ),
+                number_format_i18n( $n )
+            ),
+            'do'         => __( 'See how it stands', 'societypress' ),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-ballots' ),
+        ],
+    ];
+
+    /**
+     * Filter the list of things the dashboard can ask somebody to do.
+     *
+     * @param array $actions Action definitions keyed by id.
+     */
+    return apply_filters( 'sp_dashboard_actions', $actions );
+}
+
+/**
+ * The work this person is actually being asked to do, in the order to ask.
+ *
+ * Same two gates the tiles use — the module has to be on and the reader has to
+ * hold the capability — then the count decides. Nothing at zero appears, so the
+ * page is as short as the week is quiet.
+ *
+ * Counts are cached together for five minutes for the reason the tile numbers
+ * are: they are cheap on their own and pointless in aggregate on the second
+ * page load in a minute.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_visible_dashboard_actions(): array {
+    $cache = get_transient( 'sp_dashboard_action_counts' );
+    $cache = is_array( $cache ) ? $cache : [];
+    $fresh = false;
+
+    $now  = [];
+    $soon = [];
+
+    foreach ( sp_get_dashboard_actions() as $id => $action ) {
+        $module = $action['module'] ?? '';
+        if ( $module !== '' && ! sp_module_enabled( $module ) ) {
+            continue;
+        }
+        if ( ! empty( $action['capability'] ) && ! current_user_can( $action['capability'] ) ) {
+            continue;
+        }
+
+        if ( array_key_exists( $id, $cache ) ) {
+            $n = (int) $cache[ $id ];
+        } else {
+            $n            = (int) call_user_func( $action['count'] );
+            $cache[ $id ] = $n;
+            $fresh        = true;
+        }
+
+        if ( $n < 1 ) {
+            continue;
+        }
+
+        $action['n'] = $n;
+        if ( ( $action['urgency'] ?? 'soon' ) === 'now' ) {
+            $now[ $id ] = $action;
+        } else {
+            $soon[ $id ] = $action;
+        }
+    }
+
+    if ( $fresh ) {
+        set_transient( 'sp_dashboard_action_counts', $cache, 5 * MINUTE_IN_SECONDS );
+    }
+
+    // People waiting come before work that keeps.
+    return $now + $soon;
+}
+
+/**
+ * Render the list of things that need doing.
+ */
+function sp_render_dashboard_actions(): void {
+    $actions = sp_visible_dashboard_actions();
+    ?>
+    <div class="sp-dash-todo">
+        <h2 class="sp-dash-todo-heading"><?php esc_html_e( 'What needs doing', 'societypress' ); ?></h2>
+
+        <?php if ( ! $actions ) : ?>
+            <?php
+            // WHY a sentence and not a blank space: an empty list looks like
+            // something failed to load. Saying so plainly is the whole point of
+            // the page on a quiet week.
+            ?>
+            <p class="sp-dash-todo-clear">
+                <span class="dashicons dashicons-yes-alt"></span>
+                <?php esc_html_e( 'Nothing needs doing right now. Nobody is waiting on you.', 'societypress' ); ?>
+            </p>
+        <?php else : ?>
+            <ul class="sp-dash-todo-list">
+                <?php foreach ( $actions as $id => $action ) : ?>
+                    <li class="sp-dash-todo-item sp-dash-todo-<?php echo esc_attr( $action['urgency'] ?? 'soon' ); ?>" data-action="<?php echo esc_attr( $id ); ?>">
+                        <span class="sp-dash-todo-text"><?php echo esc_html( call_user_func( $action['line'], $action['n'] ) ); ?></span>
+                        <a class="button button-primary sp-dash-todo-do" href="<?php echo esc_url( call_user_func( $action['url'] ) ); ?>"><?php echo esc_html( $action['do'] ); ?></a>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </div>
+
+    <style>
+        .sp-dash-todo { margin: 16px 0 28px; }
+        .sp-dash-todo-heading {
+            margin: 0 0 10px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #646970;
+        }
+        .sp-dash-todo-list { margin: 0; padding: 0; list-style: none; }
+        .sp-dash-todo-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-left: 4px solid #dba617;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 8px;
+        }
+        /* Somebody is actually waiting on these. */
+        .sp-dash-todo-now { border-left-color: #d63638; }
+        .sp-dash-todo-text { font-size: 15px; color: #1d2327; line-height: 1.5; }
+        .sp-dash-todo-do { flex-shrink: 0; }
+        .sp-dash-todo-clear {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-left: 4px solid #00a32a;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin: 0;
+            font-size: 15px;
+            color: #1d2327;
+        }
+        .sp-dash-todo-clear .dashicons { color: #00a32a; }
+        @media screen and (max-width: 782px) {
+            .sp-dash-todo-item { align-items: flex-start; }
+            .sp-dash-todo-do { width: 100%; text-align: center; }
+        }
+    </style>
+    <?php
+}
+
 /**
  * Render the tile strip, plus the controls for rearranging it.
  */
@@ -17422,6 +17756,11 @@ function sp_render_dashboard_page(): void {
         </style>
 
         <?php
+        // What needs doing comes before what things add up to: somebody
+        // arriving at this page is far more often here to deal with something
+        // than to read a number.
+        sp_render_dashboard_actions();
+
         // Stat tiles. What appears here depends on which modules the society
         // runs and what this person is allowed to see — see the registry above.
         sp_render_dashboard_tiles();
@@ -35229,7 +35568,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.63',
+            'version'     => '1.1.64',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35237,7 +35576,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.63',
+            'version'     => '1.1.64',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35245,7 +35584,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.63',
+            'version'     => '1.1.64',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35253,7 +35592,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.63',
+            'version'     => '1.1.64',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35261,7 +35600,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.63',
+            'version'     => '1.1.64',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

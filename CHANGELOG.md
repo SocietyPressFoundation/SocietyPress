@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.64] — 2026-08-26
+
+### Added
+
+**The dashboard opens with what needs doing**
+
+A number reports; it doesn't ask. "8" under the word Renewals tells a volunteer
+nothing about whether that is good, bad, or hers to deal with. The dashboard now
+opens with plain sentences — "8 memberships come up for renewal in the next 30
+days" — each with the button that does something about it.
+
+A line only appears when there is something behind it, so the list is the work
+outstanding rather than a catalogue of everything the software can count. People
+already waiting come first. On a quiet week the page says nobody is waiting on
+you, which is the right answer rather than an empty space.
+
+The tiles stay underneath. Numbers didn't go anywhere; they're just no longer
+the first thing you meet.
+
 ## [1.1.63] — 2026-08-26
 
 ### Changed

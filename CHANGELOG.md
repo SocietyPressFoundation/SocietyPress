@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.73] — 2026-08-26
+
+### Added
+
+**Close a card, or move it where you want it**
+
+Click a card's heading to close it up and click again to open it. Drag a card by
+its heading to move it, or use the two small arrows beside the heading. Both are
+remembered for next time, and only for you.
+
+### Changed
+
+**The cards close up their own gaps**
+
+They used to sit in fixed rows, so a short card left a hole underneath that
+nothing could fill. Each card now starts where the one above it ended and the
+gaps close by themselves. Members gives up its double width for this — its five
+figures wrap onto two lines instead.
+
 ## [1.1.72] — 2026-08-26
 
 ### Changed

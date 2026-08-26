@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.72
+ * Version:     1.1.73
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.72' );
+define( 'SOCIETYPRESS_VERSION', '1.1.73' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16140,7 +16140,6 @@ function sp_get_dashboard_tiles(): array {
  *   describe  One line in Screen Options saying what it puts on the page.
  *   icon      Dashicon shown beside the title.
  *   layout    'numbers' for a few large figures, 'rows' for a labelled list.
- *   wide      Whether it takes two columns of the three instead of one.
  *   link      Optional shortcut out to the screen behind the card.
  *   urgent    Whether a non-zero total should mark the card as needing somebody.
  *
@@ -16165,10 +16164,6 @@ function sp_dashboard_cards(): array {
             'describe' => __( 'How many members there are, how many are active, and who is due to renew.', 'societypress' ),
             'icon'     => 'dashicons-groups',
             'layout'   => 'numbers',
-            // The one card wide enough for five figures side by side, because
-            // the five are read together — a renewals number means one thing
-            // against 1,400 members and another against 40.
-            'wide'     => true,
             'link'     => [ 'label' => __( 'View Directory', 'societypress' ), 'page' => 'sp-members' ],
         ],
         'money' => [
@@ -16651,6 +16646,49 @@ function sp_render_dashboard_actions(): void {
 }
 
 /**
+ * One person's own card arrangement.
+ *
+ * Stored per user rather than per society, for the same reason the choice of
+ * cards is: the treasurer and the librarian are looking for different things,
+ * and making one of them win puts us back where the rebuild started.
+ *
+ * @return array{order:string[],collapsed:string[]}
+ */
+function sp_dashboard_card_prefs(): array {
+    $saved = get_user_meta( get_current_user_id(), 'sp_dashboard_cards', true );
+
+    return [
+        'order'     => is_array( $saved['order'] ?? null ) ? array_values( array_map( 'strval', $saved['order'] ) ) : [],
+        'collapsed' => is_array( $saved['collapsed'] ?? null ) ? array_values( array_map( 'strval', $saved['collapsed'] ) ) : [],
+    ];
+}
+
+/**
+ * Save one person's card arrangement.
+ */
+function sp_ajax_save_dashboard_cards(): void {
+    check_ajax_referer( 'sp_dashboard_cards', 'nonce' );
+
+    if ( ! sp_user_can_access_admin() ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
+    }
+
+    $known = array_keys( sp_dashboard_cards() );
+    $clean = static function ( string $field ) use ( $known ): array {
+        $in = isset( $_POST[ $field ] ) && is_array( $_POST[ $field ] ) ? wp_unslash( $_POST[ $field ] ) : [];
+        return array_values( array_intersect( array_map( 'sanitize_key', $in ), $known ) );
+    };
+
+    update_user_meta( get_current_user_id(), 'sp_dashboard_cards', [
+        'order'     => $clean( 'order' ),
+        'collapsed' => $clean( 'collapsed' ),
+    ] );
+
+    wp_send_json_success();
+}
+add_action( 'wp_ajax_sp_save_dashboard_cards', 'sp_ajax_save_dashboard_cards' );
+
+/**
  * Render one row of dashboard cards.
  *
  * WHY one function for all of them rather than one per card: every card is the
@@ -16673,6 +16711,19 @@ function sp_render_dashboard_cards( array $keys ): void {
     if ( ! $cards ) {
         return;
     }
+
+    // The reader's own order first, then anything they have never seen — a card
+    // added by a later release lands at the end rather than shouldering its way
+    // into the middle of an arrangement somebody has already settled.
+    $prefs   = sp_dashboard_card_prefs();
+    $ordered = [];
+    foreach ( $prefs['order'] as $key ) {
+        if ( isset( $cards[ $key ] ) ) {
+            $ordered[ $key ] = $cards[ $key ];
+            unset( $cards[ $key ] );
+        }
+    }
+    $cards = $ordered + $cards;
 
     // One pass for every number on the page, so the five-minute cache is asked
     // once rather than once per card.
@@ -16697,24 +16748,40 @@ function sp_render_dashboard_cards( array $keys ): void {
                 );
             }
 
+            $shut     = in_array( $key, $prefs['collapsed'], true );
+            $body_id  = 'sp-dash-card-body-' . sanitize_html_class( $key );
+
             $classes  = 'sp-dash-card';
-            $classes .= ! empty( $card['wide'] ) ? ' sp-dash-card-wide' : '';
             $classes .= $urgent ? ' sp-dash-card-urgent' : '';
+            $classes .= $shut ? ' sp-dash-card-shut' : '';
         ?>
         <section class="<?php echo esc_attr( $classes ); ?>" data-card="<?php echo esc_attr( $key ); ?>">
-            <div class="sp-dash-card-head">
-                <h2 class="sp-dash-card-title">
+            <div class="sp-dash-card-head" draggable="true">
+                <button type="button" class="sp-dash-card-toggle" aria-expanded="<?php echo $shut ? 'false' : 'true'; ?>" aria-controls="<?php echo esc_attr( $body_id ); ?>">
                     <span class="dashicons <?php echo esc_attr( $card['icon'] ?? 'dashicons-marker' ); ?>" aria-hidden="true"></span>
-                    <?php echo esc_html( $card['label'] ); ?>
-                </h2>
-                <?php if ( ! empty( $card['link'] ) ) : ?>
-                    <a class="sp-dash-card-more" href="<?php echo esc_url( admin_url( 'admin.php?page=' . $card['link']['page'] ) ); ?>">
-                        <?php echo esc_html( $card['link']['label'] ); ?> <span aria-hidden="true">&rarr;</span>
-                    </a>
-                <?php endif; ?>
+                    <span class="sp-dash-card-title"><?php echo esc_html( $card['label'] ); ?></span>
+                    <span class="dashicons dashicons-arrow-up-alt2 sp-dash-card-chev" aria-hidden="true"></span>
+                </button>
+                <span class="sp-dash-card-tools">
+                    <?php if ( ! empty( $card['link'] ) ) : ?>
+                        <a class="sp-dash-card-more" href="<?php echo esc_url( admin_url( 'admin.php?page=' . $card['link']['page'] ) ); ?>">
+                            <?php echo esc_html( $card['link']['label'] ); ?> <span aria-hidden="true">&rarr;</span>
+                        </a>
+                    <?php endif; ?>
+                    <?php
+                    // WHY arrows as well as dragging: dragging needs a steady
+                    // hand on a trackpad, cannot be done from the keyboard, and
+                    // does not fire at all on a tablet. The arrows work
+                    // everywhere and cost one small button each.
+                    ?>
+                    <button type="button" class="sp-dash-card-move" data-dir="-1"
+                            aria-label="<?php echo esc_attr( sprintf( /* translators: %s: card name */ __( 'Move %s earlier', 'societypress' ), $card['label'] ) ); ?>">&uarr;</button>
+                    <button type="button" class="sp-dash-card-move" data-dir="1"
+                            aria-label="<?php echo esc_attr( sprintf( /* translators: %s: card name */ __( 'Move %s later', 'societypress' ), $card['label'] ) ); ?>">&darr;</button>
+                </span>
             </div>
 
-            <div class="sp-dash-card-body <?php echo $rows ? 'sp-dash-rows' : 'sp-dash-figures'; ?>">
+            <div class="sp-dash-card-body <?php echo $rows ? 'sp-dash-rows' : 'sp-dash-figures'; ?>" id="<?php echo esc_attr( $body_id ); ?>">
             <?php foreach ( $card['tiles'] as $id => $tile ) :
                 $value = $values[ $id ] ?? 0;
                 $shown = ( ( $tile['format'] ?? 'number' ) === 'currency' )
@@ -16738,17 +16805,23 @@ function sp_render_dashboard_cards( array $keys ): void {
     </div>
 
     <style>
-        /* Three columns, because a card of numbers reads well at a third of the
-           screen and badly at a half. Members is the exception and takes two. */
+        /* WHY columns rather than a grid of rows: in a grid every card in a row
+           is as tall as the tallest one in it, so a short card leaves a hole
+           underneath that nothing can fill. Columns let each card start where
+           the one above it ended, and the holes close by themselves. */
         .sp-dash-cards {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            align-items: start;
-            gap: 16px;
+            column-count: 3;
+            column-gap: 16px;
             margin: 20px 0 30px;
         }
-        .sp-dash-card-wide { grid-column: span 2; }
         .sp-dash-card {
+            /* A card split across a column break would be unreadable, so it is
+               kept whole; inline-block is what makes older engines honour it. */
+            break-inside: avoid;
+            page-break-inside: avoid;
+            display: inline-block;
+            width: 100%;
+            margin: 0 0 16px;
             background: #fff;
             border: 1px solid #dcdcde;
             border-radius: 10px;
@@ -16764,24 +16837,81 @@ function sp_render_dashboard_cards( array $keys ): void {
             border-bottom: 1px solid #f0f0f1;
             padding-bottom: 12px;
             margin-bottom: 16px;
+            cursor: grab;
         }
-        .sp-dash-card-title {
+        .sp-dash-card-head:active { cursor: grabbing; }
+        .sp-dash-card-toggle {
             display: flex;
             align-items: center;
             gap: 8px;
+            flex: 1 1 auto;
+            min-width: 0;
             margin: 0;
             padding: 0;
-            font-size: 17px;
-            line-height: 1.3;
+            background: none;
+            border: 0;
+            cursor: pointer;
+            text-align: left;
             color: #1d2327;
         }
-        .sp-dash-card-title .dashicons { color: #2271b1; }
-        .sp-dash-card-urgent .sp-dash-card-title .dashicons { color: #d63638; }
+        .sp-dash-card-title {
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1.3;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sp-dash-card-toggle .dashicons { color: #2271b1; flex: none; }
+        .sp-dash-card-urgent .sp-dash-card-toggle .dashicons { color: #d63638; }
+        .sp-dash-card-chev {
+            color: #8c8f94 !important;
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+            transition: transform 0.15s ease;
+        }
+        .sp-dash-card-shut .sp-dash-card-chev { transform: rotate(180deg); }
+        /* Closed means closed: the rule under the heading is the bottom of the
+           card, not a line with nothing beneath it. */
+        .sp-dash-card-shut .sp-dash-card-head {
+            border-bottom: 0;
+            padding-bottom: 0;
+            margin-bottom: 0;
+        }
+        .sp-dash-card-shut .sp-dash-card-body { display: none; }
+        .sp-dash-card-tools {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: none;
+        }
         .sp-dash-card-more {
             font-size: 13px;
             text-decoration: none;
             white-space: nowrap;
         }
+        .sp-dash-card-move {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            line-height: 1;
+            font-size: 12px;
+            color: #646970;
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .sp-dash-card-move:hover { background: #f0f0f1; color: #1d2327; }
+        .sp-dash-card-toggle:focus, .sp-dash-card-move:focus {
+            outline: 2px solid #2271b1;
+            outline-offset: 1px;
+        }
+        /* Where the card being dragged would land. */
+        .sp-dash-card-dragging { opacity: 0.45; }
+        .sp-dash-card-drop-before { box-shadow: 0 -4px 0 -1px #2271b1; }
+        .sp-dash-card-drop-after  { box-shadow: 0 4px 0 -1px #2271b1; }
         .sp-dash-figures {
             display: flex;
             flex-wrap: wrap;
@@ -16835,14 +16965,139 @@ function sp_render_dashboard_cards( array $keys ): void {
         .sp-dash-v-expired  { color: #646970; }
 
         @media screen and (max-width: 1200px) {
-            .sp-dash-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .sp-dash-cards { column-count: 2; }
         }
         @media screen and (max-width: 782px) {
-            .sp-dash-cards { grid-template-columns: minmax(0, 1fr); }
-            .sp-dash-card-wide { grid-column: auto; }
+            .sp-dash-cards { column-count: 1; }
             .sp-dash-figure-value { font-size: 26px; }
         }
     </style>
+
+    <script>
+    /**
+     * Dashboard cards — closing them and moving them about.
+     *
+     * Everything here saves the moment it happens. There is no Save button and
+     * no editing mode to enter first: a volunteer who drags a card somewhere
+     * and closes the tab has moved it, and expects to find it there tomorrow.
+     */
+    (function() {
+        'use strict';
+
+        var wrap = document.querySelector('.sp-dash-cards');
+        if (!wrap) return;
+
+        var nonce = '<?php echo esc_js( wp_create_nonce( 'sp_dashboard_cards' ) ); ?>';
+
+        // The arrangement is read back off the page rather than tracked
+        // alongside it, so the two can never disagree about what is where.
+        function save() {
+            var body = new FormData();
+            body.append('action', 'sp_save_dashboard_cards');
+            body.append('nonce', nonce);
+            wrap.querySelectorAll('.sp-dash-card').forEach(function(card) {
+                body.append('order[]', card.getAttribute('data-card'));
+                if (card.classList.contains('sp-dash-card-shut')) {
+                    body.append('collapsed[]', card.getAttribute('data-card'));
+                }
+            });
+            fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' });
+        }
+
+        wrap.addEventListener('click', function(e) {
+            var toggle = e.target.closest('.sp-dash-card-toggle');
+            if (toggle) {
+                var card = toggle.closest('.sp-dash-card');
+                var shut = card.classList.toggle('sp-dash-card-shut');
+                toggle.setAttribute('aria-expanded', shut ? 'false' : 'true');
+                save();
+                return;
+            }
+
+            var move = e.target.closest('.sp-dash-card-move');
+            if (move) {
+                var moving = move.closest('.sp-dash-card');
+                var dir    = parseInt(move.getAttribute('data-dir'), 10);
+                var sib    = dir < 0 ? moving.previousElementSibling : moving.nextElementSibling;
+                if (!sib) return;
+                if (dir < 0) { wrap.insertBefore(moving, sib); }
+                else         { wrap.insertBefore(sib, moving); }
+                // Keep the focus on the arrow that moved, so pressing it again
+                // carries on moving the same card.
+                var again = moving.querySelector('.sp-dash-card-move[data-dir="' + dir + '"]');
+                if (again) again.focus();
+                save();
+            }
+        });
+
+        // ---- dragging ----------------------------------------------------
+        var dragged = null;
+
+        function clearMarkers() {
+            wrap.querySelectorAll('.sp-dash-card-drop-before, .sp-dash-card-drop-after').forEach(function(c) {
+                c.classList.remove('sp-dash-card-drop-before', 'sp-dash-card-drop-after');
+            });
+        }
+
+        // Nearest card to the pointer, and whether the pointer is above or
+        // below its middle. Measured to the centre in both directions because
+        // the cards sit in columns — "above" alone would pick from the wrong one.
+        function targetFor(x, y) {
+            var best = null, bestDist = Infinity;
+            wrap.querySelectorAll('.sp-dash-card').forEach(function(c) {
+                if (c === dragged) return;
+                var b  = c.getBoundingClientRect();
+                var dx = x - (b.left + b.width / 2);
+                var dy = y - (b.top + b.height / 2);
+                var d  = dx * dx + dy * dy;
+                if (d < bestDist) { bestDist = d; best = c; }
+            });
+            if (!best) return null;
+            var bb = best.getBoundingClientRect();
+            return { card: best, before: y < bb.top + bb.height / 2 };
+        }
+
+        wrap.addEventListener('dragstart', function(e) {
+            var head = e.target.closest('.sp-dash-card-head');
+            if (!head) return;
+            dragged = head.closest('.sp-dash-card');
+            dragged.classList.add('sp-dash-card-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            // Firefox refuses to start a drag unless something is set here.
+            try { e.dataTransfer.setData('text/plain', dragged.getAttribute('data-card') || ''); } catch (err) {}
+        });
+
+        wrap.addEventListener('dragover', function(e) {
+            if (!dragged) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            var t = targetFor(e.clientX, e.clientY);
+            clearMarkers();
+            if (t) t.card.classList.add(t.before ? 'sp-dash-card-drop-before' : 'sp-dash-card-drop-after');
+        });
+
+        wrap.addEventListener('drop', function(e) {
+            if (!dragged) return;
+            e.preventDefault();
+            var t = targetFor(e.clientX, e.clientY);
+            if (t) {
+                if (t.before) { wrap.insertBefore(dragged, t.card); }
+                else          { wrap.insertBefore(dragged, t.card.nextElementSibling); }
+            }
+            clearMarkers();
+        });
+
+        // Fires whether the card landed or the drag was abandoned, so the
+        // tidying up and the saving belong here rather than in drop alone.
+        wrap.addEventListener('dragend', function() {
+            if (!dragged) return;
+            dragged.classList.remove('sp-dash-card-dragging');
+            dragged = null;
+            clearMarkers();
+            save();
+        });
+    })();
+    </script>
     <?php
 }
 
@@ -18053,6 +18308,14 @@ add_action( 'load-toplevel_page_societypress', function () {
         'content' =>
             '<p>' . esc_html__( 'This is your own dashboard. What is on it is up to you, and changing it changes nothing for anybody else in the society.', 'societypress' ) . '</p>' .
             '<p>' . esc_html__( 'Each card covers one part of the society\'s work. You are only shown the cards for the work you are responsible for. Open Screen Options at the top right to take one off, or to put it back.', 'societypress' ) . '</p>',
+    ] );
+
+    $screen->add_help_tab( [
+        'id'      => 'sp-dash-arrange',
+        'title'   => __( 'Moving cards about', 'societypress' ),
+        'content' =>
+            '<p>' . esc_html__( 'Click a card\'s name to close it up, and click again to open it. A closed card keeps its place and stays closed the next time you come back.', 'societypress' ) . '</p>' .
+            '<p>' . esc_html__( 'Drag a card by its heading to move it, or use the two small arrows beside the heading. The cards fill in around whatever you move, so there are never gaps left behind.', 'societypress' ) . '</p>',
     ] );
 
     $screen->add_help_tab( [
@@ -35694,7 +35957,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.72',
+            'version'     => '1.1.73',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35702,7 +35965,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.72',
+            'version'     => '1.1.73',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35710,7 +35973,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.72',
+            'version'     => '1.1.73',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35718,7 +35981,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.72',
+            'version'     => '1.1.73',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35726,7 +35989,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.72',
+            'version'     => '1.1.73',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

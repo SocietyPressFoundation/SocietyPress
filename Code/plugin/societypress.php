@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.67
+ * Version:     1.1.68
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.67' );
+define( 'SOCIETYPRESS_VERSION', '1.1.68' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -15809,7 +15809,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Total Members', 'societypress' ),
             'group'      => 'members',
             'short'      => __( 'Total', 'societypress' ),
-            'default'    => true,
             'module'     => '',
             'capability' => 'sp_manage_members',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-members' ),
@@ -15819,7 +15818,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Active Members', 'societypress' ),
             'group'      => 'members',
             'short'      => __( 'Active', 'societypress' ),
-            'default'    => false,
             'module'     => '',
             'capability' => 'sp_manage_members',
             'accent'     => 'active',
@@ -15829,7 +15827,6 @@ function sp_get_dashboard_tiles(): array {
         'members_expiring' => [
             'label'      => __( 'Renewals Due', 'societypress' ),
             'group'      => 'members',
-            'default'    => true,
             'module'     => '',
             'capability' => 'sp_manage_members',
             'accent'     => 'expiring',
@@ -15844,7 +15841,6 @@ function sp_get_dashboard_tiles(): array {
         'members_expired' => [
             'label'      => __( 'Lapsed', 'societypress' ),
             'group'      => 'members',
-            'default'    => false,
             'module'     => '',
             'capability' => 'sp_manage_members',
             'accent'     => 'expired',
@@ -15855,7 +15851,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'New Members (30 Days)', 'societypress' ),
             'group'      => 'members',
             'short'      => __( 'New (30 Days)', 'societypress' ),
-            'default'    => false,
             'module'     => '',
             'capability' => 'sp_manage_members',
             'accent'     => 'new',
@@ -15874,7 +15869,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Dues This Year', 'societypress' ),
             'group'      => 'money',
             'short'      => __( 'Dues', 'societypress' ),
-            'default'    => true,
             'module'     => '',
             'capability' => 'sp_manage_finances',
             'accent'     => 'active',
@@ -15889,7 +15883,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Donations This Year', 'societypress' ),
             'group'      => 'money',
             'short'      => __( 'Donations', 'societypress' ),
-            'default'    => false,
             'module'     => 'donations',
             'capability' => 'sp_manage_finances',
             'accent'     => 'active',
@@ -15905,7 +15898,6 @@ function sp_get_dashboard_tiles(): array {
         'orders_awaiting' => [
             'label'      => __( 'Orders to Fill', 'societypress' ),
             'group'      => 'money',
-            'default'    => true,
             'module'     => 'store',
             'capability' => 'sp_manage_finances',
             'accent'     => 'expiring',
@@ -15919,7 +15911,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Upcoming Events', 'societypress' ),
             'group'      => 'events',
             'short'      => __( 'Upcoming', 'societypress' ),
-            'default'    => true,
             'module'     => 'events',
             'capability' => 'sp_manage_events',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-events' ),
@@ -15930,7 +15921,6 @@ function sp_get_dashboard_tiles(): array {
         'event_registrations' => [
             'label'      => __( 'Registrations (30 Days)', 'societypress' ),
             'group'      => 'events',
-            'default'    => false,
             'module'     => 'events',
             'capability' => 'sp_manage_events',
             'accent'     => 'new',
@@ -15946,7 +15936,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Volunteer Openings', 'societypress' ),
             'group'      => 'board',
             'short'      => __( 'Openings', 'societypress' ),
-            'default'    => false,
             'module'     => 'governance',
             'capability' => 'sp_manage_governance',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-volunteer-opportunities' ),
@@ -15956,7 +15945,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Committees Without a Chair', 'societypress' ),
             'group'      => 'board',
             'short'      => __( 'Without a Chair', 'societypress' ),
-            'default'    => false,
             'module'     => 'governance',
             'capability' => 'sp_manage_governance',
             'accent'     => 'expiring',
@@ -15970,7 +15958,6 @@ function sp_get_dashboard_tiles(): array {
         'ballots_open' => [
             'label'      => __( 'Open Ballots', 'societypress' ),
             'group'      => 'board',
-            'default'    => false,
             'module'     => 'voting',
             'capability' => 'sp_manage_governance',
             'accent'     => 'new',
@@ -15983,7 +15970,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Catalog Items', 'societypress' ),
             'group'      => 'library',
             'short'      => __( 'Items', 'societypress' ),
-            'default'    => false,
             'module'     => 'library',
             'capability' => 'sp_manage_library',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-library-catalog' ),
@@ -15993,7 +15979,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Items Not Available', 'societypress' ),
             'group'      => 'library',
             'short'      => __( 'Not Available', 'societypress' ),
-            'default'    => false,
             'module'     => 'library',
             'capability' => 'sp_manage_library',
             'accent'     => 'expiring',
@@ -16004,7 +15989,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Record Collections', 'societypress' ),
             'group'      => 'records',
             'short'      => __( 'Collections', 'societypress' ),
-            'default'    => false,
             'module'     => 'records',
             'capability' => 'sp_manage_records',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-record-collections' ),
@@ -16014,7 +15998,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Records Indexed', 'societypress' ),
             'group'      => 'records',
             'short'      => __( 'Indexed', 'societypress' ),
-            'default'    => false,
             'module'     => 'records',
             'capability' => 'sp_manage_records',
             'accent'     => 'active',
@@ -16025,9 +16008,8 @@ function sp_get_dashboard_tiles(): array {
         // ---- Communications and content -----------------------------------
         'subscribers' => [
             'label'      => __( 'Email Subscribers', 'societypress' ),
-            'group'      => 'communication',
+            'group'      => 'content',
             'short'      => __( 'Subscribers', 'societypress' ),
-            'default'    => false,
             'module'     => 'blast_email',
             'capability' => 'sp_manage_communications',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-subscribers' ),
@@ -16035,8 +16017,7 @@ function sp_get_dashboard_tiles(): array {
         ],
         'documents_count' => [
             'label'      => __( 'Documents', 'societypress' ),
-            'group'      => 'files',
-            'default'    => false,
+            'group'      => 'content',
             'module'     => 'documents',
             'capability' => 'sp_manage_content',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-documents' ),
@@ -16044,8 +16025,7 @@ function sp_get_dashboard_tiles(): array {
         ],
         'newsletters_count' => [
             'label'      => __( 'Newsletters', 'societypress' ),
-            'group'      => 'communication',
-            'default'    => false,
+            'group'      => 'content',
             'module'     => 'newsletters',
             'capability' => 'sp_manage_content',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-newsletter-archive' ),
@@ -16053,8 +16033,7 @@ function sp_get_dashboard_tiles(): array {
         ],
         'photos_count' => [
             'label'      => __( 'Photos', 'societypress' ),
-            'group'      => 'files',
-            'default'    => false,
+            'group'      => 'content',
             'module'     => 'gallery',
             'capability' => 'sp_manage_content',
             'url'        => static fn() => admin_url( 'admin.php?page=sp-gallery' ),
@@ -16069,7 +16048,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'Open Research Requests', 'societypress' ),
             'group'      => 'inbox',
             'short'      => __( 'Research Requests', 'societypress' ),
-            'default'    => true,
             'module'     => 'help_requests',
             'capability' => 'sp_manage_content',
             'accent'     => 'expiring',
@@ -16080,7 +16058,6 @@ function sp_get_dashboard_tiles(): array {
             'label'      => __( 'New Form Submissions', 'societypress' ),
             'group'      => 'inbox',
             'short'      => __( 'Form Submissions', 'societypress' ),
-            'default'    => true,
             'module'     => 'forms',
             'capability' => 'sp_manage_content',
             'accent'     => 'expiring',
@@ -16098,30 +16075,107 @@ function sp_get_dashboard_tiles(): array {
 }
 
 /**
- * The groups tiles are gathered under, in the order they appear.
+ * The cards the dashboard is built from, in the order they appear.
  *
- * The heading carries the subject so the tile underneath doesn't have to —
- * "Records: Collections" reads better as a heading and a short label than as
- * two tiles both starting with the word Records.
+ * A card is one area of the society's work, and the card — not the number
+ * inside it — is what a person switches on and off.
  *
- * Each group names the capability that marks somebody as responsible for that
- * part of the society's work. That is what lets a dashboard open on the work
- * the reader actually does.
+ * WHY the card and not the number: a volunteer can answer "do I want the
+ * Library on my dashboard" without thinking about it. Asking her instead
+ * whether she wants Catalog Items but not Items Not Available is a question
+ * she has no way to answer, and two dozen of those is not a choice, it is a
+ * form. The card also lets the heading carry the subject, so the figure under
+ * it can read "Collections" rather than "Record Collections".
  *
- * @return array<string,array{label:string,capability:string}>
+ * Each card carries:
+ *   label     What it is called, on the card and in Screen Options.
+ *   describe  One line in Screen Options saying what it puts on the page.
+ *   icon      Dashicon shown beside the title.
+ *   layout    'numbers' for a few large figures, 'rows' for a labelled list.
+ *   wide      Whether it takes two columns of the three instead of one.
+ *   link      Optional shortcut out to the screen behind the card.
+ *   urgent    Whether a non-zero total should mark the card as needing somebody.
+ *
+ * WHY no capability of its own: a card is offered when at least one number
+ * inside it is offered, and the numbers already carry both gates — the module
+ * has to be on and the reader has to hold the capability. Declaring it twice
+ * would only create a way for the two to disagree.
+ *
+ * @return array<string,array<string,mixed>>
  */
-function sp_dashboard_tile_groups(): array {
-    return [
-        'inbox'         => [ 'label' => __( 'Waiting on You', 'societypress' ),      'capability' => '' ],
-        'members'       => [ 'label' => __( 'Members', 'societypress' ),             'capability' => 'sp_manage_members' ],
-        'money'         => [ 'label' => __( 'Money', 'societypress' ),               'capability' => 'sp_manage_finances' ],
-        'events'        => [ 'label' => __( 'Events', 'societypress' ),              'capability' => 'sp_manage_events' ],
-        'board'         => [ 'label' => __( 'Board & Volunteers', 'societypress' ),  'capability' => 'sp_manage_governance' ],
-        'library'       => [ 'label' => __( 'Library', 'societypress' ),             'capability' => 'sp_manage_library' ],
-        'records'       => [ 'label' => __( 'Records', 'societypress' ),             'capability' => 'sp_manage_records' ],
-        'communication' => [ 'label' => __( 'Email & Newsletters', 'societypress' ), 'capability' => 'sp_manage_communications' ],
-        'files'         => [ 'label' => __( 'Documents & Photos', 'societypress' ),  'capability' => 'sp_manage_content' ],
+function sp_dashboard_cards(): array {
+    $cards = [
+        'inbox' => [
+            'label'    => __( 'Waiting on You', 'societypress' ),
+            'describe' => __( 'Research requests and form submissions nobody has answered yet.', 'societypress' ),
+            'icon'     => 'dashicons-bell',
+            'layout'   => 'numbers',
+            'urgent'   => true,
+        ],
+        'members' => [
+            'label'    => __( 'Members', 'societypress' ),
+            'describe' => __( 'How many members there are, how many are active, and who is due to renew.', 'societypress' ),
+            'icon'     => 'dashicons-groups',
+            'layout'   => 'numbers',
+            // The one card wide enough for five figures side by side, because
+            // the five are read together — a renewals number means one thing
+            // against 1,400 members and another against 40.
+            'wide'     => true,
+            'link'     => [ 'label' => __( 'View Directory', 'societypress' ), 'page' => 'sp-members' ],
+        ],
+        'money' => [
+            'label'    => __( 'Financials', 'societypress' ),
+            'describe' => __( 'Dues and donations taken so far this year, and orders still to be filled.', 'societypress' ),
+            'icon'     => 'dashicons-money-alt',
+            // Rows rather than figures: money runs to seven characters and a
+            // row of large dollar amounts stops being readable at a glance.
+            'layout'   => 'rows',
+            'link'     => [ 'label' => __( 'Payments', 'societypress' ), 'page' => 'sp-payments' ],
+        ],
+        'events' => [
+            'label'    => __( 'Events', 'societypress' ),
+            'describe' => __( 'Events still to come and how many people have signed up lately.', 'societypress' ),
+            'icon'     => 'dashicons-calendar-alt',
+            'layout'   => 'numbers',
+            'link'     => [ 'label' => __( 'Calendar', 'societypress' ), 'page' => 'sp-events' ],
+        ],
+        'board' => [
+            'label'    => __( 'Volunteers', 'societypress' ),
+            'describe' => __( 'Volunteer openings, committees without a chair, and ballots still open.', 'societypress' ),
+            'icon'     => 'dashicons-heart',
+            'layout'   => 'rows',
+            'link'     => [ 'label' => __( 'Opportunities', 'societypress' ), 'page' => 'sp-volunteer-opportunities' ],
+        ],
+        'library' => [
+            'label'    => __( 'Library', 'societypress' ),
+            'describe' => __( 'What is in the catalog and what is currently off the shelf.', 'societypress' ),
+            'icon'     => 'dashicons-book-alt',
+            'layout'   => 'numbers',
+            'link'     => [ 'label' => __( 'Catalog', 'societypress' ), 'page' => 'sp-library-catalog' ],
+        ],
+        'records' => [
+            'label'    => __( 'Records', 'societypress' ),
+            'describe' => __( 'Record collections held and how many entries have been indexed.', 'societypress' ),
+            'icon'     => 'dashicons-archive',
+            'layout'   => 'numbers',
+            'link'     => [ 'label' => __( 'Archive', 'societypress' ), 'page' => 'sp-record-collections' ],
+        ],
+        'content' => [
+            'label'    => __( 'Content', 'societypress' ),
+            'describe' => __( 'Subscribers, newsletters, documents and photos the society has published.', 'societypress' ),
+            'icon'     => 'dashicons-media-document',
+            // Four counts nobody acts on, so they get a list rather than four
+            // large numbers competing with the work on the rest of the page.
+            'layout'   => 'rows',
+        ],
     ];
+
+    /**
+     * Filter the dashboard card registry.
+     *
+     * @param array $cards Card definitions keyed by id.
+     */
+    return apply_filters( 'sp_dashboard_cards', $cards );
 }
 
 /**
@@ -16151,96 +16205,28 @@ function sp_available_dashboard_tiles(): array {
 }
 
 /**
- * The tiles somebody starts with, before they have arranged anything.
+ * The cards this person can be offered, each with its numbers attached.
  *
- * WHY not all of them: a dashboard that opens with two dozen tiles, half of
- * them reading zero, is a wall rather than a summary. The ones worth putting
- * in front of somebody unasked are the ones where a person is waiting —
- * renewals due, orders to fill, requests unanswered — plus the handful of
- * numbers a board asks for at every meeting.
- *
- * WHY it also follows the job: a treasurer opening SocietyPress for the first
- * time should land on money without configuring anything. Somebody responsible
- * for one or two areas gets those areas in full. Somebody responsible for all
- * of them is the administrator, and handing the administrator everything is the
- * pile this was meant to clear, so she gets the short list and adds what she
- * wants.
- *
- * @param array<string,array<string,mixed>> $available
- * @return string[]
- */
-function sp_dashboard_default_tiles( array $available ): array {
-    $mine = [];
-    foreach ( sp_dashboard_tile_groups() as $key => $group ) {
-        if ( $group['capability'] !== '' && current_user_can( $group['capability'] ) ) {
-            $mine[] = $key;
-        }
-    }
-    $whole_groups = ( $mine && count( $mine ) <= 2 ) ? $mine : [];
-
-    $on = [];
-    foreach ( $available as $id => $tile ) {
-        if ( ! empty( $tile['default'] ) || in_array( $tile['group'] ?? '', $whole_groups, true ) ) {
-            $on[] = $id;
-        }
-    }
-
-    return $on;
-}
-
-/**
- * The tiles this person should see, in the order they should see them.
- *
- * Somebody who has never touched the dashboard gets the starting set. Somebody
- * who has arranged it gets exactly what they arranged: anything they hid stays
- * hidden, anything they moved keeps its place, and a tile added by a later
- * release lands after what they have already arranged rather than jumping the
- * queue.
+ * A card with nothing in it never appears anywhere — not on the page and not in
+ * Screen Options. A society that never turned the library on has no Library
+ * card to tick, and a librarian is not offered Financials.
  *
  * @return array<string,array<string,mixed>>
  */
-function sp_visible_dashboard_tiles(): array {
-    $prefs     = sp_dashboard_tile_prefs();
-    $available = sp_available_dashboard_tiles();
+function sp_available_dashboard_cards(): array {
+    $tiles = sp_available_dashboard_tiles();
+    $cards = [];
 
-    if ( ! $prefs['customised'] ) {
-        $starting  = sp_dashboard_default_tiles( $available );
-        $available = array_intersect_key( $available, array_flip( $starting ) );
-    } else {
-        foreach ( $prefs['hidden'] as $id ) {
-            unset( $available[ $id ] );
+    foreach ( sp_dashboard_cards() as $key => $card ) {
+        $mine = array_filter( $tiles, static fn( $tile ) => ( $tile['group'] ?? '' ) === $key );
+        if ( ! $mine ) {
+            continue;
         }
+        $card['tiles']  = $mine;
+        $cards[ $key ]  = $card;
     }
 
-    // Saved order first, then whatever the reader has never seen before.
-    $ordered = [];
-    foreach ( $prefs['order'] as $id ) {
-        if ( isset( $available[ $id ] ) ) {
-            $ordered[ $id ] = $available[ $id ];
-            unset( $available[ $id ] );
-        }
-    }
-
-    return $ordered + $available;
-}
-
-/**
- * This person's saved tile arrangement.
- *
- * @return array{customised:bool,order:string[],hidden:string[]}
- */
-function sp_dashboard_tile_prefs(): array {
-    $saved = get_user_meta( get_current_user_id(), 'sp_dashboard_tiles', true );
-
-    // WHY the flag: an empty hidden list means two opposite things — "I have
-    // never touched this" and "I turned everything back on". Without knowing
-    // which, the second person would be handed the starting set again every
-    // time they loaded the page.
-    return [
-        'customised' => is_array( $saved ) && ( isset( $saved['order'] ) || isset( $saved['hidden'] ) ),
-        'order'      => is_array( $saved['order'] ?? null ) ? array_values( array_map( 'strval', $saved['order'] ) ) : [],
-        'hidden'     => is_array( $saved['hidden'] ?? null ) ? array_values( array_map( 'strval', $saved['hidden'] ) ) : [],
-    ];
+    return $cards;
 }
 
 /**
@@ -16617,415 +16603,200 @@ function sp_render_dashboard_actions(): void {
 }
 
 /**
- * Render the tile strip, plus the controls for rearranging it.
+ * Render one row of dashboard cards.
+ *
+ * WHY one function for all of them rather than one per card: every card is the
+ * same object — a heading, a way through to the screen behind it, and a handful
+ * of numbers that link to the list they came from. What differs is the numbers,
+ * and those come from the registry. A card per function would be eight places
+ * to fix the same layout.
+ *
+ * @param string[] $keys Card ids, in the order they should appear.
  */
-function sp_render_dashboard_tiles(): void {
-    $tiles     = sp_visible_dashboard_tiles();
-    $values    = sp_dashboard_tile_values( $tiles );
-    $available = sp_available_dashboard_tiles();
+function sp_render_dashboard_cards( array $keys ): void {
+    $available = sp_available_dashboard_cards();
 
-    // Whatever this person could see but isn't seeing. Derived rather than
-    // stored, so it is right both for somebody who has hidden things and for
-    // somebody who has simply never added them.
-    $hidden = array_keys( array_diff_key( $available, $tiles ) );
-
-    // Gather into groups, keeping each person's own order inside a group.
-    $groups  = sp_dashboard_tile_groups();
-    $buckets = [];
-    foreach ( $tiles as $id => $tile ) {
-        $key = $tile['group'] ?? 'inbox';
-        if ( ! isset( $groups[ $key ] ) ) {
-            $key = 'inbox';
+    $cards = [];
+    foreach ( $keys as $key ) {
+        if ( isset( $available[ $key ] ) ) {
+            $cards[ $key ] = $available[ $key ];
         }
-        $buckets[ $key ][ $id ] = $tile;
+    }
+    if ( ! $cards ) {
+        return;
     }
 
-    // Everything hidden is still a legitimate arrangement — the strip goes
-    // away and the Customize button stays, so it can be brought back.
+    // One pass for every number on the page, so the five-minute cache is asked
+    // once rather than once per card.
+    $tiles = [];
+    foreach ( $cards as $card ) {
+        $tiles += $card['tiles'];
+    }
+    $values = sp_dashboard_tile_values( $tiles );
     ?>
-    <div class="sp-dash-tiles-wrap">
-        <div class="sp-dash-tiles-bar">
-            <button type="button" class="button button-small" id="sp-tiles-customize">
-                <span class="dashicons dashicons-edit sp-dash-icon-mr"></span><?php esc_html_e( 'Customize tiles', 'societypress' ); ?>
-            </button>
-            <span id="sp-tiles-help" class="sp-dash-tiles-help" hidden>
-                <?php esc_html_e( 'Drag a tile where you want it, or use the arrows. Hide takes one off your dashboard. Only you see these changes.', 'societypress' ); ?>
-            </span>
-            <button type="button" class="button button-small" id="sp-tiles-reset" hidden><?php esc_html_e( 'Start over', 'societypress' ); ?></button>
-            <button type="button" class="button button-primary button-small" id="sp-tiles-done" hidden><?php esc_html_e( 'Done', 'societypress' ); ?></button>
-            <span id="sp-tiles-status" class="sp-dash-tiles-status" role="status" aria-live="polite"></span>
-        </div>
+    <div class="sp-dash-cards">
+        <?php foreach ( $cards as $key => $card ) :
+            $rows = ( ( $card['layout'] ?? 'numbers' ) === 'rows' );
 
-        <div class="sp-dash-stats" id="sp-dash-tiles">
-            <?php foreach ( $groups as $group_key => $group ) :
-                if ( empty( $buckets[ $group_key ] ) ) {
-                    continue;
-                }
-                $in_group = $buckets[ $group_key ];
+            // A card only calls for somebody's attention when something inside
+            // it is actually waiting. Zero requests outstanding is good news,
+            // and good news should not be painted red.
+            $urgent = ! empty( $card['urgent'] );
+            if ( $urgent ) {
+                $urgent = (bool) array_filter(
+                    array_keys( $card['tiles'] ),
+                    static fn( $id ) => (float) ( $values[ $id ] ?? 0 ) > 0
+                );
+            }
 
-                // A heading over a single tile looks worse than no heading at
-                // all, so a group of one is just a tile — and it keeps its full
-                // name, because "Indexed" on its own says nothing.
-                $titled = count( $in_group ) > 1;
-            ?>
-            <div class="sp-dash-tile-group" data-group="<?php echo esc_attr( $group_key ); ?>">
-                <?php if ( $titled ) : ?>
-                    <h3 class="sp-dash-group-heading"><?php echo esc_html( $group['label'] ); ?></h3>
+            $classes  = 'sp-dash-card';
+            $classes .= ! empty( $card['wide'] ) ? ' sp-dash-card-wide' : '';
+            $classes .= $urgent ? ' sp-dash-card-urgent' : '';
+        ?>
+        <section class="<?php echo esc_attr( $classes ); ?>" data-card="<?php echo esc_attr( $key ); ?>">
+            <div class="sp-dash-card-head">
+                <h2 class="sp-dash-card-title">
+                    <span class="dashicons <?php echo esc_attr( $card['icon'] ?? 'dashicons-marker' ); ?>" aria-hidden="true"></span>
+                    <?php echo esc_html( $card['label'] ); ?>
+                </h2>
+                <?php if ( ! empty( $card['link'] ) ) : ?>
+                    <a class="sp-dash-card-more" href="<?php echo esc_url( admin_url( 'admin.php?page=' . $card['link']['page'] ) ); ?>">
+                        <?php echo esc_html( $card['link']['label'] ); ?> <span aria-hidden="true">&rarr;</span>
+                    </a>
                 <?php endif; ?>
-                <div class="sp-dash-group-tiles">
-            <?php foreach ( $in_group as $id => $tile ) :
-                $accent = ! empty( $tile['accent'] ) ? ' sp-dash-stat-' . sanitize_html_class( $tile['accent'] ) : '';
-                $value  = $values[ $id ] ?? 0;
-                $shown  = ( ( $tile['format'] ?? 'number' ) === 'currency' )
+            </div>
+
+            <div class="sp-dash-card-body <?php echo $rows ? 'sp-dash-rows' : 'sp-dash-figures'; ?>">
+            <?php foreach ( $card['tiles'] as $id => $tile ) :
+                $value = $values[ $id ] ?? 0;
+                $shown = ( ( $tile['format'] ?? 'number' ) === 'currency' )
                     ? sp_format_currency( (float) $value )
                     : number_format_i18n( (int) $value );
-                // Under a heading the tile drops the subject the heading already
-                // carries: Records, then Collections and Indexed.
-                $caption = ( $titled && ! empty( $tile['short'] ) ) ? $tile['short'] : $tile['label'];
-            ?>
-                <div class="sp-dash-stat<?php echo esc_attr( $accent ); ?>" data-tile="<?php echo esc_attr( $id ); ?>" data-full-label="<?php echo esc_attr( $tile['label'] ); ?>">
-                    <a href="<?php echo esc_url( call_user_func( $tile['url'] ) ); ?>" class="sp-dash-stat-link">
-                        <div class="sp-dash-stat-number"><?php echo esc_html( $shown ); ?></div>
-                        <div class="sp-dash-stat-label"><?php echo esc_html( $caption ); ?></div>
-                    </a>
-                    <div class="sp-dash-tile-controls" hidden>
-                        <button type="button" class="button-link sp-tile-move" data-dir="-1" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: tile name */ __( 'Move %s earlier', 'societypress' ), $tile['label'] ) ); ?>">&larr;</button>
-                        <button type="button" class="button-link sp-tile-hide"><?php esc_html_e( 'Hide', 'societypress' ); ?></button>
-                        <button type="button" class="button-link sp-tile-move" data-dir="1" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: tile name */ __( 'Move %s later', 'societypress' ), $tile['label'] ) ); ?>">&rarr;</button>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endforeach; ?>
-        </div>
 
-        <?php
-        // Hidden tiles are listed while customizing so putting one back is a
-        // click, not a hunt through a settings screen.
-        $all_tiles = sp_get_dashboard_tiles();
-        $restorable = array_values( array_filter( $hidden, static fn( $id ) => isset( $all_tiles[ $id ] ) ) );
-        ?>
-        <?php
-        // WHY no empty state: a row that draws itself only to announce that it
-        // has nothing in it is worse than not being there. It appears when
-        // there is something to put back, and not before.
-        ?>
-        <div class="sp-dash-tiles-hidden" id="sp-tiles-hidden-list" hidden>
-            <span class="sp-dash-tiles-hidden-label"<?php echo $restorable ? '' : ' hidden'; ?>><?php esc_html_e( 'Add a tile:', 'societypress' ); ?></span>
-            <?php foreach ( $restorable as $id ) : ?>
-                <button type="button" class="button button-small sp-tile-restore" data-tile="<?php echo esc_attr( $id ); ?>">
-                    <?php echo esc_html( $all_tiles[ $id ]['label'] ); ?> +
-                </button>
+                // A row has the width for the full name. A figure sits under a
+                // heading that already says the subject, so it drops it —
+                // "Records", then "Collections" and "Indexed".
+                $caption = ( ! $rows && ! empty( $tile['short'] ) ) ? $tile['short'] : $tile['label'];
+                $accent  = ! empty( $tile['accent'] ) ? ' sp-dash-v-' . sanitize_html_class( $tile['accent'] ) : '';
+            ?>
+                <a class="<?php echo $rows ? 'sp-dash-row' : 'sp-dash-figure'; ?>" href="<?php echo esc_url( call_user_func( $tile['url'] ) ); ?>">
+                    <span class="<?php echo $rows ? 'sp-dash-row-label' : 'sp-dash-figure-label'; ?>"><?php echo esc_html( $caption ); ?></span>
+                    <span class="<?php echo $rows ? 'sp-dash-row-value' : 'sp-dash-figure-value'; ?><?php echo esc_attr( $accent ); ?>"><?php echo esc_html( $shown ); ?></span>
+                </a>
             <?php endforeach; ?>
-        </div>
+            </div>
+        </section>
+        <?php endforeach; ?>
     </div>
 
-    <script>
-    /**
-     * Dashboard tiles — rearranging.
-     *
-     * Two ways to move a tile, on purpose. Dragging is what most people reach
-     * for and is the quickest when it works. The arrows stay because dragging
-     * does not: it needs a steady hand on a trackpad, it is invisible to
-     * anyone working from the keyboard, and the browser drag events it relies
-     * on never fire on a tablet. Whichever a person uses, the arrangement is
-     * saved the same way.
-     */
-    (function() {
-        'use strict';
-
-        var wrap = document.querySelector('.sp-dash-tiles-wrap');
-        if (!wrap) return;
-
-        var grid       = document.getElementById('sp-dash-tiles');
-        var hiddenList = document.getElementById('sp-tiles-hidden-list');
-        var btnEdit    = document.getElementById('sp-tiles-customize');
-        var btnDone    = document.getElementById('sp-tiles-done');
-        var btnReset   = document.getElementById('sp-tiles-reset');
-        var help       = document.getElementById('sp-tiles-help');
-        var status     = document.getElementById('sp-tiles-status');
-        var nonce      = '<?php echo esc_js( wp_create_nonce( 'sp_dashboard_tiles' ) ); ?>';
-
-        var STR = {
-            saved:  <?php echo wp_json_encode( __( 'Saved.', 'societypress' ) ); ?>,
-            failed: <?php echo wp_json_encode( __( 'Could not save. Try again.', 'societypress' ) ); ?>
-        };
-
-        // A heading earns its place only while more than one tile sits under
-        // it. Below that the group reads as a single tile with its own name.
-        function retitleGroup(group) {
-            var tiles   = group.querySelectorAll('.sp-dash-stat');
-            var heading = group.querySelector('.sp-dash-group-heading');
-
-            if (!tiles.length) { group.remove(); return; }
-            if (heading) { heading.hidden = tiles.length < 2; }
-
-            Array.prototype.forEach.call(tiles, function(t) {
-                var caption = t.querySelector('.sp-dash-stat-label');
-                var full    = t.getAttribute('data-full-label');
-                if (!caption || !full) return;
-                if (tiles.length < 2) {
-                    if (!t.getAttribute('data-short-label')) {
-                        t.setAttribute('data-short-label', caption.textContent);
-                    }
-                    caption.textContent = full;
-                } else {
-                    var short = t.getAttribute('data-short-label');
-                    if (short) { caption.textContent = short; }
-                }
-            });
+    <style>
+        /* Three columns, because a card of numbers reads well at a third of the
+           screen and badly at a half. Members is the exception and takes two. */
+        .sp-dash-cards {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: start;
+            gap: 16px;
+            margin: 20px 0 30px;
+        }
+        .sp-dash-card-wide { grid-column: span 2; }
+        .sp-dash-card {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 10px;
+            padding: 18px 20px 20px;
+        }
+        .sp-dash-card-urgent { border-left: 4px solid #d63638; }
+        .sp-dash-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            border-bottom: 1px solid #f0f0f1;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+        .sp-dash-card-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0;
+            padding: 0;
+            font-size: 17px;
+            line-height: 1.3;
+            color: #1d2327;
+        }
+        .sp-dash-card-title .dashicons { color: #2271b1; }
+        .sp-dash-card-urgent .sp-dash-card-title .dashicons { color: #d63638; }
+        .sp-dash-card-more {
+            font-size: 13px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .sp-dash-figures {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px 30px;
+        }
+        .sp-dash-figure { text-decoration: none; color: inherit; }
+        .sp-dash-figure-label {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #646970;
+        }
+        .sp-dash-figure-value {
+            display: block;
+            font-size: 30px;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #1d2327;
+        }
+        .sp-dash-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 9px 0;
+            border-bottom: 1px solid #f0f0f1;
+            font-size: 14px;
+            color: #1d2327;
+            text-decoration: none;
+        }
+        .sp-dash-row:last-child { border-bottom: 0; }
+        .sp-dash-row-value {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        .sp-dash-figure:hover .sp-dash-figure-value,
+        .sp-dash-row:hover .sp-dash-row-label { text-decoration: underline; }
+        .sp-dash-figure:focus, .sp-dash-row:focus {
+            outline: 2px solid #2271b1;
+            outline-offset: 2px;
         }
 
-        function setEditing(on) {
-            wrap.classList.toggle('sp-dash-tiles-editing', on);
-            btnEdit.hidden  = on;
-            btnDone.hidden  = !on;
-            btnReset.hidden = !on;
-            help.hidden     = !on;
-            hiddenList.hidden = !on || !hiddenList.querySelector('.sp-tile-restore');
-            grid.querySelectorAll('.sp-dash-tile-controls').forEach(function(c) { c.hidden = !on; });
-            // Only draggable while customizing — outside it the tiles are links
-            // to their reports and dragging one should do nothing.
-            grid.querySelectorAll('.sp-dash-stat').forEach(function(t) {
-                if (on) { t.setAttribute('draggable', 'true'); }
-                else    { t.removeAttribute('draggable'); }
-            });
-            if (!on) status.textContent = '';
+        /* The colour says what kind of number it is, never what it is worth:
+           anything with a date on it that has run out is red, anything healthy
+           or newly arrived is blue, anything simply over is grey. */
+        .sp-dash-v-active, .sp-dash-v-new { color: #2271b1; }
+        .sp-dash-v-expiring { color: #d63638; }
+        .sp-dash-v-expired  { color: #646970; }
+
+        @media screen and (max-width: 1200px) {
+            .sp-dash-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
-
-        // The arrangement is whatever the page currently shows — read back off
-        // the DOM rather than tracked in a variable that could drift from it.
-        function currentState() {
-            return {
-                order: Array.prototype.map.call(
-                    grid.querySelectorAll('.sp-dash-stat'),
-                    function(t) { return t.getAttribute('data-tile'); }
-                ),
-                hidden: Array.prototype.map.call(
-                    hiddenList.querySelectorAll('.sp-tile-restore'),
-                    function(b) { return b.getAttribute('data-tile'); }
-                )
-            };
+        @media screen and (max-width: 782px) {
+            .sp-dash-cards { grid-template-columns: minmax(0, 1fr); }
+            .sp-dash-card-wide { grid-column: auto; }
+            .sp-dash-figure-value { font-size: 26px; }
         }
-
-        function save(then) {
-            var state = currentState();
-            var body  = new FormData();
-            body.append('action', 'sp_save_dashboard_tiles');
-            body.append('nonce', nonce);
-            state.order.forEach(function(id)  { body.append('order[]', id); });
-            state.hidden.forEach(function(id) { body.append('hidden[]', id); });
-
-            status.textContent = '';
-            fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
-                .then(function(r) {
-                    if (!r || !r.success) throw new Error('save failed');
-                    status.textContent = STR.saved;
-                    if (then) then();
-                })
-                .catch(function() { status.textContent = STR.failed; });
-        }
-
-        btnEdit.addEventListener('click', function() { setEditing(true); });
-        btnDone.addEventListener('click', function() { save(function() { setEditing(false); }); });
-
-        btnReset.addEventListener('click', function() {
-            var body = new FormData();
-            body.append('action', 'sp_reset_dashboard_tiles');
-            body.append('nonce', nonce);
-            fetch(ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' })
-                .then(function() { window.location.reload(); })
-                .catch(function() { status.textContent = STR.failed; });
-        });
-
-        grid.addEventListener('click', function(e) {
-            var tile = e.target.closest('.sp-dash-stat');
-            if (!tile) return;
-
-            if (e.target.closest('.sp-tile-move')) {
-                var dir = parseInt(e.target.closest('.sp-tile-move').getAttribute('data-dir'), 10);
-                var sib = dir < 0 ? tile.previousElementSibling : tile.nextElementSibling;
-                if (!sib) return;
-                // Within the group, not across it — the heading above a tile
-                // has to keep telling the truth about what is under it.
-                if (dir < 0) { tile.parentNode.insertBefore(tile, sib); }
-                else         { tile.parentNode.insertBefore(sib, tile); }
-                // Keep focus on the button that moved, so a second press
-                // carries on moving the same tile.
-                var again = tile.querySelector('.sp-tile-move[data-dir="' + dir + '"]');
-                if (again) again.focus();
-                save();
-                return;
-            }
-
-            if (e.target.closest('.sp-tile-hide')) {
-                var id    = tile.getAttribute('data-tile');
-                // The full name, not the short one the heading shortened it to —
-                // "Collections +" in the add list would say nothing on its own.
-                var label = tile.getAttribute('data-full-label')
-                            || tile.querySelector('.sp-dash-stat-label').textContent;
-                var group = tile.closest('.sp-dash-tile-group');
-                tile.remove();
-
-                // A group emptied of tiles takes its heading with it, and a
-                // group down to one tile gives that tile its full name back.
-                if (group) { retitleGroup(group); }
-
-                // The row only carries a label once there is something in it.
-                var addLabel = hiddenList.querySelector('.sp-dash-tiles-hidden-label');
-                if (addLabel) { addLabel.hidden = false; }
-                hiddenList.hidden = false;
-
-                var back = document.createElement('button');
-                back.type = 'button';
-                back.className = 'button button-small sp-tile-restore';
-                back.setAttribute('data-tile', id);
-                back.textContent = label + ' +';
-                hiddenList.appendChild(back);
-                save();
-            }
-        });
-
-        // Bringing a tile back needs its number, which only the server has —
-        // so save and reload rather than inventing a placeholder.
-        hiddenList.addEventListener('click', function(e) {
-            var btn = e.target.closest('.sp-tile-restore');
-            if (!btn) return;
-            btn.remove();
-            save(function() { window.location.reload(); });
-        });
-
-        // ---- Dragging ----------------------------------------------------
-        var dragged = null;
-
-        function clearMarkers() {
-            grid.querySelectorAll('.sp-tile-drop-before, .sp-tile-drop-after').forEach(function(t) {
-                t.classList.remove('sp-tile-drop-before', 'sp-tile-drop-after');
-            });
-        }
-
-        // Which tile is the pointer nearest, and is it on the near or far side?
-        // Distance is measured to the centre in both directions because the
-        // strip wraps onto several rows on a narrow screen, where "left of" on
-        // its own would pick a tile from the wrong row.
-        function targetFor(x, y) {
-            var best = null, bestDist = Infinity;
-            grid.querySelectorAll('.sp-dash-stat').forEach(function(t) {
-                if (t === dragged) return;
-                var b  = t.getBoundingClientRect();
-                var cx = b.left + b.width / 2;
-                var cy = b.top + b.height / 2;
-                var d  = Math.pow(x - cx, 2) + Math.pow(y - cy, 2);
-                if (d < bestDist) { bestDist = d; best = t; }
-            });
-            if (!best) return null;
-            var bb = best.getBoundingClientRect();
-            return { tile: best, before: x < bb.left + bb.width / 2 };
-        }
-
-        grid.addEventListener('dragstart', function(e) {
-            var tile = e.target.closest('.sp-dash-stat');
-            if (!tile || !wrap.classList.contains('sp-dash-tiles-editing')) return;
-            dragged = tile;
-            tile.classList.add('sp-tile-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            // Firefox will not start a drag unless something is set here.
-            try { e.dataTransfer.setData('text/plain', tile.getAttribute('data-tile') || ''); } catch (err) {}
-        });
-
-        grid.addEventListener('dragover', function(e) {
-            if (!dragged) return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            var t = targetFor(e.clientX, e.clientY);
-            clearMarkers();
-            if (t) t.tile.classList.add(t.before ? 'sp-tile-drop-before' : 'sp-tile-drop-after');
-        });
-
-        grid.addEventListener('drop', function(e) {
-            if (!dragged) return;
-            e.preventDefault();
-            var t = targetFor(e.clientX, e.clientY);
-            if (t) {
-                // Only within the same group. A tile dragged under another
-                // group's heading would be put back where it belongs on the next
-                // load — the group a tile lives in is a property of the tile,
-                // not something a drag can change — so the drop is ignored
-                // rather than accepted and quietly undone.
-                if (t.tile.parentNode !== dragged.parentNode) { return; }
-                if (t.before) { dragged.parentNode.insertBefore(dragged, t.tile); }
-                else          { dragged.parentNode.insertBefore(dragged, t.tile.nextElementSibling); }
-            }
-            clearMarkers();
-        });
-
-        // Fires whether the drop landed or was abandoned, so the tidy-up and
-        // the save belong here rather than in drop alone.
-        grid.addEventListener('dragend', function() {
-            if (!dragged) return;
-            dragged.classList.remove('sp-tile-dragging');
-            dragged = null;
-            clearMarkers();
-            save();
-        });
-    })();
-    </script>
+    </style>
     <?php
 }
-
-/**
- * Save one person's tile arrangement.
- *
- * Stored per user rather than per site: a treasurer and a librarian want
- * different dashboards, and making one of them win would put us back where
- * this started.
- */
-function sp_ajax_save_dashboard_tiles(): void {
-    check_ajax_referer( 'sp_dashboard_tiles', 'nonce' );
-
-    if ( ! sp_user_can_access_admin() ) {
-        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
-    }
-
-    $known = array_keys( sp_get_dashboard_tiles() );
-
-    // Only ids this build knows about are stored. An unknown id is either a
-    // stale tab or somebody poking at the endpoint; neither should be able to
-    // grow a row of junk in user meta.
-    $order  = array_values( array_intersect(
-        array_map( 'sanitize_key', (array) ( $_POST['order'] ?? [] ) ),
-        $known
-    ) );
-    $hidden = array_values( array_intersect(
-        array_map( 'sanitize_key', (array) ( $_POST['hidden'] ?? [] ) ),
-        $known
-    ) );
-
-    update_user_meta( get_current_user_id(), 'sp_dashboard_tiles', [
-        'order'  => $order,
-        'hidden' => $hidden,
-    ] );
-
-    wp_send_json_success();
-}
-add_action( 'wp_ajax_sp_save_dashboard_tiles', 'sp_ajax_save_dashboard_tiles' );
-
-/**
- * Put a person's dashboard back the way it shipped.
- */
-function sp_ajax_reset_dashboard_tiles(): void {
-    check_ajax_referer( 'sp_dashboard_tiles', 'nonce' );
-
-    if ( ! sp_user_can_access_admin() ) {
-        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
-    }
-
-    delete_user_meta( get_current_user_id(), 'sp_dashboard_tiles' );
-    wp_send_json_success();
-}
-add_action( 'wp_ajax_sp_reset_dashboard_tiles', 'sp_ajax_reset_dashboard_tiles' );
 
 
 /**
@@ -17764,7 +17535,7 @@ function sp_render_dashboard_page_legacy(): void {
 
         // Stat tiles. What appears here depends on which modules the society
         // runs and what this person is allowed to see — see the registry above.
-        sp_render_dashboard_tiles();
+        sp_render_dashboard_cards( array_keys( sp_available_dashboard_cards() ) );
         ?>
 
         <!-- Quick Links -->
@@ -18114,7 +17885,8 @@ function sp_render_dashboard_page_legacy(): void {
  *   describe   One line saying what it puts on the page.
  *   capability What the reader must be able to do to be offered it; '' for all.
  *   default    Whether somebody who has never chosen sees it.
- *   render     The function that draws it.
+ *   render     The function that draws it, for a piece that stands alone.
+ *   card       The card id, for a piece that belongs in the row of cards.
  *
  * @return array<string,array<string,mixed>>
  */
@@ -18127,19 +17899,26 @@ function sp_dashboard_sections(): array {
             'default'    => false,
             'render'     => 'sp_render_dashboard_actions',
         ],
-        'tiles' => [
-            'label'      => __( 'Numbers', 'societypress' ),
-            'describe'   => __( 'Counts and totals — members, dues, events — gathered under headings.', 'societypress' ),
-            'capability' => '',
-            // WHY this one is on to begin with: a dashboard that opens with
-            // nothing on it asks a volunteer to make a decision before she has
-            // seen anything to decide about. The numbers are the safe first
-            // thing to meet — nothing on the page asks her to act, and taking
-            // them off is one tick.
-            'default'    => true,
-            'render'     => 'sp_render_dashboard_tiles',
-        ],
     ];
+
+    // WHY the cards are folded into the same registry rather than given a
+    // control of their own: Screen Options is generated from this list, so a
+    // card cannot end up on the page without a tick box beside it, and there is
+    // only ever one place a person goes to change what they see.
+    //
+    // WHY they start ticked: a card is already gated by what its reader is
+    // allowed to see and by which modules the society runs, so what arrives is
+    // her own work rather than everything the software can count. Somebody who
+    // wants less unticks; nobody has to build a dashboard before using one.
+    foreach ( sp_available_dashboard_cards() as $key => $card ) {
+        $sections[ 'card_' . $key ] = [
+            'label'      => $card['label'],
+            'describe'   => $card['describe'],
+            'capability' => '',
+            'default'    => true,
+            'card'       => $key,
+        ];
+    }
 
     /**
      * Filter the pieces the dashboard can show.
@@ -18161,6 +17940,16 @@ function sp_dashboard_visible_sections(): array {
     // and made a choice, and an empty choice is a legitimate one. Anything else
     // means they have never been, and the defaults apply.
     $chosen = is_array( $saved ) ? $saved : null;
+
+    // Before the rebuild all the numbers sat under one tick called "Numbers".
+    // Anybody who had ticked it would otherwise open an empty dashboard on the
+    // release that split it into cards, so the old tick still means what it
+    // meant: show me the numbers.
+    if ( $chosen !== null && in_array( 'tiles', $chosen, true ) ) {
+        foreach ( array_keys( sp_available_dashboard_cards() ) as $key ) {
+            $chosen[] = 'card_' . $key;
+        }
+    }
 
     $on = [];
     foreach ( sp_dashboard_sections() as $id => $section ) {
@@ -18215,14 +18004,14 @@ add_action( 'load-toplevel_page_societypress', function () {
         'title'   => __( 'This page', 'societypress' ),
         'content' =>
             '<p>' . esc_html__( 'This is your own dashboard. What is on it is up to you, and changing it changes nothing for anybody else in the society.', 'societypress' ) . '</p>' .
-            '<p>' . esc_html__( 'It starts empty on purpose. Open Screen Options at the top right and tick the parts you want to see.', 'societypress' ) . '</p>',
+            '<p>' . esc_html__( 'Each card covers one part of the society\'s work. You are only shown the cards for the work you are responsible for. Open Screen Options at the top right to take one off, or to put it back.', 'societypress' ) . '</p>',
     ] );
 
     $screen->add_help_tab( [
         'id'      => 'sp-dash-choose',
         'title'   => __( 'Choosing what you see', 'societypress' ),
         'content' =>
-            '<p>' . esc_html__( 'Screen Options lists everything this page can show you. Tick a box to put it on the page, untick it to take it off, then press Apply.', 'societypress' ) . '</p>' .
+            '<p>' . esc_html__( 'Screen Options lists every card this page can show you. Tick a box to put a card on the page, untick it to take it off, then press Apply.', 'societypress' ) . '</p>' .
             '<p>' . esc_html__( 'You will not be offered anything you are not allowed to see, and nothing from a part of SocietyPress your society has switched off.', 'societypress' ) . '</p>',
     ] );
 
@@ -18318,9 +18107,26 @@ function sp_render_dashboard_page(): void {
                 <?php esc_html_e( 'Your dashboard is empty. Open Screen Options, at the top right of this page, and tick what you would like to see here.', 'societypress' ); ?>
             </p>
         <?php else : ?>
-            <?php foreach ( $sections as $section ) : ?>
-                <?php call_user_func( $section['render'] ); ?>
-            <?php endforeach; ?>
+            <?php
+            // Cards live in a shared grid, so consecutive ones are handed over
+            // together — drawn one at a time they would each open a grid of
+            // their own and stack down the page a column wide.
+            $pending = [];
+            foreach ( $sections as $section ) {
+                if ( isset( $section['card'] ) ) {
+                    $pending[] = $section['card'];
+                    continue;
+                }
+                if ( $pending ) {
+                    sp_render_dashboard_cards( $pending );
+                    $pending = [];
+                }
+                call_user_func( $section['render'] );
+            }
+            if ( $pending ) {
+                sp_render_dashboard_cards( $pending );
+            }
+            ?>
         <?php endif; ?>
     </div>
 
@@ -35819,7 +35625,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.67',
+            'version'     => '1.1.68',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35827,7 +35633,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.67',
+            'version'     => '1.1.68',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35835,7 +35641,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.67',
+            'version'     => '1.1.68',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35843,7 +35649,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.67',
+            'version'     => '1.1.68',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35851,7 +35657,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.67',
+            'version'     => '1.1.68',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -19,6 +19,28 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.68] — 2026-08-26
+
+### Changed
+
+**The dashboard is built from cards**
+
+The numbers no longer sit in a strip under small grey headings. Each part of the
+society's work is now a card of its own — Waiting on You, Members, Financials,
+Events, Volunteers, Library, Records and Content — carrying its figures and a
+link through to the screen behind it. Members takes the width of two, because
+its five figures are read together.
+
+**One tick per card**
+
+Screen Options used to offer a single tick called Numbers, and arranging what was
+under it meant dragging two dozen tiles about. It now lists the cards, one tick
+each, and they start ticked. Anybody who had ticked Numbers keeps their numbers.
+
+You are only offered a card when something is in it: no Library card in a society
+that has not turned the library on, and no Financials for somebody who does not
+look after the money.
+
 ## [1.1.67] — 2026-08-26
 
 ### Changed

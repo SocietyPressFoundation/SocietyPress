@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.66] — 2026-08-26
+
+### Added
+
+**Screen Options and Help on the dashboard**
+
+The dashboard now carries WordPress's own two tabs in the top right corner.
+Screen Options lists everything the page can show and puts a tick box against
+each one; Help explains the page in plain words and says plainly that nothing
+there can be broken by ticking a box.
+
+Choices belong to the person who makes them — the treasurer and the librarian
+don't want the same screen, and neither has to settle for the other's. Nobody is
+offered a piece they aren't allowed to see, or one belonging to a part of
+SocietyPress the society has switched off.
+
+The page still starts empty, and now says so, pointing at the control that
+fills it.
+
 ## [1.1.65] — 2026-08-26
 
 ### Changed

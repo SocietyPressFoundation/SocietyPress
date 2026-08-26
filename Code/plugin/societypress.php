@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.65
+ * Version:     1.1.66
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.65' );
+define( 'SOCIETYPRESS_VERSION', '1.1.66' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18093,6 +18093,180 @@ function sp_render_dashboard_page_legacy(): void {
     <?php
 }
 
+// ---------------------------------------------------------------------------
+// WHAT THE DASHBOARD CAN SHOW
+//
+// WHY a registry rather than a page that draws itself: the dashboard is being
+// rebuilt one piece at a time, and every piece has to be something a person can
+// switch off. Declaring them in one place means Screen Options is generated
+// from the same list the page renders from, so a piece can never exist on the
+// page without a way to be rid of it.
+//
+// WHY per person: the treasurer and the librarian do not want the same screen,
+// and the society should not have to choose on their behalf.
+// ---------------------------------------------------------------------------
+
+/**
+ * Every piece the dashboard knows how to put on the page.
+ *
+ * Each entry carries:
+ *   label      What it is called in Screen Options.
+ *   describe   One line saying what it puts on the page.
+ *   capability What the reader must be able to do to be offered it; '' for all.
+ *   default    Whether somebody who has never chosen sees it.
+ *   render     The function that draws it.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_dashboard_sections(): array {
+    $sections = [
+        'todo' => [
+            'label'      => __( 'What needs doing', 'societypress' ),
+            'describe'   => __( 'Anything waiting on you, written as a sentence, with the button that deals with it.', 'societypress' ),
+            'capability' => '',
+            'default'    => false,
+            'render'     => 'sp_render_dashboard_actions',
+        ],
+        'tiles' => [
+            'label'      => __( 'Numbers', 'societypress' ),
+            'describe'   => __( 'Counts and totals — members, dues, events — gathered under headings.', 'societypress' ),
+            'capability' => '',
+            'default'    => false,
+            'render'     => 'sp_render_dashboard_tiles',
+        ],
+    ];
+
+    /**
+     * Filter the pieces the dashboard can show.
+     *
+     * @param array $sections Section definitions keyed by id.
+     */
+    return apply_filters( 'sp_dashboard_sections', $sections );
+}
+
+/**
+ * The pieces this person has switched on.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_dashboard_visible_sections(): array {
+    $saved = get_user_meta( get_current_user_id(), 'sp_dashboard_sections', true );
+
+    // An array — even an empty one — means somebody has been to Screen Options
+    // and made a choice, and an empty choice is a legitimate one. Anything else
+    // means they have never been, and the defaults apply.
+    $chosen = is_array( $saved ) ? $saved : null;
+
+    $on = [];
+    foreach ( sp_dashboard_sections() as $id => $section ) {
+        if ( ! empty( $section['capability'] ) && ! current_user_can( $section['capability'] ) ) {
+            continue;
+        }
+        $wanted = ( $chosen === null ) ? ! empty( $section['default'] ) : in_array( $id, $chosen, true );
+        if ( $wanted ) {
+            $on[ $id ] = $section;
+        }
+    }
+
+    return $on;
+}
+
+/**
+ * Screen Options and Help on the dashboard.
+ *
+ * WHY WordPress's own two tabs rather than controls of our own: they are in the
+ * corner of every other screen a volunteer has ever used, they behave the same
+ * way here, and anything we invented would be one more thing to learn.
+ */
+add_action( 'load-toplevel_page_societypress', function () {
+    $screen = get_current_screen();
+    if ( ! $screen ) {
+        return;
+    }
+
+    // ---- Saving the Screen Options form ----
+    // WHY WordPress's nonce: our checkboxes are rendered inside the panel's own
+    // form, so they arrive with the form's own nonce and no second one is
+    // needed. An empty tick list is a real answer — it means an empty page.
+    if ( isset( $_POST['screenoptionnonce'] )
+        && wp_verify_nonce( sanitize_key( wp_unslash( $_POST['screenoptionnonce'] ) ), 'screen-options-nonce' )
+        && isset( $_POST['sp_dashboard_sections_form'] ) ) {
+
+        $picked = [];
+        if ( isset( $_POST['sp_dashboard_section'] ) && is_array( $_POST['sp_dashboard_section'] ) ) {
+            $picked = array_map( 'sanitize_key', array_keys( $_POST['sp_dashboard_section'] ) );
+        }
+
+        update_user_meta(
+            get_current_user_id(),
+            'sp_dashboard_sections',
+            array_values( array_intersect( $picked, array_keys( sp_dashboard_sections() ) ) )
+        );
+    }
+
+    // ---- Help ----
+    $screen->add_help_tab( [
+        'id'      => 'sp-dash-what',
+        'title'   => __( 'This page', 'societypress' ),
+        'content' =>
+            '<p>' . esc_html__( 'This is your own dashboard. What is on it is up to you, and changing it changes nothing for anybody else in the society.', 'societypress' ) . '</p>' .
+            '<p>' . esc_html__( 'It starts empty on purpose. Open Screen Options at the top right and tick the parts you want to see.', 'societypress' ) . '</p>',
+    ] );
+
+    $screen->add_help_tab( [
+        'id'      => 'sp-dash-choose',
+        'title'   => __( 'Choosing what you see', 'societypress' ),
+        'content' =>
+            '<p>' . esc_html__( 'Screen Options lists everything this page can show you. Tick a box to put it on the page, untick it to take it off, then press Apply.', 'societypress' ) . '</p>' .
+            '<p>' . esc_html__( 'You will not be offered anything you are not allowed to see, and nothing from a part of SocietyPress your society has switched off.', 'societypress' ) . '</p>',
+    ] );
+
+    $screen->set_help_sidebar(
+        '<p><strong>' . esc_html__( 'Stuck?', 'societypress' ) . '</strong></p>' .
+        '<p>' . esc_html__( 'Nothing here can be broken by ticking a box. Untick it again and the page goes back.', 'societypress' ) . '</p>'
+    );
+} );
+
+/**
+ * The Screen Options panel — a tick box per piece the dashboard can show.
+ *
+ * @param string    $html   Panel markup so far.
+ * @param WP_Screen $screen The screen being rendered.
+ * @return string
+ */
+add_filter( 'screen_settings', function ( $html, $screen ) {
+    if ( ! $screen instanceof WP_Screen || $screen->id !== 'toplevel_page_societypress' ) {
+        return $html;
+    }
+
+    $sections = sp_dashboard_sections();
+    $showing  = sp_dashboard_visible_sections();
+
+    $out  = '<fieldset class="sp-dash-sections">';
+    $out .= '<legend>' . esc_html__( 'Show on this page', 'societypress' ) . '</legend>';
+    $out .= '<p class="sp-dash-sections-note">' . esc_html__( 'Only you see these changes.', 'societypress' ) . '</p>';
+
+    foreach ( $sections as $id => $section ) {
+        if ( ! empty( $section['capability'] ) && ! current_user_can( $section['capability'] ) ) {
+            continue;
+        }
+        $out .= '<label class="sp-dash-section-choice">';
+        $out .= '<input type="checkbox" name="sp_dashboard_section[' . esc_attr( $id ) . ']" value="1" ' . checked( isset( $showing[ $id ] ), true, false ) . '> ';
+        $out .= esc_html( $section['label'] );
+        if ( ! empty( $section['describe'] ) ) {
+            $out .= '<span>' . esc_html( $section['describe'] ) . '</span>';
+        }
+        $out .= '</label>';
+    }
+
+    // Marks the form as ours, so an Apply from some other panel on some other
+    // screen can never be mistaken for an answer to this one.
+    $out .= '<input type="hidden" name="sp_dashboard_sections_form" value="1">';
+    $out .= '</fieldset>';
+
+    return $html . $out;
+}, 10, 2 );
+
 /**
  * Render the SocietyPress Dashboard.
  *
@@ -18124,10 +18298,42 @@ function sp_render_dashboard_page(): void {
             );
             ?>
         </p>
+
+        <?php
+        // Whatever this person has switched on under Screen Options, in the
+        // order the registry lists them.
+        $sections = sp_dashboard_visible_sections();
+
+        if ( ! $sections ) :
+            // WHY say it rather than leave a blank: an empty screen with no
+            // explanation reads as broken. This one is empty on purpose, and
+            // the sentence points at the control that fills it.
+            ?>
+            <p class="sp-dash-empty">
+                <?php esc_html_e( 'Your dashboard is empty. Open Screen Options, at the top right of this page, and tick what you would like to see here.', 'societypress' ); ?>
+            </p>
+        <?php else : ?>
+            <?php foreach ( $sections as $section ) : ?>
+                <?php call_user_func( $section['render'] ); ?>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 
     <style>
         .sp-dash-who { color: #646970; margin: 4px 0 24px; }
+        .sp-dash-empty {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 22px 24px;
+            max-width: 640px;
+            color: #50575e;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+        .sp-dash-sections-note { margin: 2px 0 10px; color: #646970; }
+        .sp-dash-section-choice { display: block; margin-bottom: 10px; }
+        .sp-dash-section-choice span { color: #646970; display: block; margin: 0 0 0 25px; font-size: 12px; }
     </style>
     <?php
 }
@@ -35608,7 +35814,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.65',
+            'version'     => '1.1.66',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35616,7 +35822,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.65',
+            'version'     => '1.1.66',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35624,7 +35830,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.65',
+            'version'     => '1.1.66',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35632,7 +35838,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.65',
+            'version'     => '1.1.66',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35640,7 +35846,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.65',
+            'version'     => '1.1.66',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

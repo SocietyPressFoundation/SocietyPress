@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.76
+ * Version:     1.1.77
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.76' );
+define( 'SOCIETYPRESS_VERSION', '1.1.77' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5681,7 +5681,7 @@ function sp_get_modules(): array {
             'menu_slugs'  => [ 'sp-donations', 'sp-campaigns', 'sp-donation-edit', 'sp-campaign-edit' ],
         ],
         'blast_email' => [
-            'name'        => __( 'Blast Email', 'societypress' ),
+            'name'        => __( 'Send Email', 'societypress' ),
             'description' => __( 'Send mass emails to all members or specific groups. Includes delivery tracking and opt-out management.', 'societypress' ),
             'icon'        => 'dashicons-email-alt',
             'menu_slugs'  => [ 'sp-blast-email', 'sp-blast-email-compose', 'sp-email-templates', 'sp-subscribers' ],
@@ -7209,8 +7209,8 @@ add_action( 'admin_menu', function () {
     //      to populate cover_url and isbn fields automatically.
     add_submenu_page(
         'societypress',
-        __( 'Library Enrichment — SocietyPress', 'societypress' ),
-        __( 'Library Enrichment', 'societypress' ),
+        __( 'Fill In Book Details — SocietyPress', 'societypress' ),
+        __( 'Fill In Book Details', 'societypress' ),
         'manage_options',
         'sp-library-enrich',
         'sp_render_library_enrich_page'
@@ -7583,8 +7583,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        __( 'Blast Email — SocietyPress', 'societypress' ),
-        __( 'Blast Email', 'societypress' ),
+        __( 'Send Email — SocietyPress', 'societypress' ),
+        __( 'Send Email', 'societypress' ),
         'manage_options',
         'sp-blast-email',
         'sp_render_blast_email_page'
@@ -7620,8 +7620,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        __( 'Email Log — SocietyPress', 'societypress' ),
-        __( 'Email Log', 'societypress' ),
+        __( 'Sent Email — SocietyPress', 'societypress' ),
+        __( 'Sent Email', 'societypress' ),
         'manage_options',
         'sp-email-log',
         'sp_render_email_log_page'
@@ -7863,8 +7863,8 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         'societypress',
-        __( 'Modules — SocietyPress', 'societypress' ),
-        __( 'Modules', 'societypress' ),
+        __( 'Features — SocietyPress', 'societypress' ),
+        __( 'Features', 'societypress' ),
         'manage_options',
         'sp-settings-modules',
         'sp_render_settings_modules_page'
@@ -7876,8 +7876,8 @@ add_action( 'admin_menu', function () {
     //      administrator access. They see only what they need.
     add_submenu_page(
         'societypress',
-        __( 'User Access — SocietyPress', 'societypress' ),
-        __( 'User Access', 'societypress' ),
+        __( 'Who Can Do What — SocietyPress', 'societypress' ),
+        __( 'Who Can Do What', 'societypress' ),
         'manage_options',
         'sp-user-access',
         'sp_render_user_access_page'
@@ -18075,8 +18075,8 @@ function sp_render_dashboard_page(): void {
 add_action( 'admin_menu', function () {
     add_submenu_page(
         'societypress',
-        __( 'Insights — SocietyPress', 'societypress' ),
-        __( 'Insights', 'societypress' ),
+        __( 'How We\'re Doing — SocietyPress', 'societypress' ),
+        __( 'How We\'re Doing', 'societypress' ),
         'sp_view_reports',
         'sp-insights',
         'sp_render_insights_page'
@@ -18692,7 +18692,7 @@ function sp_insights_get_panels(): array {
             'callback' => 'sp_insights_stats_donations',
         ],
         'blast_email' => [
-            'name'     => __( 'Blast Email', 'societypress' ),
+            'name'     => __( 'Send Email', 'societypress' ),
             'icon'     => 'dashicons-email-alt',
             'callback' => 'sp_insights_stats_blast_email',
         ],
@@ -18799,7 +18799,7 @@ function sp_render_insights_page(): void {
     .sp-insights-empty { color: #646970; font-style: italic; padding: 24px; background: #fff; border: 1px solid #dcdcde; border-radius: 6px; }
     </style>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Insights', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'How We\'re Doing', 'societypress' ); ?></h1>
         <p class="description">
             <?php esc_html_e( 'A snapshot of how engaged your members are and how much your modules are being used. Pick a time window to compare across periods.', 'societypress' ); ?>
         </p>
@@ -22290,7 +22290,7 @@ function sp_render_member_edit_page(): void {
                                         /* translators: %s: link to the User Access screen */
                                         esc_html__( 'To let somebody manage members, events or money, leave this alone and give them the matching job on %s.', 'societypress' ),
                                         '<a href="' . esc_url( admin_url( 'admin.php?page=sp-user-access' ) ) . '">'
-                                            . esc_html__( 'Settings &rarr; User Access', 'societypress' ) . '</a>'
+                                            . esc_html__( 'Settings &rarr; Who Can Do What', 'societypress' ) . '</a>'
                                     );
                                     ?>
                                 <?php endif; ?>
@@ -28401,7 +28401,7 @@ add_action( 'admin_init', function () {
         'sp_activity_logging_section',
         __( 'Activity Logging', 'societypress' ),
         function () {
-            echo '<p>' . esc_html__( 'Login attempts and admin actions are always recorded in the Audit Log. The settings below add optional tracking for logouts and page views.', 'societypress' ) . '</p>';
+            echo '<p>' . esc_html__( 'Sign-ins and admin actions are always recorded under Change History. The settings below add optional tracking for sign-outs and page views.', 'societypress' ) . '</p>';
         },
         'sp-settings-privacy'
     );
@@ -30550,8 +30550,8 @@ add_action( 'init', function () {
 function sp_register_audit_log_menu(): void {
     add_submenu_page(
         'societypress',
-        __( 'Audit Log — SocietyPress', 'societypress' ),
-        __( 'Audit Log', 'societypress' ),
+        __( 'Change History — SocietyPress', 'societypress' ),
+        __( 'Change History', 'societypress' ),
         'manage_options',
         'sp-audit-log',
         'sp_render_audit_log_page'
@@ -30682,7 +30682,7 @@ function sp_render_audit_log_page(): void {
     $sp_audit_retention = sp_audit_log_retention_days();
     ?>
     <div class="wrap sp-admin-wrap">
-        <h1><?php esc_html_e( 'Audit Log', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Change History', 'societypress' ); ?></h1>
 
         <?php if ( $sp_audit_notice ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $sp_audit_notice ); ?></p></div>
@@ -31050,8 +31050,8 @@ add_action( 'sp_daily_maintenance', 'sp_prune_access_log' );
 function sp_register_access_log_menu(): void {
     add_submenu_page(
         'societypress',
-        __( 'Access Log — SocietyPress', 'societypress' ),
-        __( 'Access Log', 'societypress' ),
+        __( 'Sign-In History — SocietyPress', 'societypress' ),
+        __( 'Sign-In History', 'societypress' ),
         'manage_options',
         'sp-access-log',
         'sp_render_access_log_page'
@@ -31112,7 +31112,7 @@ function sp_render_access_log_page(): void {
     $retention = (int) ( $sp['url_log_retention_days'] ?? 90 );
     ?>
     <div class="wrap sp-admin-wrap">
-        <h1><?php esc_html_e( 'Access Log', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Sign-In History', 'societypress' ); ?></h1>
 
         <?php if ( ! $enabled ) : ?>
             <div class="notice notice-warning"><p>
@@ -35533,7 +35533,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.76',
+            'version'     => '1.1.77',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35541,7 +35541,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.76',
+            'version'     => '1.1.77',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35549,7 +35549,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.76',
+            'version'     => '1.1.77',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35557,7 +35557,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.76',
+            'version'     => '1.1.77',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35565,7 +35565,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.76',
+            'version'     => '1.1.77',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -40270,7 +40270,7 @@ function sp_render_user_access_page(): void {
     </style>
 
     <div class="wrap">
-        <h1><?php esc_html_e( 'User Access', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Who Can Do What', 'societypress' ); ?></h1>
         <p><?php esc_html_e( 'Grant individual users access to specific sections of the admin panel. Site administrators always have full access.', 'societypress' ); ?></p>
 
         <?php if ( $editing_user && ! user_can( $editing_user, 'manage_options' ) ) : ?>
@@ -79218,7 +79218,7 @@ function sp_render_email_log_page(): void {
     </style>
 
     <div class="wrap">
-        <h1 class="wp-heading-inline"><?php esc_html_e( 'Email Log', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Sent Email', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin-ajax.php?action=sp_export_email_log&nonce=' . wp_create_nonce( 'sp_export_email_log' ) ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
@@ -79380,9 +79380,9 @@ function sp_render_email_log_detail( int $log_id ): void {
     $entry = sp_email_log_get( $log_id );
 
     if ( ! $entry ) {
-        echo '<div class="wrap"><h1>' . esc_html__( 'Email Log', 'societypress' ) . '</h1>';
+        echo '<div class="wrap"><h1>' . esc_html__( 'Sent Email', 'societypress' ) . '</h1>';
         echo '<div class="notice notice-error"><p>' . esc_html__( 'Email log entry not found.', 'societypress' ) . '</p></div>';
-        echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-email-log' ) ) . '">' . esc_html__( '&larr; Back to Email Log', 'societypress' ) . '</a></p>';
+        echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-email-log' ) ) . '">' . esc_html__( '&larr; Back to Sent Email', 'societypress' ) . '</a></p>';
         echo '</div>';
         return;
     }
@@ -79491,7 +79491,7 @@ function sp_render_email_log_detail( int $log_id ): void {
 
     <div class="wrap">
         <h1>
-            <?php esc_html_e( 'Email Log', 'societypress' ); ?>
+            <?php esc_html_e( 'Sent Email', 'societypress' ); ?>
             <span class="sp-email-detail-entry-id"> &mdash; <?php /* translators: %d: email log entry number */ echo esc_html( sprintf( __( 'Entry #%d', 'societypress' ), $entry->id ) ); ?></span>
         </h1>
 
@@ -79671,7 +79671,7 @@ function sp_render_blast_email_page(): void {
         .sp-blast-email-table { margin-top: 16px; clear: both; }
     </style>
     <div class="wrap sp-admin-wrap">
-        <h1 class="wp-heading-inline"><?php esc_html_e( 'Blast Email', 'societypress' ); ?></h1>
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Send Email', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Compose New', 'societypress' ); ?></a>
         <button type="button" id="sp-email-health-btn" class="page-title-action"><?php esc_html_e( 'Check Email Addresses', 'societypress' ); ?></button>
 
@@ -80012,7 +80012,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
     ) );
 
     if ( ! $blast ) {
-        echo '<div class="wrap"><h1>' . esc_html__( 'Blast Email Not Found', 'societypress' ) . '</h1>';
+        echo '<div class="wrap"><h1>' . esc_html__( 'Email Not Found', 'societypress' ) . '</h1>';
         echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ) . '">' . esc_html__( '&larr; Back', 'societypress' ) . '</a></p></div>';
         return;
     }
@@ -80063,7 +80063,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
         .sp-blast-detail-iframe { width: 100%; min-height: 500px; border: none; }
     </style>
     <div class="wrap">
-        <h1><?php /* translators: %s: subject line of the blast email */ echo esc_html( sprintf( __( 'Blast Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
+        <h1><?php /* translators: %s: subject line of the email */ echo esc_html( sprintf( __( 'Email — %s', 'societypress' ), $blast->subject ) ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>"><?php esc_html_e( '&larr; Back to Blast Email', 'societypress' ); ?></a></p>
 
         <table class="widefat sp-blast-detail-meta-table">
@@ -80332,7 +80332,7 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-send-btn            { background: #1d6b30; border-color: #1d6b30; }
     </style>
     <div class="wrap sp-admin-wrap">
-        <h1><?php echo $blast_id ? esc_html__( 'Edit Blast Email', 'societypress' ) : esc_html__( 'Compose Blast Email', 'societypress' ); ?></h1>
+        <h1><?php echo $blast_id ? esc_html__( 'Edit Email', 'societypress' ) : esc_html__( 'Write an Email', 'societypress' ); ?></h1>
         <p><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>"><?php esc_html_e( '&larr; Back to Blast Email', 'societypress' ); ?></a></p>
 
         <form method="post" id="sp-blast-form">
@@ -84904,7 +84904,7 @@ function sp_render_library_enrich_page(): void {
     </style>
 
     <div class="wrap">
-        <h1><?php esc_html_e( 'Library Enrichment', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Fill In Book Details', 'societypress' ); ?></h1>
         <p><?php esc_html_e( 'Automatically fetch book cover images and ISBNs from Open Library. This queries their free, public API using LCCNs and title/author data from your catalog.', 'societypress' ); ?></p>
 
         <div class="sp-enrich-stats-grid">
@@ -107184,8 +107184,8 @@ function sp_stripe_verify_webhook_signature( string $payload, string $sig_header
 add_action( 'admin_menu', function () {
     add_submenu_page(
         'societypress',
-        __( 'Database Subscriptions — SocietyPress', 'societypress' ),
-        __( 'Database Subscriptions', 'societypress' ),
+        __( 'Research Subscriptions — SocietyPress', 'societypress' ),
+        __( 'Research Subscriptions', 'societypress' ),
         'manage_options',
         'sp-database-subscriptions',
         'sp_render_database_subscriptions_page'
@@ -107267,7 +107267,7 @@ function sp_render_database_subscriptions_page(): void {
         .sp-dbs-entry-link    { font-size: 12px; }
     </style>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Database Subscriptions', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Research Subscriptions', 'societypress' ); ?></h1>
         <p class="description sp-dbs-desc">
             <?php esc_html_e( 'Genealogy databases your society pays for and shares with members — Ancestry, Fold3, FamilySearch (affiliate), NEHGS, etc. Add an entry here, then add the "Database Subscriptions" widget to a page in the page builder to display them.', 'societypress' ); ?>
         </p>
@@ -107713,7 +107713,7 @@ add_filter( 'sp_builder_widget_types', function ( array $types ): array {
         ],
     ];
     $types['database_subscriptions'] = [
-        'label'       => __( 'Database Subscriptions', 'societypress' ),
+        'label'       => __( 'Research Subscriptions', 'societypress' ),
         'description' => __( 'Members-area panel listing genealogy databases your society subscribes to (Ancestry, Fold3, etc.).', 'societypress' ),
         'fields'      => [],
     ];
@@ -114963,8 +114963,8 @@ function sp_ens_import_rows( array $rows, string $menu_name ): array {
 add_action( 'admin_menu', function () {
     add_submenu_page(
         'societypress',
-        __( 'Import ENS Pages — SocietyPress', 'societypress' ),
-        __( 'Import ENS Pages', 'societypress' ),
+        __( 'Import from EasyNetSites — SocietyPress', 'societypress' ),
+        __( 'Import from EasyNetSites', 'societypress' ),
         'manage_options',
         'sp-import-ens-pages',
         'sp_render_ens_pages_import_page'
@@ -114992,7 +114992,7 @@ function sp_render_ens_pages_import_page(): void {
     $temp_token = '';
 
     echo '<div class="wrap">';
-    echo '<h1>' . esc_html__( 'Import ENS Pages', 'societypress' ) . '</h1>';
+    echo '<h1>' . esc_html__( 'Import from EasyNetSites', 'societypress' ) . '</h1>';
     echo '<p>' . esc_html__( 'Save your existing EasyNetSites "Menu / Page Maintenance" screen as an HTML file (browser → File → Save Page As), then upload it here. SocietyPress will read your menu structure, create matching WordPress pages, and build a navigation menu in the same order.', 'societypress' ) . '</p>';
 
     if ( $action === 'preview' ) {
@@ -116945,8 +116945,8 @@ function sp_records_bulk_import_csv( string $csv_path, string $col_name, string 
 add_action( 'admin_menu', function () {
     add_submenu_page(
         'societypress',
-        __( 'Bulk Records Import — SocietyPress', 'societypress' ),
-        __( 'Bulk Records Import', 'societypress' ),
+        __( 'Import Records in Bulk — SocietyPress', 'societypress' ),
+        __( 'Import Records in Bulk', 'societypress' ),
         'sp_manage_records',
         'sp-import-records-bulk',
         'sp_render_import_records_bulk_page'
@@ -117023,7 +117023,7 @@ function sp_render_import_records_bulk_page(): void {
         .sp-recb-code-sample  { white-space: normal; color: #555; }
     </style>';
     echo '<div class="wrap">';
-    echo '<h1>' . esc_html__( 'Bulk Records Import', 'societypress' ) . '</h1>';
+    echo '<h1>' . esc_html__( 'Import Records in Bulk', 'societypress' ) . '</h1>';
     echo '<p>' . esc_html__( 'Upload multiple CSV files at once. Each file becomes its own records collection. The importer reads the filename to suggest a collection name and record type — review and adjust before saving.', 'societypress' ) . '</p>';
 
     if ( $action === 'commit' ) {

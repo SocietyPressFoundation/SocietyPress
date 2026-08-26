@@ -19,6 +19,20 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.77] — 2026-08-26
+
+### Changed
+
+**Eleven screens renamed into plain English**
+
+Screens a volunteer has to find by reading the words now say what they do:
+Insights is How We're Doing, Audit Log is Change History, Access Log is Sign-In
+History, Blast Email is Send Email, Email Log is Sent Email, Modules is Features,
+User Access is Who Can Do What, Library Enrichment is Fill In Book Details,
+Database Subscriptions is Research Subscriptions, Import ENS Pages is Import from
+EasyNetSites, and Bulk Records Import is Import Records in Bulk. Menu items,
+screen titles and the sentences that point at them all moved together.
+
 ## [1.1.76] — 2026-08-26
 
 ### Changed

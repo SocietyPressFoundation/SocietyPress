@@ -25,7 +25,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'PRAIRIE_THEME_VERSION' ) ) {
-    define( 'PRAIRIE_THEME_VERSION', '1.1.76' );
+    define( 'PRAIRIE_THEME_VERSION', '1.1.77' );
 }
 
 

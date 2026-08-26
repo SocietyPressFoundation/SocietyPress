@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.71] — 2026-08-26
+
+### Fixed
+
+**Screen Options on the dashboard had no Apply button**
+
+Unticking a card and closing the panel left the card exactly where it was.
+WordPress leaves the Apply button off a Screen Options panel unless the screen
+asks for it, and ours had never asked, so the ticks had no way of reaching the
+server. Nothing looked broken and nothing was being saved.
+
 ## [1.1.70] — 2026-08-26
 
 ### Changed

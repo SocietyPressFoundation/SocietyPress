@@ -19,6 +19,16 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.74] — 2026-08-26
+
+### Fixed
+
+**Dashboard cards were spilling off the side of the page**
+
+Each card was being drawn a full column wide and then given its padding on top
+of that, so every one of them was too wide for the column holding it and the set
+overlapped and ran off the right-hand edge.
+
 ## [1.1.73] — 2026-08-26
 
 ### Added

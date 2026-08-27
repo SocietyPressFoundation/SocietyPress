@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.80] — 2026-08-26
+
+### Changed
+
+**Two menu items that were competing with their neighbours**
+
+The member list was called Membership, sitting in a group called Members, while
+Settings also had a Membership tab — three near-identical words for three
+different things. The member list is now **Members**. And "Leadership &
+Committees" sat directly above "Committees", so nobody could tell which one held
+what; the first is the officer roster and is now called **Officers**.
+
+**The Website group has headings**
+
+It had nine rows in a row, with the three screens that hold uploaded things —
+photos, the media library and the society's own files — scattered among the
+other six. They now sit together under "Files and photos", and Widgets has moved
+down beside Appearance under "How it looks".
+
 ## [1.1.79] — 2026-08-26
 
 ### Added

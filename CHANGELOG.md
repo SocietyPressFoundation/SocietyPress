@@ -19,6 +19,18 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.89] — 2026-08-27
+
+### Fixed
+
+**Translators can reach the corrected wording**
+
+Changing ninety strings to American spelling left the translation templates
+pointing at wording that no longer exists, which would have made every corrected
+string untranslatable. Both templates have been rebuilt: 5,712 translatable
+strings in the plugin, 224 in the parent theme, none of them still asking for the
+old spelling.
+
 ## [1.1.88] — 2026-08-27
 
 ### Changed

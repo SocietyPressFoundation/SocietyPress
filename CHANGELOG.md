@@ -19,6 +19,20 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.97] — 2026-08-27
+
+### Fixed
+
+**Setting your News page as the site's Posts page silently undid it**
+
+Assigning it under Settings → Reading is the obvious thing to do, and it was the
+one thing that switched the News layout off: WordPress ignores a page template
+entirely on the Posts page and hands the theme its blog layout instead. You got
+excerpts, a Read More link and a blog sidebar, having set everything up
+correctly, with nothing anywhere to say why.
+
+A Posts page built as a News page now renders as one.
+
 ## [1.1.96] — 2026-08-27
 
 ### Changed

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.96
+ * Version:     1.1.97
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.96' );
+define( 'SOCIETYPRESS_VERSION', '1.1.97' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18758,6 +18758,47 @@ add_filter( 'sp_builder_widget_types', function ( array $types ): array {
 
     return $types;
 } );
+
+/**
+ * Render News on the site's Posts page too.
+ *
+ * WHY: assigning the News page as the site's Posts page under Settings →
+ * Reading is the obvious thing to do, and it is also the one thing that
+ * switches the template off — WordPress ignores a page template entirely on
+ * that page and hands the theme its blog layout instead. The volunteer sees
+ * excerpts, a Read More link and a blog sidebar, having set everything
+ * correctly, with nothing anywhere to explain it.
+ *
+ * So the assignment is honoured rather than fought: a Posts page that was built
+ * as a News page still renders as one.
+ */
+add_filter( 'template_include', function ( $template ) {
+    if ( ! is_home() || is_feed() ) {
+        return $template;
+    }
+
+    $posts_page = (int) get_option( 'page_for_posts' );
+    if ( ! $posts_page || get_page_template_slug( $posts_page ) !== 'sp-news' ) {
+        return $template;
+    }
+
+    get_header();
+    echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 1200px); margin: 40px auto; padding: 0 20px; }</style>';
+    echo '<div class="entry-content sp-page-template-content">';
+
+    $page = get_post( $posts_page );
+    if ( $page && trim( (string) $page->post_content ) !== '' ) {
+        echo '<div class="sp-news-intro">' . wp_kses_post( apply_filters( 'the_content', $page->post_content ) ) . '</div>';
+    }
+
+    sp_render_news_frontend();
+
+    echo '</div>';
+    get_footer();
+
+    // Nothing further should run: the page has been rendered in full.
+    exit;
+}, 99 );
 
 /**
  * Page-builder widget: the latest few news items.
@@ -37741,7 +37782,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.96',
+            'version'     => '1.1.97',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37749,7 +37790,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.96',
+            'version'     => '1.1.97',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37757,7 +37798,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.96',
+            'version'     => '1.1.97',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37765,7 +37806,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.96',
+            'version'     => '1.1.97',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37773,7 +37814,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.96',
+            'version'     => '1.1.97',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

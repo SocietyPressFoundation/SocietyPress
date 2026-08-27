@@ -19,6 +19,41 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.82] — 2026-08-26
+
+### Added
+
+**A help desk of your society's own**
+
+Every society has one person who knows how the website works and a dozen who do
+not. Those dozen now have somewhere to go: **Ask for help** in the toolbar, on
+any screen, or Help Desk in the menu.
+
+It asks three short questions, and which questions depends on what happened —
+reporting a fault asks what you expected instead, suggesting an idea does not.
+Nobody is asked what version they are running or which browser they use: the
+screen they were looking at, the SocietyPress and WordPress versions, the theme,
+PHP and the browser are all recorded for them. Whoever looks after the site is
+emailed, replies go back by email, and the whole conversation stays on the
+ticket.
+
+Volunteers see their own tickets. Whoever looks after the site sees them all and
+can say where each one stands — new, being looked at, waiting on you, done, not
+doing — and changing that emails the person who asked.
+
+Nothing here reaches SocietyPress itself. This is your society's help desk,
+answered by your society.
+
+### Fixed
+
+**New features no longer arrive switched off**
+
+A module the society had never been offered was indistinguishable from one they
+had deliberately turned off, so every feature shipped after a society first
+visited the Features screen landed dark and stayed dark. SocietyPress now
+remembers which features a site has actually been shown; anything newer than
+that arrives switched on, and anything genuinely turned off stays off.
+
 ## [1.1.81] — 2026-08-26
 
 ### Added

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.81
+ * Version:     1.1.82
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.81' );
+define( 'SOCIETYPRESS_VERSION', '1.1.82' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3070,9 +3070,51 @@ function sp_create_tables(): void {
     ) {$charset_collate};" );
 
 
+    // ========================================================================
+    // sp_tickets — the society's own help desk
+    //
+    // WHY the environment is stored with the report rather than asked for:
+    //      "which version are you on" is a question a volunteer cannot answer
+    //      and should never be asked. The screen she was looking at, the
+    //      version she is running and what her browser is are all knowable at
+    //      the moment she presses the button, so we take them and leave her to
+    //      describe the problem in her own words.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}tickets (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        reporter_id BIGINT(20) UNSIGNED NOT NULL,
+        type        VARCHAR(20)         NOT NULL DEFAULT 'bug',
+        title       VARCHAR(200)        NOT NULL,
+        where_seen  VARCHAR(255)        NULL,
+        body        TEXT                NULL,
+        expected    TEXT                NULL,
+        impact      VARCHAR(20)         NULL,
+        status      VARCHAR(20)         NOT NULL DEFAULT 'new',
+        priority    VARCHAR(10)         NULL,
+        screen      VARCHAR(200)        NULL,
+        environment TEXT                NULL,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at  DATETIME            NULL,
+        PRIMARY KEY (id),
+        KEY reporter_id (reporter_id),
+        KEY status (status),
+        KEY created_at (created_at)
+    ) {$charset_collate};" );
+
+    dbDelta( "CREATE TABLE {$prefix}ticket_replies (
+        id         BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        ticket_id  BIGINT(20) UNSIGNED NOT NULL,
+        user_id    BIGINT(20) UNSIGNED NOT NULL,
+        body       TEXT                NOT NULL,
+        created_at DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY ticket_id (ticket_id)
+    ) {$charset_collate};" );
+
+
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.33d' );
+    update_option( 'societypress_db_version', '0.34d' );
 }
 
 
@@ -5692,6 +5734,12 @@ function sp_get_modules(): array {
             'icon'        => 'dashicons-format-gallery',
             'menu_slugs'  => [ 'sp-gallery', 'sp-album-edit' ],
         ],
+        'help_desk' => [
+            'name'        => __( 'Help Desk', 'societypress' ),
+            'description' => __( 'A place for your volunteers to report something broken, ask a question, or suggest a change — and for whoever looks after the site to answer them. Replies are emailed both ways.', 'societypress' ),
+            'icon'        => 'dashicons-tickets-alt',
+            'menu_slugs'  => [ 'sp-tickets', 'sp-ticket-new', 'sp-ticket' ],
+        ],
         'help_requests' => [
             'name'        => __( 'Research Help', 'societypress' ),
             'description' => __( 'Let members submit research help requests that other members can respond to.', 'societypress' ),
@@ -5775,8 +5823,41 @@ function sp_module_enabled( string $module_slug ): bool {
     $modules = sp_enabled_modules_cached();
     if ( $modules === true ) return true;
 
-    // Otherwise it's the array of enabled module slugs.
-    return in_array( $module_slug, $modules, true );
+    if ( in_array( $module_slug, $modules, true ) ) {
+        return true;
+    }
+
+    // A module the society has never been offered is not a module they turned
+    // off — it did not exist when they last visited the Features screen. The
+    // saved list cannot tell those two apart on its own, so we keep a record of
+    // which modules have ever been put in front of somebody. Anything not in it
+    // is brand new, and arrives switched on like everything else does on a
+    // fresh install. Without this every feature we ship would land dark on
+    // every site that has ever opened Features and pressed Save.
+    return ! in_array( $module_slug, sp_modules_ever_offered(), true );
+}
+
+/**
+ * Every module slug this site has already been shown on the Features screen.
+ *
+ * @return string[]
+ */
+function sp_modules_ever_offered(): array {
+    $known = get_option( 'sp_modules_offered', null );
+    return is_array( $known ) ? array_map( 'strval', $known ) : [];
+}
+
+/**
+ * Record that the society has now been shown every module we ship.
+ *
+ * Called when the Features screen renders, which is the moment a module stops
+ * being new: from here on, its absence from the enabled list is a decision.
+ */
+function sp_mark_modules_offered(): void {
+    $all = array_keys( sp_get_modules() );
+    if ( sp_modules_ever_offered() !== $all ) {
+        update_option( 'sp_modules_offered', $all, false );
+    }
 }
 
 /**
@@ -12942,6 +13023,14 @@ function sp_default_menu_config(): array {
                            'sp-menu-layout',
                            [ 'heading' => __( 'History', 'societypress' ) ],
                            'sp-audit-log', 'sp-access-log' ] ],
+
+            // WHY its own group rather than a row inside Website: somebody
+            // reaching for this is not doing society work at all — something
+            // has gone wrong and they want a person. A group of one is the
+            // right shape for the only row on the sidebar that is about us
+            // rather than about the society's records.
+            [ 'id' => 'helpdesk', 'label' => __( 'Help Desk', 'societypress' ), 'icon' => 'dashicons-tickets-alt',
+              'items' => [ 'sp-tickets', 'sp-ticket-new' ] ],
         ],
         'standalone' => [],
     ];
@@ -18241,6 +18330,838 @@ function sp_render_dashboard_default_controls(): void {
         <?php endif; ?>
     </p>
     <?php
+}
+
+
+// ============================================================================
+// HELP DESK — the society's own
+//
+// WHY it belongs in the product: every society running this has one person who
+//      knows how the website works and a dozen who do not, and the dozen
+//      currently reach the one by email, or at a meeting, or not at all. A
+//      report that arrives as "the events thing is broken again" costs an
+//      evening to turn into something actionable. Asking three short questions
+//      on the way in costs the reporter nothing and saves that evening.
+//
+// WHY the questions are phrased as a person would say them: "Something is
+//      broken" and "It is stopping me from working" need no explanation.
+//      "Severity: P2" needs a glossary.
+//
+// WHY nothing here reaches SocietyPress itself: this is the society's help
+//      desk, answered by the society's own webmaster. A channel to us would be
+//      a different feature with a different set of promises behind it, and
+//      there is no organisation to make those promises yet.
+// ============================================================================
+
+/**
+ * The three kinds of ticket, phrased as the person filing one would say it.
+ *
+ * @return array<string,string>
+ */
+function sp_ticket_types(): array {
+    return [
+        'bug'      => __( 'Something is broken', 'societypress' ),
+        'request'  => __( 'I want something added or changed', 'societypress' ),
+        'question' => __( 'I have a question', 'societypress' ),
+    ];
+}
+
+/**
+ * The questions each kind of ticket asks, and how it asks them.
+ *
+ * WHY the wording changes with the type: "What did you expect instead?" is the
+ * most useful question you can ask about a fault and a nonsense question to ask
+ * about an idea. A form that asks everybody everything gets skipped.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function sp_ticket_questions(): array {
+    return [
+        'bug' => [
+            'title'      => __( 'Sum it up in one line', 'societypress' ),
+            'title_hint' => __( 'The events page shows an empty calendar instead of a list', 'societypress' ),
+            'where'      => __( 'Where did you see it?', 'societypress' ),
+            'where_hint' => __( 'A page name or a menu path is plenty.', 'societypress' ),
+            'main'       => __( 'What happened?', 'societypress' ),
+            'expected'   => __( 'What did you expect instead?', 'societypress' ),
+            'impact'     => __( 'How much is this affecting you?', 'societypress' ),
+            'terms'      => [
+                'blocking' => __( 'It is stopping me from working', 'societypress' ),
+                'annoying' => __( 'It is annoying, but I can work around it', 'societypress' ),
+                'nice'     => __( 'It is a small thing', 'societypress' ),
+            ],
+        ],
+        'request' => [
+            'title'      => __( 'Sum up your idea in one line', 'societypress' ),
+            'title_hint' => __( 'A surnames table built from what members send in', 'societypress' ),
+            'where'      => __( 'Where would it go?', 'societypress' ),
+            'where_hint' => __( 'Skip it if you are not sure.', 'societypress' ),
+            'main'       => __( 'What is your idea?', 'societypress' ),
+            'expected'   => '',
+            'impact'     => __( 'How much would this help?', 'societypress' ),
+            'terms'      => [
+                'blocking' => __( 'I really need this', 'societypress' ),
+                'annoying' => __( 'It would make things easier', 'societypress' ),
+                'nice'     => __( 'It would just be nice to have', 'societypress' ),
+            ],
+        ],
+        'question' => [
+            'title'      => __( 'Sum up your question in one line', 'societypress' ),
+            'title_hint' => __( 'How do I put someone on more than one committee?', 'societypress' ),
+            'where'      => __( 'Which page is it about?', 'societypress' ),
+            'where_hint' => __( 'Skip it if it is not about a particular page.', 'societypress' ),
+            'main'       => __( 'What is your question?', 'societypress' ),
+            'expected'   => '',
+            'impact'     => '',
+            'terms'      => [],
+        ],
+    ];
+}
+
+/**
+ * Where a ticket can be in its life.
+ *
+ * @return array<string,string>
+ */
+function sp_ticket_statuses(): array {
+    return [
+        'new'        => __( 'New', 'societypress' ),
+        'progress'   => __( 'Being looked at', 'societypress' ),
+        'needs_info' => __( 'Waiting on you', 'societypress' ),
+        'done'       => __( 'Done', 'societypress' ),
+        'wontdo'     => __( 'Not doing', 'societypress' ),
+    ];
+}
+
+/**
+ * Can this person answer tickets as well as file them?
+ */
+function sp_can_answer_tickets(): bool {
+    return current_user_can( 'sp_manage_settings' ) || current_user_can( 'manage_options' );
+}
+
+/**
+ * Everybody who should hear about a new ticket.
+ *
+ * @return WP_User[]
+ */
+function sp_ticket_answerers(): array {
+    return array_values( array_filter(
+        get_users( [ 'number' => 25 ] ),
+        static fn( $u ) => user_can( $u, 'sp_manage_settings' ) || user_can( $u, 'manage_options' )
+    ) );
+}
+
+/**
+ * What the reporter was running, gathered rather than asked for.
+ *
+ * @param string $screen The admin page they came from, if we were told.
+ * @return array<string,string>
+ */
+function sp_ticket_environment( string $screen = '' ): array {
+    $theme = wp_get_theme();
+
+    return [
+        'screen'       => $screen,
+        'societypress' => SOCIETYPRESS_VERSION,
+        'theme'        => $theme->get( 'Name' ) . ' ' . $theme->get( 'Version' ),
+        'wordpress'    => get_bloginfo( 'version' ),
+        'php'          => PHP_VERSION,
+        'browser'      => isset( $_SERVER['HTTP_USER_AGENT'] )
+            ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 255 )
+            : '',
+    ];
+}
+
+/**
+ * The name of the admin screen a slug belongs to, for the record.
+ */
+function sp_ticket_screen_name( string $slug ): string {
+    global $submenu;
+
+    foreach ( (array) ( $submenu['societypress'] ?? [] ) as $item ) {
+        if ( ( $item[2] ?? '' ) === $slug ) {
+            return wp_strip_all_tags( $item[0] ) . ' (' . $slug . ')';
+        }
+    }
+
+    return $slug;
+}
+
+// ---- Menu ------------------------------------------------------------------
+
+add_action( 'admin_menu', function () {
+    if ( ! sp_module_enabled( 'help_desk' ) ) {
+        return;
+    }
+
+    add_submenu_page(
+        'societypress',
+        __( 'Help Desk — SocietyPress', 'societypress' ),
+        __( 'Help Desk', 'societypress' ),
+        'sp_access_admin',
+        'sp-tickets',
+        'sp_render_tickets_page'
+    );
+
+    add_submenu_page(
+        'societypress',
+        __( 'Ask for Help — SocietyPress', 'societypress' ),
+        __( 'Ask for Help', 'societypress' ),
+        'sp_access_admin',
+        'sp-ticket-new',
+        'sp_render_ticket_new_page'
+    );
+
+    // Registered without a menu row: you reach one ticket from the list.
+    add_submenu_page(
+        null,
+        __( 'Ticket — SocietyPress', 'societypress' ),
+        __( 'Ticket', 'societypress' ),
+        'sp_access_admin',
+        'sp-ticket',
+        'sp_render_ticket_page'
+    );
+}, 20 );
+
+/**
+ * "Ask for help" in the toolbar, carrying the screen you were on.
+ *
+ * WHY it lives here rather than only in the menu: the moment somebody wants to
+ * report a problem is the moment they are looking at it. Making them navigate
+ * away first is how the screen they were on gets forgotten.
+ */
+add_action( 'admin_bar_menu', function ( $bar ) {
+    if ( ! sp_module_enabled( 'help_desk' ) || ! current_user_can( 'sp_access_admin' ) || ! is_admin() ) {
+        return;
+    }
+
+    $from = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+    $bar->add_node( [
+        'id'    => 'sp-ask-for-help',
+        'title' => '<span class="ab-icon dashicons dashicons-tickets-alt" style="top:2px;"></span>' . esc_html__( 'Ask for help', 'societypress' ),
+        'href'  => add_query_arg(
+            array_filter( [ 'page' => 'sp-ticket-new', 'sp_from' => $from ] ),
+            admin_url( 'admin.php' )
+        ),
+        'meta'  => [ 'title' => __( 'Report something broken, or ask a question', 'societypress' ) ],
+    ] );
+}, 90 );
+
+// ---- Filing ----------------------------------------------------------------
+
+add_action( 'admin_post_sp_file_ticket', function () {
+    if ( ! current_user_can( 'sp_access_admin' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_file_ticket' );
+
+    global $wpdb;
+
+    $types = sp_ticket_types();
+    $type  = sanitize_key( wp_unslash( $_POST['type'] ?? '' ) );
+    $type  = isset( $types[ $type ] ) ? $type : 'bug';
+    $title = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
+
+    if ( $title === '' ) {
+        wp_safe_redirect( add_query_arg(
+            [ 'page' => 'sp-ticket-new', 'sp_error' => 'title' ],
+            admin_url( 'admin.php' )
+        ) );
+        exit;
+    }
+
+    $screen = sanitize_key( wp_unslash( $_POST['sp_from'] ?? '' ) );
+
+    $wpdb->insert( $wpdb->prefix . 'sp_tickets', [
+        'reporter_id' => get_current_user_id(),
+        'type'        => $type,
+        'title'       => $title,
+        'where_seen'  => sanitize_text_field( wp_unslash( $_POST['where_seen'] ?? '' ) ),
+        'body'        => sanitize_textarea_field( wp_unslash( $_POST['body'] ?? '' ) ),
+        'expected'    => sanitize_textarea_field( wp_unslash( $_POST['expected'] ?? '' ) ),
+        'impact'      => sanitize_key( wp_unslash( $_POST['impact'] ?? '' ) ),
+        'status'      => 'new',
+        'screen'      => $screen !== '' ? sp_ticket_screen_name( $screen ) : '',
+        'environment' => wp_json_encode( sp_ticket_environment( $screen ) ),
+        'created_at'  => current_time( 'mysql' ),
+        'updated_at'  => current_time( 'mysql' ),
+    ] );
+
+    $ticket_id = (int) $wpdb->insert_id;
+    sp_ticket_notify_answerers( $ticket_id );
+
+    wp_safe_redirect( add_query_arg(
+        [ 'page' => 'sp-ticket', 'ticket' => $ticket_id, 'sp_filed' => 1 ],
+        admin_url( 'admin.php' )
+    ) );
+    exit;
+} );
+
+/**
+ * Tell whoever answers tickets that one has arrived.
+ */
+function sp_ticket_notify_answerers( int $ticket_id ): void {
+    global $wpdb;
+
+    $ticket = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_tickets WHERE id = %d", $ticket_id
+    ) );
+    if ( ! $ticket ) {
+        return;
+    }
+
+    $reporter = get_userdata( (int) $ticket->reporter_id );
+    $link     = admin_url( 'admin.php?page=sp-ticket&ticket=' . $ticket_id );
+
+    $body = sprintf(
+        /* translators: 1: reporter's name, 2: kind of ticket, 3: ticket title, 4: link */
+        __( "%1\$s has filed a help desk ticket.\n\n%2\$s: %3\$s\n\nRead it and reply here:\n%4\$s", 'societypress' ),
+        $reporter ? $reporter->display_name : __( 'Somebody', 'societypress' ),
+        sp_ticket_types()[ $ticket->type ] ?? $ticket->type,
+        $ticket->title,
+        $link
+    );
+
+    foreach ( sp_ticket_answerers() as $user ) {
+        if ( (int) $user->ID === (int) $ticket->reporter_id ) {
+            continue;
+        }
+        wp_mail(
+            $user->user_email,
+            sprintf(
+                /* translators: %s: ticket title */
+                __( '[Help Desk] %s', 'societypress' ),
+                $ticket->title
+            ),
+            $body
+        );
+    }
+}
+
+// ---- Replying and triage ---------------------------------------------------
+
+add_action( 'admin_post_sp_reply_ticket', function () {
+    if ( ! current_user_can( 'sp_access_admin' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_reply_ticket' );
+
+    global $wpdb;
+
+    $ticket_id = absint( $_POST['ticket'] ?? 0 );
+    $ticket    = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_tickets WHERE id = %d", $ticket_id
+    ) );
+
+    if ( ! $ticket ) {
+        wp_die( esc_html__( 'That ticket no longer exists.', 'societypress' ) );
+    }
+
+    // Your own ticket, or you are the person who answers them.
+    if ( (int) $ticket->reporter_id !== get_current_user_id() && ! sp_can_answer_tickets() ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+
+    $body = sanitize_textarea_field( wp_unslash( $_POST['body'] ?? '' ) );
+    if ( $body !== '' ) {
+        $wpdb->insert( $wpdb->prefix . 'sp_ticket_replies', [
+            'ticket_id'  => $ticket_id,
+            'user_id'    => get_current_user_id(),
+            'body'       => $body,
+            'created_at' => current_time( 'mysql' ),
+        ] );
+    }
+
+    $changed = [ 'updated_at' => current_time( 'mysql' ) ];
+
+    if ( sp_can_answer_tickets() ) {
+        $statuses = sp_ticket_statuses();
+        $status   = sanitize_key( wp_unslash( $_POST['status'] ?? '' ) );
+        if ( isset( $statuses[ $status ] ) ) {
+            $changed['status'] = $status;
+        }
+    }
+
+    $wpdb->update( $wpdb->prefix . 'sp_tickets', $changed, [ 'id' => $ticket_id ] );
+
+    // Whoever did not just write is the person who needs telling.
+    sp_ticket_notify_reply( $ticket_id, $body, $changed['status'] ?? '' );
+
+    wp_safe_redirect( add_query_arg(
+        [ 'page' => 'sp-ticket', 'ticket' => $ticket_id, 'sp_replied' => 1 ],
+        admin_url( 'admin.php' )
+    ) );
+    exit;
+} );
+
+/**
+ * Email the other side of the conversation.
+ */
+function sp_ticket_notify_reply( int $ticket_id, string $body, string $new_status ): void {
+    global $wpdb;
+
+    $ticket = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_tickets WHERE id = %d", $ticket_id
+    ) );
+    if ( ! $ticket ) {
+        return;
+    }
+
+    $me   = get_current_user_id();
+    $link = admin_url( 'admin.php?page=sp-ticket&ticket=' . $ticket_id );
+    $note = '';
+
+    if ( $new_status !== '' ) {
+        $note = sprintf(
+            /* translators: %s: the ticket's new status */
+            __( "This ticket is now marked: %s\n\n", 'societypress' ),
+            sp_ticket_statuses()[ $new_status ] ?? $new_status
+        );
+    }
+
+    $message = $note . ( $body !== '' ? $body . "\n\n" : '' ) . $link;
+    $subject = sprintf(
+        /* translators: %s: ticket title */
+        __( '[Help Desk] %s', 'societypress' ),
+        $ticket->title
+    );
+
+    // The reporter always hears about it, unless they are the one who wrote.
+    if ( (int) $ticket->reporter_id !== $me ) {
+        $reporter = get_userdata( (int) $ticket->reporter_id );
+        if ( $reporter ) {
+            wp_mail( $reporter->user_email, $subject, $message );
+        }
+        return;
+    }
+
+    // The reporter wrote, so the people who answer need to know.
+    foreach ( sp_ticket_answerers() as $user ) {
+        if ( (int) $user->ID === $me ) {
+            continue;
+        }
+        wp_mail( $user->user_email, $subject, $message );
+    }
+}
+
+
+// ---- Screens ---------------------------------------------------------------
+
+/**
+ * Shared styling for the three help desk screens.
+ */
+function sp_ticket_css(): void {
+    ?>
+    <style>
+        .sp-ticket-form { max-width: 700px; }
+        .sp-ticket-form .sp-q { margin: 0 0 22px; }
+        .sp-ticket-form label.sp-q-label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .sp-ticket-form .sp-q-hint { display: block; margin: 4px 0 0; color: #646970; }
+        .sp-ticket-form input[type=text], .sp-ticket-form textarea { width: 100%; }
+        .sp-ticket-form .sp-choice { display: block; margin: 0 0 6px; }
+        .sp-ticket-note {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-left: 4px solid #2271b1;
+            border-radius: 4px;
+            padding: 12px 16px;
+            max-width: 700px;
+            color: #50575e;
+        }
+        .sp-ticket-thread { max-width: 760px; margin-top: 20px; }
+        .sp-ticket-post {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 4px;
+            padding: 14px 18px;
+            margin: 0 0 12px;
+        }
+        .sp-ticket-post-who { color: #646970; font-size: 13px; margin: 0 0 8px; }
+        .sp-ticket-post-body { white-space: pre-wrap; margin: 0; }
+        .sp-ticket-env { color: #646970; font-size: 12px; }
+        .sp-ticket-env td { padding: 2px 10px 2px 0; }
+        .sp-ticket-status {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #f0f0f1;
+            color: #3c434a;
+        }
+        .sp-ticket-status-new        { background: #d5e5f5; color: #1d4b76; }
+        .sp-ticket-status-progress   { background: #fcf0cd; color: #7a5c00; }
+        .sp-ticket-status-needs_info { background: #fbd7d7; color: #8a1f1f; }
+        .sp-ticket-status-done       { background: #d6ead8; color: #1d6b30; }
+    </style>
+    <?php
+}
+
+/**
+ * The list of tickets.
+ *
+ * Whoever answers tickets sees them all. Everybody else sees their own — not
+ * for secrecy, but because a list of other people's problems is noise to
+ * somebody who came here to report one.
+ */
+function sp_render_tickets_page(): void {
+    global $wpdb;
+
+    $mine_only = ! sp_can_answer_tickets();
+    $table     = $wpdb->prefix . 'sp_tickets';
+
+    $rows = $mine_only
+        ? $wpdb->get_results( $wpdb->prepare(
+            "SELECT * FROM {$table} WHERE reporter_id = %d ORDER BY updated_at DESC, id DESC LIMIT 200",
+            get_current_user_id()
+        ) )
+        : $wpdb->get_results( "SELECT * FROM {$table} ORDER BY updated_at DESC, id DESC LIMIT 200" );
+
+    $types    = sp_ticket_types();
+    $statuses = sp_ticket_statuses();
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php esc_html_e( 'Help Desk', 'societypress' ); ?></h1>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ticket-new' ) ); ?>" class="page-title-action">
+            <?php esc_html_e( 'Ask for Help', 'societypress' ); ?>
+        </a>
+        <hr class="wp-header-end">
+
+        <?php if ( ! $rows ) : ?>
+            <p class="sp-ticket-note">
+                <?php
+                echo $mine_only
+                    ? esc_html__( 'You have not asked for help with anything yet. When something goes wrong, or you are not sure how to do something, this is where to say so.', 'societypress' )
+                    : esc_html__( 'Nobody has filed anything. When one of your volunteers does, it will appear here and you will get an email.', 'societypress' );
+                ?>
+            </p>
+        <?php else : ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e( 'What it is about', 'societypress' ); ?></th>
+                        <th scope="col" style="width:180px;"><?php esc_html_e( 'Kind', 'societypress' ); ?></th>
+                        <?php if ( ! $mine_only ) : ?>
+                            <th scope="col" style="width:150px;"><?php esc_html_e( 'Who asked', 'societypress' ); ?></th>
+                        <?php endif; ?>
+                        <th scope="col" style="width:130px;"><?php esc_html_e( 'Where it stands', 'societypress' ); ?></th>
+                        <th scope="col" style="width:150px;"><?php esc_html_e( 'Last touched', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ( $rows as $row ) :
+                    $who  = get_userdata( (int) $row->reporter_id );
+                    $when = $row->updated_at ?: $row->created_at;
+                ?>
+                    <tr>
+                        <td>
+                            <strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-ticket&ticket=' . (int) $row->id ) ); ?>">
+                                <?php echo esc_html( $row->title ); ?>
+                            </a></strong>
+                        </td>
+                        <td><?php echo esc_html( $types[ $row->type ] ?? $row->type ); ?></td>
+                        <?php if ( ! $mine_only ) : ?>
+                            <td><?php echo esc_html( $who ? $who->display_name : __( 'Somebody', 'societypress' ) ); ?></td>
+                        <?php endif; ?>
+                        <td>
+                            <span class="sp-ticket-status sp-ticket-status-<?php echo esc_attr( $row->status ); ?>">
+                                <?php echo esc_html( $statuses[ $row->status ] ?? $row->status ); ?>
+                            </span>
+                        </td>
+                        <td><?php echo esc_html( mysql2date( get_option( 'date_format' ) . ', ' . get_option( 'time_format' ), $when ) ); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+    sp_ticket_css();
+}
+
+/**
+ * The form.
+ *
+ * WHY the kind of ticket is picked first and the rest of the form follows it:
+ * three short forms that each make sense beat one long one that asks everybody
+ * everything and gets abandoned halfway.
+ */
+function sp_render_ticket_new_page(): void {
+    $types     = sp_ticket_types();
+    $questions = sp_ticket_questions();
+    $from      = isset( $_GET['sp_from'] ) ? sanitize_key( wp_unslash( $_GET['sp_from'] ) ) : '';
+    $error     = isset( $_GET['sp_error'] ) ? sanitize_key( wp_unslash( $_GET['sp_error'] ) ) : '';
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Ask for Help', 'societypress' ); ?></h1>
+
+        <?php if ( $error === 'title' ) : ?>
+            <div class="notice notice-error"><p><?php esc_html_e( 'Please sum it up in one line so it can be told apart from everything else.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <p class="sp-ticket-note">
+            <?php esc_html_e( 'This goes to whoever looks after your society\'s website. You do not need to know what version you are running or what browser you use — that is recorded for you.', 'societypress' ); ?>
+            <?php if ( $from !== '' ) : ?>
+                <br><strong><?php
+                    printf(
+                        /* translators: %s: the admin screen the person came from */
+                        esc_html__( 'Filed from: %s', 'societypress' ),
+                        esc_html( sp_ticket_screen_name( $from ) )
+                    );
+                ?></strong>
+            <?php endif; ?>
+        </p>
+
+        <form class="sp-ticket-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+            <input type="hidden" name="action" value="sp_file_ticket">
+            <input type="hidden" name="sp_from" value="<?php echo esc_attr( $from ); ?>">
+            <?php wp_nonce_field( 'sp_file_ticket' ); ?>
+
+            <div class="sp-q">
+                <span class="sp-q-label"><?php esc_html_e( 'What kind of thing is this?', 'societypress' ); ?></span>
+                <?php $first = true; foreach ( $types as $key => $label ) : ?>
+                    <label class="sp-choice">
+                        <input type="radio" name="type" value="<?php echo esc_attr( $key ); ?>" <?php checked( $first ); ?> data-sp-type>
+                        <?php echo esc_html( $label ); ?>
+                    </label>
+                <?php $first = false; endforeach; ?>
+            </div>
+
+            <?php foreach ( $questions as $key => $q ) : ?>
+            <div class="sp-ticket-part" data-for="<?php echo esc_attr( $key ); ?>"<?php echo $key === 'bug' ? '' : ' hidden'; ?>>
+                <div class="sp-q">
+                    <label class="sp-q-label" for="sp-title-<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $q['title'] ); ?></label>
+                    <input type="text" id="sp-title-<?php echo esc_attr( $key ); ?>" name="title" maxlength="200" disabled>
+                    <span class="sp-q-hint"><?php
+                        /* translators: %s: an example of what to write */
+                        printf( esc_html__( 'For example: %s', 'societypress' ), esc_html( $q['title_hint'] ) );
+                    ?></span>
+                </div>
+
+                <div class="sp-q">
+                    <label class="sp-q-label" for="sp-where-<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $q['where'] ); ?></label>
+                    <input type="text" id="sp-where-<?php echo esc_attr( $key ); ?>" name="where_seen" maxlength="255" disabled>
+                    <span class="sp-q-hint"><?php echo esc_html( $q['where_hint'] ); ?></span>
+                </div>
+
+                <div class="sp-q">
+                    <label class="sp-q-label" for="sp-body-<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $q['main'] ); ?></label>
+                    <textarea id="sp-body-<?php echo esc_attr( $key ); ?>" name="body" rows="6" disabled></textarea>
+                </div>
+
+                <?php if ( $q['expected'] !== '' ) : ?>
+                <div class="sp-q">
+                    <label class="sp-q-label" for="sp-expected-<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $q['expected'] ); ?></label>
+                    <textarea id="sp-expected-<?php echo esc_attr( $key ); ?>" name="expected" rows="3" disabled></textarea>
+                </div>
+                <?php endif; ?>
+
+                <?php if ( $q['impact'] !== '' ) : ?>
+                <div class="sp-q">
+                    <span class="sp-q-label"><?php echo esc_html( $q['impact'] ); ?></span>
+                    <?php $f = true; foreach ( $q['terms'] as $tkey => $tlabel ) : ?>
+                        <label class="sp-choice">
+                            <input type="radio" name="impact" value="<?php echo esc_attr( $tkey ); ?>" <?php checked( $f ); ?> disabled>
+                            <?php echo esc_html( $tlabel ); ?>
+                        </label>
+                    <?php $f = false; endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+
+            <?php submit_button( __( 'Send it', 'societypress' ) ); ?>
+        </form>
+    </div>
+
+    <script>
+    /**
+     * Show the questions that belong to the kind of ticket being filed.
+     *
+     * WHY the hidden parts are disabled rather than merely out of sight: three
+     * fields all called "title" would all be submitted, and the last one would
+     * win. Disabled fields are not submitted at all, so the form always sends
+     * exactly the answers the person could see.
+     */
+    (function() {
+        'use strict';
+        var parts = document.querySelectorAll('.sp-ticket-part');
+
+        function show(kind) {
+            parts.forEach(function(part) {
+                var mine = part.getAttribute('data-for') === kind;
+                part.hidden = !mine;
+                part.querySelectorAll('input, textarea').forEach(function(f) { f.disabled = !mine; });
+            });
+        }
+
+        document.querySelectorAll('[data-sp-type]').forEach(function(radio) {
+            radio.addEventListener('change', function() { show(this.value); });
+        });
+
+        var picked = document.querySelector('[data-sp-type]:checked');
+        show(picked ? picked.value : 'bug');
+    })();
+    </script>
+    <?php
+    sp_ticket_css();
+}
+
+/**
+ * One ticket, with its conversation.
+ */
+function sp_render_ticket_page(): void {
+    global $wpdb;
+
+    $id     = absint( $_GET['ticket'] ?? 0 );
+    $ticket = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_tickets WHERE id = %d", $id
+    ) );
+
+    if ( ! $ticket ) {
+        echo '<div class="wrap"><h1>' . esc_html__( 'Ticket', 'societypress' ) . '</h1><p>'
+           . esc_html__( 'That ticket no longer exists.', 'societypress' ) . '</p></div>';
+        return;
+    }
+
+    $answerer = sp_can_answer_tickets();
+    if ( (int) $ticket->reporter_id !== get_current_user_id() && ! $answerer ) {
+        wp_die( esc_html__( 'You do not have permission to view this ticket.', 'societypress' ) );
+    }
+
+    $replies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_ticket_replies WHERE ticket_id = %d ORDER BY created_at ASC", $id
+    ) );
+
+    $types     = sp_ticket_types();
+    $questions = sp_ticket_questions();
+    $statuses  = sp_ticket_statuses();
+    $q         = $questions[ $ticket->type ] ?? $questions['bug'];
+    $reporter  = get_userdata( (int) $ticket->reporter_id );
+    $env       = json_decode( (string) $ticket->environment, true );
+    $stamp     = get_option( 'date_format' ) . ', ' . get_option( 'time_format' );
+    ?>
+    <div class="wrap">
+        <h1 class="wp-heading-inline"><?php echo esc_html( $ticket->title ); ?></h1>
+        <hr class="wp-header-end">
+
+        <?php if ( isset( $_GET['sp_filed'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Sent. Whoever looks after your website has been emailed, and their reply will appear here.', 'societypress' ); ?></p></div>
+        <?php elseif ( isset( $_GET['sp_replied'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Sent.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <p>
+            <span class="sp-ticket-status sp-ticket-status-<?php echo esc_attr( $ticket->status ); ?>">
+                <?php echo esc_html( $statuses[ $ticket->status ] ?? $ticket->status ); ?>
+            </span>
+            &nbsp;<?php echo esc_html( $types[ $ticket->type ] ?? $ticket->type ); ?>
+            &nbsp;·&nbsp;<?php
+                printf(
+                    /* translators: 1: person's name, 2: date and time */
+                    esc_html__( 'from %1$s, %2$s', 'societypress' ),
+                    esc_html( $reporter ? $reporter->display_name : __( 'somebody', 'societypress' ) ),
+                    esc_html( mysql2date( $stamp, $ticket->created_at ) )
+                );
+            ?>
+        </p>
+
+        <div class="sp-ticket-thread">
+            <div class="sp-ticket-post">
+                <?php if ( $ticket->where_seen ) : ?>
+                    <p class="sp-ticket-post-who"><strong><?php echo esc_html( $q['where'] ); ?></strong> <?php echo esc_html( $ticket->where_seen ); ?></p>
+                <?php endif; ?>
+                <p class="sp-ticket-post-who"><strong><?php echo esc_html( $q['main'] ); ?></strong></p>
+                <p class="sp-ticket-post-body"><?php echo esc_html( $ticket->body ); ?></p>
+
+                <?php if ( $ticket->expected && $q['expected'] !== '' ) : ?>
+                    <p class="sp-ticket-post-who" style="margin-top:12px;"><strong><?php echo esc_html( $q['expected'] ); ?></strong></p>
+                    <p class="sp-ticket-post-body"><?php echo esc_html( $ticket->expected ); ?></p>
+                <?php endif; ?>
+
+                <?php if ( $ticket->impact && ! empty( $q['terms'][ $ticket->impact ] ) ) : ?>
+                    <p class="sp-ticket-post-who" style="margin-top:12px;">
+                        <strong><?php echo esc_html( $q['impact'] ); ?></strong>
+                        <?php echo esc_html( $q['terms'][ $ticket->impact ] ); ?>
+                    </p>
+                <?php endif; ?>
+            </div>
+
+            <?php foreach ( $replies as $reply ) :
+                $who = get_userdata( (int) $reply->user_id );
+            ?>
+                <div class="sp-ticket-post">
+                    <p class="sp-ticket-post-who">
+                        <strong><?php echo esc_html( $who ? $who->display_name : __( 'Somebody', 'societypress' ) ); ?></strong>
+                        — <?php echo esc_html( mysql2date( $stamp, $reply->created_at ) ); ?>
+                    </p>
+                    <p class="sp-ticket-post-body"><?php echo esc_html( $reply->body ); ?></p>
+                </div>
+            <?php endforeach; ?>
+
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sp-ticket-form">
+                <input type="hidden" name="action" value="sp_reply_ticket">
+                <input type="hidden" name="ticket" value="<?php echo (int) $ticket->id; ?>">
+                <?php wp_nonce_field( 'sp_reply_ticket' ); ?>
+
+                <div class="sp-q">
+                    <label class="sp-q-label" for="sp-reply"><?php esc_html_e( 'Add to this conversation', 'societypress' ); ?></label>
+                    <textarea id="sp-reply" name="body" rows="5"></textarea>
+                </div>
+
+                <?php if ( $answerer ) : ?>
+                <div class="sp-q">
+                    <label class="sp-q-label" for="sp-status"><?php esc_html_e( 'Where it stands', 'societypress' ); ?></label>
+                    <select id="sp-status" name="status">
+                        <?php foreach ( $statuses as $key => $label ) : ?>
+                            <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $ticket->status, $key ); ?>>
+                                <?php echo esc_html( $label ); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <span class="sp-q-hint"><?php esc_html_e( 'Changing this emails the person who asked.', 'societypress' ); ?></span>
+                </div>
+                <?php endif; ?>
+
+                <?php submit_button( __( 'Send it', 'societypress' ) ); ?>
+            </form>
+
+            <?php if ( $answerer && is_array( $env ) ) : ?>
+                <h2><?php esc_html_e( 'What they were running', 'societypress' ); ?></h2>
+                <table class="sp-ticket-env">
+                    <?php
+                    $labels = [
+                        'screen'       => __( 'Screen they were on', 'societypress' ),
+                        'societypress' => __( 'SocietyPress', 'societypress' ),
+                        'theme'        => __( 'Theme', 'societypress' ),
+                        'wordpress'    => __( 'WordPress', 'societypress' ),
+                        'php'          => __( 'PHP', 'societypress' ),
+                        'browser'      => __( 'Browser', 'societypress' ),
+                    ];
+                    foreach ( $labels as $key => $label ) :
+                        $value = $env[ $key ] ?? '';
+                        if ( $value === '' ) {
+                            continue;
+                        }
+                        if ( $key === 'screen' ) {
+                            $value = $ticket->screen ?: $value;
+                        }
+                    ?>
+                        <tr><td><?php echo esc_html( $label ); ?></td><td><?php echo esc_html( $value ); ?></td></tr>
+                    <?php endforeach; ?>
+                </table>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
+    sp_ticket_css();
 }
 
 
@@ -36047,7 +36968,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.81',
+            'version'     => '1.1.82',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -36055,7 +36976,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.81',
+            'version'     => '1.1.82',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -36063,7 +36984,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.81',
+            'version'     => '1.1.82',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -36071,7 +36992,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.81',
+            'version'     => '1.1.82',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -36079,7 +37000,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.81',
+            'version'     => '1.1.82',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -40343,9 +41264,13 @@ sp_handle_screen_post( 'sp-settings-modules', 'sp_handle_settings_modules_post' 
 function sp_render_settings_modules_page(): void {
     $modules = sp_get_modules();
     $enabled = sp_get_enabled_modules();
+
+    // Seeing this screen is what turns a new module from "not offered yet" into
+    // "left switched off on purpose".
+    sp_mark_modules_offered();
     ?>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Settings: Modules', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Features', 'societypress' ); ?></h1>
 
         <p class="sp-settings-modules-intro">
             <?php esc_html_e( 'Enable or disable feature modules for your society. Disabled modules are hidden from the admin menu and unavailable on the frontend. No data is deleted — re-enable a module anytime to restore it.', 'societypress' ); ?>

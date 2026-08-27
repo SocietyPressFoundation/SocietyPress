@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.86
+ * Version:     1.1.87
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.86' );
+define( 'SOCIETYPRESS_VERSION', '1.1.87' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6829,15 +6829,23 @@ add_action( 'admin_menu', function () {
 
     // -----------------------------------------------------------------
     // MY COMMITTEE — shown only to users who chair at least one committee
+    //
+    // WHY the test rather than the sp_chair capability it used to use: an
+    // administrator is handed every capability before the grant filter runs, so
+    // the filter that awards sp_chair never fires for one. The webmaster of a
+    // small society is very often a committee chair as well, and this page —
+    // the one built for her — was the one page she could not reach.
     // -----------------------------------------------------------------
-    add_submenu_page(
-        'societypress',
-        __( 'My Committee — SocietyPress', 'societypress' ),
-        __( 'My Committee', 'societypress' ),
-        'sp_chair',
-        'sp-chair',
-        'sp_render_chair_page'
-    );
+    if ( sp_user_is_chair() ) {
+        add_submenu_page(
+            'societypress',
+            __( 'My Committee — SocietyPress', 'societypress' ),
+            __( 'My Committee', 'societypress' ),
+            'sp_access_admin',
+            'sp-chair',
+            'sp_render_chair_page'
+        );
+    }
 
     // -----------------------------------------------------------------
     // NOTEPAD — shared admin notes / to-do handoff board
@@ -8061,7 +8069,7 @@ function sp_get_menu_capability_map(): array {
         'societypress'             => 'sp_access_admin',
 
         // Chair view — only users who chair at least one active committee
-        'sp-chair'                 => 'sp_chair',
+        'sp-chair'                 => 'sp_access_admin',
 
         // Members
         'sp-members'               => 'sp_manage_members',
@@ -15900,6 +15908,107 @@ function sp_get_dashboard_tiles(): array {
 
     $tiles = [
 
+        // ---- My committee -------------------------------------------------
+        // WHY a chair gets her own card rather than a smaller version of the
+        // administrator's: a committee chair cannot act on the society's total
+        // membership or its dues, and a dashboard of numbers somebody cannot
+        // act on teaches her to ignore the dashboard. These four are hers —
+        // her meetings, her events, her open slots, and the people waiting on
+        // her to say yes.
+        //
+        // WHY it is gated on actually chairing rather than on a capability:
+        // administrators are handed every capability without the grant filter
+        // ever running, so a capability check would hide this card from exactly
+        // the person most likely to be both webmaster and committee chair. The
+        // card appears when somebody is given a committee and goes when they
+        // hand it on, with nobody remembering to switch anything.
+        'chair_meetings' => [
+            'label'      => __( 'My Committee Meetings', 'societypress' ),
+            'group'      => 'chair',
+            'short'      => __( 'Meetings', 'societypress' ),
+            'module'     => 'governance',
+            'capability' => '',
+            'visible'    => static fn() => sp_user_is_chair(),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-chair' ),
+            'value'      => static function () use ( $wpdb, $prefix, $today ) {
+                $ids = sp_user_chaired_committee_ids();
+                if ( ! $ids ) {
+                    return 0;
+                }
+                $in = implode( ',', array_map( 'intval', $ids ) );
+                return (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$prefix}meetings
+                      WHERE meeting_type = 'committee' AND committee_id IN ({$in}) AND meeting_date >= %s",
+                    $today
+                ) );
+            },
+        ],
+        'chair_events' => [
+            'label'      => __( 'My Committee Events', 'societypress' ),
+            'group'      => 'chair',
+            'short'      => __( 'Events', 'societypress' ),
+            'module'     => 'governance',
+            'capability' => '',
+            'visible'    => static fn() => sp_user_is_chair(),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-chair' ),
+            'value'      => static function () use ( $wpdb, $prefix, $today ) {
+                $ids = sp_user_chaired_committee_ids();
+                if ( ! $ids ) {
+                    return 0;
+                }
+                $in = implode( ',', array_map( 'intval', $ids ) );
+                return (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT COUNT(*) FROM {$prefix}events
+                      WHERE committee_id IN ({$in}) AND status = 'scheduled' AND event_date >= %s",
+                    $today
+                ) );
+            },
+        ],
+        'chair_slots' => [
+            'label'      => __( 'My Committee Openings', 'societypress' ),
+            'group'      => 'chair',
+            'short'      => __( 'Openings', 'societypress' ),
+            'module'     => 'governance',
+            'capability' => '',
+            'visible'    => static fn() => sp_user_is_chair(),
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-volunteer-opportunities' ),
+            'value'      => static function () use ( $wpdb, $prefix ) {
+                $ids = sp_user_chaired_committee_ids();
+                if ( ! $ids ) {
+                    return 0;
+                }
+                $in = implode( ',', array_map( 'intval', $ids ) );
+                return (int) $wpdb->get_var(
+                    "SELECT COUNT(*) FROM {$prefix}volunteer_opportunities
+                      WHERE committee_id IN ({$in}) AND status = 'open'"
+                );
+            },
+        ],
+        'chair_signups' => [
+            'label'      => __( 'People Waiting on You', 'societypress' ),
+            'group'      => 'chair',
+            'short'      => __( 'Waiting on You', 'societypress' ),
+            'module'     => 'governance',
+            'capability' => '',
+            'visible'    => static fn() => sp_user_is_chair(),
+            'accent'     => 'expiring',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-chair' ),
+            // Somebody volunteered and is sitting on a waitlist until the chair
+            // says yes. The one number here that is a person, not a total.
+            'value'      => static function () use ( $wpdb, $prefix ) {
+                $ids = sp_user_chaired_committee_ids();
+                if ( ! $ids ) {
+                    return 0;
+                }
+                $in = implode( ',', array_map( 'intval', $ids ) );
+                return (int) $wpdb->get_var(
+                    "SELECT COUNT(*) FROM {$prefix}volunteer_signups s
+                      INNER JOIN {$prefix}volunteer_opportunities o ON o.id = s.opportunity_id
+                      WHERE o.committee_id IN ({$in}) AND s.status = 'waitlisted'"
+                );
+            },
+        ],
+
         // ---- Members ------------------------------------------------------
         'members_total' => [
             'label'      => __( 'Total Members', 'societypress' ),
@@ -16252,6 +16361,12 @@ function sp_dashboard_cards(): array {
             'layout'   => 'numbers',
             'urgent'   => true,
         ],
+        'chair' => [
+            'label'    => __( 'My Committee', 'societypress' ),
+            'describe' => __( 'Your committee\'s meetings and events, its open volunteer slots, and anybody waiting on you to say yes.', 'societypress' ),
+            'layout'   => 'rows',
+            'urgent'   => true,
+        ],
         'members' => [
             'label'    => __( 'Members', 'societypress' ),
             'describe' => __( 'How many members there are, how many are active, and who is due to renew.', 'societypress' ),
@@ -16319,6 +16434,14 @@ function sp_available_dashboard_tiles(): array {
             continue;
         }
         if ( ! empty( $tile['capability'] ) && ! current_user_can( $tile['capability'] ) ) {
+            continue;
+        }
+        // WHY a test as well as a capability: some things depend on a fact
+        // about the person rather than a permission. Chairing a committee is
+        // one — and because administrators are handed every capability without
+        // the grant filter running, a capability could never express it. An
+        // administrator who chairs the Education committee is a chair.
+        if ( isset( $tile['visible'] ) && is_callable( $tile['visible'] ) && ! call_user_func( $tile['visible'] ) ) {
             continue;
         }
         $available[ $id ] = $tile;
@@ -37024,7 +37147,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.86',
+            'version'     => '1.1.87',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37032,7 +37155,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.86',
+            'version'     => '1.1.87',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37040,7 +37163,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.86',
+            'version'     => '1.1.87',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37048,7 +37171,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.86',
+            'version'     => '1.1.87',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37056,7 +37179,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.86',
+            'version'     => '1.1.87',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

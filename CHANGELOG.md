@@ -19,6 +19,31 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.87] — 2026-08-27
+
+### Added
+
+**A dashboard box for committee chairs**
+
+A chair now gets **My Committee** on her dashboard: her committee's upcoming
+meetings and events, its open volunteer slots, and how many people have
+volunteered and are waiting on her to say yes. The last of those turns the box
+red, because it is the only number on a dashboard that is a person.
+
+It appears when somebody is made chair of a committee and goes when they hand it
+on. Nobody has to switch anything.
+
+### Fixed
+
+**An administrator who chairs a committee is a chair**
+
+WordPress hands an administrator every capability before our own permission
+rules run, so the capability marking somebody as a committee chair was never
+granted to one. The webmaster of a small society is very often a committee chair
+too — and the My Committee page, built for exactly her, was the one page she
+could not reach. It is reachable now, and her committee's box appears on her
+dashboard like anybody else's.
+
 ## [1.1.86] — 2026-08-27
 
 ### Changed

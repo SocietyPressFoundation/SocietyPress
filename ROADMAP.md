@@ -252,9 +252,14 @@ appropriate.
 **Motivation:** Recurring sponsorship smooths income volatility and
 gives sponsors a visible recognition channel.
 **Scope:** Enable GitHub Sponsors on the `SocietyPressFoundation`
-org (probably requires 501(c)(3) verification first). Alternative: Open
-Collective.
-**Blockers:** 501(c)(3) status for tax-deductibility claims.
+org, then add a `github:` line to `.github/FUNDING.yml` so the Sponsor
+button appears on the repository. Alternative: Open Collective.
+**Blockers:** None. Checked against GitHub's documentation on
+2026-08-27: an organization qualifies by contributing to open source and
+operating in a supported region — 501(c)(3) status is not required, and
+the payout account may be a personal one. What the 501(c)(3) does gate is
+the claim that a sponsorship is tax-deductible, which the profile must
+not make until the Foundation exists.
 
 ---
 

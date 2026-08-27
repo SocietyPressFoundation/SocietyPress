@@ -237,7 +237,12 @@ realistic ENS-format data proves the migration works.
 **Scope:** Use the ENS-format CSVs in `Sample Data/ENS Migration Demo/`
 to perform and document a fresh migration on demo.getsocietypress.org.
 Publish the walkthrough as a docs page.
-**Blockers:** None. The Kindred dataset is loaded on demo.
+**Blockers:** A decision about the demo site. It already carries the
+Kindred dataset — 571 members, 8,149 records — and a walkthrough that
+shows a migration arriving on an empty site means replacing that. Either
+the demo is rebuilt from the ENS CSVs so the Kindred data *is* the
+migrated data, or the walkthrough is recorded somewhere other than the
+public demo.
 
 ---
 

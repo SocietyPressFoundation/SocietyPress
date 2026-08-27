@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.78] — 2026-08-26
+
+### Changed
+
+**Buttons and labels in plain English**
+
+A saved copy of your site's design is now a **saved look** everywhere, not a
+preset — the Design screen already called it that on its own Save button.
+Enrichment buttons say Fill In Details, matching the screen they sit on.
+Calendar feeds say Update rather than Sync. Bulk Upload is Upload Many.
+
 ## [1.1.77] — 2026-08-26
 
 ### Changed

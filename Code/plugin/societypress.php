@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.77
+ * Version:     1.1.78
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.77' );
+define( 'SOCIETYPRESS_VERSION', '1.1.78' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7335,8 +7335,8 @@ add_action( 'admin_menu', function () {
     // Document Bulk Upload — hidden (accessed via Bulk Upload button on Documents list)
     add_submenu_page(
         '',
-        __( 'Bulk Upload Documents — SocietyPress', 'societypress' ),
-        __( 'Bulk Upload Documents', 'societypress' ),
+        __( 'Upload Many Documents — SocietyPress', 'societypress' ),
+        __( 'Upload Many Documents', 'societypress' ),
         'manage_options',
         'sp-document-bulk-upload',
         'sp_render_document_bulk_upload_page'
@@ -35533,7 +35533,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.77',
+            'version'     => '1.1.78',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35541,7 +35541,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.77',
+            'version'     => '1.1.78',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35549,7 +35549,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.77',
+            'version'     => '1.1.78',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35557,7 +35557,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.77',
+            'version'     => '1.1.78',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35565,7 +35565,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.77',
+            'version'     => '1.1.78',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -38885,7 +38885,7 @@ function sp_render_settings_design_page(): void {
             <!-- WHY at the top: This is the quickest way for Harold to get a
                  good-looking site. Start with a preset, then fine-tune below. -->
             <div class="sp-design-section">
-                <h2 class="sp-design-section-heading"><?php esc_html_e( 'Style Presets', 'societypress' ); ?></h2>
+                <h2 class="sp-design-section-heading"><?php esc_html_e( 'Saved Looks', 'societypress' ); ?></h2>
                 <p class="description sp-design-section-desc">
                     <?php esc_html_e( 'Pick a starting point. This fills in the colors and fonts below — you can still customize everything afterward.', 'societypress' ); ?>
                 </p>
@@ -72223,7 +72223,7 @@ function sp_render_library_item_edit_page(): void {
                     <th scope="col"><label for="cover_url"><?php esc_html_e( 'Cover Image URL', 'societypress' ); ?></label></th>
                     <td>
                         <input type="url" name="cover_url" id="cover_url" class="large-text" value="<?php echo esc_attr( $item->cover_url ?? '' ); ?>" placeholder="https://...">
-                        <p class="description"><?php esc_html_e( 'URL to the book cover image. Can be populated automatically via Library Enrichment.', 'societypress' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'Web address of the book cover image. Fill In Book Details can find this for you.', 'societypress' ); ?></p>
                         <?php if ( ! empty( $item->cover_url ) ) : ?>
                             <div class="sp-lib-edit-cover-preview">
                                 <img src="<?php /* translators: %s: catalog item title */ echo esc_url( $item->cover_url ); ?>" alt="<?php echo esc_attr( sprintf( __( 'Cover image for %s', 'societypress' ), $item->title ) ); ?>" class="sp-lib-edit-cover-img">
@@ -84739,7 +84739,7 @@ add_action( 'wp_ajax_sp_export_resources', function () {
 //      catalog look dramatically more polished.
 //
 // HOW IT WORKS:
-//   1. Admin clicks "Start Enrichment" on the Library Enrichment page.
+//   1. Admin clicks "Start Filling In Details" on the Fill In Book Details page.
 //   2. JavaScript sends AJAX requests in small batches (10 items at a time)
 //      to avoid timeouts and API rate limits.
 //   3. Each batch: PHP queries Open Library for each item, stores results,
@@ -84927,7 +84927,7 @@ function sp_render_library_enrich_page(): void {
         </div>
 
         <div class="sp-enrich-panel">
-            <h2 class="sp-enrich-panel-heading"><?php esc_html_e( 'Run Enrichment', 'societypress' ); ?></h2>
+            <h2 class="sp-enrich-panel-heading"><?php esc_html_e( 'Fill In Details', 'societypress' ); ?></h2>
             <p class="sp-enrich-intro">
                 <?php esc_html_e( 'This will process items that don\'t yet have a cover image. Items with LCCNs are tried first (higher match rate), then title+author search for the rest. Open Library\'s API is free but rate-limited, so this runs in small batches.', 'societypress' ); ?>
             </p>
@@ -84943,7 +84943,7 @@ function sp_render_library_enrich_page(): void {
                 </label>
             </div>
 
-            <button type="button" id="sp-enrich-start" class="button button-primary button-hero"><?php esc_html_e( 'Start Enrichment', 'societypress' ); ?></button>
+            <button type="button" id="sp-enrich-start" class="button button-primary button-hero"><?php esc_html_e( 'Start Filling In Details', 'societypress' ); ?></button>
             <button type="button" id="sp-enrich-stop" class="button button-hero" style="display:none;"><?php esc_html_e( 'Stop', 'societypress' ); ?></button>
 
             <!-- Progress bar -->
@@ -97162,7 +97162,7 @@ function sp_render_documents_page(): void {
         }
         ?>
         <a href="<?php echo esc_url( $sp_add_doc_url ); ?>" class="page-title-action"><?php esc_html_e( 'Add Document', 'societypress' ); ?></a>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-bulk-upload' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Bulk Upload', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-bulk-upload' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Upload Many', 'societypress' ); ?></a>
         <hr class="wp-header-end">
 
         <?php if ( ! empty( $_GET['sp_updated'] ) ) : ?>
@@ -97814,7 +97814,7 @@ function sp_render_document_bulk_upload_page(): void {
         }
     </style>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Bulk Upload Documents', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Upload Many Documents', 'societypress' ); ?></h1>
         <p class="description"><?php esc_html_e( 'Select multiple files from the Media Library, set shared options, review the titles and dates, then upload them all at once.', 'societypress' ); ?></p>
 
         <form method="post" id="sp-bulk-upload-form">
@@ -99432,7 +99432,7 @@ function sp_render_external_calendars_page(): void {
                     </tr>
 
                     <tr>
-                        <th scope="row"><label for="feed_sync_interval"><?php esc_html_e( 'Sync Every', 'societypress' ); ?></label></th>
+                        <th scope="row"><label for="feed_sync_interval"><?php esc_html_e( 'Check Every', 'societypress' ); ?></label></th>
                         <td>
                             <?php
                             $intervals = [
@@ -99486,7 +99486,7 @@ function sp_render_external_calendars_page(): void {
                     <th class="sp-ext-cal-col-category"><?php esc_html_e( 'Category', 'societypress' ); ?></th>
                     <th class="sp-ext-cal-col-interval"><?php esc_html_e( 'Interval', 'societypress' ); ?></th>
                     <th class="sp-ext-cal-col-status"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
-                    <th class="sp-ext-cal-col-lastsync"><?php esc_html_e( 'Last Sync', 'societypress' ); ?></th>
+                    <th class="sp-ext-cal-col-lastsync"><?php esc_html_e( 'Last Updated', 'societypress' ); ?></th>
                     <th class="sp-ext-cal-col-events"><?php esc_html_e( 'Events', 'societypress' ); ?></th>
                     <th class="sp-ext-cal-col-actions"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
@@ -99566,7 +99566,7 @@ function sp_render_external_calendars_page(): void {
                         <button type="button" class="button button-small sp-ical-sync-now"
                                 data-feed-id="<?php echo esc_attr( $feed->id ); ?>"
                                 data-nonce="<?php echo esc_attr( wp_create_nonce( 'sp_ical_feed_sync' ) ); ?>"
-                                title="<?php esc_attr_e( 'Sync Now', 'societypress' ); ?>">
+                                title="<?php esc_attr_e( 'Update Now', 'societypress' ); ?>">
                             &#8635;
                         </button>
 
@@ -99614,7 +99614,7 @@ function sp_render_external_calendars_page(): void {
 
                 btn.disabled = true;
                 btn.textContent = '...';
-                if (statusEl) statusEl.textContent = '<?php echo esc_js( __( 'Syncing...', 'societypress' ) ); ?>';
+                if (statusEl) statusEl.textContent = '<?php echo esc_js( __( 'Updating…', 'societypress' ) ); ?>';
 
                 var formData = new FormData();
                 formData.append('action', 'sp_sync_ical_feed_now');
@@ -99630,7 +99630,7 @@ function sp_render_external_calendars_page(): void {
                             setTimeout(function() { location.reload(); }, 1500);
                         } else {
                             if (statusEl) {
-                                statusEl.textContent = data.data || '<?php echo esc_js( __( 'Sync failed.', 'societypress' ) ); ?>';
+                                statusEl.textContent = data.data || '<?php echo esc_js( __( 'Update failed.', 'societypress' ) ); ?>';
                                 statusEl.style.color = '#d63638';
                             }
                             btn.disabled = false;
@@ -112232,10 +112232,10 @@ function sp_theme_preset_build( string $name, string $description ): array {
  */
 function sp_theme_preset_apply( array $payload ) {
     if ( ( $payload['format'] ?? '' ) !== 'societypress.preset.v1' ) {
-        return new WP_Error( 'preset_format', __( 'Preset format not recognized. Looking for societypress.preset.v1.', 'societypress' ) );
+        return new WP_Error( 'preset_format', __( 'This file is not a saved look. Looking for societypress.preset.v1.', 'societypress' ) );
     }
     if ( empty( $payload['tokens'] ) || ! is_array( $payload['tokens'] ) ) {
-        return new WP_Error( 'preset_empty', __( 'Preset is empty.', 'societypress' ) );
+        return new WP_Error( 'preset_empty', __( 'That saved look is empty.', 'societypress' ) );
     }
 
     $allowed_keys = array_flip( sp_theme_preset_token_keys() );
@@ -112323,7 +112323,7 @@ function sp_theme_preset_apply( array $payload ) {
     }
 
     if ( empty( $clean ) ) {
-        return new WP_Error( 'preset_no_valid_tokens', __( 'Preset contained no valid design tokens.', 'societypress' ) );
+        return new WP_Error( 'preset_no_valid_tokens', __( 'That saved look had no design settings in it.', 'societypress' ) );
     }
 
     $settings = sp_settings();
@@ -112342,7 +112342,7 @@ function sp_theme_preset_apply( array $payload ) {
 add_action( 'admin_menu', function () {
     add_submenu_page(
         null,
-        __( 'Theme Presets — SocietyPress', 'societypress' ),
+        __( 'Saved Looks — SocietyPress', 'societypress' ),
         '',
         'manage_options',
         'sp-theme-presets',
@@ -112851,7 +112851,7 @@ function sp_render_appearance_page(): void {
     $tabs = [
         'theme'   => __( 'Theme', 'societypress' ),
         'design'  => __( 'Colours & Fonts', 'societypress' ),
-        'presets' => __( 'Presets', 'societypress' ),
+        'presets' => __( 'Saved Looks', 'societypress' ),
     ];
 
     $active = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'theme';
@@ -113508,21 +113508,21 @@ function sp_render_theme_presets_page(): void {
         .sp-saved-look-actions form { display: inline-block; margin: 0 4px 0 0; }
     </style>
     <div class="wrap">
-        <h1><?php esc_html_e( 'Theme Presets', 'societypress' ); ?></h1>
+        <h1><?php esc_html_e( 'Saved Looks', 'societypress' ); ?></h1>
         <p class="description sp-max-w-780">
             <?php esc_html_e( 'A theme preset is the portable expression of your site\'s look — colors, fonts, spacing, layout choices — packaged as a small JSON file. Export your current look to share with another society. Import a preset to instantly take on someone else\'s look (your content, members, and configuration are not touched).', 'societypress' ); ?>
         </p>
 
         <?php if ( $imported_name ) : ?>
             <div class="notice notice-success is-dismissible"><p>
-                <?php /* translators: %s: preset name */ printf( esc_html__( 'Preset "%s" applied. Your site\'s appearance has been updated.', 'societypress' ), esc_html( $imported_name ) ); ?>
+                <?php /* translators: %s: name of the saved look */ printf( esc_html__( 'Saved look "%s" applied. Your site\'s appearance has been updated.', 'societypress' ), esc_html( $imported_name ) ); ?>
                 <a href="<?php echo esc_url( home_url() ); ?>" target="_blank"><?php esc_html_e( 'View site →', 'societypress' ); ?></a>
             </p></div>
         <?php endif; ?>
         <?php if ( $err === 'no_file' ) : ?>
             <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Please choose a preset file to import.', 'societypress' ); ?></p></div>
         <?php elseif ( $err === 'too_large' ) : ?>
-            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'Preset file is too large (over 64KB). Real presets are under 4KB; this file may not be a preset.', 'societypress' ); ?></p></div>
+            <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'That file is too large (over 64KB). A saved look is under 4KB, so this is probably something else.', 'societypress' ); ?></p></div>
         <?php elseif ( $err === 'bad_json' ) : ?>
             <div class="notice notice-error is-dismissible"><p><?php esc_html_e( 'The file is not valid JSON. Make sure you uploaded a SocietyPress preset file (.json).', 'societypress' ); ?></p></div>
         <?php elseif ( $err === 'apply_failed' ) : ?>
@@ -113652,7 +113652,7 @@ function sp_render_theme_presets_page(): void {
                                     <td><textarea id="preset_description" name="preset_description" rows="3" class="large-text" placeholder="<?php esc_attr_e( 'A short note for whoever imports this — e.g. "Navy + gold palette, Garamond headings, comfortable spacing for older readers."', 'societypress' ); ?>"></textarea></td>
                                 </tr>
                             </table>
-                            <?php submit_button( __( 'Download Preset', 'societypress' ), 'primary' ); ?>
+                            <?php submit_button( __( 'Download This Look', 'societypress' ), 'primary' ); ?>
                         </form>
                     </div>
                 </div>
@@ -113660,7 +113660,7 @@ function sp_render_theme_presets_page(): void {
                 <div class="postbox">
                     <h2 class="hndle sp-hndle-padded"><?php esc_html_e( "What's in a preset", 'societypress' ); ?></h2>
                     <div class="inside">
-                        <p class="sp-tp-meta-text"><?php esc_html_e( 'Presets contain only your site\'s design tokens. They do not include:', 'societypress' ); ?></p>
+                        <p class="sp-tp-meta-text"><?php esc_html_e( 'A saved look holds only your design settings. It does not include:', 'societypress' ); ?></p>
                         <ul class="sp-tp-meta-list">
                             <li>📦 <?php esc_html_e( 'Your logo (site-specific media)', 'societypress' ); ?></li>
                             <li>👥 <?php esc_html_e( 'Members, events, content, or any data', 'societypress' ); ?></li>
@@ -113688,11 +113688,11 @@ function sp_render_theme_presets_page(): void {
                             <?php wp_nonce_field( 'sp_theme_preset_import' ); ?>
                             <table class="form-table">
                                 <tr>
-                                    <th scope="col"><label for="preset_file"><?php esc_html_e( 'Preset file', 'societypress' ); ?></label></th>
+                                    <th scope="col"><label for="preset_file"><?php esc_html_e( 'Saved look file', 'societypress' ); ?></label></th>
                                     <td><input type="file" id="preset_file" name="preset_file" accept=".json,application/json" required></td>
                                 </tr>
                             </table>
-                            <?php submit_button( __( 'Apply Preset', 'societypress' ), 'primary' ); ?>
+                            <?php submit_button( __( 'Apply This Look', 'societypress' ), 'primary' ); ?>
                         </form>
                     </div>
                 </div>

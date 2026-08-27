@@ -19,6 +19,18 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.92] — 2026-08-27
+
+### Fixed
+
+**A menu group holding one thing looked like a dead heading**
+
+Pages sat in the sidebar as small grey text with no icon, among a column of rows
+that all had one. It was a link the whole time — it just did not look like
+anything you could click, so being told "go to Pages" was being told to click
+something that appeared not to be there. A group with a single item now looks
+like every other row in the sidebar.
+
 ## [1.1.91] — 2026-08-27
 
 ### Fixed

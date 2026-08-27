@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.91
+ * Version:     1.1.92
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.91' );
+define( 'SOCIETYPRESS_VERSION', '1.1.92' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -12193,6 +12193,10 @@ add_action( 'admin_head', function () {
     white-space: nowrap;
 }
 
+/* A group with one thing in it is a link, not a flyout — same shape as its
+   neighbours, minus the arrow that would promise a panel that never opens. */
+.sp-menu-solo > a.sp-menu-group-header .sp-group-arrow { display: none; }
+
 .sp-menu-group-header:hover {
     color: #fff !important;
     background-color: rgba(255,255,255,0.08);
@@ -12719,8 +12723,25 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
             // link is two clicks for nothing — Harold should land on the page
             // in one click. Any sub-heading is dropped in that case.
             if (realItems.length === 1) {
-                if (hasCurrent) realItems[0].el.classList.add('sp-group-has-current');
-                builtGroups[gc.id] = realItems[0].el;
+                var soloEl = realItems[0].el;
+                if (hasCurrent) soloEl.classList.add('sp-group-has-current');
+
+                // WHY it is dressed up as a group row: what lands here is the
+                // plain WordPress submenu row, which carries no icon and none
+                // of the weight the rows around it have. Sitting among a column
+                // of icons it reads as a grey heading rather than a link, and
+                // somebody told to "go to Pages" cannot see anything to click.
+                soloEl.classList.add('sp-menu-solo');
+                var soloLink = soloEl.querySelector('a');
+                if (soloLink && gc.icon && ! soloLink.querySelector('.sp-group-icon')) {
+                    soloLink.classList.add('sp-menu-group-header');
+                    soloLink.insertAdjacentHTML(
+                        'afterbegin',
+                        '<span class="dashicons ' + gc.icon + ' sp-group-icon"></span>'
+                    );
+                }
+
+                builtGroups[gc.id] = soloEl;
                 return;
             }
 
@@ -37465,7 +37486,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.91',
+            'version'     => '1.1.92',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37473,7 +37494,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.91',
+            'version'     => '1.1.92',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37481,7 +37502,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.91',
+            'version'     => '1.1.92',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37489,7 +37510,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.91',
+            'version'     => '1.1.92',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37497,7 +37518,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.91',
+            'version'     => '1.1.92',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

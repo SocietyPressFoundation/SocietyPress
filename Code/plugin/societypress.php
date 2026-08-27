@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.89
+ * Version:     1.1.90
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.89' );
+define( 'SOCIETYPRESS_VERSION', '1.1.90' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5733,6 +5733,12 @@ function sp_get_modules(): array {
             'description' => __( 'Create photo albums to showcase society events, meetings, and member activities.', 'societypress' ),
             'icon'        => 'dashicons-format-gallery',
             'menu_slugs'  => [ 'sp-gallery', 'sp-album-edit' ],
+        ],
+        'news' => [
+            'name'        => __( 'News', 'societypress' ),
+            'description' => __( 'Write news items and notices for your website — a meeting moved, a new collection opened, an obituary. Scheduled publishing, drafts and categories all come from WordPress itself.', 'societypress' ),
+            'icon'        => 'dashicons-megaphone',
+            'menu_slugs'  => [ 'edit.php', 'post-new.php' ],
         ],
         'help_desk' => [
             'name'        => __( 'Help Desk', 'societypress' ),
@@ -13011,7 +13017,7 @@ function sp_default_menu_config(): array {
               // and the society's own files — were scattered through the other
               // six. Somebody looking for "where the pictures went" was reading
               // all nine every time.
-              'items' => [ 'sp-pages', 'sp-menus', 'sp-forms', 'sp-affiliations', 'sp-short-links',
+              'items' => [ 'sp-pages', 'edit.php', 'sp-menus', 'sp-forms', 'sp-affiliations', 'sp-short-links',
                            [ 'heading' => __( 'Files and photos', 'societypress' ) ],
                            'sp-gallery', 'upload.php', 'sp-files',
                            [ 'heading' => __( 'How it looks', 'societypress' ) ],
@@ -18452,6 +18458,322 @@ function sp_render_dashboard_default_controls(): void {
             ) ); ?>"><?php esc_html_e( 'Put it back the way the society set it', 'societypress' ); ?></a>
         <?php endif; ?>
     </p>
+    <?php
+}
+
+
+// ============================================================================
+// NEWS
+//
+// WHY this is WordPress's own posts and not a table of ours: a society writing
+//      "the spring meeting has moved to the 12th" wants drafts, a publish date
+//      it can set for next Tuesday, revisions when somebody edits it, an RSS
+//      feed, and to be found by the site's search. WordPress has done all of
+//      that since 2003 and does it better than we would. Every other module
+//      here has its own table because WordPress had nothing to offer; this one
+//      does not, and inventing sp_news would be building a worse blog to sit
+//      beside a working one.
+//
+// WHY it needed doing at all: SocietyPress removes the Posts menu, on the
+//      reasonable grounds that a dozen blogger's menus are not what a society
+//      needs. But removing the menu removed the capability — the machinery was
+//      still there and no volunteer could reach it. This puts it back, named
+//      the way a society names it.
+//
+// WHY comments stay off: the same reason photo comments were cut. A comment
+//      thread is a moderation duty falling on volunteers who did not sign up
+//      for one, and an unmoderated one on a society's site is worse than no
+//      thread at all. Societies that want them can switch them on per post in
+//      WordPress's own Discussion panel; nothing here forbids it.
+// ============================================================================
+
+/**
+ * Call posts what a society calls them.
+ *
+ * WHY relabelling rather than registering a post type of our own: a custom type
+ * would lose every post a society had already written, and would not appear in
+ * the site's search, its RSS feed or its archives without re-implementing all
+ * three.
+ */
+add_filter( 'post_type_labels_post', function ( $labels ) {
+    $labels->name                     = __( 'News', 'societypress' );
+    $labels->singular_name            = __( 'News Item', 'societypress' );
+    $labels->menu_name                = __( 'News', 'societypress' );
+    $labels->name_admin_bar           = __( 'News Item', 'societypress' );
+    $labels->add_new                  = __( 'Add News Item', 'societypress' );
+    $labels->add_new_item             = __( 'Add News Item', 'societypress' );
+    $labels->edit_item                = __( 'Edit News Item', 'societypress' );
+    $labels->new_item                 = __( 'New News Item', 'societypress' );
+    $labels->view_item                = __( 'View News Item', 'societypress' );
+    $labels->view_items               = __( 'View News', 'societypress' );
+    $labels->search_items             = __( 'Search News', 'societypress' );
+    $labels->not_found                = __( 'No news yet.', 'societypress' );
+    $labels->not_found_in_trash       = __( 'No news in the trash.', 'societypress' );
+    $labels->all_items                = __( 'All News', 'societypress' );
+    $labels->archives                 = __( 'News Archives', 'societypress' );
+    $labels->attributes               = __( 'News Item Attributes', 'societypress' );
+    $labels->insert_into_item         = __( 'Insert into news item', 'societypress' );
+    $labels->uploaded_to_this_item    = __( 'Uploaded to this news item', 'societypress' );
+    $labels->filter_items_list        = __( 'Filter news list', 'societypress' );
+    $labels->items_list_navigation    = __( 'News list navigation', 'societypress' );
+    $labels->items_list               = __( 'News list', 'societypress' );
+    $labels->item_published           = __( 'News item published.', 'societypress' );
+    $labels->item_updated             = __( 'News item updated.', 'societypress' );
+    $labels->item_scheduled           = __( 'News item scheduled.', 'societypress' );
+    return $labels;
+} );
+
+/**
+ * Put News back in the menu, under SocietyPress where the rest of the site is.
+ */
+add_action( 'admin_menu', function () {
+    if ( ! sp_module_enabled( 'news' ) ) {
+        return;
+    }
+
+    add_submenu_page(
+        'societypress',
+        __( 'News — SocietyPress', 'societypress' ),
+        __( 'News', 'societypress' ),
+        'sp_manage_content',
+        'edit.php',
+        ''
+    );
+
+    add_submenu_page(
+        'societypress',
+        __( 'Add News Item — SocietyPress', 'societypress' ),
+        __( 'Add News Item', 'societypress' ),
+        'sp_manage_content',
+        'post-new.php',
+        ''
+    );
+}, 21 );
+
+/**
+ * Light the News row while writing or editing one.
+ *
+ * Core highlights by file name, and edit.php belongs to no SocietyPress page as
+ * far as it is concerned, so without this the sidebar shows nothing selected.
+ */
+add_filter( 'parent_file', function ( $parent_file ) {
+    global $typenow, $pagenow;
+
+    if ( in_array( $pagenow, [ 'edit.php', 'post.php', 'post-new.php' ], true )
+        && ( $typenow === 'post' || $typenow === '' ) ) {
+        return 'societypress';
+    }
+
+    return $parent_file;
+} );
+
+add_filter( 'submenu_file', function ( $submenu_file ) {
+    global $typenow, $pagenow;
+
+    if ( in_array( $pagenow, [ 'edit.php', 'post.php' ], true ) && ( $typenow === 'post' || $typenow === '' ) ) {
+        return 'edit.php';
+    }
+    if ( $pagenow === 'post-new.php' && ( $typenow === 'post' || $typenow === '' ) ) {
+        return 'post-new.php';
+    }
+
+    return $submenu_file;
+} );
+
+/**
+ * A news item arrives with comments closed.
+ *
+ * WHY a default rather than a lock: the society decides. This only stops a
+ * volunteer publishing a notice and unknowingly opening a comment thread on it
+ * because WordPress's site-wide default said so.
+ */
+add_filter( 'wp_insert_post_data', function ( $data ) {
+    if ( ( $data['post_type'] ?? '' ) === 'post' && ( $data['post_status'] ?? '' ) === 'auto-draft' ) {
+        $data['comment_status'] = 'closed';
+        $data['ping_status']    = 'closed';
+    }
+    return $data;
+} );
+
+/**
+ * The public News page.
+ *
+ * WHY a page template as well as WordPress's own blog archive: a society sets
+ * its front page to a static page, at which point the blog archive has no
+ * address a volunteer can find or put in a menu. A page they create and name
+ * does.
+ */
+function sp_render_news_frontend(): void {
+    $paged = max( 1, (int) get_query_var( 'paged' ) ?: (int) ( $_GET['news_page'] ?? 1 ) );
+
+    $q = new WP_Query( [
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => 10,
+        'paged'          => $paged,
+    ] );
+
+    if ( ! $q->have_posts() ) {
+        echo '<p class="sp-news-empty">' . esc_html__( 'No news yet.', 'societypress' ) . '</p>';
+        return;
+    }
+
+    echo '<div class="sp-news-list">';
+    while ( $q->have_posts() ) {
+        $q->the_post();
+        ?>
+        <article class="sp-news-item">
+            <h2 class="sp-news-title">
+                <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+            </h2>
+            <p class="sp-news-meta">
+                <time datetime="<?php echo esc_attr( get_the_date( 'c' ) ); ?>"><?php echo esc_html( get_the_date() ); ?></time>
+                <?php
+                $cats = get_the_category_list( ', ' );
+                if ( $cats ) {
+                    echo ' &middot; ' . wp_kses_post( $cats );
+                }
+                ?>
+            </p>
+            <?php if ( has_post_thumbnail() ) : ?>
+                <a class="sp-news-cover" href="<?php the_permalink(); ?>"><?php the_post_thumbnail( 'medium_large' ); ?></a>
+            <?php endif; ?>
+            <div class="sp-news-excerpt"><?php the_excerpt(); ?></div>
+            <p><a class="sp-news-more" href="<?php the_permalink(); ?>"><?php esc_html_e( 'Read the rest', 'societypress' ); ?> &rarr;</a></p>
+        </article>
+        <?php
+    }
+    echo '</div>';
+
+    if ( $q->max_num_pages > 1 ) {
+        echo '<nav class="sp-news-pager">' . wp_kses_post( paginate_links( [
+            'total'   => $q->max_num_pages,
+            'current' => $paged,
+            'format'  => '?news_page=%#%',
+        ] ) ) . '</nav>';
+    }
+
+    wp_reset_postdata();
+    ?>
+    <style>
+        .sp-news-item {
+            padding: 0 0 28px;
+            margin: 0 0 28px;
+            border-bottom: 1px solid var(--sp-color-border, #e5e7eb);
+        }
+        .sp-news-item:last-child { border-bottom: 0; }
+        .sp-news-title { margin: 0 0 6px; font-size: 1.5rem; }
+        .sp-news-title a { text-decoration: none; color: var(--sp-color-primary, #0D1F3C); }
+        .sp-news-title a:hover { text-decoration: underline; }
+        .sp-news-meta { margin: 0 0 12px; color: var(--sp-color-text-secondary, #6d7175); font-size: 0.9rem; }
+        .sp-news-cover { display: block; margin: 0 0 12px; }
+        .sp-news-cover img { max-width: 100%; height: auto; border-radius: 6px; }
+        .sp-news-excerpt p:last-child { margin-bottom: 0; }
+        .sp-news-more { font-weight: 600; text-decoration: none; }
+        .sp-news-more:hover { text-decoration: underline; }
+        .sp-news-pager { margin-top: 24px; }
+        .sp-news-pager .page-numbers {
+            display: inline-block; padding: 6px 11px; margin-right: 4px;
+            border: 1px solid var(--sp-color-border, #e5e7eb); border-radius: 6px;
+            text-decoration: none; color: inherit;
+        }
+        .sp-news-pager .page-numbers.current {
+            background: var(--sp-color-primary, #2271b1);
+            border-color: var(--sp-color-primary, #2271b1);
+            color: #fff; font-weight: 600;
+        }
+        .sp-news-empty { color: var(--sp-color-text-secondary, #6d7175); }
+    </style>
+    <?php
+}
+
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    if ( ! sp_module_enabled( 'news' ) ) {
+        return $types;
+    }
+
+    $types['latest_news'] = [
+        'label'       => __( 'Latest News', 'societypress' ),
+        'description' => __( 'The most recent news items, as cards. Put it on the front page so a visitor can see the society is alive.', 'societypress' ),
+        'fields'      => [
+            'title' => [
+                'label'   => __( 'Heading above the cards', 'societypress' ),
+                'type'    => 'text',
+                'default' => __( 'Latest News', 'societypress' ),
+            ],
+            'count' => [
+                'label'   => __( 'How many to show', 'societypress' ),
+                'type'    => 'number',
+                'default' => 3,
+            ],
+        ],
+    ];
+
+    return $types;
+} );
+
+/**
+ * Page-builder widget: the latest few news items.
+ */
+function sp_render_builder_widget_latest_news( array $settings ): void {
+    $count = max( 1, min( 12, (int) ( $settings['count'] ?? 3 ) ) );
+    $title = trim( (string) ( $settings['title'] ?? '' ) );
+
+    $q = new WP_Query( [
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => $count,
+        'no_found_rows'  => true,
+    ] );
+
+    if ( ! $q->have_posts() ) {
+        return;
+    }
+
+    echo '<div class="sp-latest-news">';
+    if ( $title !== '' ) {
+        echo '<h2 class="sp-latest-news-heading">' . esc_html( $title ) . '</h2>';
+    }
+    echo '<div class="sp-latest-news-grid">';
+
+    while ( $q->have_posts() ) {
+        $q->the_post();
+        ?>
+        <article class="sp-latest-news-card">
+            <?php if ( has_post_thumbnail() ) : ?>
+                <a href="<?php the_permalink(); ?>" class="sp-latest-news-cover"><?php the_post_thumbnail( 'medium' ); ?></a>
+            <?php endif; ?>
+            <p class="sp-latest-news-date"><?php echo esc_html( get_the_date() ); ?></p>
+            <h3 class="sp-latest-news-title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
+            <p class="sp-latest-news-excerpt"><?php echo esc_html( wp_trim_words( get_the_excerpt(), 24 ) ); ?></p>
+        </article>
+        <?php
+    }
+
+    echo '</div></div>';
+    wp_reset_postdata();
+    ?>
+    <style>
+        .sp-latest-news { max-width: var(--sp-content-width, 1200px); margin: 0 auto; }
+        .sp-latest-news-heading { text-align: center; margin: 0 0 24px; }
+        .sp-latest-news-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+        }
+        .sp-latest-news-card {
+            background: #fff;
+            border: 1px solid var(--sp-color-border, #e5e7eb);
+            border-radius: 8px;
+            padding: 16px 18px;
+        }
+        .sp-latest-news-cover img { width: 100%; height: auto; border-radius: 6px; margin-bottom: 10px; }
+        .sp-latest-news-date { margin: 0 0 4px; font-size: 0.85rem; color: var(--sp-color-text-secondary, #6d7175); }
+        .sp-latest-news-title { margin: 0 0 8px; font-size: 1.15rem; }
+        .sp-latest-news-title a { text-decoration: none; color: var(--sp-color-primary, #0D1F3C); }
+        .sp-latest-news-title a:hover { text-decoration: underline; }
+        .sp-latest-news-excerpt { margin: 0; color: var(--sp-color-text, #1a1a1a); }
+    </style>
     <?php
 }
 
@@ -37147,7 +37469,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.89',
+            'version'     => '1.1.90',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37155,7 +37477,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.89',
+            'version'     => '1.1.90',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37163,7 +37485,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.89',
+            'version'     => '1.1.90',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37171,7 +37493,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.89',
+            'version'     => '1.1.90',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37179,7 +37501,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.89',
+            'version'     => '1.1.90',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -71461,6 +71783,7 @@ add_filter( 'theme_page_templates', function( $templates ) {
     $templates['sp-store']           = __( 'Store', 'societypress' );
     $templates['sp-cart']            = __( 'Shopping Cart', 'societypress' );
     $templates['sp-documents']       = __( 'Documents', 'societypress' );
+    $templates['sp-news']            = __( 'News', 'societypress' );
     return $templates;
 } );
 
@@ -71468,7 +71791,7 @@ add_filter( 'template_include', function( $template ) {
     if ( ! is_page() ) return $template;
 
     $page_template = get_page_template_slug();
-    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-surnames', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents' ], true ) ) {
+    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-surnames', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-news' ], true ) ) {
         return $template;
     }
 
@@ -71478,7 +71801,7 @@ add_filter( 'template_include', function( $template ) {
     // Surnames joins the public list for the same reason vertical files did:
     // an outsider finding their family name in the registry is how the society
     // gets found. The registry never shows a member's address either way.
-    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files', 'sp-surnames' ], true ) && ! is_user_logged_in() ) {
+    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files', 'sp-surnames', 'sp-news' ], true ) && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -71541,6 +71864,9 @@ add_filter( 'template_include', function( $template ) {
             break;
         case 'sp-cart':
             sp_render_cart_page();
+            break;
+        case 'sp-news':
+            sp_render_news_frontend();
             break;
         case 'sp-documents':
             sp_frontend_documents();

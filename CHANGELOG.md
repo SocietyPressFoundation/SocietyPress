@@ -19,6 +19,31 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.90] — 2026-08-27
+
+### Added
+
+**News**
+
+Your society can write news again — a meeting moved, a collection opened, an
+obituary, a note about the spring seminar. **Website → News** in the menu, with
+drafts, a publish date you can set for next Tuesday, categories, and an RSS feed,
+because underneath it is WordPress's own writing tools rather than something we
+built to sit beside them.
+
+Two ways to show it: a page set to the **News** template lists everything, and a
+**Latest News** block on the page builder puts the most recent few on your front
+page as cards.
+
+News items arrive with comments switched off. A comment thread is a moderating
+job landing on volunteers who did not ask for one — switch them on per item in
+WordPress's own panel if your society wants them.
+
+SocietyPress had been removing WordPress's Posts menu since the beginning, on
+the fair grounds that a dozen blogger's menus are not what a society needs. But
+taking away the menu took away the capability with it, and the machinery had
+been sitting there unreachable the whole time.
+
 ## [1.1.89] — 2026-08-27
 
 ### Fixed

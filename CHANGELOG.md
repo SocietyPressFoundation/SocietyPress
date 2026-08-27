@@ -19,6 +19,34 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.93] — 2026-08-27
+
+### Fixed
+
+**Clicking Pages did nothing**
+
+Making a one-item menu row look like its neighbours gave it the class the flyout
+handler listens for, so the click was swallowed trying to open a panel that row
+does not have. It looks the same and works again.
+
+### Added
+
+**"Nothing on your website shows this yet"**
+
+Half the modules here only reach the public through a page, and finding that out
+meant knowing to create one and then to change a Template dropdown nobody has
+reason to open. A society could switch on the store, add twenty publications, and
+never learn why no visitor could see them.
+
+Now the screen you are already on says so, and makes the page for you — one
+button, no dropdown. If a page of that name already exists without a template,
+it adopts that one rather than leaving two. Then it tells you the address and
+points at Website → Menus, because a page nothing links to is still invisible.
+
+Nothing is created when a module is switched on: almost every module is on to
+begin with, and that would drop a dozen pages into a site nobody asked to have
+them in.
+
 ## [1.1.92] — 2026-08-27
 
 ### Fixed

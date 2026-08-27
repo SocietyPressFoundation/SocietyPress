@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.92
+ * Version:     1.1.93
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.92' );
+define( 'SOCIETYPRESS_VERSION', '1.1.93' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -12193,9 +12193,25 @@ add_action( 'admin_head', function () {
     white-space: nowrap;
 }
 
-/* A group with one thing in it is a link, not a flyout — same shape as its
-   neighbours, minus the arrow that would promise a panel that never opens. */
-.sp-menu-solo > a.sp-menu-group-header .sp-group-arrow { display: none; }
+/* A group with one thing in it is an ordinary link that happens to sit at the
+   top level. It takes the group header's appearance so it does not read as a
+   dead label among a column of icons — and none of its behaviour, because the
+   flyout handler binds to that class and would swallow the click. */
+.sp-menu-solo-link {
+    display: flex !important;
+    align-items: center;
+    padding: 6px 12px !important;
+    color: #eee !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sp-menu-solo-link:hover, .sp-menu-solo-link:focus {
+    color: #fff !important;
+    background-color: rgba(255,255,255,0.08);
+}
+.sp-menu-solo-link .sp-group-arrow { display: none; }
 
 .sp-menu-group-header:hover {
     color: #fff !important;
@@ -12734,7 +12750,12 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
                 soloEl.classList.add('sp-menu-solo');
                 var soloLink = soloEl.querySelector('a');
                 if (soloLink && gc.icon && ! soloLink.querySelector('.sp-group-icon')) {
-                    soloLink.classList.add('sp-menu-group-header');
+                    // WHY its own class and not sp-menu-group-header: that one
+                    // is what the flyout click handler listens for. Borrowing it
+                    // for the looks meant the handler swallowed the click and
+                    // opened a panel this row does not have, so the link went
+                    // dead. It gets the appearance and none of the behaviour.
+                    soloLink.classList.add('sp-menu-solo-link');
                     soloLink.insertAdjacentHTML(
                         'afterbegin',
                         '<span class="dashicons ' + gc.icon + ' sp-group-icon"></span>'
@@ -18793,6 +18814,198 @@ function sp_render_builder_widget_latest_news( array $settings ): void {
     </style>
     <?php
 }
+
+
+// ============================================================================
+// "NOTHING ON YOUR WEBSITE SHOWS THIS YET"
+//
+// WHY: Half the modules here only reach the public through a page template —
+//      the volunteer has to know to create a page, then find a Template
+//      dropdown she has never had reason to open, and pick the right entry out
+//      of it. Nobody discovers that. A society switches on the store, adds
+//      twenty publications, and never finds out why no visitor can see them.
+//
+//      So the screen she is already standing on tells her, and makes the page
+//      for her. One button, on the screen where the work is, at the moment the
+//      absence matters.
+//
+// WHY not create every page the moment a module is enabled: nearly every module
+//      is on by default, so that would drop a dozen pages into a brand-new site
+//      before anybody asked for one, and into an existing site on upgrade. The
+//      offer waits until somebody is actually looking at the feature.
+// ============================================================================
+
+/**
+ * Admin screens that have a public page behind them, and what that page is.
+ *
+ * @return array<string,array{template:string,title:string,module:string}>
+ */
+function sp_screen_public_pages(): array {
+    return [
+        'sp-tickets'          => [ 'template' => '',                   'title' => '',                         'module' => 'help_desk' ],
+        'edit.php'            => [ 'template' => 'sp-news',            'title' => __( 'News', 'societypress' ),               'module' => 'news' ],
+        'sp-store-products'   => [ 'template' => 'sp-store',           'title' => __( 'Store', 'societypress' ),              'module' => 'store' ],
+        'sp-documents'        => [ 'template' => 'sp-documents',       'title' => __( 'Documents', 'societypress' ),          'module' => 'documents' ],
+        'sp-record-collections' => [ 'template' => 'sp-records',       'title' => __( 'Records', 'societypress' ),            'module' => 'records' ],
+        'sp-library-catalog'  => [ 'template' => 'sp-library-catalog', 'title' => __( 'Library Catalog', 'societypress' ),    'module' => 'library' ],
+        'sp-help-requests'    => [ 'template' => 'sp-help-requests',   'title' => __( 'Research Help', 'societypress' ),      'module' => 'help_requests' ],
+        'sp-library'          => [ 'template' => 'sp-resources',       'title' => __( 'Resource Links', 'societypress' ),     'module' => 'resources' ],
+        'sp-newsletter-archive' => [ 'template' => 'sp-newsletter-archive', 'title' => __( 'Newsletters', 'societypress' ),   'module' => 'newsletters' ],
+    ];
+}
+
+/**
+ * Does a page already exist for this template?
+ */
+function sp_page_using_template( string $template ): ?WP_Post {
+    if ( $template === '' ) {
+        return null;
+    }
+
+    $found = get_posts( [
+        'post_type'   => 'page',
+        'post_status' => [ 'publish', 'draft', 'private' ],
+        'numberposts' => 1,
+        'meta_key'    => '_wp_page_template',
+        'meta_value'  => $template,
+    ] );
+
+    return $found ? $found[0] : null;
+}
+
+/**
+ * Tell somebody standing on a module's screen that the public cannot see it yet.
+ */
+add_action( 'admin_notices', function () {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
+        return;
+    }
+
+    $screen = get_current_screen();
+    $page   = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+    // News lives on WordPress's own posts screen, which has no page parameter.
+    if ( $page === '' && $screen && $screen->id === 'edit-post' ) {
+        $page = 'edit.php';
+    }
+
+    $known = sp_screen_public_pages();
+    if ( $page === '' || empty( $known[ $page ]['template'] ) ) {
+        return;
+    }
+
+    $entry = $known[ $page ];
+    if ( $entry['module'] !== '' && ! sp_module_enabled( $entry['module'] ) ) {
+        return;
+    }
+
+    if ( isset( $_GET['sp_page_made'] ) ) {
+        $made = sp_page_using_template( $entry['template'] );
+        if ( $made ) {
+            printf(
+                '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+                wp_kses_post( sprintf(
+                    /* translators: 1: the page's address, 2: link to the Menus screen */
+                    __( 'Your page is ready at <a href="%1$s">%1$s</a>. It is not in your menu yet — <a href="%2$s">add it under Website &rarr; Menus</a> so visitors can find it.', 'societypress' ),
+                    esc_url( get_permalink( $made ) ),
+                    esc_url( admin_url( 'admin.php?page=sp-menus' ) )
+                ) )
+            );
+        }
+        return;
+    }
+
+    if ( sp_page_using_template( $entry['template'] ) ) {
+        return;
+    }
+
+    $make = wp_nonce_url(
+        admin_url( 'admin-post.php?action=sp_make_public_page&template=' . rawurlencode( $entry['template'] ) . '&from=' . rawurlencode( $page ) ),
+        'sp_make_public_page'
+    );
+    ?>
+    <div class="notice notice-warning">
+        <p>
+            <strong><?php esc_html_e( 'Nothing on your website shows this yet.', 'societypress' ); ?></strong>
+            <?php
+            printf(
+                /* translators: %s: the name the page will be given */
+                esc_html__( 'Your visitors need a page for it. We can make one called "%s" for you.', 'societypress' ),
+                esc_html( $entry['title'] )
+            );
+            ?>
+        </p>
+        <p>
+            <a href="<?php echo esc_url( $make ); ?>" class="button button-primary">
+                <?php
+                printf(
+                    /* translators: %s: the name the page will be given */
+                    esc_html__( 'Create the %s page', 'societypress' ),
+                    esc_html( $entry['title'] )
+                );
+                ?>
+            </a>
+        </p>
+    </div>
+    <?php
+} );
+
+/**
+ * Make the page, with its template already set.
+ */
+add_action( 'admin_post_sp_make_public_page', function () {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_make_public_page' );
+
+    $template = sanitize_text_field( wp_unslash( $_GET['template'] ?? '' ) );
+    $from     = sanitize_key( wp_unslash( $_GET['from'] ?? '' ) );
+    $known    = sp_screen_public_pages();
+
+    $entry = null;
+    foreach ( $known as $slug => $candidate ) {
+        if ( $candidate['template'] === $template && $template !== '' ) {
+            $entry = $candidate;
+            break;
+        }
+    }
+
+    if ( ! $entry ) {
+        wp_die( esc_html__( 'That is not a page SocietyPress knows how to make.', 'societypress' ) );
+    }
+
+    $existing = sp_page_using_template( $template );
+    if ( ! $existing ) {
+        // A page with the right name but no template is the common case — a
+        // volunteer made one, could not work out the template dropdown, and
+        // left it empty. Adopt it rather than making a second one beside it.
+        $by_name = get_page_by_path( sanitize_title( $entry['title'] ) );
+        if ( $by_name instanceof WP_Post ) {
+            update_post_meta( $by_name->ID, '_wp_page_template', $template );
+            if ( $by_name->post_status !== 'publish' ) {
+                wp_update_post( [ 'ID' => $by_name->ID, 'post_status' => 'publish' ] );
+            }
+        } else {
+            $new_id = wp_insert_post( [
+                'post_title'   => $entry['title'],
+                'post_content' => '',
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+            ] );
+            if ( $new_id && ! is_wp_error( $new_id ) ) {
+                update_post_meta( $new_id, '_wp_page_template', $template );
+            }
+        }
+    }
+
+    $back = $from === 'edit.php'
+        ? admin_url( 'edit.php' )
+        : admin_url( 'admin.php?page=' . $from );
+
+    wp_safe_redirect( add_query_arg( 'sp_page_made', '1', $back ) );
+    exit;
+} );
 
 
 // ============================================================================
@@ -37486,7 +37699,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.92',
+            'version'     => '1.1.93',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37494,7 +37707,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.92',
+            'version'     => '1.1.93',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37502,7 +37715,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.92',
+            'version'     => '1.1.93',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37510,7 +37723,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.92',
+            'version'     => '1.1.93',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37518,7 +37731,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.92',
+            'version'     => '1.1.93',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

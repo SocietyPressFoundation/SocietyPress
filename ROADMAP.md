@@ -19,6 +19,20 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### Roadmap audit — twelve items were already done
+
+Audited 2026-08-27 against the live sites and the source. Twelve entries
+were describing work that had already shipped, in some cases months
+earlier: site-wide search and the XML sitemap on getsocietypress.org, the
+GitHub releases feed on the homepage, the mailing-list signup, Theme
+Exchange Tier 2, the Kindred dataset on the demo site, the Hart Island
+collection, the 29-guide documentation hub, the FAQ content, the
+automated release pipeline, and the two platform features that shipped
+the same evening. They have been removed rather than left to be picked
+up again.
+
+Seven things genuinely remain, and three of those are not code.
+
 ### In-app update checker — verified end to end
 
 Verified 2026-08-27. A newer release on GitHub reaches WordPress's own
@@ -181,18 +195,14 @@ partner program.
 The front door. The templates exist for most of these; many need content
 or final polish.
 
-### Theme Exchange — Tier 2 (themed bundles) and Tier 3 (full child themes)
+### Theme Exchange — Tier 3 (full child themes)
 
-**Motivation:** Tier 1 (design-token JSON presets) shipped. Tier 2
-adds custom CSS + asset files inside a sandboxed `.spchildtheme`
-archive — fancier customization without crossing the PHP-execution
-boundary. Tier 3 adds full WordPress child themes via curated review
-with a "Reviewed by SocietyPress" badge for trust.
-**Scope:** Tier 2 — bundle parser, CSS sanitizer, image-only asset
-allowlist, admin import flow extension. Tier 3 — submission queue,
-manual review process, badge system on the gallery.
-**Blockers:** None for Tier 2. Tier 3 wants a documented review
-checklist before launch.
+**Motivation:** Tier 1 (design-token presets) and Tier 2 (`.spchildtheme`
+bundles) both ship. Tier 3 adds full WordPress child themes through
+curated review, with a "Reviewed by SocietyPress" badge for trust.
+**Scope:** Submission queue, review checklist, badge, and the policy
+that says what gets accepted.
+**Blockers:** A written review policy has to exist first.
 
 ### 5-minute Getting Started screencast
 
@@ -204,57 +214,11 @@ gap.
 and embedded on the homepage and docs landing.
 **Blockers:** A clean demo environment and time to record.
 
-### Mailing list signup + release announcements
-
-**Motivation:** Release notifications, security advisories, and
-occasional tips are more reliably delivered by email than by hoping
-people check the site.
-**Scope:** A simple opt-in form on the marketing site plus a newsletter
-that **uses SocietyPress's own blast-email feature** (eating our own
-dogfood on a site that also functions as the marketing home).
-**Blockers:** Blast-email integration with a non-society context (may
-need a lightweight "subscribers" model separate from members).
-
-### Site-wide search
-
-**Motivation:** As docs and showcase pages grow, finding the right
-page becomes harder.
-**Scope:** A WordPress-native search page that searches docs, FAQ,
-showcase, and blog posts with per-source filtering.
-**Blockers:** None.
-
-### XML sitemap
-
-**Motivation:** Search engines find the site faster with an explicit
-sitemap.
-**Scope:** Dynamically generated XML sitemap at `/sitemap.xml` covering
-pages, blog posts, docs, and the showcase.
-**Blockers:** None.
-
-### Inline GitHub Releases feed on homepage
-
-**Motivation:** Showing activity on the homepage — "v1.0.72 released
-three days ago" — signals the project is alive.
-**Scope:** Cached fetch of the GitHub Releases API, rendered as a
-compact feed in the homepage footer or sidebar.
-**Blockers:** None.
-
 ---
 
 ## Demo Site (demo.getsocietypress.org)
 
 Making the live demo show off everything the software can do.
-
-### Import the Kindred Genealogical Society dataset
-
-**Motivation:** The demo currently shows an empty society. With a
-realistic dataset — members, records, newsletters — it becomes a
-working reference for what a real deployment looks like.
-**Scope:** Import the `Sample Data/Kindred Genealogical Society/` bundle
-(members CSV, 12 record collections, 12 newsletter PDFs) into
-demo.getsocietypress.org. The sample data is already assembled and
-gitignored.
-**Blockers:** None.
 
 ### ENS Migration demo walkthrough
 
@@ -264,46 +228,13 @@ realistic ENS-format data proves the migration works.
 **Scope:** Use the ENS-format CSVs in `Sample Data/ENS Migration Demo/`
 to perform and document a fresh migration on demo.getsocietypress.org.
 Publish the walkthrough as a docs page.
-**Blockers:** Kindred dataset loaded (so we start from a realistic
-pre-migration state).
-
-### Hart Island / NYC Marriage GENRECORD showcase
-
-**Motivation:** GENRECORD is the open exchange format being developed
-alongside SocietyPress. Showcasing real public-domain data published
-through GENRECORD demonstrates interoperability beyond CSV.
-**Scope:** Load the `Sample Data/Real Public Domain Sources/` `.gedrec`
-files (Hart Island burials, NYC marriage certificates) into a Records
-module collection on demo.getsocietypress.org, with a docs page
-explaining the format and how to export to it.
-**Blockers:** None (data is staged, format is implemented).
+**Blockers:** None. The Kindred dataset is loaded on demo.
 
 ---
 
 ## Documentation
 
 Getting the user-facing docs up to the same quality bar as the code.
-
-### End-user documentation hub
-
-**Motivation:** The repo has technical docs (`docs/ARCHITECTURE.md`,
-`FEATURES.md`); what's missing is the walkthrough-style documentation
-for society volunteers. Harold (the canonical non-technical end-user
-persona) needs step-by-step guides, not architecture references.
-**Scope:** A full docs hub at `getsocietypress.org/docs` covering:
-installation, setup wizard, every module from a user's point of view,
-the ENS migration, and troubleshooting. Structured so a senior
-volunteer can find the answer without scrolling.
-**Blockers:** None (pure content work).
-
-### FAQ page content
-
-**Motivation:** The FAQ page template is built but needs real answers
-to real questions.
-**Scope:** 20-30 anticipated questions with clear answers, organized
-by category (installing, configuring, members, events, etc.).
-**Blockers:** Observation of what actual questions come in (GitHub
-issues, support forums, feedback form).
 
 ### ENS migration handbook (expanded)
 
@@ -320,26 +251,6 @@ handle overlapping memberships), and a rollback plan.
 ## Platform Features
 
 New capabilities for the software itself.
-
-### Events recurring-series improvements
-
-**Motivation:** The monthly-nth-day recurring logic is correct but
-hard to configure. Administrators want to say "third Thursday of every
-month through June" without thinking about `nth_day_of_month`.
-**Scope:** Rewritten UI with calendar-picker preview and plain-language
-summaries ("This event will occur on: June 20, July 18, August 15,
-September 19…").
-**Blockers:** None.
-
-### Dashboard widgets for chairs
-
-**Motivation:** Committee chairs currently see the same dashboard as
-full admins. A chair-scoped dashboard showing their committee's
-upcoming events, open volunteer slots, and pending sign-ups would
-reduce the reliance on the society administrator.
-**Scope:** Role-aware dashboard with per-role widget sets. Reuses the
-existing stat-card framework.
-**Blockers:** None.
 
 ---
 
@@ -367,17 +278,6 @@ gives sponsors a visible recognition channel.
 org (probably requires 501(c)(3) verification first). Alternative: Open
 Collective.
 **Blockers:** 501(c)(3) status for tax-deductibility claims.
-
-### Automated release pipeline
-
-**Motivation:** Cutting a release currently means tagging, building the
-bundle, uploading to GitHub Releases and the downloads server, and
-updating the marketing changelog. Automation reduces the chance of
-missing a step.
-**Scope:** GitHub Action that on tag push builds the bundle, creates a
-Release, uploads the ZIP asset, and posts to the marketing site's
-changelog endpoint.
-**Blockers:** First manual release to establish the pattern.
 
 ---
 

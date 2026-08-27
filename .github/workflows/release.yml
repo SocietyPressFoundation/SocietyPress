@@ -63,15 +63,35 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          # Stage the same flat shape v1.0.0 ships:
+          # Stage what WordPress installs as the plugin directory:
           #   societypress/societypress.php
           #   societypress/languages/societypress.pot
+          #   societypress/assets/...
+          #
+          # WHY assets are copied: they hold the PWA icons and favicons the
+          # manifest points at. Releases built before this left them out, so an
+          # installed site served a manifest whose every icon 404'd — invisible
+          # in testing, because a development copy has the files on disk.
           mkdir -p stage/societypress/languages
           cp Code/plugin/societypress.php             stage/societypress/societypress.php
           if [ -f Code/plugin/languages/societypress.pot ]; then
             cp Code/plugin/languages/societypress.pot stage/societypress/languages/societypress.pot
           fi
+          if [ -d Code/plugin/assets ]; then
+            cp -R Code/plugin/assets stage/societypress/assets
+          fi
+          find stage -name '.DS_Store' -delete
           ( cd stage && zip -rq "../societypress-${VERSION}.zip" societypress )
+
+          # Refuse to ship an archive that is missing what it is supposed to
+          # carry. A release is the one artefact nobody re-checks by hand.
+          for required in societypress/societypress.php societypress/assets; do
+            if ! unzip -l "societypress-${VERSION}.zip" | grep -q "$required"; then
+              echo "::error::societypress-${VERSION}.zip is missing $required"
+              exit 1
+            fi
+          done
+          unzip -l societypress-${VERSION}.zip | tail -3
           ls -la societypress-${VERSION}.zip
 
       - name: Extract CHANGELOG section for this version

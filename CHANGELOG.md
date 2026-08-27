@@ -19,6 +19,23 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.85] — 2026-08-26
+
+### Changed
+
+**The store stops guessing what it sells**
+
+Two releases ago the store's default intro started working out whether a society
+sold publications, merchandise or both, by looking at which table each item came
+from. The first real store it met proved that wrong: a society's own books are
+commonly entered as store products, because that is the table with a price, a
+sample link and a stock count on it — so the guess told a publisher it sold
+apparel.
+
+The default now says the one thing that needs no guessing, and societies that
+want to describe their shop properly write it themselves under Store intro text,
+where they always could.
+
 ## [1.1.84] — 2026-08-26
 
 ### Changed

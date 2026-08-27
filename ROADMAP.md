@@ -180,10 +180,14 @@ Shipped 2026-04-15. RFC 9116 disclosure file live at
 
 ---
 
-## Distribution & Releases
+## Dormant
 
-Getting SocietyPress into the hands of actual societies with as little
-friction as possible.
+Work that is real, wanted, and not moving right now. Nothing here is
+abandoned and nothing here is scheduled — it is parked in one place so
+that what is missing from SocietyPress is written down honestly rather
+than remembered by one person.
+
+Everything else that was on this roadmap has shipped.
 
 ### Softaculous one-click install
 
@@ -196,13 +200,6 @@ an afternoon to three minutes.
 `scripts/build-softaculous.sh` end-to-end, and submit through the
 partner program.
 **Blockers:** None.
-
----
-
-## Marketing Site (getsocietypress.org)
-
-The front door. The templates exist for most of these; many need content
-or final polish.
 
 ### Theme Exchange — Tier 3 (full child themes)
 
@@ -223,12 +220,6 @@ gap.
 and embedded on the homepage and docs landing.
 **Blockers:** A clean demo environment and time to record.
 
----
-
-## Demo Site (demo.getsocietypress.org)
-
-Making the live demo show off everything the software can do.
-
 ### ENS Migration demo walkthrough
 
 **Motivation:** The single most effective sales tool for an ENS society
@@ -243,24 +234,6 @@ shows a migration arriving on an empty site means replacing that. Either
 the demo is rebuilt from the ENS CSVs so the Kindred data *is* the
 migrated data, or the walkthrough is recorded somewhere other than the
 public demo.
-
----
-
-## Documentation
-
-Getting the user-facing docs up to the same quality bar as the code.
-
----
-
-## Platform Features
-
-New capabilities for the software itself.
-
----
-
-## Operations
-
-Making the project itself easier to run long-term.
 
 ### Incorporate the SocietyPress Foundation as a 501(c)(3)
 

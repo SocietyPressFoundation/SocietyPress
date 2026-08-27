@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.90
+ * Version:     1.1.91
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.90' );
+define( 'SOCIETYPRESS_VERSION', '1.1.91' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5738,7 +5738,7 @@ function sp_get_modules(): array {
             'name'        => __( 'News', 'societypress' ),
             'description' => __( 'Write news items and notices for your website — a meeting moved, a new collection opened, an obituary. Scheduled publishing, drafts and categories all come from WordPress itself.', 'societypress' ),
             'icon'        => 'dashicons-megaphone',
-            'menu_slugs'  => [ 'edit.php', 'post-new.php' ],
+            'menu_slugs'  => [ 'edit.php', 'post-new.php' ],  // both, so switching News off hides writing one too
         ],
         'help_desk' => [
             'name'        => __( 'Help Desk', 'societypress' ),
@@ -18540,14 +18540,10 @@ add_action( 'admin_menu', function () {
         ''
     );
 
-    add_submenu_page(
-        'societypress',
-        __( 'Add News Item — SocietyPress', 'societypress' ),
-        __( 'Add News Item', 'societypress' ),
-        'sp_manage_content',
-        'post-new.php',
-        ''
-    );
+    // WHY no second row for "Add News Item": every other section here is one
+    // row that opens a list with its own Add New button, and a row that is not
+    // placed in a menu group falls out of the bottom of the sidebar on its own.
+    // Writing a news item is reached the way writing anything else is.
 }, 21 );
 
 /**
@@ -37469,7 +37465,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.90',
+            'version'     => '1.1.91',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37477,7 +37473,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.90',
+            'version'     => '1.1.91',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37485,7 +37481,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.90',
+            'version'     => '1.1.91',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37493,7 +37489,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.90',
+            'version'     => '1.1.91',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37501,7 +37497,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.90',
+            'version'     => '1.1.91',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

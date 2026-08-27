@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.91] — 2026-08-27
+
+### Fixed
+
+**"Add News Item" was hanging off the bottom of the sidebar**
+
+News shipped with a second sidebar row for writing an item, and because that row
+belonged to no menu group it fell out of the bottom of the sidebar on its own,
+below Collapse Menu. News sits in Website like every other section, and a news
+item is written from the Add New button on the News screen.
+
 ## [1.1.90] — 2026-08-27
 
 ### Added

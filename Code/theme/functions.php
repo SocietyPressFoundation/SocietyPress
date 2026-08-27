@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // the parent theme safe against child theme copies. If a child theme wants
 // its own version it should define a differently-named constant.
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.1.87' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.1.88' );
 }
 
 
@@ -274,7 +274,7 @@ add_action( 'widgets_init', function () {
      * parent.
      *
      * WHY the footer still shows its built-in content: leaving a column empty
-     * keeps the organisation details, quick links and social icons exactly as
+     * keeps the organization details, quick links and social icons exactly as
      * they were. A column only gives way once a widget is put in it, so a site
      * that never opens this screen looks no different, and a site that does
      * gets the column without losing anything it did not choose to replace.
@@ -289,7 +289,7 @@ add_action( 'widgets_init', function () {
         register_sidebar([
             'name'          => $label,
             'id'            => 'sp-footer-' . $number,
-            'description'   => esc_html__( 'Widgets here replace this column of the footer. Leave it empty to keep what the footer already shows. To add logos of organisations you belong to, use Website → Affiliations instead.', 'societypress' ),
+            'description'   => esc_html__( 'Widgets here replace this column of the footer. Leave it empty to keep what the footer already shows. To add logos of organizations you belong to, use Website → Affiliations instead.', 'societypress' ),
             'before_widget' => '<div id="%1$s" class="widget %2$s">',
             'after_widget'  => '</div>',
             // <h3> matches the .footer-heading level the built-in columns use,

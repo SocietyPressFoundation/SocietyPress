@@ -121,7 +121,7 @@ $org_email   = $sp['organization_email']   ?? '';
 
         <?php
         /*
-         * Affiliation logos — the organisations this society belongs to, set at
+         * Affiliation logos — the organizations this society belongs to, set at
          * Website → Affiliations. Placed below the columns and above the
          * copyright line because that is where a badge row reads as belonging
          * to the whole site rather than to one column of it. Prints nothing at

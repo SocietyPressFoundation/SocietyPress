@@ -91,7 +91,7 @@ Worth stating plainly so none of it gets "fixed" during cleanup:
   explain *why* Research consolidated three former groups, and *why* the website's content and
   its look sit together. That reasoning is sound and the code reflects it.
 - **Retired-group folding works** (`sp_retired_menu_groups()`, `sp_fold_retired_menu_groups()`).
-  A society that customised its layout gets an upgrade that reads as a rearrangement rather than
+  A society that customized its layout gets an upgrade that reads as a rearrangement rather than
   duplicated screens. It is read-only until the admin next saves. This is careful work.
 - ~~**The capability layer is coherent.**~~ **WRONG — see the correction below.** The audit
   originally recorded that the 75 screens registering with `manage_options` were harmlessly
@@ -121,7 +121,7 @@ Worth stating plainly so none of it gets "fixed" during cleanup:
 
   **The lesson:** a comment asserting an invariant is not evidence the invariant holds. This one
   was confidently worded, wrong, and load-bearing for a whole permissions feature. Test the
-  behaviour, especially when the claim is what lets you skip testing it.
+  behavior, especially when the claim is what lets you skip testing it.
 - **Placement coverage is near-total.** One orphan, one ghost, no duplicates, nothing registered
   twice.
 
@@ -229,16 +229,16 @@ Where the actual controls live:
 
 | Screen | Lines | What it really contains |
 |---|---|---|
-| **Design** (`sp-settings-design`) | 1,100 | **23 controls** — all 7 colours, both fonts, font size, heading scale, header height/padding, logo, nav sizing/spacing/weight, content width, custom CSS |
+| **Design** (`sp-settings-design`) | 1,100 | **23 controls** — all 7 colors, both fonts, font size, heading scale, header height/padding, logo, nav sizing/spacing/weight, content width, custom CSS |
 | **Themes** (`sp-themes`) | 1,555 | **1 control** — `sp_activate_theme`. 1,555 lines of theme cards to press one button |
 | **Theme Presets** (`sp-theme-presets`) | — | Import/export the whole look as a portable file |
 | **Customize** (`customize.php`) | — | Nothing (see §6) |
 
-So: pick a theme *here*, change its colours *there*, save the result as a file *somewhere else*,
+So: pick a theme *here*, change its colors *there*, save the result as a file *somewhere else*,
 and a fourth door that does nothing. Each screen is individually defensible. Together they mean a
 volunteer must already know which of four places owns the knob they want.
 
-**Fix:** one **Appearance** screen with tabs — *Theme* / *Colours & Fonts* / *Presets*. Same code,
+**Fix:** one **Appearance** screen with tabs — *Theme* / *Colors & Fonts* / *Presets*. Same code,
 one door. This is the largest of the recommended changes and should follow the small fixes above,
 not precede them.
 

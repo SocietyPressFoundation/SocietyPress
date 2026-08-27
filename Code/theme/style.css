@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.1.87
+Version: 1.1.88
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -348,7 +348,7 @@ img {
     }
 
     /* Logo hard against the left content edge, matching how the rest of the
-       page lines up. A centred logo above left-aligned content reads as a
+       page lines up. A centered logo above left-aligned content reads as a
        mistake even when it is deliberate. */
     .site-header.sp-header-stacked .site-branding {
         justify-content: flex-start;
@@ -1442,7 +1442,7 @@ article.post:last-child {
 /* Affiliation logos — the bodies the society belongs to.
 
    WHY the logos get a white pill behind them: affiliation marks arrive as
-   whatever file the parent organisation publishes, and most are dark artwork
+   whatever file the parent organization publishes, and most are dark artwork
    on a transparent background. Dropped straight onto a navy footer, half of
    them vanish. A light plate means an administrator can use the file they were
    given without opening an image editor, which is the difference between this
@@ -2291,7 +2291,7 @@ input[type="date"]:focus {
 
 /* Checkboxes governed by a master switch above them. Indented and ruled so
    the dependency is visible before it's tested, greyed while the switch is on.
-   Colours stay above the 4.5:1 contrast floor even in the disabled state —
+   Colors stay above the 4.5:1 contrast floor even in the disabled state —
    these still have to be readable by the members most likely to tick it. */
 .sp-checkbox-group--dependent {
     border-left: 3px solid var(--sp-color-border, #e5e7eb);
@@ -2515,7 +2515,7 @@ input[type="date"]:focus {
 
     /* WHY flex-wrap and not absolute positioning: the sub-menu is a sibling
        of the name inside the same <li>, so a caret positioned against that
-       <li> would centre itself over the whole expanded block once the drop
+       <li> would center itself over the whole expanded block once the drop
        down was showing. Wrapping puts the name and caret on one row and
        gives the sub-menu the full width of the next. */
     .main-navigation li.menu-item-has-children {

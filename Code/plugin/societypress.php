@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.87
+ * Version:     1.1.88
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.87' );
+define( 'SOCIETYPRESS_VERSION', '1.1.88' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6766,7 +6766,7 @@ add_action( 'admin_init', function () {
  *      We hide WordPress entirely and present SocietyPress as "the application."
  *
  *      All items are registered flat under one 'societypress' parent. JavaScript
- *      (injected via admin_head below) reorganises the flat submenu into grouped
+ *      (injected via admin_head below) reorganizes the flat submenu into grouped
  *      flyout panels so it LOOKS like three levels even though WordPress only
  *      supports two.
  *
@@ -7724,7 +7724,7 @@ add_action( 'admin_menu', function () {
     //      need to live here.
     // -----------------------------------------------------------------
 
-    // Appearance — the single door to how the site looks. Theme, colours and
+    // Appearance — the single door to how the site looks. Theme, colors and
     // fonts, and presets are tabs on this one screen.
     add_submenu_page(
         'societypress',
@@ -9611,7 +9611,7 @@ function sp_social_icons(): void {
 //
 // WHY this exists as its own feature rather than "add an image widget":
 //      Nearly every society belongs to something — a national body, a state
-//      body, a lineage organisation — and showing those logos in the footer is
+//      body, a lineage organization — and showing those logos in the footer is
 //      one of the first things an administrator wants to do. Before this, the
 //      only route was Widgets: work out which footer column, add an Image
 //      widget, upload, then hand-write the link. Nothing on that screen said
@@ -9664,7 +9664,7 @@ function sp_affiliation_logo_presets(): array {
 /**
  * Where the affiliation row sits across the width of the footer.
  *
- * WHY this is a setting at all: the row was centred and only centred, which is
+ * WHY this is a setting at all: the row was centered and only centered, which is
  * right for a footer built as one wide column but wrong the moment a theme puts
  * its footer content on a left-hand rule — the logos then float in the middle of
  * nothing, lined up with none of the text above them. Three positions cover
@@ -9687,7 +9687,7 @@ function sp_affiliation_alignments(): array {
 /**
  * Force a stored or submitted position into one this plugin knows how to draw.
  *
- * WHY centre is the fallback: it is what every footer looked like before this
+ * WHY center is the fallback: it is what every footer looked like before this
  * setting existed, so a hand-edited option or a form posted without the field
  * lands on the appearance the site already had rather than jumping sideways.
  */
@@ -9700,7 +9700,7 @@ function sp_sanitize_affiliation_align( $value ): string {
 /**
  * Which part of the footer the logo row lives in.
  *
- * 'below' is the original behaviour: a band of its own, full width, sitting
+ * 'below' is the original behavior: a band of its own, full width, sitting
  * between the footer columns and the copyright line.
  *
  * 'inline' lifts the row up into the columns themselves, so it takes the empty
@@ -9862,14 +9862,14 @@ add_action( 'wp_head', function () {
     );
 
     // Backdrop off: strip the themes' white plate so a logo saved with a
-    // transparent background shows the footer colour through it. The padding
+    // transparent background shows the footer color through it. The padding
     // and rounded corner go with it — they exist to shape the plate, and left
     // behind they only pad the logo away from its neighbours.
     if ( $stored['logo_plate'] === 'none' ) {
         $css .= '.sp-affiliations .sp-affiliation img{background:none;padding:0;border-radius:0;}';
     }
 
-    // Position: only written when it differs from centre, so a site that never
+    // Position: only written when it differs from center, so a site that never
     // touched this setting gets exactly the stylesheet it got before — no rule
     // to un-do, nothing new in the cascade to trip over.
     //
@@ -9926,7 +9926,7 @@ add_action( 'wp_head', function () {
         $css .= '.sp-affiliations--inline .sp-affiliation img{max-width:100%;}';
 
         // In the column, the logos read as belonging to the block above them,
-        // so they start at its edge rather than centred under it — unless the
+        // so they start at its edge rather than centered under it — unless the
         // administrator has explicitly chosen a position, which the rules
         // written earlier already applied and must keep.
         if ( $stored['logo_align'] === 'center' ) {
@@ -12233,8 +12233,8 @@ add_action( 'admin_head', function () {
 
 /* ==========================================================================
    THE WHOLE SIDEBAR, NOT JUST OUR PART OF IT
-   WHY: the colour scheme fills the current item — and the collapse button —
-        with its highlight colour. Quieting only the SocietyPress menu left
+   WHY: the color scheme fills the current item — and the collapse button —
+        with its highlight color. Quieting only the SocietyPress menu left
         those sitting there in blue underneath it, which looked like a mistake
         rather than a choice. One rule for the whole sidebar: nothing carries a
         fill of its own, and the mouse is the only thing that lights anything.
@@ -12268,19 +12268,19 @@ add_action( 'admin_head', function () {
    WHY: WordPress paints the opened submenu its own flat near-black and leaves
         it at the 160px it assumed before we widened the sidebar to 220px. The
         result is a black box sitting on top of the menu — narrower than the
-        menu around it, with the sidebar colour showing down its right-hand
+        menu around it, with the sidebar color showing down its right-hand
         edge and the box stopping short above the items below it. It reads as
         a panel dropped onto the sidebar rather than as the sidebar's own list.
         The menu should be one continuous surface, and the only thing that
-        changes colour is whatever the mouse is on.
+        changes color is whatever the mouse is on.
    ========================================================================== */
 #adminmenu #toplevel_page_societypress,
 #adminmenu #toplevel_page_societypress .wp-submenu {
     background: transparent !important;
     box-shadow: none !important;
 }
-/* The colour scheme paints the whole current top-level item, and with the
-   panel above made see-through that colour came through the entire list.
+/* The color scheme paints the whole current top-level item, and with the
+   panel above made see-through that color came through the entire list.
    The row that opens the menu gets the same treatment as everything in it:
    nothing but the sidebar behind it until the mouse arrives. */
 #adminmenu #toplevel_page_societypress > a.toplevel_page_societypress,
@@ -12326,7 +12326,7 @@ add_action( 'admin_head', function () {
 /* ==========================================================================
    NOTHING STAYS LIT
    WHY: with the panel gone, a permanently shaded row is the only thing left
-        that looks like a box, and it puts one item in a different colour from
+        that looks like a box, and it puts one item in a different color from
         its neighbours for as long as you sit on that screen. The heading at
         the top of the page already says where you are. Hover follows the
         mouse; nothing is left behind.
@@ -12531,7 +12531,7 @@ add_action( 'admin_head', function () {
 // live in which drop down are admin-editable via Settings → Admin Sidebar.
 // sp_get_effective_menu_config() merges the saved layout over the code defaults
 // (sp_default_menu_config()) so a feature shipped later still appears even after
-// an admin has customised their menu. `hidden` lists items to pull entirely.
+// an admin has customized their menu. `hidden` lists items to pull entirely.
 var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); ?>;
 </script>
 
@@ -12899,7 +12899,7 @@ var spMenuConfig = <?php echo wp_json_encode( sp_get_effective_menu_config() ); 
 //
 //      The saved layout is stored as an OVERRIDE on top of the code defaults,
 //      so any feature SocietyPress ships later still appears automatically even
-//      after an admin has customised their menu — it drops into its home group.
+//      after an admin has customized their menu — it drops into its home group.
 // ============================================================================
 
 /**
@@ -12944,7 +12944,7 @@ function sp_default_menu_config(): array {
 
             // WHY 'governance' keeps its id under a plainer label: the id is what
             // an already-saved layout matches on, so renaming it would strand the
-            // admin's arrangement in a group nothing recognises.
+            // admin's arrangement in a group nothing recognizes.
             [ 'id' => 'governance', 'label' => __( 'Meetings & Board', 'societypress' ), 'icon' => 'dashicons-building',
               'items' => [ 'sp-chair', 'sp-meetings', 'sp-governance', 'sp-committees', 'sp-ballots',
                            [ 'heading' => __( 'Documents', 'societypress' ) ],
@@ -12979,7 +12979,7 @@ function sp_default_menu_config(): array {
 
             // WHY the website's content and its look sit in one group: a volunteer
             // changing "the website" does not know in advance whether the thing
-            // they want is a page or a colour, and two groups both meaning "the
+            // they want is a page or a color, and two groups both meaning "the
             // site" is exactly the guess this redesign exists to remove. The design
             // screens sit below a divider so the sharp tools stay out of the way
             // without being hidden.
@@ -13147,7 +13147,7 @@ function sp_fold_retired_menu_groups( array $saved ): array {
 }
 
 /**
- * The saved custom layout, or null if the admin hasn't customised anything.
+ * The saved custom layout, or null if the admin hasn't customized anything.
  *
  * @return array|null
  */
@@ -13582,7 +13582,7 @@ function sp_render_menu_layout_page(): void {
             'saving'         => __( 'Saving…', 'societypress' ),
             'saved'          => __( 'Saved. Reloading…', 'societypress' ),
             'error'          => __( 'Something went wrong. Please try again.', 'societypress' ),
-            'confirmReset'   => __( 'Reset the menu to its original layout? Your customisations will be lost.', 'societypress' ),
+            'confirmReset'   => __( 'Reset the menu to its original layout? Your customizations will be lost.', 'societypress' ),
         ] ); ?>;
 
         function escapeHtml( s ) {
@@ -15881,7 +15881,7 @@ add_action( 'wp_ajax_sp_update_parent_theme', function () {
  *   label      Shown under the number.
  *   module     Module slug this belongs to; '' for tiles that always apply.
  *   capability What the reader must be able to do to see it.
- *   accent     Optional colour key for the left border.
+ *   accent     Optional color key for the left border.
  *   url        Where the number links, as a callable (deferred so the admin
  *              URL is not built for tiles nobody will see).
  *   value      Callable returning the number. Only ever called for a tile that
@@ -16268,7 +16268,7 @@ function sp_get_dashboard_tiles(): array {
         // ---- Things waiting on somebody -------------------------------------
         // WHY these two sit last: they are the tiles most likely to be nonzero
         // and most likely to be ignored, which is an argument for showing them,
-        // not for burying them. Anything waiting on a person is coloured.
+        // not for burying them. Anything waiting on a person is colored.
         'help_open' => [
             'label'      => __( 'Open Research Requests', 'societypress' ),
             'group'      => 'inbox',
@@ -16421,7 +16421,7 @@ function sp_dashboard_cards(): array {
  *
  * Two gates: the module has to be on, and the reader has to hold the
  * capability. A society that never turned the library on has no library tiles
- * to show at any count, and no amount of customising will conjure one.
+ * to show at any count, and no amount of customizing will conjure one.
  *
  * @return array<string,array<string,mixed>>
  */
@@ -16987,7 +16987,7 @@ function sp_dashboard_card_css(): void {
             outline-offset: 2px;
         }
 
-        /* The colour says what kind of number it is, never what it is worth:
+        /* The color says what kind of number it is, never what it is worth:
            anything with a date on it that has run out is red, anything healthy
            or newly arrived is blue, anything simply over is grey. */
         .sp-dash-v-active, .sp-dash-v-new { color: #2271b1; }
@@ -17787,7 +17787,7 @@ function sp_render_dashboard_page_legacy(): void {
                         <?php foreach ( $sp_dash_notes as $sp_dash_note ) :
                             // A note needs no title, so fall back to the opening
                             // words of the note itself rather than showing a blank
-                            // row that gives Harold nothing to recognise it by.
+                            // row that gives Harold nothing to recognize it by.
                             $sp_note_label = trim( (string) $sp_dash_note->title );
                             if ( '' === $sp_note_label ) {
                                 $sp_note_label = wp_trim_words( wp_strip_all_tags( $sp_dash_note->content ), 12, '…' );
@@ -18072,7 +18072,7 @@ function sp_render_dashboard_page_legacy(): void {
 // WordPress has had this exact screen since 2007. Its own dashboard is a set of
 // boxes that drag between columns, close when you click their heading, hide
 // from Screen Options, and remember all three per person — and every one of
-// those behaviours is already written, already accessible, already translated,
+// those behaviors is already written, already accessible, already translated,
 // and already familiar to anybody who has used WordPress. Registering our cards
 // as meta boxes hands the whole lot over to core. What is left for us is the
 // numbers inside a card.
@@ -18473,7 +18473,7 @@ function sp_render_dashboard_default_controls(): void {
 // WHY nothing here reaches SocietyPress itself: this is the society's help
 //      desk, answered by the society's own webmaster. A channel to us would be
 //      a different feature with a different set of promises behind it, and
-//      there is no organisation to make those promises yet.
+//      there is no organization to make those promises yet.
 // ============================================================================
 
 /**
@@ -35004,9 +35004,9 @@ function sp_page_editor_image_button( array $buttons ): array {
 }
 
 /**
- * Put text size and text colour on the first toolbar row.
+ * Put text size and text color on the first toolbar row.
  *
- * WHY: text colour already ships with WordPress, but it sits on the second row
+ * WHY: text color already ships with WordPress, but it sits on the second row
  * behind the "Toolbar Toggle" button — which a volunteer has no reason to know
  * exists, so in practice the feature may as well not be there. Font size is not
  * in either of core's toolbars at all. Both belong in plain sight of someone
@@ -35028,9 +35028,9 @@ function sp_page_editor_text_buttons( array $buttons ): array {
 }
 
 /**
- * Drop text colour from the second row now that it lives on the first.
+ * Drop text color from the second row now that it lives on the first.
  *
- * WHY bother: two identical colour buttons in one editor is the kind of small
+ * WHY bother: two identical color buttons in one editor is the kind of small
  * confusion that makes a volunteer stop trusting the toolbar.
  */
 function sp_page_editor_second_row( array $buttons ): array {
@@ -35053,11 +35053,11 @@ function sp_page_editor_font_sizes( array $init ): array {
      *
      * WHY not a real font dropdown: picking "Georgia" writes the word Georgia
      * into the page. The child theme IS the society's identity — switch themes
-     * and the logo, colours and typography are all supposed to move together —
+     * and the logo, colors and typography are all supposed to move together —
      * but a page with a typeface baked into it does not move. It keeps
      * rendering Georgia on a theme built around something else, and the only
      * cure is opening every page and clearing it by hand. That is the same trap
-     * the table colour pickers were, one level down.
+     * the table color pickers were, one level down.
      *
      * These apply a class instead. The class points at the theme's own
      * --sp-font-body / --sp-font-heading, so a page set in "Heading font"
@@ -37147,7 +37147,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.87',
+            'version'     => '1.1.88',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37155,7 +37155,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.87',
+            'version'     => '1.1.88',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37163,7 +37163,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.87',
+            'version'     => '1.1.88',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37171,7 +37171,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.87',
+            'version'     => '1.1.88',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37179,7 +37179,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.87',
+            'version'     => '1.1.88',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -40330,7 +40330,7 @@ function sp_render_settings_design_page(): void {
 
             /* ---- Remove button (danger color + offset) ---- */
             /* WHY separate from .button: WP's .button class provides the
-               border/padding/shape; we only need to layer colour on top. */
+               border/padding/shape; we only need to layer color on top. */
             .sp-design-remove-btn {
                 color: #b32d2e;
                 margin-left: 4px;
@@ -45477,7 +45477,7 @@ function sp_builder_fields_event_calendar( $index, array $settings ): void {
 /**
  * Community Link widget settings.
  *
- * WHY: Lets the admin customise the button label, description text, and style
+ * WHY: Lets the admin customize the button label, description text, and style
  *      for the community forum link. The actual URL comes from Settings >
  *      Organization > Community Forum URL — no need to duplicate it here.
  */
@@ -47219,7 +47219,7 @@ function sp_surname_public_contact_enabled(): bool {
  * registry as a member benefit wants a lapsed member's names to drop out; a
  * society that treats it as a research index wants them kept, because the
  * genealogy does not stop being true when the dues do. Neither answer is
- * wrong, so the society picks. It defaults to off, which is the behaviour
+ * wrong, so the society picks. It defaults to off, which is the behavior
  * every existing install already has.
  */
 function sp_surname_include_lapsed(): bool {
@@ -50487,7 +50487,7 @@ add_action( 'admin_init', function () {
         $event_date_ts = strtotime( $data['event_date'] );
         $rule = '';
 
-        // Whatever the organiser said in the pattern controls wins; where she
+        // Whatever the organizer said in the pattern controls wins; where she
         // said nothing, the pattern is still read off the date, exactly as it
         // always was, so an event saved before this existed is unchanged.
         $pattern = [];
@@ -51747,7 +51747,7 @@ function sp_render_event_edit_page(): void {
     }
 
     /* sp-event-edit-slot-row
-       Each time-slot row: flex container with even gaps, vertically centred
+       Each time-slot row: flex container with even gaps, vertically centered
        items, and a card-style background so rows are visually distinct. */
     .sp-event-edit-slot-row {
         display: flex;
@@ -51762,7 +51762,7 @@ function sp_render_event_edit_page(): void {
 
     /* sp-event-edit-slot-label
        Small, muted labels (Start / End / Capacity / Label) inside each slot
-       row — matches WP admin's secondary text colour. */
+       row — matches WP admin's secondary text color. */
     .sp-event-edit-slot-label {
         font-size: 12px;
         color: #50575e;
@@ -53022,7 +53022,7 @@ function sp_render_event_categories_page(): void {
                                 /*
                                  * WHY: background is set inline here because it comes from
                                  * $cat->color — a per-row dynamic database value. Static CSS
-                                 * cannot express per-row dynamic colours, so this inline style
+                                 * cannot express per-row dynamic colors, so this inline style
                                  * is intentionally kept.
                                  */
                                 ?>
@@ -53260,7 +53260,7 @@ function sp_render_event_categories_page(): void {
 //
 // The categories screen is driven entirely by fetch() calls to these two
 // actions. Neither was ever registered, so admin-ajax answered "0" and the
-// screen silently did nothing — no add, no rename, no colour change, no
+// screen silently did nothing — no add, no rename, no color change, no
 // delete. The only categories on any site were the ones seeded at install.
 // ----------------------------------------------------------------------------
 
@@ -63775,7 +63775,7 @@ function sp_build_recurrence_rule( string $recurrence_type, string $event_date_y
 
     // WHY a pattern can be passed in: for years the only way to say "the third
     // Thursday" was to find a third Thursday on a calendar, type that date, and
-    // let us work backwards from it. That asks the organiser to do the very
+    // let us work backwards from it. That asks the organizer to do the very
     // arithmetic the software exists to do. When she says the pattern outright
     // it is used as given, and the date follows from it instead.
     if ( $recurrence_type === 'weekly' ) {
@@ -67821,7 +67821,7 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
                  * CSS :target rule (.sp-gallery-lightbox:target) flips it to
                  * flex. If display:none were moved to the stylesheet, a more-
                  * specific rule would be needed and the no-JS fallback would
-                 * break. Keeping it inline preserves the original behaviour.
+                 * break. Keeping it inline preserves the original behavior.
                  *
                  * WHY the close control is an <a href="#"> and not a <button>:
                  * this markup only ever runs with JavaScript disabled, where a
@@ -68401,7 +68401,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-table .sp-item-title { color: var(--sp-color-primary, #2271b1); cursor: pointer; font-weight: 600; text-decoration: none; }
         .sp-catalog-table .sp-item-title:hover { text-decoration: underline; }
         /* Condition is only printed when it is not the everyday "good", so each
-           of these is a warning of some kind and carries its own colour. */
+           of these is a warning of some kind and carries its own color. */
         .sp-catalog-table .sp-item-condition { font-size: 0.75rem; font-weight: 500; color: #666; }
         .sp-catalog-table .sp-item-condition-excellent { color: #0a6b2e; }
         .sp-catalog-table .sp-item-condition-fair      { color: #92400e; }
@@ -69344,7 +69344,7 @@ function sp_handle_surname_contact(): void {
             wp_send_json_error( __( 'Active membership required to contact other researchers.', 'societypress' ) );
         }
         // WHY members are capped as well as guests: being a member is not a
-        // licence to run the society's mail server. The ceiling is set well
+        // license to run the society's mail server. The ceiling is set well
         // above what real surname research looks like, so an ordinary member
         // working through a results page will never see it.
         if ( sp_rate_limit_hit( 'sp_surname_contact_user_' . get_current_user_id(), 20, HOUR_IN_SECONDS ) ) {
@@ -69938,7 +69938,7 @@ function sp_render_album_edit_page(): void {
              * anything — the field looked broken and could only be edited one
              * keystroke at a time. Suspending the tile's draggability while
              * the caret is in one of its fields gives the box ordinary text
-             * behaviour back; dragging returns the moment focus leaves.
+             * behavior back; dragging returns the moment focus leaves.
              *
              * mousedown is captured rather than bubbled so this runs before
              * the browser decides a drag has begun.
@@ -70071,7 +70071,7 @@ function sp_render_reports_page(): void {
                 text-align: center;
             }
 
-            /* Reports page: large stat number — uses the theme primary colour token */
+            /* Reports page: large stat number — uses the theme primary color token */
             .sp-reports-stat-number {
                 font-size: 32px;
                 font-weight: 700;
@@ -73161,7 +73161,7 @@ function sp_library_list_field( string $kind, string $current ): void {
     </span>
     <?php
 
-    // One copy of the behaviour for however many of these fields the form has.
+    // One copy of the behavior for however many of these fields the form has.
     if ( $script_printed ) {
         return;
     }
@@ -83714,7 +83714,7 @@ function sp_render_donations_page(): void {
                 width: 30px;
             }
 
-            /* Empty-state cell: centred with breathing room */
+            /* Empty-state cell: centered with breathing room */
             .sp-donations-empty-cell {
                 text-align: center;
                 padding: 20px;
@@ -87731,7 +87731,7 @@ function sp_render_newsletter_edit_page(): void {
             vertical-align: middle;
         }
 
-        /* Cover-generating progress indicator: layout and text colour.
+        /* Cover-generating progress indicator: layout and text color.
          * display:none is kept inline because JS toggles it via element.style. */
         .sp-newsletter-edit-generating {
             margin-left: 12px;
@@ -88108,7 +88108,7 @@ function sp_send_file_disposition( string $file_name, bool $as_attachment ): voi
  * Did the request ask for the file to be saved rather than shown?
  *
  * @param bool $default What to do when the request says nothing either way.
- *                      Each module keeps the behaviour its existing links
+ *                      Each module keeps the behavior its existing links
  *                      already have, so bookmarks and shared links do not
  *                      change meaning under anyone.
  */
@@ -88143,7 +88143,7 @@ function sp_pdf_reader_attrs( string $view_url, string $title, string $download_
 }
 
 /**
- * Print the reader's markup, styles and behaviour. Safe to call repeatedly;
+ * Print the reader's markup, styles and behavior. Safe to call repeatedly;
  * every call after the first does nothing.
  */
 function sp_pdf_reader(): void {
@@ -88727,7 +88727,7 @@ function sp_render_newsletter_archive_grid( array $args = [] ): void {
         // member is really searching is the text inside the PDFs, which lives in
         // the index and was never sent to the browser. Signed-out visitors have
         // no access to that text, so for them the box falls back to matching
-        // titles — the same behaviour this page has always had.
+        // titles — the same behavior this page has always had.
         var searchInput = document.getElementById('sp-nl-search');
         var countEl     = document.getElementById('sp-nl-count');
         var noneEl      = document.getElementById('sp-nl-none');
@@ -89740,7 +89740,7 @@ function sp_render_record_collections_page(): void {
          * WHY: Centralising these rules makes them easier to override in a child
          * theme and keeps the HTML markup clean and auditable. */
 
-        /* Empty-state container: centred, generous padding, muted text */
+        /* Empty-state container: centered, generous padding, muted text */
         .sp-records-empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -89765,7 +89765,7 @@ function sp_render_record_collections_page(): void {
             width: 140px;
         }
 
-        /* Fixed-width, centred column: record count */
+        /* Fixed-width, centered column: record count */
         .sp-records-col-count {
             width: 100px;
             text-align: center;
@@ -89786,7 +89786,7 @@ function sp_render_record_collections_page(): void {
             width: 260px;
         }
 
-        /* Centre the record-count cell in table body */
+        /* Center the record-count cell in table body */
         .sp-records-count-cell {
             text-align: center;
         }
@@ -90283,7 +90283,7 @@ function sp_render_record_collection_edit_page(): void {
             width: 130px;
         }
 
-        /* Centred checkbox columns (Searchable / Public) */
+        /* Centered checkbox columns (Searchable / Public) */
         .sp-record-edit-col-check {
             width: 90px;
             text-align: center;
@@ -90294,14 +90294,14 @@ function sp_render_record_collection_edit_page(): void {
             width: 50px;
         }
 
-        /* Drag-handle cell: grab cursor, centred, muted grey */
+        /* Drag-handle cell: grab cursor, centered, muted grey */
         .sp-record-edit-handle-cell {
             cursor: grab;
             text-align: center;
             color: #6d7175;
         }
 
-        /* Centred checkbox cells in tbody */
+        /* Centered checkbox cells in tbody */
         .sp-record-edit-check-cell {
             text-align: center;
         }
@@ -91717,7 +91717,7 @@ function sp_render_record_import_page(): void {
  *
  * Duplicate fingerprints are rebuilt from the database on every call, which
  * costs a scan per batch but means a row imported in batch 1 is still
- * recognised as a duplicate in batch 4 — correctness the cheaper approach of
+ * recognized as a duplicate in batch 4 — correctness the cheaper approach of
  * caching them across calls would lose.
  *
  * @param  string $file_path     Path to the uploaded CSV temp file.
@@ -98105,7 +98105,7 @@ function sp_render_files_page(): void {
 }
 
 /**
- * Styles and behaviour for the Files screen.
+ * Styles and behavior for the Files screen.
  *
  * WHY dragging is not the only way in: a drop target that misses does nothing
  *      and says nothing, which is indistinguishable from the software being
@@ -114691,10 +114691,10 @@ add_action( 'admin_post_sp_spchildtheme_import', function () {
 /**
  * Appearance — one screen for everything that decides how the site looks.
  *
- * WHY this exists: picking a theme, changing its colours and fonts, and saving
+ * WHY this exists: picking a theme, changing its colors and fonts, and saving
  * or loading a preset are three parts of one job, but they were three separate
  * items sitting under a "How it looks" heading. Someone who wanted to change a
- * colour had to already know that "Themes" is not where colours live, that
+ * color had to already know that "Themes" is not where colors live, that
  * "Design" is, and that "Theme Presets" is a different thing again. Three doors
  * to one room is a guess, and the guess is what made this feel hard.
  *
@@ -114715,7 +114715,7 @@ function sp_render_appearance_page(): void {
 
     $tabs = [
         'theme'   => __( 'Theme', 'societypress' ),
-        'design'  => __( 'Colours & Fonts', 'societypress' ),
+        'design'  => __( 'Colors & Fonts', 'societypress' ),
         'presets' => __( 'Saved Looks', 'societypress' ),
     ];
 
@@ -114727,7 +114727,7 @@ function sp_render_appearance_page(): void {
     <div class="wrap sp-appearance-wrap">
         <h1><?php esc_html_e( 'Appearance', 'societypress' ); ?></h1>
         <p class="description">
-            <?php esc_html_e( 'Everything that decides how your website looks — which theme you are using, your colours and fonts, and saved looks you can reuse.', 'societypress' ); ?>
+            <?php esc_html_e( 'Everything that decides how your website looks — which theme you are using, your colors and fonts, and saved looks you can reuse.', 'societypress' ); ?>
         </p>
         <nav class="nav-tab-wrapper sp-appearance-tabs">
             <?php foreach ( $tabs as $slug => $label ) : ?>
@@ -114898,7 +114898,7 @@ function sp_render_affiliations_page(): void {
            are a left-to-right choice, and stacking them fights what they mean. */
         .sp-affiliation-align-choices { display: flex; flex-wrap: wrap; gap: 18px; margin: 0 0 10px; }
         .sp-affiliation-align-choices label { display: flex; align-items: center; gap: 5px; margin: 0; }
-        /* Navy strip because that is the footer colour every shipped theme uses,
+        /* Navy strip because that is the footer color every shipped theme uses,
            so the preview looks like the thing it is previewing. */
         .sp-affiliation-align-preview { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 360px; padding: 14px; box-sizing: border-box; background: #0d1f3c; border-radius: 4px; justify-content: center; }
         .sp-affiliation-align-preview span { display: block; width: 46px; height: 18px; background: #fff; border-radius: 2px; opacity: 0.85; }
@@ -114930,7 +114930,7 @@ function sp_render_affiliations_page(): void {
     <div class="wrap">
         <h1><?php esc_html_e( 'Affiliations', 'societypress' ); ?></h1>
         <p class="description">
-            <?php esc_html_e( 'Show the logos of the organisations your society belongs to — a national body, a state society, a lineage organisation — at the bottom of every page. Add the logo, type the organisation\'s name, and paste a link to their website. The name is what a screen reader reads out, so it is worth filling in.', 'societypress' ); ?>
+            <?php esc_html_e( 'Show the logos of the organizations your society belongs to — a national body, a state society, a lineage organization — at the bottom of every page. Add the logo, type the organization\'s name, and paste a link to their website. The name is what a screen reader reads out, so it is worth filling in.', 'societypress' ); ?>
         </p>
 
         <?php if ( $saved ) : ?>
@@ -115019,11 +115019,11 @@ function sp_render_affiliations_page(): void {
                             <label class="sp-affiliation-size-choice">
                                 <input type="radio" name="sp_affiliations_logo_plate" value="none"
                                        <?php checked( $logo_plate, 'none' ); ?>>
-                                <?php esc_html_e( 'Nothing — let the footer colour show through', 'societypress' ); ?>
+                                <?php esc_html_e( 'Nothing — let the footer color show through', 'societypress' ); ?>
                             </label>
                         </fieldset>
                         <p class="description">
-                            <?php esc_html_e( 'Logo files often have a see-through background. The white panel means artwork drawn in dark ink still reads on a dark footer. Turn it off when your logos are made for your footer colour, or when the panel looks like a box around them.', 'societypress' ); ?>
+                            <?php esc_html_e( 'Logo files often have a see-through background. The white panel means artwork drawn in dark ink still reads on a dark footer. Turn it off when your logos are made for your footer color, or when the panel looks like a box around them.', 'societypress' ); ?>
                         </p>
                         <p class="description">
                             <?php esc_html_e( 'A see-through background only survives in a PNG. If a logo was saved as a JPEG, its background was filled in — usually with white — when the file was made, and no setting here can bring it back. Save it again as a PNG and upload that.', 'societypress' ); ?>
@@ -115048,7 +115048,7 @@ function sp_render_affiliations_page(): void {
                                 <?php endforeach; ?>
                             </div>
                             <!-- A picture of the choice rather than a sentence about it: three
-                                 blocks on a footer-coloured strip, sliding to the side that is
+                                 blocks on a footer-colored strip, sliding to the side that is
                                  selected. Someone who has never met the words "left align" still
                                  knows immediately which button gives them what they want. It is
                                  decoration for the sighted reader — the radio labels above carry
@@ -115059,7 +115059,7 @@ function sp_render_affiliations_page(): void {
                             </div>
                         </fieldset>
                         <p class="description">
-                            <?php esc_html_e( 'Moves the logos, and the wording above them, across the width of your footer. Centre suits a footer built as one wide band; left or right suits a footer whose text is already lined up down one side.', 'societypress' ); ?>
+                            <?php esc_html_e( 'Moves the logos, and the wording above them, across the width of your footer. Center suits a footer built as one wide band; left or right suits a footer whose text is already lined up down one side.', 'societypress' ); ?>
                         </p>
                     </td>
                 </tr>
@@ -115100,7 +115100,7 @@ function sp_render_affiliations_page(): void {
                 </tr>
             </table>
 
-            <h2><?php esc_html_e( 'Organisations', 'societypress' ); ?></h2>
+            <h2><?php esc_html_e( 'Organizations', 'societypress' ); ?></h2>
 
             <div id="sp-affiliations-rows">
                 <?php foreach ( $rows as $i => $row ) : ?>
@@ -115110,12 +115110,12 @@ function sp_render_affiliations_page(): void {
 
             <p>
                 <button type="button" class="button" id="sp-affiliation-add">
-                    <?php esc_html_e( '+ Add an organisation', 'societypress' ); ?>
+                    <?php esc_html_e( '+ Add an organization', 'societypress' ); ?>
                 </button>
             </p>
 
             <p class="description" id="sp-affiliations-empty" <?php echo $rows ? 'hidden' : ''; ?>>
-                <?php esc_html_e( 'No organisations yet. Add one and it will appear in your footer.', 'societypress' ); ?>
+                <?php esc_html_e( 'No organizations yet. Add one and it will appear in your footer.', 'societypress' ); ?>
             </p>
 
             <?php submit_button( __( 'Save Affiliations', 'societypress' ), 'primary', 'sp_affiliations_submit' ); ?>
@@ -115149,7 +115149,7 @@ function sp_render_affiliations_page(): void {
 
     /* Slide the preview blocks to whichever position is selected. Its own IIFE
        for the same reason as the one above — the position control is on the page
-       whether or not any organisations have been added yet. If this script never
+       whether or not any organizations have been added yet. If this script never
        runs, the preview simply stays on the saved position and the radios still
        save correctly; nothing here is load-bearing. */
     (function () {
@@ -115302,14 +115302,14 @@ function sp_affiliation_row_markup( int $index, array $row, bool $template = fal
             if ( $mime !== '' && ! in_array( $mime, $transparency_capable, true ) ) :
                 ?>
                 <p class="sp-affiliation-flat-note">
-                    <?php esc_html_e( 'This file has a solid background that cannot be made see-through. Save it as a PNG and choose it again if you want the footer colour behind it.', 'societypress' ); ?>
+                    <?php esc_html_e( 'This file has a solid background that cannot be made see-through. Save it as a PNG and choose it again if you want the footer color behind it.', 'societypress' ); ?>
                 </p>
             <?php endif; ?>
 
             <div class="sp-affiliation-fields">
                 <p>
                     <label class="sp-affiliation-label" for="sp-aff-name-<?php echo esc_attr( $key ); ?>">
-                        <?php esc_html_e( 'Organisation name', 'societypress' ); ?>
+                        <?php esc_html_e( 'Organization name', 'societypress' ); ?>
                     </label>
                     <input type="text" id="sp-aff-name-<?php echo esc_attr( $key ); ?>"
                            name="sp_affiliation[<?php echo esc_attr( $key ); ?>][name]"
@@ -117869,7 +117869,7 @@ function sp_newsletter_index_runner( array $ids, bool $autostart = false ): void
  * Meta key holding a newsletter PDF's SHA-256, stored on its attachment.
  *
  * WHY on the attachment rather than a column on sp_newsletters: the importer
- * has to recognise a repeat upload before there is an archive row to hang the
+ * has to recognize a repeat upload before there is an archive row to hang the
  * fingerprint on, and the attachment exists the moment the file lands.
  */
 const SP_NEWSLETTER_HASH_META = '_sp_nl_sha256';
@@ -118011,7 +118011,7 @@ function sp_newsletters_insert_row( array $row, int $file_id, int $cover_id, int
         $hash = (string) get_post_meta( $file_id, SP_NEWSLETTER_HASH_META, true );
         $dupe = sp_newsletter_find_duplicate( $hash, $row, $file_id, 'file' );
         if ( $dupe ) {
-            /* translators: %s: reason the file was recognised as a duplicate */
+            /* translators: %s: reason the file was recognized as a duplicate */
             return new WP_Error( 'sp_nl_duplicate', sprintf( __( 'skipped, %s', 'societypress' ), $dupe['reason'] ) );
         }
     }
@@ -118580,7 +118580,7 @@ function sp_render_import_newsletters_page(): void {
         } ) );
         if ( $flagged ) {
             echo '<div class="notice notice-warning"><p>' . esc_html( sprintf(
-                /* translators: %d: number of rows recognised as already in the archive */
+                /* translators: %d: number of rows recognized as already in the archive */
                 _n(
                     '%d of these is already in the archive. It is highlighted below and left unticked — leave it that way unless you truly want a second copy.',
                     '%d of these are already in the archive. They are highlighted below and left unticked — leave them that way unless you truly want second copies.',
@@ -119290,7 +119290,7 @@ function sp_gallery_import_create_album( string $title, string $description, str
     // Reuse an album that already carries this title instead of starting a
     // second one. A volunteer who imports the rest of a collection next week
     // types the same album name again and expects the photos to land where the
-    // first batch went — the old behaviour split them across "Hemisfair 1968"
+    // first batch went — the old behavior split them across "Hemisfair 1968"
     // and "Hemisfair 1968" twice over, which then shows up as duplicate
     // entries in every album picker on the site. Column collation is
     // case-insensitive, so a stray capital ("HemisFair") matches too.
@@ -120299,7 +120299,7 @@ function sp_media_file_into( int $attachment_id, string $slug, bool $force = fal
  * slug, and that is enough to file a logo picked on the Design screen into
  * Site Design rather than leaving it unfiled.
  *
- * Returns '' when the source is not recognised — an unfiled file is a better
+ * Returns '' when the source is not recognized — an unfiled file is a better
  * outcome than a confidently wrong one.
  */
 function sp_media_folder_from_context(): string {
@@ -123046,7 +123046,7 @@ if ( defined( 'WP_CLI' ) && WP_CLI ) {
  *      essentially every society menu. The ten areas below them exist for the
  *      society that has actually configured roles and wants "Leadership" shown
  *      only to people who can manage governance. Ordering matters — Harold
- *      reads the first two, recognises his answer, and stops.
+ *      reads the first two, recognizes his answer, and stops.
  *
  * @return array<string,string> visibility key => human label
  */
@@ -123612,7 +123612,7 @@ function sp_menus_handle_save( int $menu_id ): array {
 
         $post_update = [ 'ID' => $id ];
         $write       = false; // Something needs writing to the database.
-        $noticed     = false; // ...and the volunteer would recognise it as their edit.
+        $noticed     = false; // ...and the volunteer would recognize it as their edit.
 
         // An empty label would render as a blank, unclickable gap in the nav.
         // Keeping the previous title is friendlier than rejecting the save.
@@ -124262,7 +124262,7 @@ function sp_render_menus_page(): void {
 }
 
 /**
- * The Menus screen's behaviour.
+ * The Menus screen's behavior.
  *
  * WHY vanilla and inline: the plugin ships as a single file with no build step
  *      and no jQuery (except where WordPress forces it), and this screen is the

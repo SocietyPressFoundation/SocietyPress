@@ -310,7 +310,7 @@ The same goes for the SocietyPress site you're about to build. SocietyPress incl
 
 ## Every ENS column, and where it lands
 
-You do not need this table to run a migration — the importer recognises these
+You do not need this table to run a migration — the importer recognizes these
 column headings on sight and fills the dropdowns in for you. It is here for the
 society that wants to know exactly what happened to each field before it commits,
 and for the treasurer who is asked six months later where a number came from.
@@ -341,11 +341,11 @@ against the member under its own name, searchable and included in every export.
 | Member Active | Status — active or lapsed |
 | Lifetime | Lifetime member |
 | Deceased | Deceased |
-| Max Members | Seats on an organisational membership |
+| Max Members | Seats on an organizational membership |
 | Membership Tie ID | Household — this is what joins spouses to each other |
 | Acct. Primary | Which of a couple is the primary account |
 | Joint Member, Email of Joint, Phone of Joint | The second person on a joint membership |
-| File Name | Organisation name, for institutional members |
+| File Name | Organization name, for institutional members |
 
 **Contact**
 
@@ -416,7 +416,7 @@ Nobody is opted into anything by being migrated.
 | Login Count, Last Login Date | Kept for reference |
 | Administrative Notes | Staff notes, never shown to the member |
 | Last Updated By, Last Updated Date | Kept, and used by the overwrite rule below |
-| ENS Member Record ID | Kept, so a second import can recognise the same person |
+| ENS Member Record ID | Kept, so a second import can recognize the same person |
 
 ### Two of these do more than they look like
 

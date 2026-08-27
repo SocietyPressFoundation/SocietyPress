@@ -19,6 +19,18 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.88] — 2026-08-27
+
+### Changed
+
+**American spelling throughout**
+
+SocietyPress is built for American genealogical and historical societies, and a
+good deal of its wording had drifted into British spelling — colour, behaviour,
+organisation, customise, centred. Around ninety of them, in menu labels, help
+text, settings descriptions and the theme's own stylesheet. All now spelled the
+way the societies using them spell them.
+
 ## [1.1.87] — 2026-08-27
 
 ### Added

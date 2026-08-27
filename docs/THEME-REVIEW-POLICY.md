@@ -2,7 +2,7 @@
 
 **Status: draft.** Nothing here is in force yet. It is written to be argued
 with, and the submission queue will be built to match whatever it says once it
-has been agreed.
+has been settled.
 
 ---
 
@@ -14,7 +14,7 @@ is that lending shelf.
 
 It has three tiers, and they are three different levels of trust.
 
-**Tier 1 — a saved look.** Colours, fonts, spacing, sizes. A file of settings and
+**Tier 1 — a saved look.** Colors, fonts, spacing, sizes. A file of settings and
 nothing else. The worst a bad one does is make a site ugly, and one click puts it
 back. No review.
 
@@ -67,12 +67,12 @@ A theme is accepted when all of the following are true.
 2. **It is licensed GPL-2.0-or-later**, like everything else here, and says so.
 3. **Its code does presentation and nothing else.** Templates, styling, and the
    small amount of PHP it takes to arrange them.
-4. **Every asset it ships is in the archive.** No fonts, scripts, styles or
+4. **Every asset it ships is in the archive.** No fonts, scripts, styles, or
    images fetched from somewhere else at page load.
 5. **It names a person or a society as its author**, with a working contact
    address.
 6. **It installs on a clean site and works** without instructions beyond
-   "activate it".
+   "activate it."
 
 ## What is turned down
 
@@ -89,8 +89,8 @@ Any one of these ends the review. There is no partial pass.
 - **Obscured code.** Minified PHP, encoded strings, anything a reviewer cannot
   simply read. Not because it is necessarily malicious, but because it cannot be
   reviewed, and an unreviewable theme cannot carry a badge that says it was.
-- **Advertising.** No links, credits or branding that a society cannot remove.
-- **Anything that alters SocietyPress's own behaviour** rather than its
+- **Advertising.** No links, credits, or branding that a society cannot remove.
+- **Anything that alters SocietyPress's own behavior** rather than its
   appearance.
 
 ## What is asked for but not required
@@ -100,7 +100,7 @@ separates a theme somebody uses from a theme somebody tries once.
 
 - Works on a phone.
 - Readable contrast, and text that survives being enlarged.
-- Sensible behaviour when a society has no logo, no hero image, or no events.
+- Sensible behavior when a society has no logo, no hero image, or no events.
 - A screenshot that shows what it actually looks like.
 
 ---
@@ -129,7 +129,7 @@ anything a society would lose by leaving it.
 
 To be built once this policy is settled. The shape it will take:
 
-- A society submits a `.zip` and the contact details of a person.
+- A society submits a `.zip` file and the contact details of a person.
 - It joins a queue that is public — everybody can see what is waiting, how long
   it has waited, and what was decided.
 - The review is a checklist drawn from this document, and the completed checklist

@@ -19,6 +19,26 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.79] — 2026-08-26
+
+### Added
+
+**Search that finds the setting, not just the screen**
+
+Every SocietyPress screen now carries a search box at the top. It searches the
+eighty-odd screens *and* the eighty-odd individual settings inside them, so
+"where do I turn off the member directory" is a question you can type instead of
+a menu you have to guess your way through.
+
+Choosing a setting takes you to its screen, scrolls to the setting itself,
+highlights it for a moment and puts the cursor in it. Type any words in any
+order — "privacy member" finds the same thing as "member privacy" — and press
+return to take the first result. Arrow keys move through the list.
+
+The list of what can be found is read from WordPress's own menu and settings
+registries rather than kept by hand, so a screen or setting added later is
+findable without anybody having to remember to add it.
+
 ## [1.1.78] — 2026-08-26
 
 ### Changed

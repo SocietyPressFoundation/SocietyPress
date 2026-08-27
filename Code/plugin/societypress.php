@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.78
+ * Version:     1.1.79
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.78' );
+define( 'SOCIETYPRESS_VERSION', '1.1.79' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18059,6 +18059,334 @@ function sp_render_dashboard_page(): void {
 
 
 // ============================================================================
+// ADMIN SEARCH
+//
+// WHY: SocietyPress has around eighty screens and eighty settings, and a
+//      volunteer looking for one of them has to already know which of eleven
+//      menu groups it lives under. "Where do I turn off the member directory"
+//      is not a question a menu can answer — she does not know the answer is a
+//      tick box on the Directory settings page, which is why she is looking.
+//
+//      So the search looks inside the screens as well as at their names, and
+//      landing on a result scrolls to the setting itself and marks it. Getting
+//      somebody to the right screen is only half the job.
+//
+// WHY nothing here is a hand-kept list: the screens come from WordPress's own
+//      submenu registry and the settings from its Settings API registry, both
+//      of which are already the truth. A list of our own would be out of date
+//      the first time somebody added a setting and forgot about this file.
+// ============================================================================
+
+/**
+ * Is this one of our screens?
+ */
+function sp_is_admin_screen(): bool {
+    $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+    return $page === 'societypress' || str_starts_with( $page, 'sp-' );
+}
+
+/**
+ * Everything the search box can find.
+ *
+ * @return array<int,array{label:string,where:string,url:string}>
+ */
+function sp_admin_search_index(): array {
+    global $submenu, $wp_settings_fields, $wp_settings_sections;
+
+    $index = [];
+
+    // ---- The screens themselves ----
+    foreach ( (array) ( $submenu['societypress'] ?? [] ) as $item ) {
+        $label = wp_strip_all_tags( $item[0] ?? '' );
+        $slug  = $item[2] ?? '';
+        if ( $label === '' || $slug === '' ) {
+            continue;
+        }
+        // A screen that is really a WordPress one keeps its own address.
+        $url = str_contains( $slug, '.php' )
+            ? admin_url( $slug )
+            : admin_url( 'admin.php?page=' . $slug );
+
+        $index[] = [
+            'label' => $label,
+            'where' => __( 'Screen', 'societypress' ),
+            'url'   => $url,
+        ];
+    }
+
+    // ---- Every individual setting ----
+    foreach ( (array) $wp_settings_fields as $page => $sections ) {
+        if ( ! str_starts_with( (string) $page, 'sp-settings-' ) ) {
+            continue;
+        }
+
+        // The screen's own name, so a result can say where it will take you.
+        $screen_name = $page;
+        foreach ( (array) ( $submenu['societypress'] ?? [] ) as $item ) {
+            if ( ( $item[2] ?? '' ) === $page ) {
+                $screen_name = wp_strip_all_tags( $item[0] );
+                break;
+            }
+        }
+
+        foreach ( (array) $sections as $section_id => $fields ) {
+            $section = wp_strip_all_tags( $wp_settings_sections[ $page ][ $section_id ]['title'] ?? '' );
+
+            foreach ( (array) $fields as $field ) {
+                $label = wp_strip_all_tags( $field['title'] ?? '' );
+                if ( $label === '' ) {
+                    continue;
+                }
+                $index[] = [
+                    'label' => $label,
+                    'where' => $section !== ''
+                        ? sprintf(
+                            /* translators: 1: settings screen name, 2: section heading on that screen */
+                            __( '%1$s — %2$s', 'societypress' ),
+                            $screen_name,
+                            $section
+                        )
+                        : $screen_name,
+                    'url'   => add_query_arg(
+                        [ 'page' => $page, 'sp-find' => $field['id'] ],
+                        admin_url( 'admin.php' )
+                    ),
+                ];
+            }
+        }
+    }
+
+    /**
+     * Filter what the SocietyPress admin search can find.
+     *
+     * @param array $index Search entries.
+     */
+    return apply_filters( 'sp_admin_search_index', $index );
+}
+
+/**
+ * Mark every settings row with its own class, so a result can be scrolled to.
+ *
+ * WHY done here rather than at each add_settings_field call: there are eighty
+ * of them and there will be more. Reaching into the registry once means a
+ * setting added next year is findable without anybody remembering to make it so.
+ */
+add_action( 'admin_init', function () {
+    global $wp_settings_fields;
+
+    foreach ( (array) $wp_settings_fields as $page => $sections ) {
+        if ( ! str_starts_with( (string) $page, 'sp-settings-' ) ) {
+            continue;
+        }
+        foreach ( (array) $sections as $section_id => $fields ) {
+            foreach ( (array) $fields as $field_id => $field ) {
+                $existing = $wp_settings_fields[ $page ][ $section_id ][ $field_id ]['args']['class'] ?? '';
+                $wp_settings_fields[ $page ][ $section_id ][ $field_id ]['args']['class'] =
+                    trim( $existing . ' sp-field-' . sanitize_html_class( $field['id'] ) );
+            }
+        }
+    }
+}, 99 );
+
+/**
+ * The search box, above every SocietyPress screen.
+ */
+add_action( 'in_admin_header', function () {
+    if ( ! sp_is_admin_screen() || ! sp_user_can_access_admin() ) {
+        return;
+    }
+
+    $index = sp_admin_search_index();
+    if ( ! $index ) {
+        return;
+    }
+
+    $found = isset( $_GET['sp-find'] ) ? sanitize_key( wp_unslash( $_GET['sp-find'] ) ) : '';
+    ?>
+    <div class="sp-admin-search">
+        <label class="screen-reader-text" for="sp-admin-search-field"><?php esc_html_e( 'Search SocietyPress screens and settings', 'societypress' ); ?></label>
+        <span class="dashicons dashicons-search" aria-hidden="true"></span>
+        <input type="search" id="sp-admin-search-field" autocomplete="off" role="combobox"
+               aria-expanded="false" aria-controls="sp-admin-search-results" aria-autocomplete="list"
+               placeholder="<?php esc_attr_e( 'Search screens and settings…', 'societypress' ); ?>">
+        <ul id="sp-admin-search-results" class="sp-admin-search-results" role="listbox" hidden></ul>
+    </div>
+
+    <style>
+        .sp-admin-search {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 12px 20px 0 22px;
+            max-width: 520px;
+        }
+        .sp-admin-search .dashicons-search {
+            position: absolute;
+            left: 8px;
+            color: #8c8f94;
+            pointer-events: none;
+        }
+        #sp-admin-search-field {
+            width: 100%;
+            padding: 6px 10px 6px 32px;
+            border: 1px solid #8c8f94;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .sp-admin-search-results {
+            position: absolute;
+            z-index: 9999;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin: 2px 0 0;
+            padding: 0;
+            max-height: 340px;
+            overflow-y: auto;
+            list-style: none;
+            background: #fff;
+            border: 1px solid #c3c4c7;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .sp-admin-search-results li { margin: 0; }
+        .sp-admin-search-results a {
+            display: block;
+            padding: 8px 12px;
+            text-decoration: none;
+            color: #1d2327;
+            border-bottom: 1px solid #f0f0f1;
+        }
+        .sp-admin-search-results li:last-child a { border-bottom: 0; }
+        .sp-admin-search-results a:hover,
+        .sp-admin-search-results a.sp-search-on {
+            background: #2271b1;
+            color: #fff;
+        }
+        .sp-admin-search-where {
+            display: block;
+            font-size: 12px;
+            color: #646970;
+        }
+        .sp-admin-search-results a:hover .sp-admin-search-where,
+        .sp-admin-search-results a.sp-search-on .sp-admin-search-where { color: #dcdcde; }
+        .sp-admin-search-none { padding: 10px 12px; color: #646970; }
+
+        /* Where the search dropped you. Fades rather than staying lit, so the
+           screen goes back to normal once you have seen it. */
+        .sp-field-found > th, .sp-field-found > td { background: #fcf3d4; }
+        .sp-field-found { animation: sp-field-fade 2.4s ease-out 1.2s forwards; }
+        @keyframes sp-field-fade { to { background: transparent; } }
+    </style>
+
+    <script>
+    (function() {
+        'use strict';
+
+        var INDEX = <?php echo wp_json_encode( $index ); ?>;
+        var FOUND = <?php echo wp_json_encode( $found ); ?>;
+        var NONE  = <?php echo wp_json_encode( __( 'Nothing matches that.', 'societypress' ) ); ?>;
+
+        var field   = document.getElementById('sp-admin-search-field');
+        var results = document.getElementById('sp-admin-search-results');
+        var at      = -1;
+
+        // Everything the reader typed has to appear somewhere in the entry, in
+        // any order — "member privacy" finds a privacy setting about members
+        // without her having to guess our word order.
+        function matches(entry, words) {
+            var hay = (entry.label + ' ' + entry.where).toLowerCase();
+            return words.every(function(w) { return hay.indexOf(w) !== -1; });
+        }
+
+        function close() {
+            results.hidden = true;
+            results.innerHTML = '';
+            field.setAttribute('aria-expanded', 'false');
+            at = -1;
+        }
+
+        function show() {
+            var words = field.value.toLowerCase().split(/\s+/).filter(Boolean);
+            if (!words.length) { close(); return; }
+
+            var hits = INDEX.filter(function(e) { return matches(e, words); }).slice(0, 12);
+            results.innerHTML = '';
+
+            if (!hits.length) {
+                var empty = document.createElement('li');
+                empty.className = 'sp-admin-search-none';
+                empty.textContent = NONE;
+                results.appendChild(empty);
+            } else {
+                hits.forEach(function(e) {
+                    var li = document.createElement('li');
+                    var a  = document.createElement('a');
+                    a.href = e.url;
+                    a.setAttribute('role', 'option');
+                    a.appendChild(document.createTextNode(e.label));
+                    var where = document.createElement('span');
+                    where.className = 'sp-admin-search-where';
+                    where.textContent = e.where;
+                    a.appendChild(where);
+                    li.appendChild(a);
+                    results.appendChild(li);
+                });
+            }
+
+            results.hidden = false;
+            field.setAttribute('aria-expanded', 'true');
+            at = -1;
+        }
+
+        function highlight(n) {
+            var links = results.querySelectorAll('a');
+            if (!links.length) return;
+            if (at >= 0 && links[at]) links[at].classList.remove('sp-search-on');
+            at = (n + links.length) % links.length;
+            links[at].classList.add('sp-search-on');
+            links[at].scrollIntoView({ block: 'nearest' });
+        }
+
+        field.addEventListener('input', show);
+        field.addEventListener('focus', show);
+
+        field.addEventListener('keydown', function(e) {
+            var links = results.querySelectorAll('a');
+            if (e.key === 'ArrowDown')      { e.preventDefault(); highlight(at + 1); }
+            else if (e.key === 'ArrowUp')   { e.preventDefault(); highlight(at - 1); }
+            else if (e.key === 'Enter') {
+                // Nothing picked yet means take the first result — the common
+                // case is typing three letters and pressing return.
+                var go = (at >= 0 && links[at]) ? links[at] : links[0];
+                if (go) { e.preventDefault(); window.location.href = go.href; }
+            }
+            else if (e.key === 'Escape')    { close(); }
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.sp-admin-search')) close();
+        });
+
+        // ---- Landing on the setting somebody searched for ----
+        if (FOUND) {
+            document.addEventListener('DOMContentLoaded', function() {
+                var row = document.querySelector('.sp-field-' + FOUND);
+                if (!row) return;
+                row.classList.add('sp-field-found');
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                var input = row.querySelector('input, select, textarea');
+                if (input) input.focus({ preventScroll: true });
+            });
+        }
+    })();
+    </script>
+    <?php
+} );
+
+
+// ============================================================================
 // INSIGHTS — engagement & use metrics for the board
 //
 // WHY: Boards and officers want a single place to answer "how alive is our
@@ -35533,7 +35861,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.78',
+            'version'     => '1.1.79',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35541,7 +35869,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.78',
+            'version'     => '1.1.79',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35549,7 +35877,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.78',
+            'version'     => '1.1.79',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35557,7 +35885,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.78',
+            'version'     => '1.1.79',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35565,7 +35893,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.78',
+            'version'     => '1.1.79',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -19,6 +19,15 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### In-app update checker — verified end to end
+
+Verified 2026-08-27. A newer release on GitHub reaches WordPress's own
+update transient, so the "Update available" notice appears in the
+Plugins list without anybody visiting GitHub. The release asset
+downloads, and extraction goes through WordPress's `unzip_file()`, which
+rejects any archive entry pointing outside the target directory — so a
+tampered release cannot write over files elsewhere on the site.
+
 ### Donations page on getsocietypress.org
 
 Shipped 2026-08-17. The donations page is live and taking card payments
@@ -163,16 +172,6 @@ an afternoon to three minutes.
 (`info.xml`, screenshots, bundle ZIP layout), validate it with
 `scripts/build-softaculous.sh` end-to-end, and submit through the
 partner program.
-**Blockers:** None.
-
-### In-app update checker surfacing
-
-**Motivation:** Once releases exist, WordPress administrators should
-see an "Update available" notice inside their dashboard without having
-to check GitHub manually.
-**Scope:** The plugin already has `SOCIETYPRESS_GITHUB_REPO` wired to
-the release-checking endpoint — verify that the notice appears, the
-update ZIP downloads, and the extraction is zip-slip-safe.
 **Blockers:** None.
 
 ---

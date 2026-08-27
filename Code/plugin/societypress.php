@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.80
+ * Version:     1.1.81
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.80' );
+define( 'SOCIETYPRESS_VERSION', '1.1.81' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18028,6 +18028,8 @@ function sp_render_dashboard_page(): void {
             ?>
         </p>
 
+        <?php sp_render_dashboard_default_controls(); ?>
+
         <?php if ( ! $showing ) : ?>
             <?php
             // WHY say it rather than leave a blank: an empty screen with no
@@ -18062,6 +18064,183 @@ function sp_render_dashboard_page(): void {
     </div>
     <?php
     sp_dashboard_card_css();
+}
+
+
+// ---------------------------------------------------------------------------
+// THE SOCIETY'S OWN STARTING DASHBOARD
+//
+// WHY: Every volunteer's dashboard is their own, which is right — but it leaves
+//      a brand-new treasurer facing whatever we decided the defaults should be,
+//      arranged by nobody who has ever run her society. The person who set the
+//      site up has already worked out what matters there. This lets her set it
+//      once, for everybody who arrives after.
+//
+//      It is a starting point, never a lock: the moment somebody moves a box
+//      it becomes theirs, and the way back is one button.
+//
+// HOW: WordPress reads a person's boxes through get_user_option(), so the whole
+//      thing is four filters. Somebody who has arranged their own dashboard has
+//      the user option and is untouched; somebody who has not falls through to
+//      whatever the society saved. No copying, nothing to keep in step.
+// ---------------------------------------------------------------------------
+
+/**
+ * The screen these settings belong to.
+ */
+function sp_dashboard_screen_id(): string {
+    return 'toplevel_page_societypress';
+}
+
+/**
+ * What the society has saved as everybody's starting dashboard.
+ *
+ * @return array{hidden:string[],closed:string[],order:array<string,string>,columns:int}
+ */
+function sp_dashboard_site_default(): array {
+    $saved = get_option( 'sp_dashboard_site_default', [] );
+
+    return [
+        'hidden'  => is_array( $saved['hidden'] ?? null ) ? array_map( 'strval', $saved['hidden'] ) : [],
+        'closed'  => is_array( $saved['closed'] ?? null ) ? array_map( 'strval', $saved['closed'] ) : [],
+        'order'   => is_array( $saved['order'] ?? null ) ? array_map( 'strval', $saved['order'] ) : [],
+        'columns' => (int) ( $saved['columns'] ?? 0 ),
+    ];
+}
+
+/**
+ * Has this person arranged a dashboard of their own?
+ *
+ * Any one of the four is enough. Somebody who has only ever closed a box has
+ * still made a choice, and we should not quietly undo it.
+ */
+function sp_dashboard_is_personal(): bool {
+    $screen = sp_dashboard_screen_id();
+    $user   = get_current_user_id();
+
+    foreach ( [ 'metaboxhidden_', 'closedpostboxes_', 'meta-box-order_', 'screen_layout_' ] as $prefix ) {
+        if ( get_user_option( $prefix . $screen, $user ) !== false ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Fall back to the society's dashboard for anybody who has not made their own.
+ *
+ * WHY the guard against recursion: each filter asks whether this person has a
+ * dashboard of their own, and asking means calling get_user_option again. The
+ * flag lets the inner call answer honestly instead of looping.
+ */
+add_action( 'init', function () {
+    $screen  = sp_dashboard_screen_id();
+    $reading = false;
+
+    $fallback = static function ( $key ) use ( $screen, &$reading ) {
+        return static function ( $result ) use ( $key, $screen, &$reading ) {
+            if ( $reading || $result !== false ) {
+                return $result;
+            }
+            $reading = true;
+            $default = sp_dashboard_site_default();
+            $reading = false;
+
+            if ( $key === 'columns' ) {
+                return $default['columns'] > 0 ? $default['columns'] : $result;
+            }
+            return $default[ $key ] ? $default[ $key ] : $result;
+        };
+    };
+
+    add_filter( 'get_user_option_metaboxhidden_' . $screen,   $fallback( 'hidden' ) );
+    add_filter( 'get_user_option_closedpostboxes_' . $screen, $fallback( 'closed' ) );
+    add_filter( 'get_user_option_meta-box-order_' . $screen,  $fallback( 'order' ) );
+    add_filter( 'get_user_option_screen_layout_' . $screen,   $fallback( 'columns' ) );
+} );
+
+/**
+ * Save the current arrangement as the society's, or go back to it.
+ *
+ * WHY a plain form post rather than AJAX: both of these change the whole page,
+ * so it has to reload anyway, and a link that reloads is one fewer thing to go
+ * wrong quietly.
+ */
+add_action( 'load-toplevel_page_societypress', function () {
+    $action = isset( $_GET['sp-dash'] ) ? sanitize_key( wp_unslash( $_GET['sp-dash'] ) ) : '';
+    if ( $action === '' ) {
+        return;
+    }
+
+    check_admin_referer( 'sp-dash-' . $action );
+
+    $screen = sp_dashboard_screen_id();
+    $user   = get_current_user_id();
+
+    if ( $action === 'setdefault' && current_user_can( 'manage_options' ) ) {
+        // Whatever this person is looking at, including anything they inherited
+        // — which is what makes "adjust it, then save it" work.
+        update_option( 'sp_dashboard_site_default', [
+            'hidden'  => (array) get_user_option( 'metaboxhidden_' . $screen, $user ),
+            'closed'  => (array) get_user_option( 'closedpostboxes_' . $screen, $user ),
+            'order'   => (array) get_user_option( 'meta-box-order_' . $screen, $user ),
+            'columns' => (int) get_user_option( 'screen_layout_' . $screen, $user ),
+        ], false );
+    }
+
+    if ( $action === 'restore' ) {
+        // Dropping the person's own settings is the whole of it — the filters
+        // above hand them the society's arrangement from the next load on.
+        foreach ( [ 'metaboxhidden_', 'closedpostboxes_', 'meta-box-order_', 'screen_layout_' ] as $prefix ) {
+            delete_user_option( $user, $prefix . $screen, true );
+            delete_user_option( $user, $prefix . $screen );
+        }
+    }
+
+    wp_safe_redirect( add_query_arg(
+        [ 'page' => 'societypress', 'sp-dash-done' => $action ],
+        admin_url( 'admin.php' )
+    ) );
+    exit;
+} );
+
+/**
+ * The two buttons, and the note that says what just happened.
+ */
+function sp_render_dashboard_default_controls(): void {
+    $done = isset( $_GET['sp-dash-done'] ) ? sanitize_key( wp_unslash( $_GET['sp-dash-done'] ) ) : '';
+
+    if ( $done === 'setdefault' ) {
+        echo '<div class="notice notice-success is-dismissible"><p>'
+           . esc_html__( 'Saved. Anybody who has not arranged a dashboard of their own will see this one.', 'societypress' )
+           . '</p></div>';
+    } elseif ( $done === 'restore' ) {
+        echo '<div class="notice notice-success is-dismissible"><p>'
+           . esc_html__( 'Your dashboard is back the way the society set it.', 'societypress' )
+           . '</p></div>';
+    }
+
+    $can_set   = current_user_can( 'manage_options' );
+    $can_go_back = sp_dashboard_is_personal() && get_option( 'sp_dashboard_site_default', null ) !== null;
+
+    if ( ! $can_set && ! $can_go_back ) {
+        return;
+    }
+    ?>
+    <p class="sp-dash-defaults">
+        <?php if ( $can_set ) : ?>
+            <a class="button button-small" href="<?php echo esc_url( wp_nonce_url(
+                admin_url( 'admin.php?page=societypress&sp-dash=setdefault' ), 'sp-dash-setdefault'
+            ) ); ?>"><?php esc_html_e( 'Make this the society\'s dashboard', 'societypress' ); ?></a>
+        <?php endif; ?>
+        <?php if ( $can_go_back ) : ?>
+            <a class="button button-small" href="<?php echo esc_url( wp_nonce_url(
+                admin_url( 'admin.php?page=societypress&sp-dash=restore' ), 'sp-dash-restore'
+            ) ); ?>"><?php esc_html_e( 'Put it back the way the society set it', 'societypress' ); ?></a>
+        <?php endif; ?>
+    </p>
+    <?php
 }
 
 
@@ -35868,7 +36047,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.80',
+            'version'     => '1.1.81',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -35876,7 +36055,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.80',
+            'version'     => '1.1.81',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -35884,7 +36063,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.80',
+            'version'     => '1.1.81',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -35892,7 +36071,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.80',
+            'version'     => '1.1.81',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -35900,7 +36079,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.80',
+            'version'     => '1.1.81',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

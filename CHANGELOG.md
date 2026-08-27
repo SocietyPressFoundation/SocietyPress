@@ -19,6 +19,22 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.81] — 2026-08-26
+
+### Added
+
+**The society can set everybody's starting dashboard**
+
+Arrange the dashboard the way your society wants a new volunteer to find it —
+which boxes, in what order, in how many columns — then press **Make this the
+society's dashboard**. Anybody who has not arranged one of their own now starts
+there instead of on our defaults, which were decided by people who have never
+run your society.
+
+It is a starting point and never a lock. The moment somebody moves a box the
+dashboard becomes theirs, and **Put it back the way the society set it** hands
+it back whenever they want it.
+
 ## [1.1.80] — 2026-08-26
 
 ### Changed

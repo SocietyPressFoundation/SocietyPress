@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.83
+ * Version:     1.1.84
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.83' );
+define( 'SOCIETYPRESS_VERSION', '1.1.84' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8863,7 +8863,7 @@ function sp_get_design_override_css(): string {
     // Content width — always use the px value directly.
     // WHY: The old dropdown (narrow/standard/wide/custom) was replaced with
     //      a simple px input. Harold types the number he wants.
-    $content_width = (int) ( $settings['design_content_width_px'] ?? 1100 ) . 'px';
+    $content_width = (int) ( $settings['design_content_width_px'] ?? 1200 ) . 'px';
 
     $header_height  = (int) ( $settings['design_header_height'] ?? 0 );
     $logo_height    = (int) ( $settings['design_logo_height'] ?? 0 );
@@ -30855,7 +30855,7 @@ function sp_sanitize_settings( array $input ): array {
         // Content width in exact pixels. Replaces the old preset dropdown.
         // WHY: Harold may need to match a specific design width (e.g., 975px).
         //      Clamped to 600–2000px to prevent unusable layouts.
-        'design_content_width_px'     => fn() => (int) ( $input['design_content_width_px'] ?? 1100 ),
+        'design_content_width_px'     => fn() => (int) ( $input['design_content_width_px'] ?? 1200 ),
         'design_logo_height'          => fn() => max( 0, min( 300, (int) ( $input['design_logo_height'] ?? 0 ) ) ),
         'design_header_padding'       => fn() => max( 0, min( 100, (int) ( $input['design_header_padding'] ?? 0 ) ) ),
         'design_nav_font_size'        => fn() => max( 0, min( 72, (int) ( $input['design_nav_font_size'] ?? 0 ) ) ),
@@ -37024,7 +37024,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.83',
+            'version'     => '1.1.84',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37032,7 +37032,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.83',
+            'version'     => '1.1.84',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37040,7 +37040,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.83',
+            'version'     => '1.1.84',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37048,7 +37048,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.83',
+            'version'     => '1.1.84',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37056,7 +37056,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.83',
+            'version'     => '1.1.84',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -40764,7 +40764,7 @@ function sp_render_settings_design_page(): void {
                     <tr>
                         <th scope="row"><label for="sp-design-content-width-px"><?php esc_html_e( 'Content Width', 'societypress' ); ?></label></th>
                         <td>
-                            <?php $d_content_width_px = (int) ( $settings['design_content_width_px'] ?? 1100 ); ?>
+                            <?php $d_content_width_px = (int) ( $settings['design_content_width_px'] ?? 1200 ); ?>
                             <input type="number"
                                    id="sp-design-content-width-px"
                                    name="societypress_settings[design_content_width_px]"
@@ -40975,7 +40975,7 @@ function sp_render_settings_design_page(): void {
         // Size/scale/width mappings (mirrors PHP)
         var sizeMap  = { 'compact': '16px', 'comfortable': '18px', 'large': '20px' };
         var scaleMap = { 'small': '0.85', 'normal': '1', 'large': '1.15' };
-        var widthMap = { 'narrow': '900px', 'standard': '1100px', 'wide': '1400px' };
+        var widthMap = { 'narrow': '900px', 'standard': '1200px', 'wide': '1400px' };
 
         var iframe = document.getElementById('sp-design-preview');
 
@@ -41075,8 +41075,8 @@ function sp_render_settings_design_page(): void {
                     + '  --sp-font-size-base: ' + (sizeMap[fontSize] || '18px') + ';\n'
                     + '  --sp-font-scale: ' + (scaleMap[headingScale] || '1') + ';\n'
                     + '  --sp-content-width: ' + (contentWidth === 'custom'
-                        ? (document.getElementById('sp-design-content-width-px').value || '1100') + 'px'
-                        : (widthMap[contentWidth] || '1100px')) + ';\n'
+                        ? (document.getElementById('sp-design-content-width-px').value || '1200') + 'px'
+                        : (widthMap[contentWidth] || '1200px')) + ';\n'
                     + '}\n';
 
                 // Menu position on a stacked header. Scoped to .sp-header-stacked,
@@ -48297,7 +48297,7 @@ function sp_builder_frontend_styles(): void {
 
         /* Section heading wrapper — centers the heading + divider within
            the content width so it aligns with the widget content below. */
-        .sp-widget-heading-wrap { max-width: var(--sp-content-width, 1100px); margin: 0 auto 30px; text-align: center; }
+        .sp-widget-heading-wrap { max-width: var(--sp-content-width, 1200px); margin: 0 auto 30px; text-align: center; }
         .sp-widget-section-heading { text-align: center; font-size: 1.8rem; font-weight: 600; color: var(--sp-color-primary, #1e3a5f); margin: 0 0 8px; }
         .sp-widget-section-divider { width: 80px; height: 3px; background: var(--sp-color-accent, #667eea); margin: 0 auto; border: none; }
 
@@ -48389,7 +48389,7 @@ function sp_builder_frontend_styles(): void {
         /* instance, so they belong in the shared stylesheet, not repeated    */
         /* as inline <style> blocks in the renderer.                          */
         /* ------------------------------------------------------------------ */
-        .sp-upcoming-events-widget { max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
+        .sp-upcoming-events-widget { max-width: var(--sp-content-width, 1200px); margin: 0 auto; }
         .sp-upcoming-events-list { list-style: none; margin: 0; padding: 0; }
         .sp-upcoming-event-card { display: flex; align-items: flex-start; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e5e7eb; }
         .sp-upcoming-event-card:last-child { border-bottom: none; }
@@ -48410,7 +48410,7 @@ function sp_builder_frontend_styles(): void {
         .sp-ue-empty { text-align: center; padding: 24px; color: #666; font-style: italic; }
 
         /* UPCOMING EVENTS — CARD LAYOUT */
-        .sp-ue-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
+        .sp-ue-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; max-width: var(--sp-content-width, 1200px); margin: 0 auto; }
         .sp-ue-photo-card { background: #fff; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
         .sp-ue-photo-card-image { height: 180px; background-size: cover; background-position: center; background-color: #f0f4f8; }
         .sp-ue-photo-card-body { padding: 20px; display: flex; flex-direction: column; flex: 1; }
@@ -48439,7 +48439,7 @@ function sp_builder_frontend_styles(): void {
         /* and could change or break without notice. If it does, an API key   */
         /* based solution (Maps Embed API) would be the replacement.          */
         /* ------------------------------------------------------------------ */
-        .sp-map-embed-wrap { max-width: var(--sp-content-width, 1100px); margin: 0 auto; }
+        .sp-map-embed-wrap { max-width: var(--sp-content-width, 1200px); margin: 0 auto; }
         .sp-map-embed-wrap iframe { border: 0; border-radius: 8px; }
 
         /* ------------------------------------------------------------------ */
@@ -55843,7 +55843,7 @@ add_filter( 'template_include', function ( $template ) {
     );
 
     echo '<style id="sp-cal-page-css">
-        .sp-cal-page-wrap { max-width: var(--sp-content-width, 1100px); margin: 0 auto; padding: 40px 20px; }
+        .sp-cal-page-wrap { max-width: var(--sp-content-width, 1200px); margin: 0 auto; padding: 40px 20px; }
         .sp-cal-page-title { margin: 0 0 24px; font-size: 28px; font-weight: 700; color: #1d2327; }
         .sp-cal-filter-form { margin-bottom: 20px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .sp-cal-filter-select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
@@ -88048,7 +88048,7 @@ add_filter( 'template_include', function( $template ) {
     // Newsletter archive is visible to everyone — login is only required
     // for viewing/downloading members-only PDFs, not for seeing the grid.
     get_header();
-    echo '<style id="sp-nl-archive-wrap-css">.sp-nl-archive-area{max-width:var(--sp-content-width,1100px);}</style>';
+    echo '<style id="sp-nl-archive-wrap-css">.sp-nl-archive-area{max-width:var(--sp-content-width,1200px);}</style>';
     echo '<div class="site-content"><div class="content-area-full sp-nl-archive-area">';
     sp_frontend_newsletter_archive();
     echo '</div></div>';
@@ -88559,7 +88559,7 @@ add_filter( 'template_include', function ( $template ) {
     }
 
     get_header();
-    echo '<style id="sp-search-wrap-css">.sp-search-area{max-width:var(--sp-content-width,1100px);}</style>';
+    echo '<style id="sp-search-wrap-css">.sp-search-area{max-width:var(--sp-content-width,1200px);}</style>';
     echo '<div class="site-content"><div class="content-area-full sp-search-area">';
     sp_render_search_page();
     echo '</div></div>';

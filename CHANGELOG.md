@@ -19,6 +19,19 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.84] — 2026-08-26
+
+### Changed
+
+**Standard content width is 1200 pixels**
+
+The width a page's content is held to used to default to 1100. It is now 1200,
+which reads better on the screens societies actually use. The five shipped looks
+moved with it, so "Standard" means the same thing everywhere.
+
+Only sites that never chose a width are affected — anybody who set their own
+keeps it.
+
 ## [1.1.83] — 2026-08-26
 
 ### Added

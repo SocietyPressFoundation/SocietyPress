@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.95] — 2026-08-27
+
+### Changed
+
+**The News page shows the whole item**
+
+It was cutting every item down to an excerpt and making the reader click through
+for the rest. A society notice is usually three sentences, so that was a click
+for nothing. Items now appear in full, and an item that really is long is cut
+where you put a More tag in it — which leaves the decision with whoever wrote it.
+
 ## [1.1.94] — 2026-08-27
 
 ### Added

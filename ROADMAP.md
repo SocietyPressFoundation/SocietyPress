@@ -19,6 +19,13 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### Donations page on getsocietypress.org
+
+Shipped 2026-08-17. The donations page is live and taking card payments
+through Stripe, with the no-pressure tone the project has always used —
+SocietyPress is free, stays free, and asking is not the same as charging.
+`.github/FUNDING.yml` points at it.
+
 ### End-user docs hub — five new cross-cutting guides
 
 Shipped 2026-05-03. The Harold-friendly module-guide library at
@@ -187,15 +194,6 @@ allowlist, admin import flow extension. Tier 3 — submission queue,
 manual review process, badge system on the gallery.
 **Blockers:** None for Tier 2. Tier 3 wants a documented review
 checklist before launch.
-
-### Donations / tip jar page on getsocietypress.org
-
-**Motivation:** SocietyPress is free forever, but voluntary donations
-keep the lights on. The `.github/FUNDING.yml` points at this page.
-**Scope:** `page-donate.php` with a clear "no pressure" tone, payment
-options (Stripe, PayPal, check), and recognition language for
-contributors who want it.
-**Blockers:** Payment-processing decision (Stripe account, etc.).
 
 ### 5-minute Getting Started screencast
 

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.82
+ * Version:     1.1.83
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.82' );
+define( 'SOCIETYPRESS_VERSION', '1.1.83' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18747,6 +18747,62 @@ function sp_ticket_notify_reply( int $ticket_id, string $body, string $new_statu
 }
 
 
+/**
+ * Read the help desk from the command line.
+ *
+ * WHY it exists: whoever looks after a society's site is often reaching it over
+ * SSH already — during an upgrade, or while chasing the very fault somebody has
+ * just reported. Being able to read the queue without loading wp-admin is worth
+ * the twenty lines.
+ *
+ *     wp sp-tickets list
+ *     wp sp-tickets list --status=new
+ *     wp sp-tickets list --all
+ */
+if ( defined( 'WP_CLI' ) && WP_CLI ) {
+    WP_CLI::add_command( 'sp-tickets list', function ( $args, $assoc ) {
+        global $wpdb;
+
+        $table  = $wpdb->prefix . 'sp_tickets';
+        $status = $assoc['status'] ?? '';
+        $all    = ! empty( $assoc['all'] );
+
+        if ( $status !== '' ) {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE status = %s ORDER BY updated_at DESC", $status
+            ) );
+        } elseif ( $all ) {
+            $rows = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY updated_at DESC" );
+        } else {
+            // The useful default is what still needs somebody.
+            $rows = $wpdb->get_results(
+                "SELECT * FROM {$table} WHERE status IN ('new','progress','needs_info') ORDER BY updated_at DESC"
+            );
+        }
+
+        if ( ! $rows ) {
+            WP_CLI::success( 'No tickets match.' );
+            return;
+        }
+
+        $statuses = sp_ticket_statuses();
+        $types    = sp_ticket_types();
+
+        WP_CLI\Utils\format_items( 'table', array_map( static function ( $r ) use ( $statuses, $types ) {
+            $who = get_userdata( (int) $r->reporter_id );
+            return [
+                'id'      => $r->id,
+                'status'  => $statuses[ $r->status ] ?? $r->status,
+                'kind'    => $types[ $r->type ] ?? $r->type,
+                'who'     => $who ? $who->user_login : (string) $r->reporter_id,
+                'updated' => substr( (string) ( $r->updated_at ?: $r->created_at ), 0, 10 ),
+                'title'   => $r->title,
+            ];
+        }, $rows ), [ 'id', 'status', 'kind', 'who', 'updated', 'title' ] );
+    } );
+}
+
+
 // ---- Screens ---------------------------------------------------------------
 
 /**
@@ -36968,7 +37024,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.82',
+            'version'     => '1.1.83',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -36976,7 +37032,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.82',
+            'version'     => '1.1.83',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -36984,7 +37040,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.82',
+            'version'     => '1.1.83',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -36992,7 +37048,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.82',
+            'version'     => '1.1.83',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37000,7 +37056,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.82',
+            'version'     => '1.1.83',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

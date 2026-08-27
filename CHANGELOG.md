@@ -19,6 +19,16 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.83] — 2026-08-26
+
+### Added
+
+**Read the help desk from the command line**
+
+`wp sp-tickets list` prints whatever still needs somebody. `--status=new` narrows
+it and `--all` includes what is finished. Useful to whoever looks after a site
+while they are already at a terminal chasing the fault somebody just reported.
+
 ## [1.1.82] — 2026-08-26
 
 ### Added

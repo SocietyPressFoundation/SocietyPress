@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.95
+ * Version:     1.1.96
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.95' );
+define( 'SOCIETYPRESS_VERSION', '1.1.96' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18792,7 +18792,11 @@ function sp_render_builder_widget_latest_news( array $settings ): void {
             <?php endif; ?>
             <p class="sp-latest-news-date"><?php echo esc_html( get_the_date() ); ?></p>
             <h3 class="sp-latest-news-title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
-            <p class="sp-latest-news-excerpt"><?php echo esc_html( wp_trim_words( get_the_excerpt(), 24 ) ); ?></p>
+            <?php
+            // Same rule as the News page: the whole item, unless the person who
+            // wrote it put a More tag in and asked for it to be cut.
+            ?>
+            <div class="sp-latest-news-body"><?php the_content( esc_html__( 'Read the rest', 'societypress' ) . ' &rarr;' ); ?></div>
         </article>
         <?php
     }
@@ -18819,7 +18823,9 @@ function sp_render_builder_widget_latest_news( array $settings ): void {
         .sp-latest-news-title { margin: 0 0 8px; font-size: 1.15rem; }
         .sp-latest-news-title a { text-decoration: none; color: var(--sp-color-primary, #0D1F3C); }
         .sp-latest-news-title a:hover { text-decoration: underline; }
-        .sp-latest-news-excerpt { margin: 0; color: var(--sp-color-text, #1a1a1a); }
+        .sp-latest-news-body { color: var(--sp-color-text, #1a1a1a); }
+        .sp-latest-news-body p:last-child { margin-bottom: 0; }
+        .sp-latest-news-body .more-link { display: inline-block; margin-top: 8px; font-weight: 600; }
     </style>
     <?php
 }
@@ -37735,7 +37741,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.95',
+            'version'     => '1.1.96',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37743,7 +37749,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.95',
+            'version'     => '1.1.96',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37751,7 +37757,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.95',
+            'version'     => '1.1.96',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37759,7 +37765,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.95',
+            'version'     => '1.1.96',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37767,7 +37773,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.95',
+            'version'     => '1.1.96',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

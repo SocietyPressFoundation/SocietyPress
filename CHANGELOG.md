@@ -19,6 +19,16 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.96] — 2026-08-27
+
+### Changed
+
+**Latest News shows the whole item too**
+
+The front-page block was trimming each item to a couple of dozen words. It now
+follows the same rule as the News page: the whole item, cut only where a More tag
+says to cut it.
+
 ## [1.1.95] — 2026-08-27
 
 ### Changed

@@ -19,6 +19,15 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### ENS migration handbook — the reference half
+
+Shipped 2026-08-27. The migration guide now carries a field-by-field table
+of every column an EasyNetSites export contains and what each becomes,
+a note on the three columns that do more than they look like — the tie
+that makes a couple a couple, the record id that makes a second import
+safe, and the date that governs overwriting — and a three-level plan for
+backing out: undo the import, restore the site, or start over.
+
 ### Roadmap audit — twelve items were already done
 
 Audited 2026-08-27 against the live sites and the source. Twelve entries
@@ -235,16 +244,6 @@ Publish the walkthrough as a docs page.
 ## Documentation
 
 Getting the user-facing docs up to the same quality bar as the code.
-
-### ENS migration handbook (expanded)
-
-**Motivation:** The current `docs/ENS-MIGRATION-GUIDE.md` is a concise
-walkthrough. Societies moving thousands of records and hundreds of
-members need a more detailed guide with edge cases.
-**Scope:** Expanded handbook covering field-by-field ENS → SocietyPress
-mapping, bulk decision points (what to do with "legacy" fields, how to
-handle overlapping memberships), and a rollback plan.
-**Blockers:** None.
 
 ---
 

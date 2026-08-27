@@ -305,3 +305,172 @@ These were all added in the run-up to the 2026 Texas State Genealogical Society 
 The ENS CSV you exported is the only complete snapshot of your member history that exists outside of ENS. **Make a backup of that CSV file and keep it somewhere safe** — a cloud folder, a thumb drive, an email attachment to yourself. After your ENS subscription ends, that CSV is the only copy you'll have.
 
 The same goes for the SocietyPress site you're about to build. SocietyPress includes a one-click full-site export (Settings → Export) that produces a single ZIP containing everything: database, files, photos, and configuration. **Run it monthly.** Keep the last three months of backups. This is your insurance against everything from a forgotten password to a host going out of business.
+
+---
+
+## Every ENS column, and where it lands
+
+You do not need this table to run a migration — the importer recognises these
+column headings on sight and fills the dropdowns in for you. It is here for the
+society that wants to know exactly what happened to each field before it commits,
+and for the treasurer who is asked six months later where a number came from.
+
+Anything your export contains that is not listed below can still be brought
+across: on the import screen, set its dropdown to **Custom field** and it is kept
+against the member under its own name, searchable and included in every export.
+
+**Name**
+
+| ENS column | Becomes |
+|---|---|
+| First Name, Middle Name, Last Name | The member's name |
+| Name Prefix, Name Suffix | Prefix and suffix |
+| PreferredName | Preferred name |
+| Maiden Name, UseMaiden | Maiden name, and whether to show it |
+| Address Label Name | Label name, used for mailings |
+
+**Membership**
+
+| ENS column | Becomes |
+|---|---|
+| Membership Number | Member number |
+| Membership Plan | Membership plan |
+| Membership Type | Membership type |
+| Member Join Date | Join date |
+| Expiration Date | Renewal date |
+| Member Active | Status — active or lapsed |
+| Lifetime | Lifetime member |
+| Deceased | Deceased |
+| Max Members | Seats on an organisational membership |
+| Membership Tie ID | Household — this is what joins spouses to each other |
+| Acct. Primary | Which of a couple is the primary account |
+| Joint Member, Email of Joint, Phone of Joint | The second person on a joint membership |
+| File Name | Organisation name, for institutional members |
+
+**Contact**
+
+| ENS column | Becomes |
+|---|---|
+| Email, Alt. Email | Email and alternate email |
+| Telephone, Cell Phone, Business Phone, Fax | Phone, mobile, work phone, fax |
+| Toll Free Phone, International Phone, Preferred Phone | Kept as their own fields |
+| Address 1, Address 2, City, State / Province, Postal Code, Country | Address |
+| Website | Website |
+
+**Seasonal address**
+
+ENS calls this the alternate address. SocietyPress calls it seasonal, and uses
+the same begin and end dates ENS does, so a snowbird's mail follows them without
+anybody editing anything.
+
+| ENS column | Becomes |
+|---|---|
+| Alternate Address 1, Alt. Address 2 | Seasonal address |
+| Alt. City, Alt. State / Province, Alt. Postal Code, Al. Country | Seasonal city, state, postal code, country |
+| Use Seasonal Address | Whether it is in use |
+| Use Alt. Info Month Begin, Alt. Contact Day Begin | When it starts |
+| Use Alt. Info Month End, Alt. Contact Day End | When it ends |
+| Alt. Phone, Alt. International Phone, Alt. Preferred Phone | Seasonal phone numbers |
+
+**What the member agreed to receive**
+
+These are consent settings, and they come across exactly as they stand in ENS.
+Nobody is opted into anything by being migrated.
+
+| ENS column | Becomes |
+|---|---|
+| General Email, Event Email, Newsletter Email | Email preferences |
+| Quarterly, Mail Publication / Mail Publications | Whether they take the journal in print |
+| Surname Inquiry | Willing to be contacted about surname research |
+
+**What the member agreed to show**
+
+| ENS column | Becomes |
+|---|---|
+| Mbr. List - Show Name / Address / Phone / Email / Photo | Directory visibility, field by field |
+
+**About the member**
+
+| ENS column | Becomes |
+|---|---|
+| Birth Year, Birth Month, Birth Day | Date of birth |
+| Gender | Gender |
+| Your Skills, Your Interests, Your Education | Skills, interests, education |
+| Volunteering? | Willing to volunteer |
+| Contact | Contact flag |
+| Image Filename | The member's photo |
+
+**Money**
+
+| ENS column | Becomes |
+|---|---|
+| Amount Paid, Date Paid, Payment Type | A payment record against the member |
+| Donation | Recorded as a donation |
+| Comment | A note on the payment |
+
+**Administrative**
+
+| ENS column | Becomes |
+|---|---|
+| Login | Their WordPress username |
+| Login Count, Last Login Date | Kept for reference |
+| Administrative Notes | Staff notes, never shown to the member |
+| Last Updated By, Last Updated Date | Kept, and used by the overwrite rule below |
+| ENS Member Record ID | Kept, so a second import can recognise the same person |
+
+### Two of these do more than they look like
+
+**Membership Tie ID** is what makes a couple a couple. If you strip it out of the
+CSV, every spouse arrives as an unrelated individual and no amount of later
+tidying will reliably pair them up again. Leave it in even if you intend to split
+couples into separate members.
+
+**ENS Member Record ID** is how a second import knows it is looking at somebody
+it has already seen. Keep it and you can re-import the same file safely. Remove
+it and the importer falls back to matching on name and email, which is close but
+not the same thing.
+
+**Last Updated Date** matters only if you switch on the overwrite option, which
+replaces a member's whole record when the file is newer than what is on the site.
+That option is for a complete roster and nothing else — on a partial file it will
+blank out every field the file happens not to carry.
+
+---
+
+## Backing out
+
+Three levels, smallest first. Use the smallest one that covers what went wrong.
+
+### Undo the import
+
+**Members → Import → Recent imports → Undo this import.**
+
+Every import is recorded as a batch, and undoing one removes exactly the members
+that import created. It does not touch members who were already there, and it
+does not touch anything you have edited by hand since.
+
+Undo covers the members and their payment records. It does not roll back the
+settings you changed on the way in, and it does not un-send email — which is why
+the guide tells you to leave email switched off until you have looked at the
+result.
+
+### Restore the site
+
+**Settings → Export & Backup.**
+
+Take a full export *before* the first import and keep it. It is a single ZIP
+holding the database, the files, the photos and the configuration. Restoring it
+puts the site back exactly as it was, which is the right answer when something
+other than the member import has gone wrong — a half-finished settings change, a
+theme swap you regret, an import you undid but that left the site feeling wrong.
+
+### Start over
+
+Nothing about a migration is one-way. Your ENS export is a file on your disk; the
+site is a WordPress install. If you get halfway through and decide the shape is
+wrong, you can empty the members table and import again from the same CSV. The
+only thing you cannot recover is time.
+
+Do keep ENS running until you have looked at the imported site with your own eyes
+and had one other person do the same. Overlapping for a month costs one month's
+subscription and removes every reason to hurry.

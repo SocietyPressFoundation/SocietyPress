@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.85
+ * Version:     1.1.86
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.85' );
+define( 'SOCIETYPRESS_VERSION', '1.1.86' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -37024,7 +37024,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.85',
+            'version'     => '1.1.86',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37032,7 +37032,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.85',
+            'version'     => '1.1.86',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37040,7 +37040,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.85',
+            'version'     => '1.1.86',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37048,7 +37048,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.85',
+            'version'     => '1.1.86',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37056,7 +37056,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.85',
+            'version'     => '1.1.86',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -50364,18 +50364,32 @@ add_action( 'admin_init', function () {
         $event_date_ts = strtotime( $data['event_date'] );
         $rule = '';
 
-        if ( $recurrence_type === 'weekly' ) {
-            // weekly:N where N = day of week (0=Sun, 6=Sat)
-            $rule = 'weekly:' . date( 'w', $event_date_ts );
-        } elseif ( $recurrence_type === 'monthly-nth' ) {
-            // monthly-nth:W-D where W = week number (1-5), D = day of week
-            $day_of_week = (int) date( 'w', $event_date_ts );
-            $day_of_month = (int) date( 'j', $event_date_ts );
-            $week_num = (int) ceil( $day_of_month / 7 );
-            $rule = 'monthly-nth:' . $week_num . '-' . $day_of_week;
-        } elseif ( $recurrence_type === 'monthly-date' ) {
-            // monthly-date:D where D = day of month
-            $rule = 'monthly-date:' . date( 'j', $event_date_ts );
+        // Whatever the organiser said in the pattern controls wins; where she
+        // said nothing, the pattern is still read off the date, exactly as it
+        // always was, so an event saved before this existed is unchanged.
+        $pattern = [];
+        if ( isset( $_POST['event_recurrence_weekday'] ) && $_POST['event_recurrence_weekday'] !== '' ) {
+            $pattern['weekday'] = (int) $_POST['event_recurrence_weekday'];
+        }
+        if ( isset( $_POST['event_recurrence_week'] ) && $_POST['event_recurrence_week'] !== '' ) {
+            $pattern['week'] = sanitize_key( wp_unslash( $_POST['event_recurrence_week'] ) );
+        }
+        if ( isset( $_POST['event_recurrence_monthday'] ) && $_POST['event_recurrence_monthday'] !== '' ) {
+            $pattern['monthday'] = (int) $_POST['event_recurrence_monthday'];
+        }
+
+        $rule = sp_build_recurrence_rule( $recurrence_type, $data['event_date'], $pattern );
+
+        if ( $rule ) {
+            // The event's own date is the first occurrence, so it has to be a
+            // date the pattern lands on. Done here as well as in the browser so
+            // the two can never disagree.
+            $snapped = sp_recurrence_first_date( $rule, $data['event_date'] );
+            if ( $snapped !== $data['event_date'] ) {
+                $wpdb->update( $events_table, [ 'event_date' => $snapped ], [ 'id' => $event_id ] );
+                $data['event_date'] = $snapped;
+                $event_date_ts      = strtotime( $snapped );
+            }
         }
 
         if ( $rule ) {
@@ -51284,7 +51298,78 @@ function sp_render_event_edit_page(): void {
                                 <?php esc_html_e( 'Every month on the same date', 'societypress' ); ?>
                             </option>
                         </select>
-                        <p class="description"><?php esc_html_e( 'The pattern is derived from the event date above — change the date to change the pattern.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+
+                <?php
+                // What the pattern controls should already be showing: whatever
+                // was saved on an existing series, otherwise whatever the event
+                // date implies.
+                $rec_rule    = $is_parent ? (string) ( $event->recurrence_rule ?? '' ) : '';
+                $rec_pattern = $rec_rule !== ''
+                    ? sp_parse_recurrence_rule( $rec_rule )
+                    : sp_parse_recurrence_rule( sp_build_recurrence_rule( 'monthly-nth', $val( 'event_date' ) ?: current_time( 'Y-m-d' ) ) );
+
+                $weekday_names = [
+                    __( 'Sunday', 'societypress' ),   __( 'Monday', 'societypress' ), __( 'Tuesday', 'societypress' ),
+                    __( 'Wednesday', 'societypress' ), __( 'Thursday', 'societypress' ), __( 'Friday', 'societypress' ),
+                    __( 'Saturday', 'societypress' ),
+                ];
+                $week_choices = [
+                    '1'    => __( 'first', 'societypress' ),
+                    '2'    => __( 'second', 'societypress' ),
+                    '3'    => __( 'third', 'societypress' ),
+                    '4'    => __( 'fourth', 'societypress' ),
+                    'last' => __( 'last', 'societypress' ),
+                ];
+                ?>
+
+                <tr id="sp-recurrence-pattern-row" style="<?php echo $is_parent ? '' : 'display: none;'; ?>">
+                    <th scope="row"><?php esc_html_e( 'Which day', 'societypress' ); ?></th>
+                    <td>
+                        <span class="sp-recurrence-pattern" data-pattern-for="monthly-nth">
+                            <?php esc_html_e( 'The', 'societypress' ); ?>
+                            <select id="sp-recurrence-week" name="event_recurrence_week">
+                                <?php foreach ( $week_choices as $wk => $wk_label ) : ?>
+                                    <option value="<?php echo esc_attr( $wk ); ?>" <?php selected( $rec_pattern['week'] === $wk ); ?>>
+                                        <?php echo esc_html( $wk_label ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select id="sp-recurrence-weekday" name="event_recurrence_weekday">
+                                <?php foreach ( $weekday_names as $dow => $dow_label ) : ?>
+                                    <option value="<?php echo (int) $dow; ?>" <?php selected( (int) $rec_pattern['weekday'], (int) $dow ); ?>>
+                                        <?php echo esc_html( $dow_label ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php esc_html_e( 'of every month', 'societypress' ); ?>
+                        </span>
+
+                        <span class="sp-recurrence-pattern" data-pattern-for="monthly-date" hidden>
+                            <?php esc_html_e( 'Day', 'societypress' ); ?>
+                            <select id="sp-recurrence-monthday" name="event_recurrence_monthday">
+                                <?php for ( $d = 1; $d <= 31; $d++ ) : ?>
+                                    <option value="<?php echo (int) $d; ?>" <?php selected( (int) $rec_pattern['monthday'], $d ); ?>>
+                                        <?php echo (int) $d; ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
+                            <?php esc_html_e( 'of every month', 'societypress' ); ?>
+                        </span>
+
+                        <span class="sp-recurrence-pattern" data-pattern-for="weekly" hidden>
+                            <?php esc_html_e( 'Every', 'societypress' ); ?>
+                            <select id="sp-recurrence-weekday-weekly" name="event_recurrence_weekday_weekly">
+                                <?php foreach ( $weekday_names as $dow => $dow_label ) : ?>
+                                    <option value="<?php echo (int) $dow; ?>" <?php selected( (int) $rec_pattern['weekday'], (int) $dow ); ?>>
+                                        <?php echo esc_html( $dow_label ); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </span>
+
+                        <p class="description"><?php esc_html_e( 'Say it the way you would say it out loud. The event date moves to match, and the dates below are what will be created.', 'societypress' ); ?></p>
                     </td>
                 </tr>
 
@@ -52274,10 +52359,44 @@ function sp_render_event_edit_page(): void {
         var PREVIEW_NONCE = '<?php echo esc_js( wp_create_nonce( 'sp_recurrence' ) ); ?>';
         var AJAX_URL      = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
 
+        var recurrencePatRow  = document.getElementById('sp-recurrence-pattern-row');
+        var weekSel           = document.getElementById('sp-recurrence-week');
+        var weekdaySel        = document.getElementById('sp-recurrence-weekday');
+        var weekdayWeeklySel  = document.getElementById('sp-recurrence-weekday-weekly');
+        var monthdaySel       = document.getElementById('sp-recurrence-monthday');
+
+        // Which side of the conversation spoke last. The date and the pattern
+        // each set the other, so without this they would argue: choosing a
+        // pattern moves the date, whose change handler would read the date back
+        // and undo the pattern.
+        var patternLedTheChange = false;
+
         function toggleRecurrenceRows() {
             var on = recurrenceType && recurrenceType.value;
             if (recurrenceEndRow)  recurrenceEndRow.style.display  = on ? '' : 'none';
             if (recurrencePrevRow) recurrencePrevRow.style.display = on ? '' : 'none';
+            if (recurrencePatRow)  recurrencePatRow.style.display  = on ? '' : 'none';
+
+            document.querySelectorAll('.sp-recurrence-pattern').forEach(function(span) {
+                span.hidden = span.getAttribute('data-pattern-for') !== (on || '');
+            });
+        }
+
+        // The weekly picker is a second control for the same thing the monthly
+        // one uses, so whichever is on screen answers for both.
+        function currentWeekday() {
+            if (recurrenceType && recurrenceType.value === 'weekly') {
+                return weekdayWeeklySel ? weekdayWeeklySel.value : '';
+            }
+            return weekdaySel ? weekdaySel.value : '';
+        }
+
+        function showPattern(pattern) {
+            if (!pattern) return;
+            if (weekSel && pattern.week) weekSel.value = pattern.week;
+            if (weekdaySel && pattern.weekday !== undefined) weekdaySel.value = String(pattern.weekday);
+            if (weekdayWeeklySel && pattern.weekday !== undefined) weekdayWeeklySel.value = String(pattern.weekday);
+            if (monthdaySel && pattern.monthday) monthdaySel.value = String(pattern.monthday);
         }
 
         function parseYmd(s) {
@@ -52417,6 +52536,15 @@ function sp_render_event_edit_page(): void {
             fd.append('recurrence_type', recurrenceType.value);
             fd.append('recurrence_end', recurrenceEndInput ? recurrenceEndInput.value : '');
 
+            // Send the pattern only when the pattern is what just changed.
+            // Otherwise the date leads and the server reads the pattern off it.
+            if (patternLedTheChange) {
+                fd.append('weekday', currentWeekday());
+                if (weekSel)     fd.append('week', weekSel.value);
+                if (monthdaySel) fd.append('monthday', monthdaySel.value);
+            }
+            patternLedTheChange = false;
+
             // Cancel any previous in-flight request by ignoring its response.
             var myRequest = {};
             previewInFlight = myRequest;
@@ -52425,7 +52553,16 @@ function sp_render_event_edit_page(): void {
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (previewInFlight !== myRequest) return;
-                    if (data && data.success) renderPreview(data.data);
+                    if (data && data.success) {
+                        // The server decides the first date the pattern lands
+                        // on; the field follows it, so what is on screen is what
+                        // will be saved.
+                        if (data.data.event_date && eventDateInput && eventDateInput.value !== data.data.event_date) {
+                            eventDateInput.value = data.data.event_date;
+                        }
+                        showPattern(data.data.pattern);
+                        renderPreview(data.data);
+                    }
                     else if (recurrencePrevEl) recurrencePrevEl.innerHTML = '<p>' + I18N.error + '</p>';
                 })
                 .catch(function() {
@@ -52447,6 +52584,14 @@ function sp_render_event_edit_page(): void {
         }
         if (eventDateInput)     eventDateInput.addEventListener('change', schedulePreview);
         if (recurrenceEndInput) recurrenceEndInput.addEventListener('change', schedulePreview);
+
+        [ weekSel, weekdaySel, weekdayWeeklySel, monthdaySel ].forEach(function(sel) {
+            if (!sel) return;
+            sel.addEventListener('change', function() {
+                patternLedTheChange = true;
+                schedulePreview();
+            });
+        });
 
         // Fetch an initial preview if the page loaded with a rule already set.
         toggleRecurrenceRows();
@@ -63452,28 +63597,16 @@ function sp_compute_recurrence_dates( string $start_date_ymd, string $rule, stri
         }
     } elseif ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
         // monthly-nth:W-D — Wth day-D of each month (e.g., 2nd Saturday = 2-6)
-        $parts = explode( ':', $rule );
-        $wd    = explode( '-', $parts[1] ?? '' );
-        $week_num    = (int) ( $wd[0] ?? 0 );
-        $day_of_week = (int) ( $wd[1] ?? 0 );
-        $day_names   = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
-        $day_name    = $day_names[ $day_of_week ] ?? 'Monday';
-
+        // "Nth Saturday", or the last one of the month. A 5th Saturday that
+        // does not exist in a given month is skipped rather than guessed at;
+        // "last" is what somebody usually meant by 5th anyway, and now they can
+        // say so.
         $month_ts = strtotime( 'first day of +1 month', $start_ts );
         while ( $month_ts && $month_ts <= $end_ts ) {
-            $month = (int) date( 'n', $month_ts );
-
-            // "Nth Saturday": find the first Saturday of the month, add (N-1) weeks.
-            // If the result rolls into the next month (e.g., 5th Saturday when
-            // there are only 4), skip it rather than emit a wrong date.
-            $first_target_day = strtotime( "first {$day_name} of " . date( 'F Y', $month_ts ) );
-            if ( $first_target_day ) {
-                $target_date = strtotime( '+' . ( $week_num - 1 ) . ' weeks', $first_target_day );
-                if ( (int) date( 'n', $target_date ) === $month && $target_date <= $end_ts ) {
-                    $dates[] = date( 'Y-m-d', $target_date );
-                }
+            $hit = sp_recurrence_date_in_month( $rule, $month_ts );
+            if ( $hit !== '' && strtotime( $hit ) <= $end_ts ) {
+                $dates[] = $hit;
             }
-
             $month_ts = strtotime( 'first day of +1 month', $month_ts );
         }
     } elseif ( strpos( $rule, 'monthly-date:' ) === 0 ) {
@@ -63511,24 +63644,133 @@ function sp_compute_recurrence_dates( string $start_date_ymd, string $rule, stri
  *
  * @return string Rule string, or '' if the type is unrecognized.
  */
-function sp_build_recurrence_rule( string $recurrence_type, string $event_date_ymd ): string {
+function sp_build_recurrence_rule( string $recurrence_type, string $event_date_ymd, array $pattern = [] ): string {
     $ts = strtotime( $event_date_ymd );
     if ( ! $ts ) {
         return '';
     }
 
+    // WHY a pattern can be passed in: for years the only way to say "the third
+    // Thursday" was to find a third Thursday on a calendar, type that date, and
+    // let us work backwards from it. That asks the organiser to do the very
+    // arithmetic the software exists to do. When she says the pattern outright
+    // it is used as given, and the date follows from it instead.
     if ( $recurrence_type === 'weekly' ) {
-        return 'weekly:' . date( 'w', $ts );
+        $dow = isset( $pattern['weekday'] ) ? (int) $pattern['weekday'] : (int) date( 'w', $ts );
+        return 'weekly:' . max( 0, min( 6, $dow ) );
     }
     if ( $recurrence_type === 'monthly-nth' ) {
-        $day_of_week  = (int) date( 'w', $ts );
-        $day_of_month = (int) date( 'j', $ts );
-        $week_num     = (int) ceil( $day_of_month / 7 );
-        return 'monthly-nth:' . $week_num . '-' . $day_of_week;
+        $dow = isset( $pattern['weekday'] ) ? (int) $pattern['weekday'] : (int) date( 'w', $ts );
+        $dow = max( 0, min( 6, $dow ) );
+
+        if ( isset( $pattern['week'] ) && $pattern['week'] !== '' ) {
+            $week = $pattern['week'] === 'last' ? 'last' : (string) max( 1, min( 5, (int) $pattern['week'] ) );
+        } else {
+            $week = (string) (int) ceil( (int) date( 'j', $ts ) / 7 );
+        }
+        return 'monthly-nth:' . $week . '-' . $dow;
     }
     if ( $recurrence_type === 'monthly-date' ) {
-        return 'monthly-date:' . date( 'j', $ts );
+        $day = isset( $pattern['monthday'] ) ? (int) $pattern['monthday'] : (int) date( 'j', $ts );
+        return 'monthly-date:' . max( 1, min( 31, $day ) );
     }
+    return '';
+}
+
+/**
+ * Read a rule back into the parts a person chose.
+ *
+ * @return array{week:string,weekday:int,monthday:int}
+ */
+function sp_parse_recurrence_rule( string $rule ): array {
+    $out = [ 'week' => '', 'weekday' => 0, 'monthday' => 1 ];
+
+    if ( strpos( $rule, 'weekly:' ) === 0 ) {
+        $out['weekday'] = (int) substr( $rule, 7 );
+    } elseif ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
+        $parts          = explode( '-', substr( $rule, 12 ) );
+        $out['week']    = ( $parts[0] ?? '' ) === 'last' ? 'last' : (string) (int) ( $parts[0] ?? 1 );
+        $out['weekday'] = (int) ( $parts[1] ?? 0 );
+    } elseif ( strpos( $rule, 'monthly-date:' ) === 0 ) {
+        $out['monthday'] = (int) substr( $rule, 13 );
+    }
+
+    return $out;
+}
+
+/**
+ * The first date on or after $from that the rule actually falls on.
+ *
+ * WHY it exists: an event's own date is its first occurrence, so once somebody
+ * says "the third Thursday" the date has to move to a third Thursday. Left
+ * alone, the series would start on a date that is not in its own pattern —
+ * which is exactly the fault this whole screen is meant to stop.
+ */
+function sp_recurrence_first_date( string $rule, string $from_ymd ): string {
+    $from_ts = strtotime( $from_ymd );
+    if ( ! $from_ts || $rule === '' ) {
+        return $from_ymd;
+    }
+
+    if ( strpos( $rule, 'weekly:' ) === 0 ) {
+        $want = (int) substr( $rule, 7 );
+        for ( $i = 0; $i < 7; $i++ ) {
+            $ts = strtotime( "+{$i} days", $from_ts );
+            if ( (int) date( 'w', $ts ) === $want ) {
+                return date( 'Y-m-d', $ts );
+            }
+        }
+        return $from_ymd;
+    }
+
+    if ( strpos( $rule, 'monthly-nth:' ) === 0 || strpos( $rule, 'monthly-date:' ) === 0 ) {
+        // Look at this month and the next couple: a "5th Tuesday" may not exist
+        // in the month somebody happens to be starting from.
+        $month_ts = strtotime( 'first day of this month', $from_ts );
+        for ( $i = 0; $i < 14; $i++ ) {
+            $hit = sp_recurrence_date_in_month( $rule, $month_ts );
+            if ( $hit && strtotime( $hit ) >= $from_ts ) {
+                return $hit;
+            }
+            $month_ts = strtotime( 'first day of +1 month', $month_ts );
+        }
+    }
+
+    return $from_ymd;
+}
+
+/**
+ * The date a monthly rule lands on inside one month, or '' if it does not.
+ */
+function sp_recurrence_date_in_month( string $rule, int $month_ts ): string {
+    $day_names = [ 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday' ];
+
+    if ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
+        $parts = explode( '-', substr( $rule, 12 ) );
+        $week  = $parts[0] ?? '1';
+        $name  = $day_names[ (int) ( $parts[1] ?? 0 ) ] ?? 'Monday';
+        $month = date( 'F Y', $month_ts );
+
+        if ( $week === 'last' ) {
+            $ts = strtotime( "last {$name} of {$month}" );
+            return $ts ? date( 'Y-m-d', $ts ) : '';
+        }
+
+        $first = strtotime( "first {$name} of {$month}" );
+        if ( ! $first ) {
+            return '';
+        }
+        $ts = strtotime( '+' . ( (int) $week - 1 ) . ' weeks', $first );
+        // A 5th Thursday that rolls into the next month is not a date in this one.
+        return (int) date( 'n', $ts ) === (int) date( 'n', $month_ts ) ? date( 'Y-m-d', $ts ) : '';
+    }
+
+    if ( strpos( $rule, 'monthly-date:' ) === 0 ) {
+        $want  = (int) substr( $rule, 13 );
+        $days  = (int) date( 't', $month_ts );
+        return date( 'Y-m-d', mktime( 0, 0, 0, (int) date( 'n', $month_ts ), min( $want, $days ), (int) date( 'Y', $month_ts ) ) );
+    }
+
     return '';
 }
 
@@ -63659,10 +63901,25 @@ function sp_ajax_preview_recurrence(): void {
         wp_send_json_success( [ 'dates' => [], 'summary' => '' ] );
     }
 
-    $rule = sp_build_recurrence_rule( $recurrence_type, $event_date );
+    $pattern = [];
+    if ( isset( $_POST['weekday'] ) && $_POST['weekday'] !== '' ) {
+        $pattern['weekday'] = (int) $_POST['weekday'];
+    }
+    if ( isset( $_POST['week'] ) && $_POST['week'] !== '' ) {
+        $pattern['week'] = sanitize_key( wp_unslash( $_POST['week'] ) );
+    }
+    if ( isset( $_POST['monthday'] ) && $_POST['monthday'] !== '' ) {
+        $pattern['monthday'] = (int) $_POST['monthday'];
+    }
+
+    $rule = sp_build_recurrence_rule( $recurrence_type, $event_date, $pattern );
     if ( ! $rule ) {
         wp_send_json_success( [ 'dates' => [], 'summary' => '' ] );
     }
+
+    // The series starts on a date its own pattern lands on. The browser writes
+    // this back into the date field, so what is previewed is what is saved.
+    $event_date = sp_recurrence_first_date( $rule, $event_date );
 
     // Default: 12 months from the event date if no end supplied (matches save path)
     $end_ymd = $recurrence_end ?: date( 'Y-m-d', strtotime( '+12 months', strtotime( $event_date ) ) );
@@ -63676,6 +63933,7 @@ function sp_ajax_preview_recurrence(): void {
         'event_date' => $event_date,
         'summary'    => $summary,
         'count'      => $count,
+        'pattern'    => sp_parse_recurrence_rule( $rule ),
     ] );
 }
 
@@ -63748,12 +64006,12 @@ function sp_describe_recurrence_rule( string $rule, string $start_date_ymd, stri
 
     if ( strpos( $rule, 'monthly-nth:' ) === 0 ) {
         $parts = explode( '-', substr( $rule, 12 ) );
-        $week  = (int) ( $parts[0] ?? 0 );
+        $week  = $parts[0] ?? '1';
         $dow   = (int) ( $parts[1] ?? 0 );
         return sprintf(
-            /* translators: 1: ordinal week (1st, 2nd), 2: day of week, 3: end date */
+            /* translators: 1: which week (1st, 2nd, last), 2: day of week, 3: end date */
             __( 'Every %1$s %2$s through %3$s', 'societypress' ),
-            sp_english_ordinal( $week ),
+            $week === 'last' ? __( 'last', 'societypress' ) : sp_english_ordinal( (int) $week ),
             $day_names[ $dow ] ?? '',
             $end_human
         );

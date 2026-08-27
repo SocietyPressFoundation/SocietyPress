@@ -19,6 +19,25 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.86] — 2026-08-27
+
+### Changed
+
+**Say when a recurring event happens, instead of working it out**
+
+Setting up the monthly meeting used to mean finding a third Thursday on a
+calendar, typing that date, and trusting that the pattern we read back off it
+was the one you meant. Now you say it: **the third Thursday of every month**.
+The event date moves to match, and the dates it will create are listed before
+you save.
+
+Weekly events pick their day the same way, monthly-by-date events pick the day
+of the month, and **last** is now a real choice — "the last Tuesday of every
+month" no longer has to be approximated as the fourth or fifth.
+
+Nothing changes for a series that already exists. An event saved before this
+still reads its pattern from its date, exactly as it did.
+
 ## [1.1.85] — 2026-08-26
 
 ### Changed

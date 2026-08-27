@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.93
+ * Version:     1.1.94
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.93' );
+define( 'SOCIETYPRESS_VERSION', '1.1.94' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -29412,6 +29412,32 @@ add_action( 'admin_init', function () {
         'sp_website_section'
     );
 
+    // --- Block editor ---
+    // WHY off by default: a volunteer typing a paragraph and pressing publish
+    // does not need blocks, block patterns, a settings sidebar and a toolbar
+    // that appears when you hover. The plain editor is a box you type in, which
+    // is what almost every society is doing. Societies that want the block
+    // editor turn it on here and get WordPress's own behaviour back.
+    add_settings_field(
+        'enable_block_editor',
+        __( 'Block editor', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $on       = ! empty( $settings['enable_block_editor'] );
+            ?>
+            <label>
+                <input type="checkbox" name="societypress_settings[enable_block_editor]" value="1" <?php checked( $on ); ?>>
+                <?php esc_html_e( 'Use the block editor for pages and news', 'societypress' ); ?>
+            </label>
+            <p class="description">
+                <?php esc_html_e( 'Off by default. With it off, writing a page or a news item is a plain box you type in. Turn it on if your society wants WordPress\'s block editor with its columns, patterns and side panels.', 'societypress' ); ?>
+            </p>
+            <?php
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
     // --- Tagline ---
     add_settings_field(
         'blogdescription',
@@ -31531,6 +31557,7 @@ function sp_sanitize_settings( array $input ): array {
         // WHY: Harold may need to match a specific design width (e.g., 975px).
         //      Clamped to 600–2000px to prevent unusable layouts.
         'design_content_width_px'     => fn() => (int) ( $input['design_content_width_px'] ?? 1200 ),
+        'enable_block_editor'         => fn() => (int) ! empty( $input['enable_block_editor'] ),
         'design_logo_height'          => fn() => max( 0, min( 300, (int) ( $input['design_logo_height'] ?? 0 ) ) ),
         'design_header_padding'       => fn() => max( 0, min( 100, (int) ( $input['design_header_padding'] ?? 0 ) ) ),
         'design_nav_font_size'        => fn() => max( 0, min( 72, (int) ( $input['design_nav_font_size'] ?? 0 ) ) ),
@@ -37699,7 +37726,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.93',
+            'version'     => '1.1.94',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37707,7 +37734,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.93',
+            'version'     => '1.1.94',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37715,7 +37742,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.93',
+            'version'     => '1.1.94',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37723,7 +37750,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.93',
+            'version'     => '1.1.94',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37731,7 +37758,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.93',
+            'version'     => '1.1.94',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -45361,6 +45388,24 @@ add_filter( 'use_block_editor_for_post', function ( $use, $post ) {
         }
     }
     return $use;
+}, 10, 2 );
+
+/**
+ * Honour the society's choice about the block editor.
+ *
+ * WHY the default is off: the block editor is a page-building tool, and a
+ * volunteer writing "the spring meeting has moved" is not building a page. The
+ * plain editor is a box with words in it, which is the whole job. Societies that
+ * want blocks say so in Settings and nothing here stands in their way.
+ */
+add_filter( 'use_block_editor_for_post_type', function ( $use, $post_type ) {
+    if ( ! in_array( $post_type, [ 'post', 'page' ], true ) ) {
+        return $use;
+    }
+
+    $settings = sp_settings();
+
+    return ! empty( $settings['enable_block_editor'] ) ? $use : false;
 }, 10, 2 );
 
 

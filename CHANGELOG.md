@@ -19,6 +19,20 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.94] — 2026-08-27
+
+### Added
+
+**The block editor is off unless your society wants it**
+
+Writing a page or a news item is now a plain box you type in. The block editor —
+with its blocks, patterns, side panels and toolbars that appear when you hover —
+is a page-building tool, and a volunteer writing "the spring meeting has moved to
+the 12th" is not building a page.
+
+Settings → Site Basics has a tick box for societies that do want it, and turning
+it on gives WordPress's own behavior back untouched.
+
 ## [1.1.93] — 2026-08-27
 
 ### Fixed

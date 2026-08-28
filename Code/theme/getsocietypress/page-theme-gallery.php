@@ -1,6 +1,6 @@
 <?php
 /**
- * Theme Gallery Page Template (page-theme-gallery.php)
+ * Theme Exchange Page Template (page-theme-gallery.php)
  *
  * Public catalog of SocietyPress theme presets. Each preset is a small
  * JSON file in the theme's presets/ folder; this template reads the
@@ -61,7 +61,7 @@ get_header();
                 A theme preset is a small JSON file with a society's chosen palette, fonts, spacing, and layout. Import one on your SocietyPress site and it instantly takes on that look — your content, members, and configuration are not touched.
             </p>
             <div class="feat-hero__actions">
-                <a href="#presets" class="btn btn-primary btn-lg">Browse the Gallery</a>
+                <a href="#presets" class="btn btn-primary btn-lg">Browse the Exchange</a>
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>" class="btn btn-secondary btn-lg">How presets work</a>
             </div>
         </div>
@@ -76,7 +76,7 @@ get_header();
         </div>
 
         <?php if ( empty( $presets ) ) : ?>
-            <p class="tg-empty">No presets in the gallery yet. Submit yours to be the first.</p>
+            <p class="tg-empty">No saved looks in the Exchange yet. Submit yours to be the first.</p>
         <?php else : ?>
             <div class="tg-grid">
                 <?php foreach ( $presets as $preset ) :
@@ -122,7 +122,7 @@ get_header();
             <div class="tg-how-step">
                 <div class="tg-how-num">1</div>
                 <h3>Pick a preset</h3>
-                <p>Browse the gallery above. Each card shows the palette, fonts, and a description of the look. Click <em>Download Preset</em> to save the JSON file.</p>
+                <p>Browse the Exchange above. Each card shows the palette, fonts, and a description of the look. Click <em>Download Preset</em> to save the JSON file.</p>
             </div>
             <div class="tg-how-step">
                 <div class="tg-how-num">2</div>
@@ -167,9 +167,16 @@ get_header();
             be known to us. You do have to be named, because somebody has to
             be answerable for code that runs where your members' records live.
         </p>
+        <p class="tg-empty">
+            <strong>None yet.</strong> No child theme has been submitted for
+            review so far, so everything in the Exchange today is a saved look
+            or a bundle &mdash; which is most of what a society wants anyway.
+            If you build WordPress themes, yours could be the first.
+        </p>
         <div class="cmp-cta__actions">
             <a href="<?php echo esc_url( home_url( '/theme-review-policy/' ) ); ?>" class="btn btn-primary btn-lg">Read the review policy</a>
-            <a href="https://github.com/SocietyPressFoundation/SocietyPress/issues?q=is%3Aissue+label%3Atheme-submission" class="btn btn-secondary btn-lg">See the review queue</a>
+            <a href="https://github.com/SocietyPressFoundation/SocietyPress/issues/new?template=theme-submission.yml" class="btn btn-secondary btn-lg">Submit a theme</a>
+            <a href="https://github.com/SocietyPressFoundation/SocietyPress/issues?q=is%3Aissue+label%3Atheme-submission" class="btn btn-outline btn-lg">See the review queue</a>
         </div>
     </div>
 </section>
@@ -178,7 +185,7 @@ get_header();
     <div class="container">
         <div class="tg-cta__content">
             <h2>Got a look you'd like to share?</h2>
-            <p>Submit your preset for the gallery. Reviewed presets get listed here for other societies to discover.</p>
+            <p>Submit your saved look to the Exchange. Reviewed ones get listed here for other societies to discover.</p>
             <div class="cmp-cta__actions">
                 <a href="<?php echo esc_url( home_url( '/feedback/' ) ); ?>" class="btn btn-primary btn-lg">Submit Your Preset</a>
                 <a href="<?php echo esc_url( home_url( '/comparison/' ) ); ?>" class="btn btn-secondary btn-lg">See the comparison</a>

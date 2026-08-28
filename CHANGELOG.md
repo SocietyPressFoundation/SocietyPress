@@ -19,6 +19,61 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.99] — 2026-08-28
+
+### Changed
+
+**One name for the Exchange, and one for what you already have**
+
+The word "gallery" was pointing at three different things: the five themes
+that ship with SocietyPress, the saved looks other societies share, and the
+child themes people submit for review. A volunteer who had met the first one
+would click through expecting it and land on another.
+
+The five bundled themes keep the word Gallery — they are what you were given.
+Everything societies lend each other is the **Theme Exchange**, in every
+heading, button and sentence. The Theme Presets screen also stopped saying the
+Exchange was "in the works" in one box while linking to the live site in the
+box below it.
+
+**The page offer says what it means**
+
+"Shall we put it in your menu" could as easily have meant the list down the
+side of the admin screen. It now says the navigation bar at the top of your
+website, and the buttons are "Yes, add it to my navigation" and "Not right
+now" rather than a bare yes and no.
+
+The question is no longer coloured green. A page nothing links to is not a
+finished job, and green invited a skim straight past the thing being asked.
+
+### Fixed
+
+**A page could be made on a site with no navigation at all**
+
+If nothing was set up as the site's navigation bar, the offer to add the page
+was skipped and you were told only that the page was ready — true, and no help
+at all, since nothing on the website led to it. That case now says so, and
+links to where a navigation bar is made.
+
+**"Not right now" no longer ends the conversation**
+
+The offer appears once and cannot come back, so declining it used to leave no
+route to the menu except knowing where to look. Declining now says where to go
+when you change your mind.
+
+**The Exchange stopped promising a shelf it has not stocked**
+
+"Browse reviewed themes" implied a catalogue of reviewed child themes. There
+are none yet, and both the admin screen and the public Exchange now say so
+plainly instead of leaving somebody to conclude the feature is broken.
+
+**Developer links are marked as developer links**
+
+The review policy and the GitHub submission form sat at the same weight as the
+one button meant for a society administrator. They now sit under their own
+heading that says who they are for, GPL is explained the first time it appears,
+and the links that leave the admin announce that they open in a new tab.
+
 ## [1.1.98] — 2026-08-28
 
 ### Added

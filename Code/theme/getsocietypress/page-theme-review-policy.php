@@ -118,7 +118,7 @@ get_header();
 
         <ol>
             <li><strong>It is a child theme of the SocietyPress parent theme.</strong> Not a standalone theme, not a child of something else.</li>
-            <li><strong>It is licensed GPL-2.0-or-later</strong>, like everything else here, and says so.</li>
+            <li><strong>It is licensed GPL-2.0-or-later</strong> &mdash; the free license that lets anybody use, change and pass on the code &mdash; like everything else here, and says so.</li>
             <li><strong>Its code does presentation and nothing else.</strong> Templates, styling, and the small amount of PHP it takes to arrange them.</li>
             <li><strong>Every asset it ships is in the archive.</strong> No fonts, scripts, styles, or images fetched from another site at page load.</li>
             <li><strong>It names a person or a society as its author</strong>, with a working contact address.</li>
@@ -177,7 +177,8 @@ get_header();
 
         <p>
             Not only societies, not only members, not only people we know.
-            SocietyPress is GPL, which means anyone may already write a child
+            SocietyPress is GPL &mdash; a free license that lets anybody use and
+            change the code &mdash; which means anyone may already write a child
             theme and hand it straight to a society without asking us. The
             Exchange has no authority over that and never will. What it
             governs is only which themes carry the badge &mdash; so

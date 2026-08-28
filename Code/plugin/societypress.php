@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.98
+ * Version:     1.1.99
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.98' );
+define( 'SOCIETYPRESS_VERSION', '1.1.99' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18998,6 +18998,20 @@ add_action( 'admin_notices', function () {
         return;
     }
 
+    // They said not now. Say it once, with the way back, and never again: the
+    // offer itself cannot return, because the page exists from here on.
+    if ( isset( $_GET['sp_menu_declined'] ) ) {
+        printf(
+            '<div class="notice notice-info is-dismissible"><p>%s</p></div>',
+            wp_kses_post( sprintf(
+                /* translators: %s: link to the Menus screen */
+                __( 'Left alone. Your page is published either way &mdash; when you want it in your navigation, <a href="%s">add it under Website &rarr; Menus</a>.', 'societypress' ),
+                esc_url( admin_url( 'admin.php?page=sp-menus' ) )
+            ) )
+        );
+        return;
+    }
+
     // The menu has just been updated. Say where it landed and stop asking.
     if ( isset( $_GET['sp_menu_added'] ) ) {
         $made = sp_page_using_template( $entry['template'] );
@@ -19026,7 +19040,23 @@ add_action( 'admin_notices', function () {
 
         $menu_id = sp_primary_menu_id();
 
-        if ( ! $menu_id || sp_page_in_menu( $made->ID, $menu_id ) ) {
+        // No menu to offer. Saying only "your page is ready" would be true and
+        // useless: the page exists and nothing on the website leads to it, and
+        // that is precisely the state this feature exists to make visible.
+        if ( ! $menu_id ) {
+            printf(
+                '<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+                wp_kses_post( sprintf(
+                    /* translators: 1: the page's address, 2: link to the Menus screen */
+                    __( 'Your page is ready at <a href="%1$s">%1$s</a>, but your website has no navigation bar to put it in yet, so visitors still cannot find it. <a href="%2$s">Make one under Website &rarr; Menus</a>.', 'societypress' ),
+                    esc_url( get_permalink( $made ) ),
+                    esc_url( admin_url( 'admin.php?page=sp-menus' ) )
+                ) )
+            );
+            return;
+        }
+
+        if ( sp_page_in_menu( $made->ID, $menu_id ) ) {
             printf(
                 '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
                 wp_kses_post( sprintf(
@@ -19043,7 +19073,7 @@ add_action( 'admin_notices', function () {
             'sp_add_page_to_menu'
         );
         ?>
-        <div class="notice notice-success">
+        <div class="notice notice-warning">
             <p>
                 <?php
                 printf(
@@ -19053,14 +19083,14 @@ add_action( 'admin_notices', function () {
                 );
                 ?>
                 <strong><?php esc_html_e( 'Nothing links to it yet.', 'societypress' ); ?></strong>
-                <?php esc_html_e( 'Shall we put it in your menu so visitors can find it?', 'societypress' ); ?>
+                <?php esc_html_e( 'Shall we add it to the navigation bar at the top of your website, so visitors can find it?', 'societypress' ); ?>
             </p>
             <p>
                 <a href="<?php echo esc_url( $add ); ?>" class="button button-primary">
-                    <?php esc_html_e( 'Add it to my menu', 'societypress' ); ?>
+                    <?php esc_html_e( 'Yes, add it to my navigation', 'societypress' ); ?>
                 </a>
-                <a href="<?php echo esc_url( remove_query_arg( 'sp_page_made' ) ); ?>" class="button">
-                    <?php esc_html_e( 'No thanks', 'societypress' ); ?>
+                <a href="<?php echo esc_url( add_query_arg( 'sp_menu_declined', '1', remove_query_arg( 'sp_page_made' ) ) ); ?>" class="button">
+                    <?php esc_html_e( 'Not right now', 'societypress' ); ?>
                 </a>
             </p>
         </div>
@@ -37931,7 +37961,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.98',
+            'version'     => '1.1.99',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37939,7 +37969,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.98',
+            'version'     => '1.1.99',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37947,7 +37977,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.98',
+            'version'     => '1.1.99',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37955,7 +37985,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.98',
+            'version'     => '1.1.99',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37963,7 +37993,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.98',
+            'version'     => '1.1.99',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -116309,7 +116339,7 @@ function sp_render_theme_presets_page(): void {
                 <div class="postbox">
                     <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Export current look', 'societypress' ); ?></h2>
                     <div class="inside">
-                        <p><?php esc_html_e( 'Download a JSON file of your current design tokens — palette, fonts, spacing, layout. Share it with another society, post it on the SocietyPress Theme Gallery (when launched), or keep it as a backup before experimenting with imports.', 'societypress' ); ?></p>
+                        <p><?php esc_html_e( 'Download a JSON file of your current design tokens — palette, fonts, spacing, layout. Share it with another society, post it on the SocietyPress Theme Exchange, or keep it as a backup before experimenting with imports.', 'societypress' ); ?></p>
                         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                             <input type="hidden" name="action" value="sp_theme_preset_export">
                             <?php wp_nonce_field( 'sp_theme_preset_export' ); ?>
@@ -116349,7 +116379,7 @@ function sp_render_theme_presets_page(): void {
                 <div class="postbox">
                     <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Import a preset', 'societypress' ); ?></h2>
                     <div class="inside">
-                        <p><?php esc_html_e( 'Upload a SocietyPress preset (.json) you got from another society or downloaded from the Theme Gallery. Your site will instantly take on its look. Your content, members, and configuration are not touched.', 'societypress' ); ?></p>
+                        <p><?php esc_html_e( 'Upload a SocietyPress preset (.json) you got from another society or downloaded from the Theme Exchange. Your site will instantly take on its look. Your content, members, and configuration are not touched.', 'societypress' ); ?></p>
                         <p class="sp-tp-tip">
                             <strong><?php esc_html_e( 'Tip:', 'societypress' ); ?></strong>
                             <?php esc_html_e( 'Export your current preset first as a backup. If you don\'t love the imported look, re-import your original to get back to where you were.', 'societypress' ); ?>
@@ -116416,27 +116446,52 @@ function sp_render_theme_presets_page(): void {
                 </div>
 
                 <div class="postbox">
-                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Theme Gallery', 'societypress' ); ?></h2>
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'The Theme Exchange', 'societypress' ); ?></h2>
                     <div class="inside">
-                        <p class="sp-tp-meta-text"><?php esc_html_e( 'A public Theme Gallery where societies share their presets is in the works at getsocietypress.org. Once it launches, you\'ll be able to browse looks from other societies and one-click install them here.', 'societypress' ); ?></p>
-                        <p><a href="https://getsocietypress.org/themes/" class="button" target="_blank"><?php esc_html_e( 'Open the Gallery →', 'societypress' ); ?></a></p>
+                        <p><?php esc_html_e( 'The five themes that came with SocietyPress are yours already. The Exchange is where societies lend each other the work they have done on top of them, so the society three counties over can use the look you spent a winter getting right.', 'societypress' ); ?></p>
+                        <p><?php esc_html_e( 'Saved looks and bundles hold colors, fonts and pictures. They cannot run anything, so there is nothing in one that can harm your site, and one click puts your old look back.', 'societypress' ); ?></p>
+                        <p>
+                            <a href="https://getsocietypress.org/themes/" class="button button-primary" target="_blank" rel="noopener">
+                                <?php esc_html_e( 'Browse the Exchange', 'societypress' ); ?>
+                                <span aria-hidden="true">&rarr;</span>
+                                <span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'societypress' ); ?></span>
+                            </a>
+                        </p>
                     </div>
                 </div>
 
                 <div class="postbox">
                     <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Full child themes', 'societypress' ); ?></h2>
                     <div class="inside">
-                        <p><?php esc_html_e( 'A saved look changes your colors and fonts. A full child theme can change how the whole site is built — and because it is real code running on your server, SocietyPress reads every one before it carries a badge.', 'societypress' ); ?></p>
+                        <p><?php esc_html_e( 'A saved look changes your colors and fonts. A full child theme can change how the whole site is built — and unlike a saved look, it is real code running on your own server. So SocietyPress reads every one of them, line by line, before it carries a badge.', 'societypress' ); ?></p>
                         <p>
                             <strong><?php esc_html_e( 'Reviewed by SocietyPress', 'societypress' ); ?></strong>
                             <?php esc_html_e( 'means a person read that theme\'s code, at that version, and found nothing in it that reaches beyond making the site look a certain way. It is a statement about safety and nothing else — not that the theme is well built, suits your society, or will be maintained.', 'societypress' ); ?>
                         </p>
-                        <p class="sp-tp-meta-text"><?php esc_html_e( 'To install one: download its .zip from the Exchange, then go to Appearance → Themes → Add New → Upload Theme. Switching back to a SocietyPress theme is always one click, and no theme in the Exchange is allowed to own anything you would lose by leaving it.', 'societypress' ); ?></p>
+                        <p class="sp-tp-meta-text"><?php esc_html_e( 'To install one: download its .zip from the Exchange, then go to Appearance → Themes → Add New → Upload Theme. Switching back to a SocietyPress theme is always one click. Your pages, members and settings live in SocietyPress rather than inside a theme, so changing themes never costs you any of them.', 'societypress' ); ?></p>
+                        <p class="sp-tp-meta-text"><?php esc_html_e( 'No child themes have been submitted for review yet. Until one is, the Exchange has saved looks and bundles only — which is most of what a society wants anyway.', 'societypress' ); ?></p>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'If you build WordPress themes', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p><?php esc_html_e( 'The rest of this is for whoever looks after your site\'s code — a volunteer who writes themes, or somebody your society hires. Nothing here is needed to use SocietyPress, and both links lead to developer tools rather than anything in your admin.', 'societypress' ); ?></p>
+                        <p><?php esc_html_e( 'Anybody may submit a child theme. You do not have to be a society, or known to us — but you do have to be named, because somebody has to be answerable for code that runs where a society\'s member records live. Themes are licensed GPL-2.0-or-later, the free license that lets anyone use and change the code.', 'societypress' ); ?></p>
                         <p>
-                            <a href="https://getsocietypress.org/themes/" class="button" target="_blank"><?php esc_html_e( 'Browse reviewed themes →', 'societypress' ); ?></a>
-                            <a href="https://getsocietypress.org/theme-review-policy/" class="button" target="_blank"><?php esc_html_e( 'What gets accepted →', 'societypress' ); ?></a>
-                            <a href="<?php echo esc_url( 'https://github.com/' . SOCIETYPRESS_GITHUB_REPO . '/issues/new?template=theme-submission.yml' ); ?>" class="button" target="_blank"><?php esc_html_e( 'Submit a theme →', 'societypress' ); ?></a>
+                            <a href="https://getsocietypress.org/theme-review-policy/" class="button" target="_blank" rel="noopener">
+                                <?php esc_html_e( 'What gets accepted', 'societypress' ); ?>
+                                <span aria-hidden="true">&rarr;</span>
+                                <span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'societypress' ); ?></span>
+                            </a>
+                            <a href="<?php echo esc_url( 'https://github.com/' . SOCIETYPRESS_GITHUB_REPO . '/issues/new?template=theme-submission.yml' ); ?>" class="button" target="_blank" rel="noopener">
+                                <?php esc_html_e( 'Submit a theme on GitHub', 'societypress' ); ?>
+                                <span aria-hidden="true">&rarr;</span>
+                                <span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'societypress' ); ?></span>
+                            </a>
                         </p>
+                    </div>
+                </div>
                     </div>
                 </div>
             </div>

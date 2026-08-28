@@ -19,6 +19,18 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### SocietyPress 1.5.0 — the first finished release
+
+Released 2026-08-28 as [v1.5.0](https://github.com/SocietyPressFoundation/SocietyPress/releases/tag/v1.5.0).
+Sixteen modules, five child themes, the ENS migration path, and the Theme
+Exchange with all three tiers open. The number is 1.5.0 rather than 1.0
+because 1.0.0 and 1.0.1 were already published tags from May and June — and
+because a release numbered below the 1.1.x builds already in the field would
+read as a downgrade and never be offered to them.
+
+The changelog starts again at 1.5.0; the development line is archived in
+`CHANGELOG-1.x.md`.
+
 ### Theme Exchange — Tier 3 (full child themes)
 
 Shipped 2026-08-28. The Exchange's top tier is open. A published review
@@ -57,141 +69,9 @@ up again.
 
 Seven things genuinely remain, and three of those are not code.
 
-### In-app update checker — verified end to end
-
-Verified 2026-08-27. A newer release on GitHub reaches WordPress's own
-update transient, so the "Update available" notice appears in the
-Plugins list without anybody visiting GitHub. The release asset
-downloads, and extraction goes through WordPress's `unzip_file()`, which
-rejects any archive entry pointing outside the target directory — so a
-tampered release cannot write over files elsewhere on the site.
-
-### Donations page on getsocietypress.org
-
-Shipped 2026-08-17. The donations page is live and taking card payments
-through Stripe, with the no-pressure tone the project has always used —
-SocietyPress is free, stays free, and asking is not the same as charging.
-`.github/FUNDING.yml` points at it.
-
-### End-user docs hub — five new cross-cutting guides
-
-Shipped 2026-05-03. The Harold-friendly module-guide library at
-`getsocietypress.org/docs/modules/` adds five new cross-cutting
-guides covering the questions every webmaster asks early:
-[Insights](https://getsocietypress.org/docs/modules/?guide=insights),
-[Backup & Restore](https://getsocietypress.org/docs/modules/?guide=backup-restore),
-[User Access & Roles](https://getsocietypress.org/docs/modules/?guide=user-access),
-[Email Setup](https://getsocietypress.org/docs/modules/?guide=email-setup),
-and [Privacy & GDPR](https://getsocietypress.org/docs/modules/?guide=privacy-gdpr).
-That brings the total to 28 guides spanning every toggleable module
-plus the recurring cross-cutting concerns. FAQ links into each
-where relevant.
-
-### ENS migration handbook — Decisions section
-
-Shipped 2026-05-03. The full ENS migration walkthrough now includes
-an explicit "Decisions you'll make during the import" section
-covering joint members (combine vs split), lapsed members, member
-numbers, legacy fields, privacy defaults, and cutover timing
-(parallel run vs hard switch). Closes the bulk-decision-points
-expansion ask from the Documentation section.
-
-### Insights — engagement & use metrics for boards
-
-Shipped 2026-05-03. A single admin/board-only page (SocietyPress →
-Insights) that pulls one headline number per enabled module across a
-chosen time window — active members, events held, donations raised,
-volunteer hours, records added, blasts sent, and so on — with a
-sparkline trend on every card. Time-window dropdown supports rolling
-30 / 90 / 365 days plus this and last fiscal year (the fiscal-year
-boundary reuses the existing membership-start-month setting, so
-societies don't configure it twice). Disabled modules are hidden;
-permission gate uses the existing `sp_view_reports` capability so a
-treasurer or membership chair can be granted access without giving
-them broader admin rights.
-
-### Theme Exchange — Tier 1
-
-Shipped 2026-04-26. Societies can export their site's design tokens
-(palette, fonts, spacing, layout) as a portable JSON preset and import
-presets from other societies. Admin page at SocietyPress → Theme
-Presets handles both directions; tokens are sanitized through the
-existing design-page validators on import. Public Theme Gallery at
-`/themes/` lists curated presets (Heritage, Coastline, Prairie, Parlor,
-Ledger to start).
-
-### Lineage Programs (First Families, Pioneer Settlers, etc.)
-
-Shipped 2026-04-26. Multi-program lineage / heritage recognition
-module. Members apply through a public form, staff review in an admin
-queue with status workflow, approved members appear on a public roster
-with auto-generated certificate numbers and printable certificates at
-`/?sp_certificate=NNN`. Optional application-fee Stripe redirect.
-GDPR exporters/erasers wired.
-
-### Public Donation form + Stripe recurring + PayPal one-time
-
-Shipped 2026-04-26. New `[sp_donate]` shortcode delivers preset
-amounts, custom amount, one-time / monthly / annual frequency, cover-
-the-fee toggle, anonymous donations, in-honor-of dedications. Stripe
-Checkout end-to-end for all three frequencies with a signature-
-verified webhook handling renewals. PayPal Smart Buttons handle
-one-time donations.
-
-### Help Requests upgrade — public submission + comradery model
-
-Shipped 2026-04-26. The Help Requests module pivots to "free by
-default" comradery. Public submission with math captcha + email
-verification + per-email rate limiting. Time-entry on every response
-auto-writes to a unified volunteer-hours ledger keyed by source. Mark-
-resolved + endorse-helpful + accept-as-answer. Public archive with
-tag-filter pills. Admin bulk actions (approve / mark-resolved / hide /
-delete). Member volunteer-hours summary widget.
-
-### Paid Research Services (opt-in escalation)
-
-Shipped 2026-04-26. The companion module for the rare case that
-genuinely needs many hours of focused work. Public intake + Stripe
-up-front payment, admin queue + single-case review, researcher
-dashboard with one-click claim and inline log-hours, additional-hours
-billing flow (researcher requests → Stripe-billed → case bumps
-authorized hours), in-system case messaging with attachments and
-email notifications, status-change emails on every transition,
-convert-from-Help-Request escalation path.
-
-### Comparison page — SocietyPress vs. ENS / Wild Apricot / custom WP
-
-Shipped 2026-04-26 at `/comparison/`. Quick at-a-glance matrix, honest
-"where we're weaker" section, full feature matrix, 5-year cost-of-
-ownership comparison, ENS migration callout.
-
-### Downloadable PDF info sheets (one-pagers)
-
-Shipped 2026-04-26. Four print-optimized audience pages —
-`/for-administrators/`, `/for-board-members/`, `/for-librarians/`,
-`/for-treasurers/` — with a floating "Print as PDF" button on each
-that triggers `window.print()`. Print CSS hides nav/footer/button so
-the saved PDF is clean.
-
-### First tagged GitHub release — `v1.0.19`
-
-Shipped 2026-04-19. The repository now carries a semver tag, unblocking
-the in-plugin update checker, the Softaculous submission flow, and the
-planned homepage activity feed.
-
-### Native store checkout
-
-Shipped 2026-04-19 (plugin 1.0.20). The cart now mounts the Stripe
-Payment Element (card, Apple Pay, Google Pay, Link) and PayPal Smart
-Buttons (PayPal, Venmo) inline, with real refund buttons on the order
-detail page and a persistent admin notice when neither processor is
-configured.
-
-### `security.txt` at `/.well-known/security.txt`
-
-Shipped 2026-04-15. RFC 9116 disclosure file live at
-`https://getsocietypress.org/.well-known/security.txt`, pointing at the
-[Security Policy](https://getsocietypress.org/security-policy/) page.
+For everything that shipped before 1.5.0, see
+[CHANGELOG-1.x.md](CHANGELOG-1.x.md) and
+[CHANGELOG-pre1.md](CHANGELOG-pre1.md).
 
 ---
 

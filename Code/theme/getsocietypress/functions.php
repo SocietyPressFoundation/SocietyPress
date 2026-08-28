@@ -1478,6 +1478,10 @@ function gsp_render_installs_page(): void {
         <h1>SocietyPress Installs</h1>
 
         <p>
+            <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gsp_export_installs' ), 'gsp_export_installs' ) ); ?>">Download as CSV</a>
+        </p>
+
+        <p>
             <strong><?php echo (int) $live; ?></strong> checked in within the last 30 days,
             <strong><?php echo (int) count( (array) $rows ); ?></strong> ever.
         </p>
@@ -1523,3 +1527,36 @@ function gsp_render_installs_page(): void {
     </div>
     <?php
 }
+
+
+/**
+ * Hand the whole register over as a spreadsheet.
+ *
+ * WHY the full table rather than the 500 rows on screen: a report you can only
+ *      read is half a report. This is the copy that goes into a board update or
+ *      a grant application, and it should never be a truncated one.
+ */
+function gsp_export_installs(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'You do not have permission to do that.' );
+    }
+    check_admin_referer( 'gsp_export_installs' );
+
+    global $wpdb;
+    $rows = $wpdb->get_results( 'SELECT society, site_url, version, first_seen, last_seen, check_ins FROM ' . gsp_installs_table() . ' ORDER BY last_seen DESC' );
+
+    nocache_headers();
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename=societypress-installs-' . gmdate( 'Y-m-d' ) . '.csv' );
+
+    $out = fopen( 'php://output', 'w' );
+    fputcsv( $out, [ 'Society', 'Website', 'Version', 'First seen', 'Last seen', 'Check-ins' ] );
+
+    foreach ( (array) $rows as $row ) {
+        fputcsv( $out, [ $row->society, $row->site_url, $row->version, $row->first_seen, $row->last_seen, $row->check_ins ] );
+    }
+
+    fclose( $out );
+    exit;
+}
+add_action( 'admin_post_gsp_export_installs', 'gsp_export_installs' );

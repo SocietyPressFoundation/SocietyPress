@@ -1,0 +1,117 @@
+name: Theme Exchange submission
+description: Submit a full child theme (Tier 3) for review and a "Reviewed by SocietyPress" badge.
+title: "[Theme] "
+labels: ["theme-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for offering your work to other societies.
+
+        This form is only for **Tier 3 — a full child theme**. A saved look
+        (Tier 1) or a `.spchildtheme` bundle (Tier 2) needs no review; share
+        those directly, they cannot run code.
+
+        Please read [the review policy](https://getsocietypress.org/theme-review-policy/)
+        before filling this in. It says plainly what is accepted, what is
+        refused, and what the badge does and does not mean.
+
+        **Anybody may submit.** You do not have to be a society, a member, or
+        known to us. What you do have to be is named — an anonymous submission
+        is refused without review, because a theme asks a society to run your
+        code on the server holding its members' addresses and family records,
+        and somebody has to be answerable for that.
+
+        **One open submission at a time.** If you already have one waiting,
+        this one will be closed and you are welcome to file it once the first
+        is decided. That is not a judgment about your work — it is the only
+        way one reviewer and an open door can coexist.
+
+        **There is no promised turnaround.** The queue is public, and how long
+        everything in it has waited is visible, so there is no need to ask.
+
+  - type: input
+    id: theme-name
+    attributes:
+      label: Theme name
+      placeholder: Cordwood
+    validations:
+      required: true
+
+  - type: input
+    id: author
+    attributes:
+      label: Who is the author?
+      description: A real person or a named society. This is published alongside the theme.
+      placeholder: Jane Doe, or Blackwater County Historical Society
+    validations:
+      required: true
+
+  - type: input
+    id: contact
+    attributes:
+      label: A working contact address
+      description: Used to reach you about this review, and if a badge ever has to be withdrawn.
+    validations:
+      required: true
+
+  - type: input
+    id: download
+    attributes:
+      label: Where can the .zip be downloaded?
+      description: A release link, a repository, or any stable address. Please do not paste code into this issue.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Which version is being submitted?
+      description: A review applies to the exact version it read. Later versions need re-reviewing only when the code changes.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: accepted
+    attributes:
+      label: The theme meets all of these
+      description: Every one has to be true. If you are unsure about any of them, say so in the notes below rather than ticking it — an honest question costs you nothing, and a wrong tick costs the review.
+      options:
+        - label: It is a child theme of the SocietyPress parent theme — not standalone, not a child of something else.
+          required: true
+        - label: It is licensed GPL-2.0-or-later, and says so.
+          required: true
+        - label: Its code does presentation and nothing else.
+          required: true
+        - label: Every asset it ships is inside the archive — no fonts, scripts, styles, or images fetched from another site at page load.
+          required: true
+        - label: It installs on a clean site and works, with no instructions beyond "activate it."
+          required: true
+
+  - type: checkboxes
+    id: denied
+    attributes:
+      label: The theme contains none of these
+      description: Any one of these ends the review. There is no partial pass.
+      options:
+        - label: Nothing that sends data anywhere — no analytics, no telemetry, however anonymous.
+          required: true
+        - label: Nothing that fetches code at runtime, and no updater of its own.
+          required: true
+        - label: Nothing that reads member records, payment records, user accounts, or settings unrelated to appearance.
+          required: true
+        - label: Nothing that writes outside its own settings — no creating pages, changing options, adding users, or touching another plugin's data.
+          required: true
+        - label: No obscured code — nothing minified, encoded, or otherwise unreadable to a reviewer.
+          required: true
+        - label: No advertising, credits, or branding that a society cannot remove.
+          required: true
+        - label: Nothing that alters SocietyPress's own behavior rather than its appearance.
+          required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything we should know
+      description: Optional. What the theme is for, what it looks like, anything you were unsure about, and a screenshot if you have one.

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.97
+ * Version:     1.1.98
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.97' );
+define( 'SOCIETYPRESS_VERSION', '1.1.98' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18930,6 +18930,49 @@ function sp_page_using_template( string $template ): ?WP_Post {
 }
 
 /**
+ * The menu a new page should be offered a place in.
+ *
+ * WHY a fallback to the only menu: a society that has never opened the Menus
+ *      screen often has exactly one menu and no location assigned to it. That
+ *      menu is unambiguously the one they meant, and refusing to find it would
+ *      send them to the screen this whole feature exists to keep them out of.
+ */
+function sp_primary_menu_id(): int {
+    $locations = get_nav_menu_locations();
+    $menu_id   = isset( $locations['primary'] ) ? (int) $locations['primary'] : 0;
+
+    if ( $menu_id && wp_get_nav_menu_object( $menu_id ) ) {
+        return $menu_id;
+    }
+
+    $menus = wp_get_nav_menus();
+
+    return ( is_array( $menus ) && count( $menus ) === 1 ) ? (int) $menus[0]->term_id : 0;
+}
+
+/**
+ * Is this page already an item in that menu?
+ */
+function sp_page_in_menu( int $page_id, int $menu_id ): bool {
+    if ( ! $page_id || ! $menu_id ) {
+        return false;
+    }
+
+    $items = wp_get_nav_menu_items( $menu_id );
+    if ( ! $items ) {
+        return false;
+    }
+
+    foreach ( $items as $item ) {
+        if ( $item->object === 'page' && (int) $item->object_id === $page_id ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Tell somebody standing on a module's screen that the public cannot see it yet.
  */
 add_action( 'admin_notices', function () {
@@ -18955,19 +18998,73 @@ add_action( 'admin_notices', function () {
         return;
     }
 
-    if ( isset( $_GET['sp_page_made'] ) ) {
+    // The menu has just been updated. Say where it landed and stop asking.
+    if ( isset( $_GET['sp_menu_added'] ) ) {
         $made = sp_page_using_template( $entry['template'] );
         if ( $made ) {
             printf(
                 '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
                 wp_kses_post( sprintf(
-                    /* translators: 1: the page's address, 2: link to the Menus screen */
-                    __( 'Your page is ready at <a href="%1$s">%1$s</a>. It is not in your menu yet — <a href="%2$s">add it under Website &rarr; Menus</a> so visitors can find it.', 'societypress' ),
-                    esc_url( get_permalink( $made ) ),
-                    esc_url( admin_url( 'admin.php?page=sp-menus' ) )
+                    /* translators: 1: the name of the page, 2: the page's address */
+                    __( '"%1$s" is on your website now, in your menu, at <a href="%2$s">%2$s</a>.', 'societypress' ),
+                    esc_html( $entry['title'] ),
+                    esc_url( get_permalink( $made ) )
                 ) )
             );
         }
+        return;
+    }
+
+    // The page exists but nothing links to it yet. Offer the last step rather
+    // than taking it: a society that has arranged its menu deliberately should
+    // not find things in it that it did not put there.
+    if ( isset( $_GET['sp_page_made'] ) ) {
+        $made = sp_page_using_template( $entry['template'] );
+        if ( ! $made ) {
+            return;
+        }
+
+        $menu_id = sp_primary_menu_id();
+
+        if ( ! $menu_id || sp_page_in_menu( $made->ID, $menu_id ) ) {
+            printf(
+                '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+                wp_kses_post( sprintf(
+                    /* translators: %s: the page's address */
+                    __( 'Your page is ready at <a href="%1$s">%1$s</a>.', 'societypress' ),
+                    esc_url( get_permalink( $made ) )
+                ) )
+            );
+            return;
+        }
+
+        $add = wp_nonce_url(
+            admin_url( 'admin-post.php?action=sp_add_page_to_menu&page_id=' . $made->ID . '&from=' . rawurlencode( $page ) ),
+            'sp_add_page_to_menu'
+        );
+        ?>
+        <div class="notice notice-success">
+            <p>
+                <?php
+                printf(
+                    /* translators: %s: the page's address */
+                    wp_kses_post( __( 'Your page is ready at <a href="%1$s">%1$s</a>.', 'societypress' ) ),
+                    esc_url( get_permalink( $made ) )
+                );
+                ?>
+                <strong><?php esc_html_e( 'Nothing links to it yet.', 'societypress' ); ?></strong>
+                <?php esc_html_e( 'Shall we put it in your menu so visitors can find it?', 'societypress' ); ?>
+            </p>
+            <p>
+                <a href="<?php echo esc_url( $add ); ?>" class="button button-primary">
+                    <?php esc_html_e( 'Add it to my menu', 'societypress' ); ?>
+                </a>
+                <a href="<?php echo esc_url( remove_query_arg( 'sp_page_made' ) ); ?>" class="button">
+                    <?php esc_html_e( 'No thanks', 'societypress' ); ?>
+                </a>
+            </p>
+        </div>
+        <?php
         return;
     }
 
@@ -19060,6 +19157,58 @@ add_action( 'admin_post_sp_make_public_page', function () {
         : admin_url( 'admin.php?page=' . $from );
 
     wp_safe_redirect( add_query_arg( 'sp_page_made', '1', $back ) );
+    exit;
+} );
+
+/**
+ * Put a page the volunteer just made into the menu, because they said so.
+ *
+ * WHY it is a separate action rather than part of making the page: adding to
+ *      the menu is the one step here that changes something a society may have
+ *      arranged by hand. Making a page it did not have is additive and safe;
+ *      rearranging navigation is not. So the page is made without asking and
+ *      the menu is not touched without it.
+ */
+add_action( 'admin_post_sp_add_page_to_menu', function () {
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_add_page_to_menu' );
+
+    $page_id = isset( $_GET['page_id'] ) ? (int) $_GET['page_id'] : 0;
+    $from    = sanitize_key( wp_unslash( $_GET['from'] ?? '' ) );
+
+    if ( ! $page_id || get_post_type( $page_id ) !== 'page' ) {
+        wp_die( esc_html__( 'That is not a page SocietyPress can add to a menu.', 'societypress' ) );
+    }
+
+    // Only ever a screen this feature knows about, so a stray "from" cannot be
+    // used to bounce somebody somewhere else in the admin.
+    if ( ! array_key_exists( $from, sp_screen_public_pages() ) ) {
+        $from = '';
+    }
+
+    $menu_id = sp_primary_menu_id();
+
+    if ( $menu_id && ! sp_page_in_menu( $page_id, $menu_id ) ) {
+        wp_update_nav_menu_item(
+            $menu_id,
+            0,
+            [
+                'menu-item-object-id' => $page_id,
+                'menu-item-object'    => 'page',
+                'menu-item-type'      => 'post_type',
+                'menu-item-title'     => get_the_title( $page_id ),
+                'menu-item-status'    => 'publish',
+            ]
+        );
+    }
+
+    $back = $from === 'edit.php'
+        ? admin_url( 'edit.php' )
+        : ( $from !== '' ? admin_url( 'admin.php?page=' . $from ) : admin_url() );
+
+    wp_safe_redirect( add_query_arg( 'sp_menu_added', '1', $back ) );
     exit;
 } );
 
@@ -37782,7 +37931,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.97',
+            'version'     => '1.1.98',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37790,7 +37939,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.97',
+            'version'     => '1.1.98',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37798,7 +37947,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.97',
+            'version'     => '1.1.98',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37806,7 +37955,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.97',
+            'version'     => '1.1.98',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37814,7 +37963,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.97',
+            'version'     => '1.1.98',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -116271,6 +116420,23 @@ function sp_render_theme_presets_page(): void {
                     <div class="inside">
                         <p class="sp-tp-meta-text"><?php esc_html_e( 'A public Theme Gallery where societies share their presets is in the works at getsocietypress.org. Once it launches, you\'ll be able to browse looks from other societies and one-click install them here.', 'societypress' ); ?></p>
                         <p><a href="https://getsocietypress.org/themes/" class="button" target="_blank"><?php esc_html_e( 'Open the Gallery →', 'societypress' ); ?></a></p>
+                    </div>
+                </div>
+
+                <div class="postbox">
+                    <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'Full child themes', 'societypress' ); ?></h2>
+                    <div class="inside">
+                        <p><?php esc_html_e( 'A saved look changes your colors and fonts. A full child theme can change how the whole site is built — and because it is real code running on your server, SocietyPress reads every one before it carries a badge.', 'societypress' ); ?></p>
+                        <p>
+                            <strong><?php esc_html_e( 'Reviewed by SocietyPress', 'societypress' ); ?></strong>
+                            <?php esc_html_e( 'means a person read that theme\'s code, at that version, and found nothing in it that reaches beyond making the site look a certain way. It is a statement about safety and nothing else — not that the theme is well built, suits your society, or will be maintained.', 'societypress' ); ?>
+                        </p>
+                        <p class="sp-tp-meta-text"><?php esc_html_e( 'To install one: download its .zip from the Exchange, then go to Appearance → Themes → Add New → Upload Theme. Switching back to a SocietyPress theme is always one click, and no theme in the Exchange is allowed to own anything you would lose by leaving it.', 'societypress' ); ?></p>
+                        <p>
+                            <a href="https://getsocietypress.org/themes/" class="button" target="_blank"><?php esc_html_e( 'Browse reviewed themes →', 'societypress' ); ?></a>
+                            <a href="https://getsocietypress.org/theme-review-policy/" class="button" target="_blank"><?php esc_html_e( 'What gets accepted →', 'societypress' ); ?></a>
+                            <a href="<?php echo esc_url( 'https://github.com/' . SOCIETYPRESS_GITHUB_REPO . '/issues/new?template=theme-submission.yml' ); ?>" class="button" target="_blank"><?php esc_html_e( 'Submit a theme →', 'societypress' ); ?></a>
+                        </p>
                     </div>
                 </div>
             </div>

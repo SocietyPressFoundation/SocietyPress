@@ -19,6 +19,42 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.98] — 2026-08-28
+
+### Added
+
+**The Theme Exchange opens its top shelf**
+
+Tier 1 (a saved look) and Tier 2 (a `.spchildtheme` bundle) have shipped for
+months. Tier 3 — a full WordPress child theme — is now open too, with the
+review policy that had to exist before it could be.
+
+A child theme is real code running on your server, so every one offered is read
+start to finish before it carries a **Reviewed by SocietyPress** badge. That
+badge is a statement about safety and nothing else: it does not mean the theme
+is well built, that it suits your society, or that anybody will maintain it.
+
+Anybody may submit one. You do not have to be a society, or known to us — but
+you do have to be named, because somebody has to be answerable for code that
+runs where your members' records live. The queue is public, one submission per
+author at a time, and there is no promised turnaround.
+
+SocietyPress → Theme Presets now explains all of this and links to the policy,
+the queue, and the submission form.
+
+### Changed
+
+**"Create the page" now offers to finish the job**
+
+Making a page was two clicks and then a message telling you to go to a
+different screen, find it in a list, and add it to your menu yourself. Three
+concepts and five clicks to put one word in a navigation bar, and a volunteer
+who stopped after the first two had a page nothing on the site linked to.
+
+The button now makes the page and asks whether to add it to your menu. Say yes
+and it is on the website; say no thanks and nothing is touched. Menus that were
+arranged by hand stay that way unless you say otherwise.
+
 ## [1.1.97] — 2026-08-27
 
 ### Fixed

@@ -141,6 +141,39 @@ get_header();
     </div>
 </section>
 
+<section class="tg-tier3 section">
+    <div class="container container--narrow">
+        <h2>Full child themes</h2>
+        <p>
+            Everything above is a <strong>preset</strong> &mdash; colors,
+            fonts and spacing. It cannot run code, so it needs no review, and
+            one click puts your site back.
+        </p>
+        <p>
+            A <strong>child theme</strong> is different. It is a real
+            WordPress theme, and its code runs on your server every time a
+            page loads. A good one gives a society something genuinely its
+            own. A bad one can read the member list. So every child theme
+            offered here is read, start to finish, before it carries a
+            <strong>Reviewed by SocietyPress</strong> badge.
+        </p>
+        <p>
+            That badge is a statement about safety and nothing else. It does
+            not mean the theme is well built, that it will suit your society,
+            or that anybody is obliged to maintain it.
+        </p>
+        <p>
+            Anybody may submit one &mdash; you do not have to be a society or
+            be known to us. You do have to be named, because somebody has to
+            be answerable for code that runs where your members' records live.
+        </p>
+        <div class="cmp-cta__actions">
+            <a href="<?php echo esc_url( home_url( '/theme-review-policy/' ) ); ?>" class="btn btn-primary btn-lg">Read the review policy</a>
+            <a href="https://github.com/SocietyPressFoundation/SocietyPress/issues?q=is%3Aissue+label%3Atheme-submission" class="btn btn-secondary btn-lg">See the review queue</a>
+        </div>
+    </div>
+</section>
+
 <section class="tg-cta">
     <div class="container">
         <div class="tg-cta__content">

@@ -19,6 +19,21 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### Theme Exchange — Tier 3 (full child themes)
+
+Shipped 2026-08-28. The Exchange's top tier is open. A published review
+policy states what is accepted, what is refused, and what the "Reviewed
+by SocietyPress" badge is a statement about — safety, and nothing else.
+Submissions are GitHub issues on the org against a checklist drawn from
+the policy, so the queue is public and its wait times are visible without
+anything being built to display them. Anybody may submit; the gate is a
+named, answerable author rather than a credential, with one open
+submission per author at a time and the right to decline a review without
+it counting as a rejection. Societies install a reviewed theme by
+downloading its `.zip` and uploading it through WordPress; one-click
+install from inside the plugin waits until the process has seen real
+submissions.
+
 ### ENS migration handbook — the reference half
 
 Shipped 2026-08-27. The migration guide now carries a field-by-field table
@@ -200,15 +215,6 @@ an afternoon to three minutes.
 `scripts/build-softaculous.sh` end-to-end, and submit through the
 partner program.
 **Blockers:** None.
-
-### Theme Exchange — Tier 3 (full child themes)
-
-**Motivation:** Tier 1 (design-token presets) and Tier 2 (`.spchildtheme`
-bundles) both ship. Tier 3 adds full WordPress child themes through
-curated review, with a "Reviewed by SocietyPress" badge for trust.
-**Scope:** Submission queue, review checklist, badge, and the policy
-that says what gets accepted.
-**Blockers:** A written review policy has to exist first.
 
 ### 5-minute Getting Started screencast
 

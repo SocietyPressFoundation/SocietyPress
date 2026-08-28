@@ -19,6 +19,21 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.103] — 2026-08-28
+
+### Changed
+
+**Records moved from Research to Library**
+
+A society's record collections are its holdings — filing them is the same job
+as cataloguing a book. Research is what somebody asks *of* those holdings.
+Those are two jobs, and they were behind the same door. Records and its two
+imports now sit under Library, with the imports alongside the library's own
+under one "Moving data in and out" heading rather than two.
+
+Societies that have arranged their own menu under Settings → Menu Layout keep
+the arrangement they saved.
+
 ## [1.1.101] — 2026-08-28
 
 ### Fixed

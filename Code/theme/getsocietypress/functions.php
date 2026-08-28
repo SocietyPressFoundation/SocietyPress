@@ -1312,3 +1312,214 @@ function gsp_prelaunch_cloak(): void {
     exit;
 }
 add_action( 'template_redirect', 'gsp_prelaunch_cloak', 0 );
+
+
+// ============================================================================
+// INSTALL REGISTER — the receiving end
+//
+// WHY it lives in the marketing theme rather than the plugin: this is
+//      getsocietypress.org's job, not a society's. The plugin sends; this
+//      receives, stores and shows. Keeping the two apart means a society's
+//      install carries none of the code that runs the register.
+//
+// WHY a custom table rather than a post type: these are rows, not content.
+//      They are never edited, never revised, never shown to the public, and a
+//      site that grows to a few thousand societies should not put a few
+//      thousand posts in front of anybody browsing wp-admin.
+// ============================================================================
+
+/**
+ * Table name for the register.
+ */
+function gsp_installs_table(): string {
+    global $wpdb;
+
+    return $wpdb->prefix . 'gsp_installs';
+}
+
+/**
+ * Create the table on theme activation, and on demand if it went missing.
+ */
+function gsp_create_installs_table(): void {
+    global $wpdb;
+
+    $table   = gsp_installs_table();
+    $collate = $wpdb->get_charset_collate();
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    // site_url is the identity: one row per site, updated in place, so the
+    // register answers "who is running it now" rather than accumulating a
+    // check-in log nobody reads.
+    dbDelta(
+        "CREATE TABLE {$table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            site_url VARCHAR(255) NOT NULL,
+            society VARCHAR(255) NOT NULL DEFAULT '',
+            version VARCHAR(32) NOT NULL DEFAULT '',
+            first_seen DATETIME NOT NULL,
+            last_seen DATETIME NOT NULL,
+            check_ins BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            PRIMARY KEY (id),
+            UNIQUE KEY site_url (site_url),
+            KEY version (version),
+            KEY last_seen (last_seen)
+        ) {$collate};"
+    );
+}
+add_action( 'after_switch_theme', 'gsp_create_installs_table' );
+
+/**
+ * Accept a check-in.
+ *
+ * WHY it is open rather than authenticated: there is no credential a society's
+ *      install could hold that would not also be in every copy of the plugin,
+ *      so a shared secret would prove nothing while implying it proved
+ *      something. The data is not sensitive and the endpoint only ever writes
+ *      three short strings, so the honest design is an open endpoint with
+ *      strict validation and a rate limit.
+ */
+function gsp_register_installs_route(): void {
+    register_rest_route(
+        'societypress/v1',
+        '/installs',
+        [
+            'methods'             => 'POST',
+            'callback'            => 'gsp_receive_install_report',
+            'permission_callback' => '__return_true',
+        ]
+    );
+}
+add_action( 'rest_api_init', 'gsp_register_installs_route' );
+
+/**
+ * Store one check-in.
+ */
+function gsp_receive_install_report( WP_REST_Request $request ) {
+    global $wpdb;
+
+    $url = esc_url_raw( trim( (string) $request->get_param( 'url' ) ) );
+
+    // Must be a real http(s) address with a host. Anything else is noise or
+    // somebody poking at the endpoint.
+    $parts = $url ? wp_parse_url( $url ) : [];
+    if ( empty( $parts['host'] ) || ! in_array( $parts['scheme'] ?? '', [ 'http', 'https' ], true ) ) {
+        return new WP_REST_Response( [ 'ok' => false ], 400 );
+    }
+
+    // One write per site per hour, whatever the sender does. The plugin checks
+    // in weekly; anything faster is a loop or somebody testing.
+    $throttle = 'gsp_install_seen_' . md5( $url );
+    if ( get_transient( $throttle ) ) {
+        return new WP_REST_Response( [ 'ok' => true ], 200 );
+    }
+    set_transient( $throttle, 1, HOUR_IN_SECONDS );
+
+    $society = sanitize_text_field( (string) $request->get_param( 'society' ) );
+    $version = sanitize_text_field( (string) $request->get_param( 'version' ) );
+    $now     = current_time( 'mysql' );
+
+    $wpdb->query(
+        $wpdb->prepare(
+            'INSERT INTO ' . gsp_installs_table() . ' (site_url, society, version, first_seen, last_seen, check_ins)
+             VALUES (%s, %s, %s, %s, %s, 1)
+             ON DUPLICATE KEY UPDATE society = VALUES(society), version = VALUES(version), last_seen = VALUES(last_seen), check_ins = check_ins + 1',
+            mb_substr( $url, 0, 255 ),
+            mb_substr( $society, 0, 255 ),
+            mb_substr( $version, 0, 32 ),
+            $now,
+            $now
+        )
+    );
+
+    return new WP_REST_Response( [ 'ok' => true ], 200 );
+}
+
+/**
+ * A page to read the register on.
+ */
+function gsp_add_installs_page(): void {
+    add_menu_page(
+        'SocietyPress Installs',
+        'Installs',
+        'manage_options',
+        'gsp-installs',
+        'gsp_render_installs_page',
+        'dashicons-admin-multisite',
+        3
+    );
+}
+add_action( 'admin_menu', 'gsp_add_installs_page' );
+
+/**
+ * Render the register.
+ */
+function gsp_render_installs_page(): void {
+    global $wpdb;
+
+    $table = gsp_installs_table();
+
+    // A society that has not checked in for a month is probably gone — either
+    // uninstalled, or the site is down. Worth seeing separately from the
+    // total, which would otherwise only ever go up.
+    $rows = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY last_seen DESC LIMIT 500" );
+    $live = 0;
+    $cut  = strtotime( '-30 days' );
+
+    foreach ( (array) $rows as $row ) {
+        if ( strtotime( $row->last_seen ) >= $cut ) {
+            $live++;
+        }
+    }
+
+    $versions = $wpdb->get_results( "SELECT version, COUNT(*) AS n FROM {$table} GROUP BY version ORDER BY n DESC" );
+    ?>
+    <div class="wrap">
+        <h1>SocietyPress Installs</h1>
+
+        <p>
+            <strong><?php echo (int) $live; ?></strong> checked in within the last 30 days,
+            <strong><?php echo (int) count( (array) $rows ); ?></strong> ever.
+        </p>
+
+        <?php if ( $versions ) : ?>
+            <p>
+                <?php
+                $bits = [];
+                foreach ( $versions as $v ) {
+                    $bits[] = esc_html( $v->version !== '' ? $v->version : 'unknown' ) . ' &times; ' . (int) $v->n;
+                }
+                echo wp_kses_post( implode( ' &nbsp;·&nbsp; ', $bits ) );
+                ?>
+            </p>
+        <?php endif; ?>
+
+        <table class="widefat striped">
+            <thead>
+                <tr>
+                    <th>Society</th>
+                    <th>Website</th>
+                    <th>Version</th>
+                    <th>Last seen</th>
+                    <th>Check-ins</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( ! $rows ) : ?>
+                    <tr><td colspan="5">Nothing has checked in yet.</td></tr>
+                <?php else : ?>
+                    <?php foreach ( $rows as $row ) : ?>
+                        <tr>
+                            <td><?php echo esc_html( $row->society !== '' ? $row->society : '—' ); ?></td>
+                            <td><a href="<?php echo esc_url( $row->site_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $row->site_url ); ?></a></td>
+                            <td><?php echo esc_html( $row->version ); ?></td>
+                            <td><?php echo esc_html( human_time_diff( strtotime( $row->last_seen ) ) ); ?> ago</td>
+                            <td><?php echo (int) $row->check_ins; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}

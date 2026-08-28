@@ -75,6 +75,25 @@ Any one of these ends the review. There is no partial pass.
 
 **Anything that alters SocietyPress's own behavior** rather than its appearance.
 
+## What SocietyPress itself sends
+
+A fair question, given the line above about themes: SocietyPress does phone
+home, and a theme may not.
+
+Once a week an install tells us three things — the society's name, its website
+address, and which version it is running. Nothing else, and nothing about any
+person. All three are already on the society's own public homepage. There is no
+setting to turn it off, and the Privacy screen says so in those words.
+
+We keep tabs on who is using our software. It is how we know which versions are
+still out there and how far an announcement reaches.
+
+A theme is held to a stricter rule than the plugin because the two are not in
+the same position. A society chooses SocietyPress, is told plainly what it
+sends, and can decline by not installing it. A theme is a passenger inside a
+site that has already made that decision, and it arrives from somebody the
+society has never heard of.
+
 ## What is asked for but not required
 
 These do not decide acceptance. They are said out loud because they are what separates a theme somebody uses from a theme somebody tries once.

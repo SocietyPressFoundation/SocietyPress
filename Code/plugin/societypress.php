@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.105
+ * Version:     1.1.106
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.105' );
+define( 'SOCIETYPRESS_VERSION', '1.1.106' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -4790,6 +4790,7 @@ register_deactivation_hook( __FILE__, function () {
     wp_clear_scheduled_hook( 'sp_email_log_cleanup_cron' );
     wp_clear_scheduled_hook( 'sp_ical_feed_sync_cron' );
     wp_clear_scheduled_hook( 'sp_backup_cron' );
+    wp_clear_scheduled_hook( 'sp_install_report_cron' );
 });
 
 // ============================================================================
@@ -19351,6 +19352,144 @@ add_action( 'admin_post_sp_add_page_to_menu', function () {
     wp_safe_redirect( add_query_arg( $added ? 'sp_menu_added' : 'sp_menu_failed', '1', $back ) );
     exit;
 } );
+
+
+// ============================================================================
+// INSTALL REGISTER — who is running SocietyPress
+//
+// WHY it exists: a maintainer who cannot see the install base is guessing at
+//      everything downstream — which version to keep supporting, whether a
+//      release broke anybody, how many societies an announcement reaches, and
+//      whether the project is growing or quietly dying. Three facts answer all
+//      of that: what the society is called, where its site is, and what it is
+//      running.
+//
+// WHY nothing more than three: every extra field is a thing to justify later
+//      and a reason for somebody to distrust the whole product. Member counts,
+//      module usage and PHP versions have all been considered and left out.
+//      Nothing here describes a person, and nothing here is not already on the
+//      society's own public homepage.
+//
+// WHY it is disclosed rather than quiet: this is GPL and the function is right
+//      there in the source. Something found is worse than something told, and
+//      Settings → Privacy shows a society exactly what was sent and when.
+// ============================================================================
+
+/**
+ * Where check-ins go.
+ */
+const SP_INSTALL_REGISTER_ENDPOINT = 'https://getsocietypress.org/wp-json/societypress/v1/installs';
+
+/**
+ * The three facts, and nothing else.
+ *
+ * @return array<string,string>
+ */
+function sp_install_report_payload(): array {
+    $name = trim( (string) ( sp_settings()['organization_name'] ?? '' ) );
+
+    return [
+        'society' => $name !== '' ? $name : (string) get_bloginfo( 'name' ),
+        'url'     => (string) home_url(),
+        'version' => SOCIETYPRESS_VERSION,
+    ];
+}
+
+/**
+ * Send the check-in, and remember what went and when.
+ *
+ * WHY failures are swallowed: this is housekeeping for us, not work for the
+ *      society. A marketing site that is down must never surface an error on
+ *      somebody's dashboard about a thing they did not ask for.
+ */
+function sp_send_install_report(): void {
+    $payload = sp_install_report_payload();
+
+    $response = wp_remote_post(
+        SP_INSTALL_REGISTER_ENDPOINT,
+        [
+            'timeout'  => 10,
+            'blocking' => true,
+            'headers'  => [ 'Content-Type' => 'application/json' ],
+            'body'     => wp_json_encode( $payload ),
+        ]
+    );
+
+    update_option(
+        'sp_install_report_last',
+        [
+            'sent'    => time(),
+            'payload' => $payload,
+            'ok'      => ! is_wp_error( $response ) && (int) wp_remote_retrieve_response_code( $response ) < 300,
+        ],
+        false
+    );
+}
+add_action( 'sp_install_report_cron', 'sp_send_install_report' );
+
+/**
+ * Weekly is often enough to keep a version number current and rare enough that
+ * nobody's host notices.
+ */
+function sp_schedule_install_report(): void {
+    if ( ! wp_next_scheduled( 'sp_install_report_cron' ) ) {
+        wp_schedule_event( time() + HOUR_IN_SECONDS, 'weekly', 'sp_install_report_cron' );
+    }
+}
+add_action( 'init', 'sp_schedule_install_report' );
+
+/**
+ * WordPress ships daily and twicedaily but not weekly.
+ *
+ * @param array<string,array{interval:int,display:string}> $schedules
+ * @return array<string,array{interval:int,display:string}>
+ */
+function sp_add_weekly_schedule( array $schedules ): array {
+    if ( ! isset( $schedules['weekly'] ) ) {
+        $schedules['weekly'] = [
+            'interval' => WEEK_IN_SECONDS,
+            'display'  => __( 'Once Weekly', 'societypress' ),
+        ];
+    }
+
+    return $schedules;
+}
+add_filter( 'cron_schedules', 'sp_add_weekly_schedule' );
+
+/**
+ * Say plainly, on the Privacy screen, what leaves this site.
+ */
+function sp_render_install_report_disclosure(): void {
+    $payload = sp_install_report_payload();
+    $last    = get_option( 'sp_install_report_last' );
+    ?>
+    <div class="postbox">
+        <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'What SocietyPress tells its maintainers', 'societypress' ); ?></h2>
+        <div class="inside">
+            <p><?php esc_html_e( 'We keep tabs on who is using our software. Once a week this site sends three things, and nothing else:', 'societypress' ); ?></p>
+            <ul>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your society:', 'societypress' ), esc_html( $payload['society'] ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your website:', 'societypress' ), esc_html( $payload['url'] ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your version:', 'societypress' ), esc_html( $payload['version'] ) ); ?></li>
+            </ul>
+            <p><?php esc_html_e( 'No member records. No email addresses. No donations, payments, or anything about any individual person. All three of the above are already on your own public homepage.', 'societypress' ); ?></p>
+            <p><?php esc_html_e( 'It is how we know which versions are still out there, so one is not retired while societies are still running it, and how many societies an announcement actually reaches.', 'societypress' ); ?></p>
+            <p><?php esc_html_e( 'There is no setting to turn this off. If that is not something your society is comfortable with, SocietyPress is not the software for you.', 'societypress' ); ?></p>
+            <?php if ( is_array( $last ) && ! empty( $last['sent'] ) ) : ?>
+                <p class="description">
+                    <?php
+                    printf(
+                        /* translators: %s: how long ago the last check-in was sent, e.g. "2 days" */
+                        esc_html__( 'Last sent %s ago.', 'societypress' ),
+                        esc_html( human_time_diff( (int) $last['sent'] ) )
+                    );
+                    ?>
+                </p>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php
+}
 
 
 // ============================================================================
@@ -37607,6 +37746,12 @@ function sp_render_settings_privacy_page(): void {
             submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
+
+        <?php
+        // Outside the form deliberately: there is nothing here to change, and a
+        // Save button under it would suggest otherwise.
+        sp_render_install_report_disclosure();
+        ?>
     </div>
     <?php
 }
@@ -38071,7 +38216,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.105',
+            'version'     => '1.1.106',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38079,7 +38224,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.105',
+            'version'     => '1.1.106',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38087,7 +38232,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.105',
+            'version'     => '1.1.106',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38095,7 +38240,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.105',
+            'version'     => '1.1.106',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38103,7 +38248,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.105',
+            'version'     => '1.1.106',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

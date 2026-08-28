@@ -36,6 +36,25 @@ they can be changed.
 Tonight's work added 58 strings that no translator could reach. Plugin now
 5,770 strings; the parent theme is unchanged at 224.
 
+## [1.1.106] — 2026-08-28
+
+### Added
+
+**SocietyPress tells its maintainers it is running**
+
+Once a week an install sends three things: the society's name, its website
+address, and the version it is running. Nothing else — no member records, no
+email addresses, no donations or payments, and nothing about any individual
+person. All three are already on the society's own public homepage.
+
+It is how we know which versions are still out there, so one is not retired
+while societies are still running it, and how far an announcement reaches.
+
+Settings → Privacy shows exactly what was sent and when. There is no setting
+to turn it off, and that screen says so plainly. The theme review policy now
+carries the same disclosure, and says why a submitted theme is held to a
+stricter rule than the plugin itself.
+
 ## [1.1.101] — 2026-08-28
 
 ### Fixed

@@ -139,6 +139,35 @@ get_header();
             <li><strong>Anything that alters SocietyPress's own behavior</strong> rather than its appearance.</li>
         </ul>
 
+        <h2>What SocietyPress itself sends</h2>
+
+        <p>
+            A fair question, given the line above about themes: SocietyPress
+            does phone home, and a theme may not.
+        </p>
+
+        <p>
+            Once a week an install tells us three things &mdash; the society's
+            name, its website address, and which version it is running. Nothing
+            else, and nothing about any person. All three are already on the
+            society's own public homepage. There is no setting to turn it off,
+            and the Privacy screen says so in those words.
+        </p>
+
+        <p>
+            We keep tabs on who is using our software. It is how we know which
+            versions are still out there and how far an announcement reaches.
+        </p>
+
+        <p>
+            A theme is held to a stricter rule than the plugin because the two
+            are not in the same position. A society chooses SocietyPress, is
+            told plainly what it sends, and can decline by not installing it. A
+            theme is a passenger inside a site that has already made that
+            decision, and it arrives from somebody the society has never heard
+            of.
+        </p>
+
         <h2>What is asked for but not required</h2>
 
         <p>

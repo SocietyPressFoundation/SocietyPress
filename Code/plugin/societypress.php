@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.1.100
+ * Version:     1.1.101
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.1.100' );
+define( 'SOCIETYPRESS_VERSION', '1.1.101' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18918,10 +18918,16 @@ function sp_page_using_template( string $template ): ?WP_Post {
         return null;
     }
 
+    // Oldest first, deliberately: if a site has somehow ended up with two
+    // pages on one template, the one it has had longest is the one its
+    // visitors and links already know about. Date-descending would hand back
+    // whichever was made most recently, which is the wrong one to adopt.
     $found = get_posts( [
         'post_type'   => 'page',
         'post_status' => [ 'publish', 'draft', 'private' ],
         'numberposts' => 1,
+        'orderby'     => 'ID',
+        'order'       => 'ASC',
         'meta_key'    => '_wp_page_template',
         'meta_value'  => $template,
     ] );
@@ -18948,6 +18954,52 @@ function sp_primary_menu_id(): int {
     $menus = wp_get_nav_menus();
 
     return ( is_array( $menus ) && count( $menus ) === 1 ) ? (int) $menus[0]->term_id : 0;
+}
+
+/**
+ * What that menu is called, for saying so out loud.
+ *
+ * WHY the name rather than a position: the fallback above can return a menu
+ *      assigned to the footer, or to a child theme's own location, or to no
+ *      location at all. Telling somebody their page will appear "at the top of
+ *      your website" would then be a confident lie. Its name is true wherever
+ *      it sits, and still tells a volunteer this is their website's menu
+ *      rather than the list down the side of the admin screen.
+ */
+function sp_menu_display_name( int $menu_id ): string {
+    $menu = $menu_id ? wp_get_nav_menu_object( $menu_id ) : null;
+
+    return $menu ? $menu->name : '';
+}
+
+/**
+ * Put a page in a menu, once, and say whether it worked.
+ *
+ * WHY shared: sp_menus_handle_add() builds the identical item, and two copies
+ *      of a rule like this drift — the copy that drifts is always the one
+ *      nobody is looking at.
+ */
+function sp_menu_add_page_item( int $menu_id, int $page_id ): bool {
+    if ( ! $menu_id || ! $page_id ) {
+        return false;
+    }
+
+    // Deliberately no duplicate check here: WordPress lets the same page sit
+    // in a menu twice, and on the Menus screen a volunteer asking for that a
+    // second time means it. Callers that must not duplicate check first.
+    $item_id = wp_update_nav_menu_item(
+        $menu_id,
+        0,
+        [
+            'menu-item-object-id' => $page_id,
+            'menu-item-object'    => 'page',
+            'menu-item-type'      => 'post_type',
+            'menu-item-title'     => get_the_title( $page_id ),
+            'menu-item-status'    => 'publish',
+        ]
+    );
+
+    return ! is_wp_error( $item_id ) && (bool) $item_id;
 }
 
 /**
@@ -19012,6 +19064,20 @@ add_action( 'admin_notices', function () {
         return;
     }
 
+    // The menu item did not save. Say so plainly and give the manual route,
+    // rather than leaving somebody to discover it by looking at the website.
+    if ( isset( $_GET['sp_menu_failed'] ) ) {
+        printf(
+            '<div class="notice notice-error is-dismissible"><p>%s</p></div>',
+            wp_kses_post( sprintf(
+                /* translators: %s: link to the Menus screen */
+                __( 'Your page is published, but it could not be added to your menu automatically. You can <a href="%s">add it under Website &rarr; Menus</a>.', 'societypress' ),
+                esc_url( admin_url( 'admin.php?page=sp-menus' ) )
+            ) )
+        );
+        return;
+    }
+
     // The menu has just been updated. Say where it landed and stop asking.
     if ( isset( $_GET['sp_menu_added'] ) ) {
         $made = sp_page_using_template( $entry['template'] );
@@ -19020,7 +19086,7 @@ add_action( 'admin_notices', function () {
                 '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
                 wp_kses_post( sprintf(
                     /* translators: 1: the name of the page, 2: the page's address */
-                    __( '"%1$s" is on your website now, in your navigation, at <a href="%2$s">%2$s</a>.', 'societypress' ),
+                    __( '"%1$s" is on your website now, in your menu, at <a href="%2$s">%2$s</a>.', 'societypress' ),
                     // The page's own name, not the label on this screen: an
                     // adopted page keeps whatever the society already called it.
                     esc_html( get_the_title( $made->ID ) ),
@@ -19062,7 +19128,7 @@ add_action( 'admin_notices', function () {
             printf(
                 '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
                 wp_kses_post( sprintf(
-                    /* translators: %s: the page's address */
+                    /* translators: 1: the page's address, used twice */
                     __( 'Your page is ready at <a href="%1$s">%1$s</a>.', 'societypress' ),
                     esc_url( get_permalink( $made ) )
                 ) )
@@ -19078,18 +19144,26 @@ add_action( 'admin_notices', function () {
         <div class="notice notice-warning">
             <p>
                 <?php
-                printf(
-                    /* translators: %s: the page's address */
-                    wp_kses_post( __( 'Your page is ready at <a href="%1$s">%1$s</a>.', 'societypress' ) ),
-                    esc_url( get_permalink( $made ) )
+                echo wp_kses_post(
+                    sprintf(
+                        /* translators: 1: the page's address, used twice */
+                        __( 'Your page is ready at <a href="%1$s">%1$s</a>.', 'societypress' ),
+                        esc_url( get_permalink( $made ) )
+                    )
                 );
                 ?>
                 <strong><?php esc_html_e( 'Nothing links to it yet.', 'societypress' ); ?></strong>
-                <?php esc_html_e( 'Shall we add it to the navigation bar at the top of your website, so visitors can find it?', 'societypress' ); ?>
+                <?php
+                printf(
+                    /* translators: %s: the name of the site's menu, e.g. "Primary Menu" */
+                    esc_html__( 'Shall we add it to your website\'s menu, %s, so visitors can find it?', 'societypress' ),
+                    '"' . esc_html( sp_menu_display_name( $menu_id ) ) . '"'
+                );
+                ?>
             </p>
             <p>
                 <a href="<?php echo esc_url( $add ); ?>" class="button button-primary">
-                    <?php esc_html_e( 'Yes, add it to my navigation', 'societypress' ); ?>
+                    <?php esc_html_e( 'Yes, add it to my menu', 'societypress' ); ?>
                 </a>
                 <a href="<?php echo esc_url( add_query_arg( 'sp_menu_declined', '1', remove_query_arg( 'sp_page_made' ) ) ); ?>" class="button">
                     <?php esc_html_e( 'Not right now', 'societypress' ); ?>
@@ -19100,7 +19174,24 @@ add_action( 'admin_notices', function () {
         return;
     }
 
-    if ( sp_page_using_template( $entry['template'] ) ) {
+    $existing = sp_page_using_template( $entry['template'] );
+
+    if ( $existing && $existing->post_status === 'publish' ) {
+        return;
+    }
+
+    // A page exists but is a draft or private, so the public still cannot see
+    // it. Staying silent here would be the same failure in a different costume.
+    if ( $existing ) {
+        printf(
+            '<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+            wp_kses_post( sprintf(
+                /* translators: 1: the name the page will be given, 2: link to edit the page */
+                __( 'Your %1$s page exists but is not published, so visitors still cannot see it. <a href="%2$s">Open it and publish it</a>.', 'societypress' ),
+                esc_html( $entry['title'] ),
+                esc_url( get_edit_post_link( $existing->ID ) ?: admin_url( 'edit.php?post_type=page' ) )
+            ) )
+        );
         return;
     }
 
@@ -19167,10 +19258,12 @@ add_action( 'admin_post_sp_make_public_page', function () {
         // left it empty. Adopt it rather than making a second one beside it.
         $by_name = get_page_by_path( sanitize_title( $entry['title'] ) );
         if ( $by_name instanceof WP_Post ) {
+            // Adopt the page, but never publish it on somebody's behalf. A
+            // draft at this slug may be another volunteer's unfinished work,
+            // or a page an admin is deliberately holding back, and the button
+            // that got us here says "Create" rather than "Publish that". The
+            // notice on the way back says it is waiting and links to it.
             update_post_meta( $by_name->ID, '_wp_page_template', $template );
-            if ( $by_name->post_status !== 'publish' ) {
-                wp_update_post( [ 'ID' => $by_name->ID, 'post_status' => 'publish' ] );
-            }
         } else {
             $new_id = wp_insert_post( [
                 'post_title'   => $entry['title'],
@@ -19184,9 +19277,16 @@ add_action( 'admin_post_sp_make_public_page', function () {
         }
     }
 
+    // Only ever a screen this feature knows about. sanitize_key() already
+    // makes an off-site target structurally impossible, but the sibling
+    // handler promises this guarantee in a comment and both should keep it.
+    if ( ! array_key_exists( $from, sp_screen_public_pages() ) ) {
+        $from = '';
+    }
+
     $back = $from === 'edit.php'
         ? admin_url( 'edit.php' )
-        : admin_url( 'admin.php?page=' . $from );
+        : ( $from !== '' ? admin_url( 'admin.php?page=' . $from ) : admin_url() );
 
     wp_safe_redirect( add_query_arg( 'sp_page_made', '1', $back ) );
     exit;
@@ -19210,37 +19310,46 @@ add_action( 'admin_post_sp_add_page_to_menu', function () {
     $page_id = isset( $_GET['page_id'] ) ? (int) $_GET['page_id'] : 0;
     $from    = sanitize_key( wp_unslash( $_GET['from'] ?? '' ) );
 
-    if ( ! $page_id || get_post_type( $page_id ) !== 'page' ) {
+    // Only ever a screen this feature knows about, so a stray "from" cannot be
+    // used to bounce somebody somewhere else in the admin.
+    $known = sp_screen_public_pages();
+    if ( ! array_key_exists( $from, $known ) ) {
+        $from = '';
+    }
+
+    // The page this flow is actually about, derived from the screen rather
+    // than taken on trust. The link only ever offers the page that belongs to
+    // the screen it was rendered on, so anything else arriving here is not a
+    // request this handler was built to serve.
+    $expected = $from !== '' && ! empty( $known[ $from ]['template'] )
+        ? sp_page_using_template( $known[ $from ]['template'] )
+        : null;
+
+    if ( ! $expected || $page_id !== $expected->ID ) {
         wp_die( esc_html__( 'That is not a page SocietyPress can add to a menu.', 'societypress' ) );
     }
 
-    // Only ever a screen this feature knows about, so a stray "from" cannot be
-    // used to bounce somebody somewhere else in the admin.
-    if ( ! array_key_exists( $from, sp_screen_public_pages() ) ) {
-        $from = '';
+    // A page nobody can reach is not worth a place in the navigation, and its
+    // title would be shown to the public either way.
+    if ( get_post_status( $page_id ) !== 'publish' ) {
+        wp_die( esc_html__( 'That page is not published yet, so there is nothing for visitors to find. Publish it first.', 'societypress' ) );
     }
 
     $menu_id = sp_primary_menu_id();
 
-    if ( $menu_id && ! sp_page_in_menu( $page_id, $menu_id ) ) {
-        wp_update_nav_menu_item(
-            $menu_id,
-            0,
-            [
-                'menu-item-object-id' => $page_id,
-                'menu-item-object'    => 'page',
-                'menu-item-type'      => 'post_type',
-                'menu-item-title'     => get_the_title( $page_id ),
-                'menu-item-status'    => 'publish',
-            ]
-        );
-    }
+    // Already there — a second click, or a reloaded redirect. Report the
+    // state, do not add it twice.
+    $added = sp_page_in_menu( $page_id, $menu_id )
+        ? true
+        : sp_menu_add_page_item( $menu_id, $page_id );
 
     $back = $from === 'edit.php'
         ? admin_url( 'edit.php' )
         : ( $from !== '' ? admin_url( 'admin.php?page=' . $from ) : admin_url() );
 
-    wp_safe_redirect( add_query_arg( 'sp_menu_added', '1', $back ) );
+    // Never announce a menu item that did not land. Saying so and doing
+    // nothing is worse than the problem this whole flow exists to solve.
+    wp_safe_redirect( add_query_arg( $added ? 'sp_menu_added' : 'sp_menu_failed', '1', $back ) );
     exit;
 } );
 
@@ -37963,7 +38072,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.1.100',
+            'version'     => '1.1.101',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -37971,7 +38080,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.1.100',
+            'version'     => '1.1.101',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -37979,7 +38088,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.1.100',
+            'version'     => '1.1.101',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -37987,7 +38096,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.1.100',
+            'version'     => '1.1.101',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -37995,7 +38104,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.1.100',
+            'version'     => '1.1.101',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -116494,8 +116603,6 @@ function sp_render_theme_presets_page(): void {
                         </p>
                     </div>
                 </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -124708,19 +124815,9 @@ function sp_menus_handle_add( int $menu_id ): string {
         return __( 'Choose a page from the list, or type a name for a new one.', 'societypress' );
     }
 
-    $item_id = wp_update_nav_menu_item(
-        $menu_id,
-        0,
-        [
-            'menu-item-object-id' => $page_id,
-            'menu-item-object'    => 'page',
-            'menu-item-type'      => 'post_type',
-            'menu-item-title'     => get_the_title( $page_id ),
-            'menu-item-status'    => 'publish',
-        ]
-    );
+    $added = sp_menu_add_page_item( $menu_id, (int) $page_id );
 
-    if ( is_wp_error( $item_id ) || ! $item_id ) {
+    if ( ! $added ) {
         return __( 'That page could not be added to the menu. Please try again.', 'societypress' );
     }
 

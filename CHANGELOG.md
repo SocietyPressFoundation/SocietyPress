@@ -19,6 +19,56 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.101] — 2026-08-28
+
+### Fixed
+
+**The Theme Presets screen broke everything below it**
+
+Two stray closing tags left over from rearranging the boxes earlier today
+closed the page's own frame too early, and then closed two pieces of
+WordPress's admin furniture that were none of their business. Anything below
+Theme Presets on that screen rendered wrong.
+
+**"Create the page" no longer publishes a draft somebody was still working on**
+
+If a page already existed at the address SocietyPress was about to use, it was
+adopted rather than duplicated — which was right — and then published, which
+was not. That draft may have been another volunteer's unfinished work, or a
+page held back deliberately. It is now adopted and left alone, and the message
+afterwards says it is waiting and links straight to it.
+
+**A page waiting as a draft used to make the whole offer disappear**
+
+The reminder that nothing on the website shows a module yet went quiet as soon
+as any page claimed the layout, published or not. A society with an unfinished
+page therefore got no page and no reminder, while the public still saw
+nothing. It now says the page exists but is not published, and links to it.
+
+**Saying a page was added to the menu when it had not been**
+
+The result of adding the menu item was thrown away and success was reported
+regardless. It is now checked, and a failure says so and points to Website →
+Menus.
+
+**Claiming a page would appear at the top of the site**
+
+SocietyPress falls back to a society's only menu when nothing is set as the
+main one, and that menu may sit in the footer, or in a place a child theme
+invented. Rather than promise a position it cannot know, it now names the menu
+it means.
+
+### Changed
+
+**Adding a page to a menu is bound to the screen that offered it**
+
+The button carried the page's own number, which was taken on trust. It now
+works out which page the screen is about and accepts only that one, and
+refuses a page that is not published rather than putting its title in front of
+visitors who cannot open it. Neither was reachable by anyone who could not
+already do the same thing from Website → Pages, so nothing was exposed — the
+handler simply now refuses what it was never meant to accept.
+
 ## [1.1.100] — 2026-08-28
 
 ### Fixed

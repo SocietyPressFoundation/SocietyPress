@@ -14,6 +14,8 @@ A saved look plus a stylesheet and image files, in a `.sp childtheme` archive. S
 
 **Tier 3 — a child theme.** A full WordPress theme. This document is about Tier 3 and only Tier 3.
 
+All three tiers are open from the day the Exchange is. Tier 3's queue may be slow, and how slow is visible to everybody — but it is not closed, and was not held back until the rest had proved itself.
+
 ---
 
 ## Why Tier 3 is different

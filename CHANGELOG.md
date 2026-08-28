@@ -19,6 +19,23 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.105] — 2026-08-28
+
+### Fixed
+
+**A sentence that could not be translated properly**
+
+The menu name in "Shall we add it to your website's menu, X?" was wrapped in
+straight quotation marks added outside the translatable sentence, so a
+translator had no way to use the marks their own language uses — guillemets in
+French, low quotes in German. The marks are now part of the sentence, where
+they can be changed.
+
+**Translation templates rebuilt**
+
+Tonight's work added 58 strings that no translator could reach. Plugin now
+5,770 strings; the parent theme is unchanged at 224.
+
 ## [1.1.101] — 2026-08-28
 
 ### Fixed

@@ -1,56 +1,92 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!--
-    SocietyPress — Softaculous Install Configuration
+<softinstall xmlns="http://www.softaculous.com">
 
-    WHY: Defines the form fields Softaculous shows during installation and
-    tells it we need a MySQL database. Softaculous handles DB creation,
-    file extraction, and domain/path setup — we handle WordPress + SP config
-    in install.php.
--->
-<install>
-    <softinstall>
+	<!--
+		SocietyPress — Softaculous Install Form
 
-        <!-- Softaculous creates the database automatically when this is present -->
-        <db>mysql</db>
+		WHY this file looks the way it does: the grammar is Softaculous's, not
+		ours. <softinstall> is the root element (there is no outer <install>
+		wrapper), groups are wrapped in <settings>, a group's heading is a child
+		element rather than an attribute, and an input's name and default value
+		are attributes rather than child elements. Language strings are
+		interpolated with {{key}}, not [[key]]. An earlier revision of this file
+		got every one of those wrong, which would have produced an empty
+		installation form. The reference is /var/softaculous/wp/install.xml.
 
-        <!-- Admin Account -->
-        <group heading="[[admin_heading]]" desc="[[admin_desc]]">
-            <input type="text">
-                <head>[[admin_username]]</head>
-                <name>admin_username</name>
-                <default>admin</default>
-            </input>
-            <input type="password">
-                <head>[[admin_pass]]</head>
-                <name>admin_pass</name>
-                <default></default>
-            </input>
-            <input type="text" softmail="true">
-                <head>[[admin_email]]</head>
-                <name>admin_email</name>
-                <default></default>
-            </input>
-        </group>
+		Field ordering follows the volunteer's mental model rather than the
+		software's: what the site is called, who runs it, then the technical
+		knobs they should not have to touch.
+	-->
 
-        <!-- Society Information -->
-        <group heading="[[org_heading]]" desc="[[org_desc]]">
-            <input type="text">
-                <head>[[site_name]]</head>
-                <name>site_name</name>
-                <default>My Genealogical Society</default>
-            </input>
-            <input type="text">
-                <head>[[org_name]]</head>
-                <name>org_name</name>
-                <default></default>
-            </input>
-            <input type="text" softmail="true">
-                <head>[[org_email]]</head>
-                <name>org_email</name>
-                <default></default>
-                <optional>true</optional>
-            </input>
-        </group>
+	<settings>
 
-    </softinstall>
-</install>
+		<group>
+			<heading>{{site_set}}</heading>
+			<input type="text" name="site_name" size="30" value="My Genealogical Society">
+				<head>{{site_name}}</head>
+				<exp>{{exp_site_name}}</exp>
+			</input>
+			<input type="text" name="site_desc" size="30" value="">
+				<head>{{site_desc}}</head>
+				<exp>{{exp_site_desc}}</exp>
+				<optional>true</optional>
+			</input>
+		</group>
+
+		<group>
+			<heading>{{org_set}}</heading>
+			<input type="text" name="org_name" size="30" value="">
+				<head>{{org_name}}</head>
+				<exp>{{exp_org_name}}</exp>
+				<optional>true</optional>
+			</input>
+			<input type="text" name="org_email" size="30" value="" softmail="true">
+				<head>{{org_email}}</head>
+				<exp>{{exp_org_email}}</exp>
+				<optional>true</optional>
+			</input>
+		</group>
+
+		<group>
+			<heading>{{ad_act}}</heading>
+			<input type="text" name="admin_username" size="30" value="admin" save="true">
+				<head>{{ad_name}}</head>
+			</input>
+			<input type="text" name="admin_pass" size="30" value="">
+				<head>{{ad_pass}}</head>
+			</input>
+			<input type="text" name="admin_email" size="30" value="" softmail="true" save="true">
+				<head>{{ad_email}}</head>
+				<exp>{{exp_ad_email}}</exp>
+			</input>
+		</group>
+
+		<group>
+			<heading>{{db_set}}</heading>
+			<input type="text" name="dbprefix" size="30" value="wp_">
+				<head>{{db_pre}}</head>
+				<exp>{{exp_db_pre}}</exp>
+				<optional>true</optional>
+			</input>
+		</group>
+
+		<group>
+			<heading>{{ext_settings}}</heading>
+			<!--
+				Exposed as an unchecked box rather than hardcoded. A previous
+				revision forced blog_public to 0 during install, so every society
+				launched invisible to search engines with no indication why — and
+				the setting that fixes it lives three menus deep in WordPress,
+				where a volunteer will never find it. Societies exist to be found.
+			-->
+			<input type="checkbox" name="no_search_engine" value="off">
+				<head>{{no_search_engine}}</head>
+				<exp>{{exp_no_search_engine}}</exp>
+			</input>
+		</group>
+
+	</settings>
+
+	<!-- Softaculous creates and provisions the database when this is present. -->
+	<db>mysql</db>
+
+</softinstall>

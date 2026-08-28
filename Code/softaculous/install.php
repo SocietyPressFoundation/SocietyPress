@@ -15,8 +15,10 @@
  * - $__settings['softdbuser']  — database username
  * - $__settings['softdbpass']  — database password
  * - $__settings['softdbhost']  — database hostname
+ * - $__settings['dbprefix']    — table prefix chosen on the install form
  * - Custom form fields: admin_username, admin_pass, admin_email,
- *                        site_name, org_name, org_email
+ *                        site_name, site_desc, org_name, org_email,
+ *                        no_search_engine
  *
  * @package SocietyPress
  */
@@ -40,8 +42,12 @@ function __install() {
     $admin_pass  = $__settings['admin_pass'] ?? '';
     $admin_email = $__settings['admin_email'] ?? '';
     $site_name   = $__settings['site_name'] ?? 'My Genealogical Society';
+    $site_desc   = $__settings['site_desc'] ?? '';
     $org_name    = $__settings['org_name'] ?? '';
     $org_email   = $__settings['org_email'] ?? '';
+
+    // Softaculous passes checkboxes through as the literal string 'on'/'off'.
+    $no_search   = ( ( $__settings['no_search_engine'] ?? 'off' ) === 'on' );
 
     // Validate required fields
     if ( empty( $admin_pass ) ) {
@@ -82,7 +88,18 @@ function __install() {
         }
     }
 
-    $table_prefix = 'wp_';
+    // WHY not a hardcoded 'wp_': the install form offers a Table Prefix field
+    // (install.xml), and Softaculous hands the answer back here. Ignoring it
+    // meant two SocietyPress sites could never share one database, and it threw
+    // away the small hardening a non-default prefix buys. Fall back to 'wp_'
+    // only if the field came through empty.
+    $table_prefix = $__settings['dbprefix'] ?? 'wp_';
+    // A prefix is interpolated into SQL identifiers, so restrict it to the
+    // characters MySQL accepts in an unquoted table name.
+    $table_prefix = preg_replace( '/[^A-Za-z0-9_]/', '', (string) $table_prefix );
+    if ( '' === $table_prefix ) {
+        $table_prefix = 'wp_';
+    }
 
     // Escape credentials for safe interpolation into single-quoted PHP string
     // literals — Softaculous-generated passwords routinely contain quotes and
@@ -125,7 +142,7 @@ function __install() {
     $_POST['admin_password']  = $admin_pass;
     $_POST['admin_password2'] = $admin_pass;
     $_POST['admin_email']     = $admin_email;
-    $_POST['blog_public']     = 1;
+    $_POST['blog_public']     = $no_search ? 0 : 1;
 
     // Load WP minimal environment
     require_once $path . '/wp-load.php';
@@ -139,6 +156,11 @@ function __install() {
         $error[] = 'WordPress installation failed. Please check your database settings and try again.';
         return false;
     }
+
+    // WHY set separately: wp_install() takes the title but has no parameter
+    // for the tagline, and leaving it unset ships WordPress's "Just another
+    // WordPress site" placeholder on a society's front page.
+    update_option( 'blogdescription', $site_desc );
 
     // Set the site URL (Softaculous knows the correct URL)
     update_option( 'siteurl', rtrim( $url, '/' ) );
@@ -223,8 +245,12 @@ function __install() {
     // time zone and beyond; the admin sets the correct zone in Settings.
     update_option( 'timezone_string', 'UTC' );
 
-    // Discourage search engines during setup (admin can change later)
-    update_option( 'blog_public', 0 );
+    // WHY this follows the form rather than forcing 0: a society exists to be
+    // found. Hardcoding 0 launched every install invisible to search engines,
+    // and the switch that undoes it is buried in Settings -> Reading where a
+    // volunteer will never think to look. The install form now asks, and
+    // defaults to visible.
+    update_option( 'blog_public', $no_search ? 0 : 1 );
 
     return true;
 }

@@ -20,6 +20,48 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.1] — 2026-08-28
+
+Repairs the Softaculous package, which had drifted far enough from both the
+product and Softaculous's actual file format that a one-click install would
+have produced a half-working site.
+
+**The install bundle was missing the plugin's assets.** The builder copied
+`societypress.php` and the translations but not `assets/`, so every Softaculous
+install would have shipped without the PWA icons and favicons and without the
+CSS and JS behind the gallery viewer, the events pages, the editor table, the
+searchable select and the leadership search. The builder now copies them, and
+refuses to build at all if they are absent rather than quietly producing a
+broken bundle.
+
+**The package files were written against a schema that does not exist.**
+Softaculous ignores tags it does not recognise without reporting anything, so
+the catalog entry would have appeared with no description, no version and no
+PHP requirement, and the installation form would have been empty. The metadata,
+install form and upgrade form have been rewritten against the shipped
+WordPress package, and the file index rewritten in the plain-text format
+Softaculous actually reads.
+
+**Installs no longer hide themselves from search engines.** The installer
+forced the "discourage search engines" setting on for every new site, and the
+switch that undoes it is buried three menus deep where a volunteer will never
+find it. A society exists to be found, so the install form now asks, and
+defaults to visible.
+
+**The database table prefix is honoured.** It was hardcoded to `wp_`, which
+meant two SocietyPress sites could never share one database. The install form
+now offers the prefix and the installer uses it.
+
+**Smaller things.** The install form gained a site tagline field, so a new site
+no longer launches carrying WordPress's "Just another WordPress site"
+placeholder. Child themes are no longer excluded from upgrades — they ship as
+part of one versioned set, and holding them back was what made the Theme
+Gallery offer an update that installed and then reappeared forever. The
+declared install footprint is now measured from a real build rather than
+guessed, and the builder warns when it falls behind.
+
+---
+
 ## [1.5.0] — 2026-08-28
 
 The first release SocietyPress considers finished.

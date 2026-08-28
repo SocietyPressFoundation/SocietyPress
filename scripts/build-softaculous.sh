@@ -37,9 +37,25 @@ fi
 echo "Plugin version: $PLUGIN_VER"
 # In-place rewrite of the single <ver>...</ver> line. macOS and Linux sed
 # disagree on -i, so a tempfile + mv keeps the script portable.
-sed -E "s|<ver>[^<]*</ver>|<ver>${PLUGIN_VER}</ver>|" "$INFO_XML" > "$INFO_XML.tmp" \
-    && mv "$INFO_XML.tmp" "$INFO_XML"
-echo "Updated $(basename "$INFO_XML") <ver> to $PLUGIN_VER"
+# The tag is <version>, not <ver> — an earlier revision of info.xml used a tag
+# name Softaculous does not recognise, so this rewrite silently matched nothing.
+# info.xml follows the reference package's style of putting a tag's value on
+# its own line, so the match has to span newlines — sed works a line at a time
+# and would silently rewrite nothing.
+# The ^\t* anchor is load-bearing. Without it the match can start at a tag
+# name mentioned inside a comment and run to the real closing tag, deleting
+# everything between — which is precisely what happened once. Elements in
+# info.xml therefore must each begin on their own line.
+PLUGIN_VER="$PLUGIN_VER" perl -0777 -i -pe \
+    's|^(\t*)<version>.*?</version>|"$1<version>\n$1\t$ENV{PLUGIN_VER}\n$1</version>"|sme' \
+    "$INFO_XML"
+if ! tr -d ' \t\n' < "$INFO_XML" | grep -q "<version>${PLUGIN_VER}</version>"; then
+    echo "ERROR: Could not write <version> into $(basename "$INFO_XML")."
+    echo "       The tag is missing or malformed — refusing to ship a package"
+    echo "       whose advertised version does not match the plugin."
+    exit 1
+fi
+echo "Updated $(basename "$INFO_XML") <version> to $PLUGIN_VER"
 echo ""
 
 # ---- Clean up any previous build ----
@@ -79,6 +95,20 @@ rm -rf "$BUILD_DIR/wp-content/themes/twenty"*
 echo "Copying SocietyPress plugin..."
 mkdir -p "$BUILD_DIR/wp-content/plugins/societypress"
 cp "$PROJECT_ROOT/Code/plugin/societypress.php" "$BUILD_DIR/wp-content/plugins/societypress/"
+
+# The plugin is single-file but not self-contained: assets/ carries the PWA
+# icons and favicons plus the CSS and JS the gallery viewer, events pages,
+# editor table, searchable select and leadership search all enqueue by URL.
+# WHY this is called out: it was missing for months, so every Softaculous
+# install shipped a plugin whose front end was quietly half-dead. deploy.sh's
+# bundle target has always copied it; this script had drifted out of step.
+if [ -d "$PROJECT_ROOT/Code/plugin/assets" ]; then
+    cp -r "$PROJECT_ROOT/Code/plugin/assets" "$BUILD_DIR/wp-content/plugins/societypress/"
+else
+    echo "  ERROR: Code/plugin/assets not found — the bundle would ship a plugin"
+    echo "         with no icons, CSS or JS. Refusing to build."
+    exit 1
+fi
 
 # Copy languages directory if it exists
 if [ -d "$PROJECT_ROOT/Code/plugin/languages" ]; then
@@ -148,6 +178,22 @@ fi
 # the final package ends up shipping ~27 MB of duplicate WordPress core inside
 # itself.
 rm -rf "$BUILD_DIR/tmp"
+
+# ---- Measure the installed footprint ----
+# WHY: info.xml's <space> tells Softaculous how much room an install needs.
+# Understate it and Softaculous green-lights installs onto accounts that cannot
+# hold the result; the failure lands mid-install, on the volunteer.
+EXTRACTED_BYTES=$(du -sk "$BUILD_DIR" | cut -f1)
+EXTRACTED_BYTES=$(( EXTRACTED_BYTES * 1024 ))
+# Same multiline caveat as <version> above, and the surrounding comment also
+# mentions the tag by name — so match the element across newlines rather than
+# grepping for the word.
+DECLARED_SPACE=$(perl -0777 -ne 'print $1 if m|^\t*<space>\s*(\d+)\s*</space>|sm' "$INFO_XML")
+echo "Extracted footprint: $EXTRACTED_BYTES bytes (info.xml declares ${DECLARED_SPACE:-unset})"
+if [ -n "$DECLARED_SPACE" ] && [ "$DECLARED_SPACE" -lt "$EXTRACTED_BYTES" ]; then
+    echo "  WARNING: <space> in info.xml is smaller than the actual build."
+    echo "           Raise it to at least $EXTRACTED_BYTES before submitting."
+fi
 
 # ---- Create the ZIP ----
 echo "Creating societypress.zip..."

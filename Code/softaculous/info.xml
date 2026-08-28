@@ -1,60 +1,136 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<soft>
+<soft xmlns="http://www.softaculous.com">
 
-    <res>
-        <url>https://getsocietypress.org</url>
-        <name>SocietyPress</name>
-        <softname>societypress</softname>
-        <cat>Portal/CMS</cat>
-        <ver>1.0.0</ver>
-        <ver_min_498>6.0</ver_min_498>
-        <desc>A free, open-source membership management platform built specifically for genealogical and historical societies. Manage members, events, a research library, genealogical records, newsletters, volunteers, lineage programs, donations, a store, and more — all in one place. Built on WordPress.</desc>
-        <features>
-            <feature>Membership management with tiers, renewals, and self-service portal</feature>
-            <feature>Event calendar with registration, waitlists, and Stripe/PayPal payments</feature>
-            <feature>Research library with OPAC-style catalog and Open Library covers</feature>
-            <feature>Genealogical record collections with GENRECORD and GEDCOM import/export</feature>
-            <feature>Surname Research Database with Soundex and Metaphone phonetic search</feature>
-            <feature>Lineage Programs (First Families, Pioneer Settlers, etc.) with public roster and printable certificates</feature>
-            <feature>Picture Wall — member-submitted ancestor portraits with admin moderation</feature>
-            <feature>Newsletter archive with PDF upload and automatic cover thumbnails</feature>
-            <feature>Volunteer management with opportunities, signups, and hours tracking</feature>
-            <feature>Online donations with Stripe (one-time, monthly, annual) and PayPal (one-time)</feature>
-            <feature>Cover-the-fee toggle and recurring giving with automatic receipts</feature>
-            <feature>Online store with Stripe checkout, per-item shipping, and PayPal Smart Buttons</feature>
-            <feature>Secure online voting and elections with tier-based eligibility</feature>
-            <feature>Public Help Requests forum with email-verified submission, time-tracking on every response, and accept-as-answer</feature>
-            <feature>Optional Paid Research Services with Stripe-billed up-front cases, researcher dashboard, and additional-hours invoicing</feature>
-            <feature>Committee chair dashboards with auto-scoped admin views for events, meetings, and volunteer opportunities</feature>
-            <feature>Theme Exchange — export and import design presets between societies</feature>
-            <feature>Page builder with 37 widget types including Research Guides and Database Subscriptions</feature>
-            <feature>5 pre-built child themes plus a Theme Gallery of importable design presets</feature>
-            <feature>One-click full-site export (members, events, library, records, donations)</feature>
-            <feature>Full GDPR data exporters and erasers (members, donations, lineage, registrations, etc.)</feature>
-            <feature>Role-based access control with 10 access areas and 8 role templates</feature>
-            <feature>15 toggleable feature modules</feature>
-        </features>
-        <demo>https://demo.getsocietypress.org</demo>
-        <support>https://getsocietypress.org/feedback/</support>
-        <ratings>https://github.com/SocietyPressFoundation/SocietyPress</ratings>
-        <space>104857600</space><!-- 100 MB -->
-        <type>php</type>
-        <lang>
-            <en>
-                <admin_username>Admin Username</admin_username>
-                <admin_pass>Admin Password</admin_pass>
-                <admin_email>Admin Email</admin_email>
-                <site_name>Site Title</site_name>
-                <org_name>Organization Name</org_name>
-                <org_email>Organization Email</org_email>
-                <install_heading>SocietyPress Installation</install_heading>
-                <install_desc>Set up your society's website. After installation, you'll be able to log in and start adding members, events, and content right away.</install_desc>
-                <admin_heading>Administrator Account</admin_heading>
-                <admin_desc>This is the login for the site administrator — typically the webmaster or board member who manages the website.</admin_desc>
-                <org_heading>Society Information</org_heading>
-                <org_desc>Basic information about your genealogical or historical society.</org_desc>
-            </en>
-        </lang>
-    </res>
+	<!--
+		SocietyPress — Softaculous Script Metadata
+
+		WHY the shape of this file matters: the tag names here are not ours to
+		choose. They are read verbatim by Softaculous, and anything it does not
+		recognise is silently ignored rather than reported. An earlier revision
+		of this file invented tag names that do not exist in the schema, so the
+		catalog entry would have rendered with no description, no version and no
+		PHP floor. The tag set below is taken from the shipped WordPress package
+		at /var/softaculous/wp/info.xml, the only authoritative reference
+		available.
+
+		Two tags are rewritten by scripts/build-softaculous.sh rather than by
+		hand: the release number, from the plugin's Version: header, and a check
+		of the declared footprint against the measured build. Both rewrites
+		anchor their match to the start of a line, so keep every element below
+		starting on its own line — and avoid naming those two tags inside a
+		comment, which is exactly the mistake that once made the rewrite swallow
+		half this file.
+	-->
+
+	<overview>
+		<img src="logo.png" style="float:right;" alt="SocietyPress" />
+		&lt;p&gt;&lt;strong&gt;SocietyPress&lt;/strong&gt; is a free, open-source membership platform built specifically for genealogical and historical societies — the kind run by volunteers, on a shoestring, with no technical staff.&lt;/p&gt;
+		&lt;p&gt;It replaces the tangle of spreadsheets, mailing lists and aging hosted services most societies rely on with one coherent website: members and dues, an events calendar, a research library, genealogical record collections, newsletters, volunteers, donations, a store, elections, and more. Everything is managed from a single admin area designed around the tasks a board member actually performs, not around the software's internal structure.&lt;/p&gt;
+		&lt;p&gt;SocietyPress is built on WordPress and licensed GPL-2.0-or-later. There is no paid tier, no upsell, and no feature held back — a society that installs it gets the whole product, and owns its own data.&lt;/p&gt;
+	</overview>
+
+	<features>
+		&lt;ul&gt;
+		&lt;li&gt;&lt;strong&gt;Members and dues&lt;/strong&gt; — membership tiers, joint memberships, renewals, lapse handling, and a self-service member portal with an editable directory.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Events and calendar&lt;/strong&gt; — registration, waitlists, speaker management, recurring events, iCal feeds, and paid tickets through Stripe or PayPal.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Research library&lt;/strong&gt; — an OPAC-style catalog with categories, reading lists, and automatic cover art from Open Library.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Genealogical records&lt;/strong&gt; — searchable cemetery, census, church and probate collections, with GENRECORD and GEDCOM import and export.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Surname research database&lt;/strong&gt; — Soundex and Metaphone phonetic matching so a misspelled family name still finds its record.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Lineage programs&lt;/strong&gt; — First Families, Pioneer Settlers and the like, with an application workflow, a public roster, and printable certificates.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Newsletters and documents&lt;/strong&gt; — a PDF archive with automatic cover thumbnails, plus a permissioned document library for board and committee papers.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Volunteers and governance&lt;/strong&gt; — officer positions, committees with their own chair dashboards, meeting minutes, volunteer opportunities and hours tracking.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Donations and campaigns&lt;/strong&gt; — one-time, monthly and annual giving through Stripe, one-time through PayPal, with campaign progress bars, a cover-the-fee option and automatic receipts.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Online store&lt;/strong&gt; — sell publications and merchandise with a cart, per-item shipping, Stripe checkout and PayPal Smart Buttons.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Voting and elections&lt;/strong&gt; — secure ballots with tier-based eligibility and published results.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Research help and paid research&lt;/strong&gt; — a public help-request forum with email-verified submission and accept-as-answer, plus optional Stripe-billed research cases with a researcher dashboard.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Blast email&lt;/strong&gt; — segmented mailings to members from inside the site, with delivery logging.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Photo gallery and forms&lt;/strong&gt; — moderated member-submitted images and a builder for arbitrary society forms.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Page builder&lt;/strong&gt; — 40 widget types, so a volunteer can lay out pages without touching code or a block editor.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Five child themes plus a theme gallery&lt;/strong&gt; — Coastline, Heritage, Ledger, Parlor and Prairie, with importable design presets and a theme exchange between societies.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Delegated permissions&lt;/strong&gt; — 10 access areas across 8 role templates, so the treasurer sees finances and the librarian sees the catalog.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;18 toggleable modules&lt;/strong&gt; — turn off what your society does not do, so volunteers are never shown a screen they do not need.&lt;/li&gt;
+		&lt;li&gt;&lt;strong&gt;Your data stays yours&lt;/strong&gt; — one-click full-site export, GDPR exporters and erasers, encrypted storage of sensitive member fields, and no external service dependencies.&lt;/li&gt;
+		&lt;/ul&gt;
+	</features>
+
+	<demo>
+		https://demo.getsocietypress.org
+	</demo>
+
+	<ratings>
+		https://github.com/SocietyPressFoundation/SocietyPress
+	</ratings>
+
+	<!--
+		Installed footprint in bytes, set from a measured build rather than
+		estimated. Understate it and Softaculous green-lights installs onto
+		accounts that cannot hold the result, and the failure lands mid-install
+		on the volunteer. The builder measures the extracted tree and warns if
+		the figure below has fallen behind it. WordPress core alone declares
+		roughly 107 MB; a full SocietyPress build measures about 113 MB, and the
+		value below leaves headroom for uploads and database growth.
+	-->
+	<space>
+		167772160
+	</space>
+
+	<support>
+		https://getsocietypress.org/feedback/
+	</support>
+
+	<version>
+		1.5.1
+	</version>
+
+	<!-- Minimum Softaculous release. Matches the floor declared by the shipped
+	     WordPress package, whose feature set this package is a subset of. -->
+	<softversion>
+		4.1.7
+	</softversion>
+
+	<admin>
+		wp-admin/
+	</admin>
+
+	<!-- The plugin header declares "Requires PHP: 8.0". Encryption uses
+	     libsodium but degrades gracefully via function_exists(), so it is
+	     deliberately not a hard requirement — sodium ships in PHP core from
+	     7.2 onward and would be present on any host meeting the floor anyway. -->
+	<requirement check="php" type="version" operator="ge" value="8.0.0" />
+	<requirement check="php" type="extension" name="mysqli" />
+
+	<languages>
+		<english-db_set>Database Settings</english-db_set>
+		<english-db_pre>Table Prefix</english-db_pre>
+		<english-exp_db_pre>The prefix added to every database table name. Leave this alone unless you are installing more than one site into the same database.</english-exp_db_pre>
+
+		<english-site_set>Site Settings</english-site_set>
+		<english-site_name>Site Name</english-site_name>
+		<english-exp_site_name>The name of your website, shown in the browser tab and at the top of every page.</english-exp_site_name>
+		<english-site_desc>Site Description</english-site_desc>
+		<english-exp_site_desc>A short tagline shown beneath your site name. You can change this later.</english-exp_site_desc>
+
+		<english-org_set>Society Information</english-org_set>
+		<english-exp_org_set>Details about your genealogical or historical society. These appear on receipts, membership cards and outgoing email. All of them can be changed later under SocietyPress &amp;rarr; Settings.</english-exp_org_set>
+		<english-org_name>Society Name</english-org_name>
+		<english-exp_org_name>The full legal or commonly used name of your society, for example "Bexar County Genealogical Society".</english-exp_org_name>
+		<english-org_email>Society Email Address</english-org_email>
+		<english-exp_org_email>The address members should reply to. Leave blank to use the administrator address below.</english-exp_org_email>
+
+		<english-ad_act>Administrator Account</english-ad_act>
+		<english-exp_ad_act>The login for whoever manages the website — usually the webmaster or a board member.</english-exp_ad_act>
+		<english-ad_name>Administrator Username</english-ad_name>
+		<english-ad_pass>Administrator Password</english-ad_pass>
+		<english-ad_email>Administrator Email</english-ad_email>
+		<english-exp_ad_email>Password resets and important site notices are sent here.</english-exp_ad_email>
+
+		<english-ext_settings>Extended Settings</english-ext_settings>
+		<english-no_search_engine>Hide From Search Engines</english-no_search_engine>
+		<english-exp_no_search_engine>If checked, this asks search engines not to list your site. Most societies want to be found, so leave this unchecked unless you are still building the site. It is up to search engines to honour the request.&lt;br /&gt;This can be changed later under Settings &amp;rarr; Reading.</english-exp_no_search_engine>
+
+		<english-err_adname>Please enter an administrator username.</english-err_adname>
+		<english-err_adpass>Please enter an administrator password.</english-err_adpass>
+		<english-err_adpass_short>The administrator password must be at least 8 characters long.</english-err_adpass_short>
+		<english-err_ademail>Please enter a valid administrator email address.</english-err_ademail>
+	</languages>
 
 </soft>

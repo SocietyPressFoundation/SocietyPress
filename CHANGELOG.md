@@ -71,8 +71,8 @@ free, GPL-licensed WordPress product: members and dues, events and
 registrations, a library catalog, record collections, newsletters, blast email,
 donations, a store, committees and meetings, ballots, volunteers, documents,
 photo galleries, lineage programs, research help, and a help desk of its own.
-Sixteen modules, all but Members switchable off, so a society runs the parts it
-actually uses.
+Eighteen optional modules on top of Members and Finances, which are always
+available, so a society runs the parts it actually uses.
 
 **For the volunteer who has to operate it.** A page builder rather than a
 theme editor. A setup wizard on first run. Every module screen tells you when

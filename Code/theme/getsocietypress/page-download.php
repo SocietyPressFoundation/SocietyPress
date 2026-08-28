@@ -137,8 +137,8 @@ $sp_installer_url = gsp_get_installer_url();
                     other <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> plugin.
                 </p>
                 <ul class="dl-included__list">
-                    <li>15 toggleable feature modules</li>
-                    <li>Page builder with 37 widget types</li>
+                    <li>18 toggleable feature modules</li>
+                    <li>Page builder with 40 widget types</li>
                     <li>Design system with live preview</li>
                     <li>Member directory with privacy controls</li>
                     <li>CSV, GEDCOM, and <a href="https://genrecord.org" target="_blank" rel="noopener">GENRECORD</a> import &amp; export</li>

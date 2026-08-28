@@ -592,7 +592,7 @@ These aren't modules — they're capabilities that show up everywhere.
 
 ## Page Builder
 
-A classic-editor page builder with **37 widget types**, designed so
+A classic-editor page builder with **40 widget types**, designed so
 senior volunteers can build pages without writing HTML:
 
 Hero slider (per-line text styling), events calendar, event list, member
@@ -631,7 +631,7 @@ time window. Active members, events held, donations raised, volunteer
 hours, records added, blasts sent — all on one screen with sparkline
 trends.
 
-- 16-card grid (one per active module); disabled modules are hidden
+- One card per active module, up to 20; disabled modules are hidden
 - Time-window dropdown: rolling 30 / 90 / 365 days, this fiscal year,
   last fiscal year (the fiscal-year boundary reuses
   `membership_start_month`)

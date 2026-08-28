@@ -112,7 +112,7 @@
 
 | Feature | **SocietyPress** | **ENS** | **Wild Apricot** | **ClubExpress** |
 |---|---|---|---|---|
-| Website builder / CMS | ✓ (page builder, 37 widgets) | ✓ | ✓ (drag-and-drop) | ✓ |
+| Website builder / CMS | ✓ (page builder, 40 widgets) | ✓ | ✓ (drag-and-drop) | ✓ |
 | Custom design / branding | ✓ (full CSS control, presets) | Limited templates | Themes | Themes |
 | Members-only pages | ✓ | ✓ | ✓ | ✓ |
 | Document library | ✓ (categories, bulk upload, access control) | ✓ (5MB limit) | ✗ | ✓ |

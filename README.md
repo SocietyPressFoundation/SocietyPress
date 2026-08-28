@@ -57,7 +57,7 @@ can do this" over "a developer will figure it out."
 | **Photos & Videos** | Toggleable | Nested galleries plus YouTube embeds, frontend lightbox |
 | **Voting** | Toggleable | Elections, ballots, results |
 
-Plus: page builder (37 widgets), design system (live-preview color and
+Plus: page builder (40 widgets), design system (live-preview color and
 typography controls), email system (logged, merge-tagged, dev-mode), unified
 admin sidebar, a setup wizard, a custom login page, full site lockdown,
 field-level encryption for sensitive data (XChaCha20-Poly1305), GDPR

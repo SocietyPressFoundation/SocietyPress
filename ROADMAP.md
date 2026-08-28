@@ -22,7 +22,7 @@ visitors can see momentum before being pruned into the changelog.
 ### SocietyPress 1.5.0 — the first finished release
 
 Released 2026-08-28 as [v1.5.0](https://github.com/SocietyPressFoundation/SocietyPress/releases/tag/v1.5.0).
-Sixteen modules, five child themes, the ENS migration path, and the Theme
+Eighteen optional modules, five child themes, the ENS migration path, and the Theme
 Exchange with all three tiers open. The number is 1.5.0 rather than 1.0
 because 1.0.0 and 1.0.1 were already published tags from May and June — and
 because a release numbered below the 1.1.x builds already in the field would

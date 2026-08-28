@@ -44,9 +44,9 @@ the big "Add Widget" button.
 
 ---
 
-## Scene 2 — The 37 widgets, grouped (1:00–2:30)
+## Scene 2 — The 40 widgets, grouped (1:00–2:30)
 
-**ON SCREEN:** The "Add Widget" picker, showing all 37 widgets grouped.
+**ON SCREEN:** The "Add Widget" picker, showing all 40 widgets grouped.
 
 **NARRATION:**
 > Let's look at what's available before we start placing things.

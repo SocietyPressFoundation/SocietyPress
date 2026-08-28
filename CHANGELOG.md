@@ -19,6 +19,17 @@ Pre-1.0 development iterations are archived in
 
 ---
 
+## [1.1.100] — 2026-08-28
+
+### Fixed
+
+**The confirmation called the page by the wrong name**
+
+When SocietyPress adopts a page a volunteer had already made rather than
+creating a second one beside it, that page keeps the name the society gave it.
+The message afterwards was still announcing the name SocietyPress would have
+used, so a page called "Newsletter Archive" was confirmed as "Newsletters".
+
 ## [1.1.99] — 2026-08-28
 
 ### Changed

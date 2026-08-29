@@ -66,10 +66,19 @@ Things worth knowing, all of which were originally got wrong here:
 
 | File | Size | Purpose |
 |---|---|---|
+| `logo.png` | 250×68 | Wordmark shown inside the catalog description |
 | `societypress.png` | 160×160 | Main logo |
 | `societypress_100.gif` | 100×100 | Secondary logo |
 | `societypress_48.png` | 48×48 | Medium icon |
 | `societypress_32.gif` | 32×32 | Small icon |
+
+`logo.png` is easy to miss because nothing names it but one `<img src="logo.png">`
+buried in the `<overview>` HTML in `info.xml`. It is a different image from the
+160×160 square, and it is the one file here that keeps its literal name — the
+reference package carries `logo.png` and `wp.png` side by side, so the wordmark
+is not SID-prefixed on acceptance the way everything below it is. Leave it out
+and the catalog entry renders a broken image against its own description, with
+no build error to warn you.
 
 Eight 600×400 screenshots are also present, captured from
 demo.getsocietypress.org:
@@ -102,7 +111,7 @@ Two things to preserve if these are ever re-captured:
 ## Submitting
 
 1. Build the package.
-2. Add screenshots to `images/` (see above).
+2. Confirm `images/` holds the wordmark, the four logos and the eight screenshots (see above).
 3. Email the contents of this directory to `sales@softaculous.com`.
 
 To test before submitting, copy this directory to `/var/softaculous/societypress/`

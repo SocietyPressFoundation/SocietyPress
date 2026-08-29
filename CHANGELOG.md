@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.3] — 2026-08-29
+
+**The store's page-size control is three buttons instead of a box to type in.**
+Choosing how many items to see at once no longer means typing a number and
+pressing Go, and no longer means knowing that zero is the way to ask for
+everything. The store now offers 20, 50 and All as buttons, with the current
+one highlighted. The buttons appear only when the catalog runs past two pages
+at the default size — a store with forty items or fewer shows just the page
+links, since a page-length choice on a list that short is one more thing to
+read for no gain.
+
+---
+
 ## [1.5.2] — 2026-08-29
 
 Removes a private domain reference from the shipped plugin and repairs the

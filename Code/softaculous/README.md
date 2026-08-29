@@ -71,10 +71,33 @@ Things worth knowing, all of which were originally got wrong here:
 | `societypress_48.png` | 48×48 | Medium icon |
 | `societypress_32.gif` | 32×32 | Small icon |
 
-**Still missing: screenshots.** Softaculous expects 600×400 GIFs named
-`SID_screenshot1.gif` and upward, where `SID` is the numeric script ID they
-assign on acceptance. These have to be captured from a real site — the demo is
-the obvious source — and cannot be generated from the repo.
+Eight 600×400 screenshots are also present, captured from
+demo.getsocietypress.org:
+
+| File | Shows |
+|---|---|
+| `societypress_screenshot1.gif` | The society's public site |
+| `societypress_screenshot2.gif` | SocietyPress admin dashboard |
+| `societypress_screenshot3.gif` | Member management |
+| `societypress_screenshot4.gif` | Events calendar |
+| `societypress_screenshot5.gif` | Library catalog |
+| `societypress_screenshot6.gif` | Genealogical record search |
+| `societypress_screenshot7.gif` | Newsletter archive |
+| `societypress_screenshot8.gif` | Member directory |
+
+**Rename these on acceptance.** Softaculous expects `SID_screenshot1.gif` and
+upward, where `SID` is the numeric script ID it assigns. Until we have that ID
+the files carry the `societypress_` prefix as a placeholder.
+
+Two things to preserve if these are ever re-captured:
+
+- **Filter the records page to a fictional collection.** The demo also holds an
+  imported set of real Hart Island burial records — actual named people. The
+  screenshot uses `?sp_rec_coll=1` (Cass County Cemetery Index), which is
+  invented data, so no real individual appears in a catalog shipped worldwide.
+- **Crop the top ~120px off any logged-in front-end shot.** The signed-in
+  header carries a Gravatar that fails to load in headless Chrome and renders
+  as a broken-image icon.
 
 ## Submitting
 

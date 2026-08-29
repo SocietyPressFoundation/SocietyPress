@@ -14,7 +14,7 @@ cleanup under *Still to do* is worth finishing.
 
 ### The symptom
 
-`txsaghs.com`'s debug log filled with entries like:
+A production site's debug log filled with entries like:
 
 ```
 PHP Warning: Cannot modify header information - headers already sent by

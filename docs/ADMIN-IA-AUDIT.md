@@ -1,7 +1,7 @@
 # Admin Information Architecture — Audit
 
 **Date:** 2026-08-12
-**Audited against:** `societypress.php` v1.1.5, 113,273 lines — the copy running on `txsaghs.com`,
+**Audited against:** `societypress.php` v1.1.5, 113,273 lines — the copy running on a private staging site,
 which is byte-identical to `origin/main` (md5 `0ca98e1f`).
 
 ---
@@ -14,7 +14,7 @@ to be wrong — the defect it missed was found later, is described in place, and
 
 | § | Defect | Status |
 |---|---|---|
-| 9 | "Repo 177 lines behind txsaghs" | ⛔ **Not a real finding** — see §9 |
+| 9 | "Repo 177 lines behind staging" | ⛔ **Not a real finding** — see §9 |
 | 3 | Two "Menus" in the sidebar | ✅ Registration removed |
 | 5 | Admin sidebar editor filed under public appearance | ✅ Moved to Settings, renamed **Admin Sidebar** |
 | 6 | Customize opens an empty Customizer | ✅ Removed entirely |
@@ -246,7 +246,7 @@ not precede them.
 
 **This finding was wrong. It is kept here rather than deleted because the mistake is instructive.**
 
-The audit originally reported that txsaghs (113,273 lines) and the repo (113,096) were the same
+The audit originally reported that staging (113,273 lines) and the repo (113,096) were the same
 version but different files, and recommended pulling the server copy into the repo before doing
 any other work.
 
@@ -254,7 +254,7 @@ What actually happened: the comparison was made against the **local working clon
 `git fetch` first**. `origin/main` — the source of truth — already contained every one of the six
 "server-only" functions, pushed on 2026-08-09 in commit `f5b5387` ("work the ticket queue —
 galleries, menus, editor images, tables"), and its copy of `societypress.php` is byte-identical to
-txsaghs (md5 `0ca98e1f`, 113,273 lines). The `sp-editor-image.js` asset was present there too.
+staging (md5 `0ca98e1f`, 113,273 lines). The `sp-editor-image.js` asset was present there too.
 
 So there was no drift between the project and its testbed. There was one unpulled commit in one
 local clone. A pull commit was made on that false premise and then dropped automatically during
@@ -279,7 +279,7 @@ unfetched clone measures the clone's staleness, not the server's divergence.
 
 Small, high-confidence fixes first. Each is independently shippable.
 
-1. ~~Pull txsaghs → repo~~ — withdrawn, no drift existed (§9). Do run `git fetch` first.
+1. ~~Pull staging → repo~~ — withdrawn, no drift existed (§9). Do run `git fetch` first.
 2. Remove the duplicate `nav-menus.php` registration (§3) — one deleted call, removes a whole door
 3. Move and rename `sp-menu-layout` → **Admin Sidebar**, into Settings (§5)
 4. Remove `customize.php` from the Website group (§6)

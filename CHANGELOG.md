@@ -20,6 +20,38 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.2] — 2026-08-29
+
+Removes a private domain reference from the shipped plugin and repairs the
+build-time scanner that was supposed to have caught it.
+
+**A code comment named a private development site.** A comment explaining the
+affiliation-logo safety net cited the maintainer's own test site by name to
+illustrate the case it guards against. The illustration was never necessary —
+the sentence makes its point better in general terms, since any society that
+has customized its footer is in exactly that position — and the name had
+shipped inside every release since 1.1.11. The comment now describes the case
+without naming anyone.
+
+**The leak scanner had never run.** `build-softaculous.sh` announced
+"Scanning for data leaks..." on every build and checked nothing, in three
+independent ways: it read its pattern list from a local configuration file that
+had never been created, so the list was empty and a guard skipped the scan
+entirely; it looked only at the plugin file, never at the parent theme or the
+five child themes that ship in the same bundle; and it recorded a hit in a
+variable that nothing ever read, so even a detected leak printed a warning and
+let the build succeed. The scanner now refuses to build when it has no patterns
+configured, scans everything that ships, and exits non-zero on a hit. A scanner
+that cannot fail the build is decoration.
+
+**The Softaculous package was missing its wordmark.** `info.xml` opens its
+catalog description with an inline `logo.png` that did not exist, so the listing
+would have rendered a broken image against its own text. It is a separate file
+from the square catalog icon and keeps its literal name rather than taking the
+assigned script ID, which is why it went unnoticed.
+
+---
+
 ## [1.5.1] — 2026-08-28
 
 Repairs the Softaculous package, which had drifted far enough from both the

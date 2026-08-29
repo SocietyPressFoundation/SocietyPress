@@ -139,12 +139,26 @@ for CHILD_DIR in "$PROJECT_ROOT"/Code/theme-*/; do
 done
 
 # ---- Verify no personal or site-specific data leaked in ----
+#
+# WHY THIS BLOCK IS SHAPED THE WAY IT IS: all three of its parts were broken at
+# once, and the failure was silent in every direction, which is how a private-
+# domain reference rode a code comment in the shipped plugin from 1.1.11 to 1.5.2.
+#
+#   1. scripts/build.local.sh never existed, so LEAK_PATTERNS stayed empty and
+#      the `if [ -n ... ]` guard skipped the scan entirely. The build still
+#      printed "Scanning for data leaks..." while checking nothing.
+#   2. Only the plugin file was scanned. The parent theme and five child themes
+#      ship in the same bundle and were never looked at.
+#   3. LEAKS was set to 1 on a hit and then never read, so even a detected leak
+#      printed a WARNING and let the build succeed.
+#
+# A scanner that cannot fail the build is decoration. This one exits non-zero.
 echo "Scanning for data leaks..."
 LEAKS=0
 
-# Patterns of strings that should never appear in a shippable bundle. Extend
-# this list in scripts/build.local.sh (gitignored) with names, emails, or
-# domains that are specific to your development environment. See
+# Patterns of strings that should never appear in a shippable bundle. Define
+# them in scripts/build.local.sh (gitignored) with names, emails, or domains
+# that are specific to your development environment. See
 # scripts/build.local.example.sh for the format.
 LEAK_PATTERNS=""
 if [ -f "$PROJECT_ROOT/scripts/build.local.sh" ]; then
@@ -152,12 +166,30 @@ if [ -f "$PROJECT_ROOT/scripts/build.local.sh" ]; then
     source "$PROJECT_ROOT/scripts/build.local.sh"
 fi
 
-if [ -n "$LEAK_PATTERNS" ]; then
-    if grep -l "$LEAK_PATTERNS" "$BUILD_DIR/wp-content/plugins/societypress/societypress.php" 2>/dev/null; then
-        echo "  WARNING: Found potential leak patterns in plugin file."
-        LEAKS=1
-    fi
+if [ -z "$LEAK_PATTERNS" ]; then
+    # An unconfigured scanner is the state that let the last leak ship. Say so
+    # loudly rather than reporting a clean scan that never happened.
+    echo "  ERROR: No LEAK_PATTERNS configured."
+    echo "         Copy scripts/build.local.example.sh to scripts/build.local.sh"
+    echo "         and list the strings that must never ship. Refusing to claim"
+    echo "         a clean scan without running one."
+    exit 1
 fi
+
+# Scan everything that ships, not just the plugin — the themes go in the same
+# bundle. -I skips binaries so images and fonts don't produce noise.
+if grep -rIl "$LEAK_PATTERNS" "$BUILD_DIR/wp-content/" 2>/dev/null | grep -q .; then
+    echo "  ERROR: Leak patterns found in the assembled bundle:"
+    grep -rIn "$LEAK_PATTERNS" "$BUILD_DIR/wp-content/" 2>/dev/null | sed 's|^|    |'
+    LEAKS=1
+fi
+
+if [ "$LEAKS" -ne 0 ]; then
+    echo ""
+    echo "  Refusing to build a bundle carrying private references."
+    exit 1
+fi
+echo "  Clean — no leak patterns in the assembled bundle."
 
 # Check no private child themes snuck in
 

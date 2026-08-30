@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.4] — 2026-08-29
+
+**Imported institutions keep their names.** A library or museum in an ENS
+export usually appears as a contact person's name with the institution in the
+File Name column, and SocietyPress would only file it as an organization when
+the Membership Type column said the exact word "Organization." Societies write
+"Institutional," or "Corporate," or "Non-Profit" — and when they did, the
+institution's name was thrown away during the import with no error and nothing
+in the log to notice. The import now recognises the ordinary ways of saying
+the same thing.
+
+**And when it still doesn't recognise the word, it says so.** Any row that
+carried an organization name the import decided not to use is now counted on
+the results screen, along with the Membership Type values it saw, so a society
+using its own vocabulary is told which rows to look at rather than finding out
+months later that the library is filed under its librarian. Correcting those
+rows and importing the file again is safe — a second import updates the same
+members instead of duplicating them.
+
+---
+
 ## [1.5.3] — 2026-08-29
 
 **The store's page-size control is three buttons instead of a box to type in.**

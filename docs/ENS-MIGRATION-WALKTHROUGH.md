@@ -135,11 +135,26 @@ Both of these were in the test file, and the difference is stark:
 | Fairhaven Public Library | `Organization` | Organizational member, name preserved |
 | Marengo Township Historical Museum | `Institutional` | Individual member, museum name lost |
 
-**What to do:** before importing, open your CSV and look at the Membership
-Type column for your institutional members. If it says anything other than
-`Organization`, change it to `Organization` for those rows only. It's a
-two-minute edit that saves you re-entering your institutional members by
-hand.
+**Fixed in 1.5.4.** The import now recognises the ordinary ways of saying the
+same thing — "Institutional", "Corporate", "Company", "Non-Profit", "Agency"
+and a few more. Re-running the same file afterwards filed the museum correctly
+without a single edit to the spreadsheet:
+
+```
+Fairhaven Public Library          Organization    → organizational member
+Marengo Township Historical Museum Institutional  → organizational member
+```
+
+The list is deliberately conservative, though. "Library", "Museum", "Society"
+and "Church" are *not* treated as organizations, because a society might just
+as easily use one of those words for an individual tier — and turning your
+whole membership into organizations would be a much worse mistake than the one
+being avoided.
+
+So if your society uses a word of its own, the import will still file that row
+as an individual. What it will no longer do is stay quiet about it: the results
+screen now tells you how many rows had an organization name it didn't use, and
+which Membership Type values it saw. Correct those rows and import again.
 
 ---
 

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.3
+ * Version:     1.5.4
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.3' );
+define( 'SOCIETYPRESS_VERSION', '1.5.4' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -26240,8 +26240,67 @@ function sp_render_placeholder_page(): void {
  * @param array  $field_map  CSV column name → target key (from the mapping UI).
  * @param int    $offset     Number of DATA rows to skip (0 = start from first data row).
  * @param int    $batch_size Maximum rows to process in this call.
- * @return array Results with keys: imported, skipped, errors, tiers_created, rows_processed, done.
+ * @return array Results with keys: imported, skipped, errors, tiers_created,
+ *               rows_processed, orgs_unmatched, orgs_unmatched_types, done.
  */
+/**
+ * Decide whether a CSV "Membership Type" value names an organization rather
+ * than a person.
+ *
+ * WHY this is a whitelist and not a guess: in an EasyNetSites export the
+ * "File Name" column holds the member's own surname for ordinary individuals,
+ * so nearly every row arrives carrying something that looks like it could be
+ * an organization name. The importer therefore refuses to treat a row as an
+ * organization unless a second column confirms it. Loosening that into fuzzy
+ * matching would convert an entire membership into organizations, which is a
+ * far worse failure than the one this function exists to reduce.
+ *
+ * WHY the list is still conservative: words like "Library", "Museum",
+ * "Society" and "Church" genuinely do name institutions, but a society may
+ * equally use them for an individual tier ("Library Member"). Rows whose type
+ * is not matched here are counted and reported back to the administrator
+ * rather than silently losing the organization name, so an unlisted word
+ * costs a visible message instead of missing data.
+ *
+ * @param string $value Raw value of the Membership Type column.
+ * @return bool True when the row should be imported as an organization.
+ */
+function sp_import_is_organization_type( string $value ): bool {
+    // Normalise: lowercase, collapse whitespace, drop punctuation that
+    // societies sprinkle through type names ("Non-Profit", "Org.").
+    $needle = strtolower( trim( $value ) );
+    $needle = str_replace( [ '-', '_', '.', '/' ], ' ', $needle );
+    $needle = trim( preg_replace( '/\s+/', ' ', $needle ) );
+
+    // "Institutional Member" and "Institutional Members" are the same answer
+    // as "Institutional"; strip the trailing noun before matching.
+    $needle = preg_replace( '/ members?$/', '', $needle );
+
+    if ( '' === $needle ) {
+        return false;
+    }
+
+    $types = [
+        'organization', 'organisation', 'org', 'organizational', 'organisational',
+        'institution', 'institutional',
+        'corporate', 'corporation', 'company', 'business',
+        'nonprofit', 'non profit',
+        'agency',
+    ];
+
+    /**
+     * Filter the Membership Type values that mark an imported row as an
+     * organization. Societies with their own vocabulary can add to this
+     * rather than editing their export by hand.
+     *
+     * @param string[] $types  Normalised (lowercase, unpunctuated) type names.
+     * @param string   $needle The normalised value being tested.
+     */
+    $types = (array) apply_filters( 'sp_import_organization_types', $types, $needle );
+
+    return in_array( $needle, $types, true );
+}
+
 function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null, bool $update_existing = true, bool $replace_on_newer = false ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -26266,6 +26325,11 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         'errors'         => [],
         'tiers_created'  => [],
         'rows_processed' => 0,
+        // Rows that carried an organization name we declined to import because
+        // the Membership Type column did not confirm it. Reported to the admin
+        // so the decision is visible instead of being a silent data loss.
+        'orgs_unmatched'       => 0,
+        'orgs_unmatched_types' => [],
         'done'           => false,
     ];
 
@@ -26693,12 +26757,28 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             //      only treat it as an org if the Membership Type column
             //      explicitly says "Organization". Otherwise the "File Name"
             //      is just a duplicate of the last name and should be ignored.
-            $csv_membership_type = strtolower( trim( $get( $row, 'membership_type' ) ) );
-            if ( $csv_membership_type === 'organization' ) {
+            $csv_membership_type = (string) $get( $row, 'membership_type' );
+            if ( sp_import_is_organization_type( $csv_membership_type ) ) {
                 $member_type = 'organization';
             } else {
                 // Individual with a File Name value — clear org_name so it
                 // doesn't get stored as an organization name.
+                //
+                // WHY we count it: for a genuine individual this is the right
+                // and overwhelmingly common outcome, so it is not an error.
+                // But it is also what happens to a library whose Membership
+                // Type says "Affiliate" instead of a word we recognise, and
+                // that society would otherwise never learn the institution's
+                // name had been dropped. Counting the distinct type values
+                // lets the results screen name the column to fix.
+                if ( '' !== trim( $csv_membership_type ) ) {
+                    $results['orgs_unmatched']++;
+                    $seen_type = trim( $csv_membership_type );
+                    if ( ! in_array( $seen_type, $results['orgs_unmatched_types'], true )
+                         && count( $results['orgs_unmatched_types'] ) < 10 ) {
+                        $results['orgs_unmatched_types'][] = $seen_type;
+                    }
+                }
                 $org_name = '';
             }
         }
@@ -28904,7 +28984,7 @@ function sp_render_import_page(): void {
                 if (submitBtn) submitBtn.disabled = true;
 
                 // Running totals across all batches
-                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [] };
+                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [], orgs_unmatched: 0, orgs_unmatched_types: [] };
                 var updateExistingEl = document.getElementById('sp-import-update-existing');
                 var updateExisting = updateExistingEl ? (updateExistingEl.checked ? 1 : 0) : 1;
                 var replaceNewerEl = document.getElementById('sp-import-replace-newer');
@@ -28951,6 +29031,12 @@ function sp_render_import_page(): void {
                             totals.skipped  += d.skipped || 0;
                             if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
                             if (d.tiers_created && d.tiers_created.length) totals.tiers_created = totals.tiers_created.concat(d.tiers_created);
+                            totals.orgs_unmatched += d.orgs_unmatched || 0;
+                            if (d.orgs_unmatched_types && d.orgs_unmatched_types.length) {
+                                d.orgs_unmatched_types.forEach(function (t) {
+                                    if (totals.orgs_unmatched_types.indexOf(t) === -1) totals.orgs_unmatched_types.push(t);
+                                });
+                            }
 
                             offset += d.rows_processed || batchSize;
                             updateProgress();
@@ -28975,6 +29061,30 @@ function sp_render_import_page(): void {
                     titleEl.textContent = '<?php echo esc_js( __( "Import Complete", "societypress" ) ); ?>';
                     messageEl.textContent = totals.imported + ' <?php echo esc_js( __( "imported", "societypress" ) ); ?>, ' + totals.updated + ' <?php echo esc_js( __( "updated", "societypress" ) ); ?>, ' + totals.linked + ' <?php echo esc_js( __( "linked", "societypress" ) ); ?>, ' + totals.skipped + ' <?php echo esc_js( __( "skipped", "societypress" ) ); ?>';
 
+                    // Both the organization notice and the error list write into
+                    // errorsEl, so clear it once here rather than inside either.
+                    errorsEl.innerHTML = '';
+
+                    // Organization names we declined to import. Not an error —
+                    // for ordinary individuals this is the correct outcome — but
+                    // a society whose institutional members use an unrecognised
+                    // Membership Type needs to see it rather than discover months
+                    // later that the library is filed under its librarian.
+                    if (totals.orgs_unmatched > 0) {
+                        var orgNote = document.createElement('div');
+                        orgNote.style.marginTop = '14px';
+                        // WHY textContent: the type values come straight from the
+                        // uploaded CSV, so they are never treated as HTML.
+                        orgNote.textContent =
+                            totals.orgs_unmatched
+                            + <?php echo wp_json_encode( ' ' . __( 'rows had an organization name that was not imported, because their Membership Type column did not identify them as an organization.', 'societypress' ) ); ?>
+                            + (totals.orgs_unmatched_types.length
+                                ? <?php echo wp_json_encode( ' ' . __( 'Values seen:', 'societypress' ) . ' ' ); ?> + totals.orgs_unmatched_types.join(', ') + '. '
+                                : ' ')
+                            + <?php echo wp_json_encode( __( 'If any of those are institutions, set their Membership Type to "Organization" and import the file again — re-importing updates the same members rather than duplicating them.', 'societypress' ) ); ?>;
+                        errorsEl.appendChild(orgNote);
+                    }
+
                     if (totals.errors.length > 0) {
                         // WHY textContent (not innerHTML): error strings include
                         // user-supplied CSV values (first/last name, error messages
@@ -28982,7 +29092,6 @@ function sp_render_import_page(): void {
                         // HTML — closes the stored-XSS vector that arises when an
                         // attacker uploads a CSV with HTML-bearing values that hit
                         // the duplicate or DB-error code paths.
-                        errorsEl.innerHTML = '';
                         var maxShow = Math.min(totals.errors.length, 50);
                         for (var i = 0; i < maxShow; i++) {
                             var row = document.createElement('div');
@@ -38217,7 +38326,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.3',
+            'version'     => '1.5.4',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38225,7 +38334,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.3',
+            'version'     => '1.5.4',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38233,7 +38342,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.3',
+            'version'     => '1.5.4',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38241,7 +38350,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.3',
+            'version'     => '1.5.4',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38249,7 +38358,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.3',
+            'version'     => '1.5.4',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -97,10 +97,12 @@ so it neither added to this nor was affected by it.
 
 ## ENS import: institutional members lose their name unless Membership Type is exactly "Organization"
 
-**Status:** open, found 2026-08-29 while running a full ENS import end to end for
-[the migration walkthrough](ENS-MIGRATION-WALKTHROUGH.md).
-**Severity:** medium — data is silently discarded, with no error and nothing in
-the log to notice afterwards.
+**Status:** fixed in 1.5.4. Found 2026-08-29 while running a full ENS import end
+to end for [the migration walkthrough](ENS-MIGRATION-WALKTHROUGH.md), fixed the
+same evening. Kept here because the diagnosis explains why the guard exists and
+why the replacement is a whitelist rather than fuzzy matching.
+**Severity:** was medium — data was silently discarded, with no error and nothing
+in the log to notice afterwards.
 
 ### The symptom
 
@@ -128,16 +130,29 @@ member's own surname for every individual, so trusting a populated File Name alo
 would convert an entire membership into organizations. The problem is only that the
 confirmation is one exact word.
 
-### What finishing it would involve
+### How it was fixed
 
-Widen the accepted vocabulary rather than removing the guard — `institution`,
-`institutional`, `organisation` (British spelling), `library`, `business`,
-`affiliate`, `corporate` all mean the same thing to the society that typed them.
-A society that uses some other word still gets the current behaviour, so the
-importer should also **report** the rows it declined to treat as organizations
-instead of discarding the name in silence. A count on the results screen —
-"2 rows had an organization name that was not imported" — would have surfaced this
-without anybody reading the source.
+`sp_import_is_organization_type()` now holds the accepted vocabulary, and the
+guard tests against it instead of one hardcoded string. The value is normalised
+first — lowercased, punctuation flattened so "Non-Profit" and "Org." match, and a
+trailing "Member"/"Members" stripped — then matched exactly against
+`organization`, `organisation`, `org`, `organizational`, `organisational`,
+`institution`, `institutional`, `corporate`, `corporation`, `company`,
+`business`, `nonprofit`, `non profit` and `agency`. The list is filterable
+through `sp_import_organization_types`.
+
+The match stays exact rather than fuzzy, and the list stays conservative on
+purpose. "Library", "Museum", "Society" and "Church" are *not* in it: they name
+institutions, but a society may equally use them for an individual tier
+("Library Member"), and wrongly converting a membership into organizations is a
+far worse failure than the one being fixed.
+
+That is why the second half matters. Rows whose type is not matched are counted
+in `orgs_unmatched`, with up to ten distinct values collected in
+`orgs_unmatched_types`, and the import results screen reports both — "3 rows had
+an organization name that was not imported… Values seen: Affiliate." A society
+with its own vocabulary is told which rows to fix instead of losing the name in
+silence, and re-importing the corrected file updates rather than duplicates.
 
 ---
 

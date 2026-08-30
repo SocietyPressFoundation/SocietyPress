@@ -75,14 +75,13 @@ For everything that shipped before 1.5.0, see
 
 ---
 
-## Dormant
+## Submitted — waiting on someone else
 
-Work that is real, wanted, and not moving right now. Nothing here is
-abandoned and nothing here is scheduled — it is parked in one place so
-that what is missing from SocietyPress is written down honestly rather
-than remembered by one person.
-
-Everything else that was on this roadmap has shipped.
+Work that is finished on this side and sitting in another organization's
+queue. Nothing here needs doing; it needs answering. Listed separately from
+Dormant so that "not moving" is not mistaken for "not started" — both of
+these were mistaken for unstarted work on 2026-08-29, which is why the
+section exists.
 
 ### Softaculous one-click install
 
@@ -94,7 +93,42 @@ an afternoon to three minutes.
 (`info.xml`, screenshots, bundle ZIP layout), validate it with
 `scripts/build-softaculous.sh` end-to-end, and submit through the
 partner program.
-**Blockers:** None.
+**Status:** Submitted 2026-08-29. The package was rebuilt against
+Softaculous's real file format in 1.5.1 and had its eight screenshots and
+its wordmark added before submission. Softaculous acknowledged with
+support ticket **#992945**; no human reply yet. Nothing further to do
+until they respond.
+
+### GitHub Sponsors / Open Collective
+
+**Motivation:** Recurring sponsorship smooths income volatility and
+gives sponsors a visible recognition channel.
+**Scope:** Enable GitHub Sponsors on the `SocietyPressFoundation`
+org, then add a `github:` line to `.github/FUNDING.yml` so the Sponsor
+button appears on the repository. Alternative: Open Collective.
+**Status:** Enrolled 2026-08-29, pending GitHub's review. The org is the
+sponsored account; the Stripe payee is registered as an **individual**,
+because the Foundation does not legally exist and has no EIN. Eligibility
+was checked against GitHub's documentation on 2026-08-27: an organization
+qualifies by contributing to open source and operating in a supported
+region — 501(c)(3) status is not required, and the payout account may be a
+personal one. What the 501(c)(3) does gate is the claim that a sponsorship
+is tax-deductible, which the profile must not make until the Foundation
+exists.
+**On approval:** add `github: SocietyPressFoundation` to
+`.github/FUNDING.yml` beside the existing `custom:` line. Adding it before
+approval means the Sponsor button silently fails to render.
+
+---
+
+## Dormant
+
+Work that is real, wanted, and not moving right now. Nothing here is
+abandoned and nothing here is scheduled — it is parked in one place so
+that what is missing from SocietyPress is written down honestly rather
+than remembered by one person.
+
+Everything else that was on this roadmap has shipped.
 
 ### 5-minute Getting Started screencast
 
@@ -132,20 +166,6 @@ societies confidence in long-term sustainability.
 filing, bylaws, board composition, fiscal sponsor arrangement if
 appropriate.
 **Blockers:** Legal and tax advice; time.
-
-### GitHub Sponsors / Open Collective
-
-**Motivation:** Recurring sponsorship smooths income volatility and
-gives sponsors a visible recognition channel.
-**Scope:** Enable GitHub Sponsors on the `SocietyPressFoundation`
-org, then add a `github:` line to `.github/FUNDING.yml` so the Sponsor
-button appears on the repository. Alternative: Open Collective.
-**Blockers:** None. Checked against GitHub's documentation on
-2026-08-27: an organization qualifies by contributing to open source and
-operating in a supported region — 501(c)(3) status is not required, and
-the payout account may be a personal one. What the 501(c)(3) does gate is
-the claim that a sponsorship is tax-deductible, which the profile must
-not make until the Foundation exists.
 
 ---
 

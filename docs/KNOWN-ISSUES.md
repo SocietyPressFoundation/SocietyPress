@@ -92,3 +92,79 @@ The log entries predate that session's deploy (latest occurrences 19:59 and 20:0
 UTC; the deploy ran at roughly 21:33). The Affiliations screen added that day
 follows the same in-renderer POST pattern as its neighbours but does not redirect,
 so it neither added to this nor was affected by it.
+
+---
+
+## ENS import: institutional members lose their name unless Membership Type is exactly "Organization"
+
+**Status:** open, found 2026-08-29 while running a full ENS import end to end for
+[the migration walkthrough](ENS-MIGRATION-WALKTHROUGH.md).
+**Severity:** medium — data is silently discarded, with no error and nothing in
+the log to notice afterwards.
+
+### The symptom
+
+An ENS row that carries a contact person's name *and* an institution name in the
+**File Name** column imports as an ordinary individual, and the institution's name
+is dropped. The member arrives with the right tier and the right membership type
+string, so nothing looks wrong until somebody notices the library is filed under
+its librarian.
+
+Observed with a two-row test, identical but for one column:
+
+| File Name | Membership Type | Result |
+|---|---|---|
+| Fairhaven Public Library | `Organization` | `member_type=organization`, name preserved |
+| Marengo Township Historical Museum | `Institutional` | `member_type=individual`, name `NULL` |
+
+### Why it happens
+
+`sp_process_import_batch()` treats a row with both personal and organization names
+as an organization only when the Membership Type column equals the literal string
+`organization` (lowercased and trimmed).
+
+The guard itself is right and should stay. In most ENS exports File Name holds the
+member's own surname for every individual, so trusting a populated File Name alone
+would convert an entire membership into organizations. The problem is only that the
+confirmation is one exact word.
+
+### What finishing it would involve
+
+Widen the accepted vocabulary rather than removing the guard — `institution`,
+`institutional`, `organisation` (British spelling), `library`, `business`,
+`affiliate`, `corporate` all mean the same thing to the society that typed them.
+A society that uses some other word still gets the current behaviour, so the
+importer should also **report** the rows it declined to treat as organizations
+instead of discarding the name in silence. A count on the results screen —
+"2 rows had an organization name that was not imported" — would have surfaced this
+without anybody reading the source.
+
+---
+
+## ENS import creates membership tiers that duplicate the built-in ones
+
+**Status:** open, found 2026-08-29 alongside the issue above.
+**Severity:** low — nothing breaks, but every migrated society has tidying to do.
+
+### The symptom
+
+SocietyPress installs five tiers: Individual, Joint/Family, Student, Lifetime,
+Honorary. The importer creates a tier for each distinct plan name in the CSV
+without checking whether an equivalent already exists, so a file using the names
+"Joint", "Life" and "Institutional" leaves the society with eight:
+
+```
+Individual · Joint/Family · Student · Lifetime · Honorary · Joint · Life · Institutional
+```
+
+"Joint" and "Joint/Family" are the same tier under two names, as are "Life" and
+"Lifetime". Members are assigned correctly; the list is just wrong.
+
+### What finishing it would involve
+
+Match incoming plan names against existing tiers case-insensitively, with a small
+synonym table for the built-ins (`life` → Lifetime, `joint` → Joint/Family,
+`family` → Joint/Family). Anything unmatched still creates a new tier, which is the
+correct outcome for a genuinely new plan. Whatever it does, the import results
+screen should say which tiers it created and which it matched, so the decision is
+visible rather than discovered later.

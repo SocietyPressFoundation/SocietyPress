@@ -6,6 +6,8 @@ This guide assumes you are not a developer. You don't need to know PHP, MySQL, o
 
 **Coming from ENS-Classic or the new ENS-Responsive?** Both paths are supported. ENS-Classic is being sunset (Blue Crab's official end date is 5/31/2027 with no guarantee of extension), and ENS-R societies who'd prefer to own their stack are also welcome — the export format is similar enough that the same CSV importer reads both. If you're still deciding which way to go, see the [side-by-side comparison](https://getsocietypress.org/comparison/) first.
 
+**Want to see one done first?** [A migration, start to finish](ENS-MIGRATION-WALKTHROUGH.md) walks through a complete import on a real file — the numbers it produced, the two places it needed a hand, and why running the import twice is safe.
+
 ---
 
 ## Before you start

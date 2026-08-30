@@ -145,15 +145,24 @@ and embedded on the homepage and docs landing.
 **Motivation:** The single most effective sales tool for an ENS society
 is a "watch us migrate one" demonstration. Having a live example with
 realistic ENS-format data proves the migration works.
-**Scope:** Use the ENS-format CSVs in `Sample Data/ENS Migration Demo/`
-to perform and document a fresh migration on demo.getsocietypress.org.
-Publish the walkthrough as a docs page.
-**Blockers:** A decision about the demo site. It already carries the
-Kindred dataset — 571 members, 8,149 records — and a walkthrough that
-shows a migration arriving on an empty site means replacing that. Either
-the demo is rebuilt from the ENS CSVs so the Kindred data *is* the
-migrated data, or the walkthrough is recorded somewhere other than the
-public demo.
+**Scope:** Perform and document a fresh migration from ENS-format CSVs,
+and publish the walkthrough as a docs page.
+**Status:** Written 2026-08-29 as `docs/ENS-MIGRATION-WALKTHROUGH.md`,
+linked from the migration guide. The migration was run end to end on a
+throwaway WordPress install rather than on the public demo, which
+dissolves the blocker this entry used to carry — the Kindred dataset was
+never at risk and stays where it is. The fixture that drives it lives in
+`Sample Data/ENS Migration Demo/members-export.csv` (22 members, 87
+columns, entirely invented) and is gitignored along with the rest of
+`Sample Data/`, so it must be regenerated rather than cloned.
+
+The run surfaced two importer defects, both now in
+[`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md): institutional members
+lose their organization name unless Membership Type is the exact word
+"Organization", and the importer creates membership tiers that duplicate
+the five built-in ones.
+**Remaining:** screenshots, and publishing the page to the docs site at
+getsocietypress.org/docs/.
 
 ### Incorporate the SocietyPress Foundation as a 501(c)(3)
 

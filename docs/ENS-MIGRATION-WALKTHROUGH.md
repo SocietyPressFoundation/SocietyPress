@@ -82,12 +82,14 @@ in the file: Joint, Life, and Institutional.
 
 ---
 
-## Two things that surprised us
+## Two things the run turned up
 
-Both of these are worth knowing before you import your own file. Neither
-is hard to work around once you know.
+Both were real defects, both were fixed the same evening, and both are
+described here rather than quietly patched out — because the behaviour explains
+what the importer is trying to protect you from, and the second one still has
+an edge you should know about.
 
-### Your tier list will have duplicates
+### Your tier list used to end up with duplicates
 
 SocietyPress ships with five membership tiers already defined —
 Individual, Joint/Family, Student, Lifetime, Honorary. The import creates
@@ -101,12 +103,30 @@ Individual · Joint/Family · Student · Lifetime · Honorary · Joint · Life �
 ```
 
 Eight tiers where you wanted four. "Joint" and "Joint/Family" mean the same
-thing; so do "Life" and "Lifetime". Nothing is broken and no member is on
-the wrong plan, but your tier list needs a tidy-up after import: rename the
-one you want to keep, move any members off the duplicate, and delete it.
+thing; so do "Life" and "Lifetime". Nothing was broken and no member was on
+the wrong plan, but every migrated society had a tidy-up nobody asked for.
 
-The safest time to do this is immediately, before members start renewing
-against a tier you're about to remove.
+**Fixed in 1.5.5.** Re-running the same file against a clean install now
+produces six tiers instead of eight:
+
+```
+Joint         → matched onto Joint/Family
+Life          → matched onto Lifetime
+Institutional → created (SocietyPress has no equivalent, so this is correct)
+```
+
+with the members landing where they should — 13 Individual, 6 Joint/Family
+(the three couples), 1 Lifetime, 2 Institutional.
+
+The import now also tells you what it did, on the results screen: which tiers
+it created, and which names it matched onto tiers you already had. Folding one
+name onto another is a judgement made on your behalf, so you find out
+immediately rather than in Settings three weeks later.
+
+Only the five tiers SocietyPress ships with have alternative names recognised.
+If your society has its own "Sustaining", "Patron" or "Senior" tier, it is left
+strictly alone and arrives as itself — putting members on a plan and a price
+that isn't theirs would be far worse than an extra row in a list.
 
 ### An institution needs the word "Organization"
 

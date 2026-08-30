@@ -158,8 +158,10 @@ silence, and re-importing the corrected file updates rather than duplicates.
 
 ## ENS import creates membership tiers that duplicate the built-in ones
 
-**Status:** open, found 2026-08-29 alongside the issue above.
-**Severity:** low — nothing breaks, but every migrated society has tidying to do.
+**Status:** fixed in 1.5.5. Found 2026-08-29 alongside the issue above, fixed the
+same evening. Kept for the reasoning about why the alias table is deliberately
+small.
+**Severity:** was low — nothing broke, but every migrated society had tidying to do.
 
 ### The symptom
 
@@ -175,11 +177,35 @@ Individual · Joint/Family · Student · Lifetime · Honorary · Joint · Life �
 "Joint" and "Joint/Family" are the same tier under two names, as are "Life" and
 "Lifetime". Members are assigned correctly; the list is just wrong.
 
-### What finishing it would involve
+### How it was fixed
 
-Match incoming plan names against existing tiers case-insensitively, with a small
-synonym table for the built-ins (`life` → Lifetime, `joint` → Joint/Family,
-`family` → Joint/Family). Anything unmatched still creates a new tier, which is the
-correct outcome for a genuinely new plan. Whatever it does, the import results
-screen should say which tiers it created and which it matched, so the decision is
-visible rather than discovered later.
+Exact case-insensitive matching was already there; only synonyms were missing.
+`sp_import_normalize_tier_name()` now reduces a plan name to a comparison key —
+punctuation flattened so "Joint/Family", "Joint & Family" and "Joint-Family"
+agree, and a trailing "Membership"/"Member"/"Plan"/"Level"/"Tier" stripped — and
+existing tiers are indexed under that key alongside their exact names. A CSV
+saying "Joint" or "Life" therefore lands on the built-in Joint/Family or Lifetime
+instead of creating a near-duplicate beside it. The alias table is filterable
+through `sp_import_tier_aliases`.
+
+An exact name match still wins over an alias match, so a society that has
+genuinely created both "Joint" and "Joint/Family" keeps them apart and each
+retains its own members.
+
+**Why the alias table stays small:** it covers only alternative names for the
+five tiers SocietyPress ships with, where a duplicate is guaranteed to be a
+wording difference rather than a real distinction. A society's own "Sustaining",
+"Patron" or "Senior" tier is never folded into anything. Merging two tiers a
+society means to keep apart is a worse failure than leaving a duplicate behind,
+because it puts members on a plan — and a price — that is not theirs.
+
+Both halves of the decision are now reported. `tiers_created` and
+`tiers_matched` (CSV name => existing tier name) come back from the importer and
+the results screen prints both, so a match made on the society's behalf is
+visible immediately rather than discovered in Settings later.
+
+Verified on the walkthrough fixture against a clean install: a file naming
+"Joint", "Life" and "Institutional" produced six tiers rather than eight —
+Joint matched onto Joint/Family, Life onto Lifetime, Institutional created,
+since no built-in equivalent exists — with members correctly distributed
+13 / 6 / 1 / 2.

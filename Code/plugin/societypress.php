@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.4
+ * Version:     1.5.5
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.4' );
+define( 'SOCIETYPRESS_VERSION', '1.5.5' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -26241,7 +26241,8 @@ function sp_render_placeholder_page(): void {
  * @param int    $offset     Number of DATA rows to skip (0 = start from first data row).
  * @param int    $batch_size Maximum rows to process in this call.
  * @return array Results with keys: imported, skipped, errors, tiers_created,
- *               rows_processed, orgs_unmatched, orgs_unmatched_types, done.
+ *               tiers_matched, rows_processed, orgs_unmatched,
+ *               orgs_unmatched_types, done.
  */
 /**
  * Decide whether a CSV "Membership Type" value names an organization rather
@@ -26265,6 +26266,66 @@ function sp_render_placeholder_page(): void {
  * @param string $value Raw value of the Membership Type column.
  * @return bool True when the row should be imported as an organization.
  */
+/**
+ * Reduce a membership plan name to a key that can be compared across the
+ * wording differences between one society's export and another's.
+ *
+ * WHY this exists: SocietyPress installs five tiers — Individual,
+ * Joint/Family, Student, Lifetime, Honorary — and an import creates a tier
+ * for every distinct plan name in the CSV. A file calling the same things
+ * "Joint" and "Life" therefore left societies with eight tiers, two pairs of
+ * which meant the same thing. Nobody was on the wrong plan, but every
+ * migrated society had a list to tidy.
+ *
+ * WHY the alias table is small: merging two tiers that a society actually
+ * intends to keep apart is a worse outcome than leaving a duplicate behind —
+ * it puts members on a plan, and a price, that is not theirs. So aliases are
+ * only recognised for the built-in five, where the duplicate is guaranteed
+ * to be a naming difference rather than a real distinction. A society's own
+ * "Sustaining", "Patron" or "Senior" tier is never folded into anything.
+ *
+ * @param string $name Plan name as it appears in the CSV or the tiers table.
+ * @return string Comparison key. Never empty for a non-empty input.
+ */
+function sp_import_normalize_tier_name( string $name ): string {
+    $key = strtolower( trim( $name ) );
+
+    // Flatten the punctuation societies use to join two words for one idea,
+    // so "Joint/Family", "Joint & Family" and "Joint-Family" agree.
+    $key = str_replace( [ '/', '-', '_', '&', '+', ',', '.' ], ' ', $key );
+    $key = trim( preg_replace( '/\s+/', ' ', $key ) );
+
+    // "Lifetime Membership", "Life Member" and "Joint Plan" are all saying the
+    // tier's name plus a word for "tier".
+    $key = trim( preg_replace( '/ (memberships?|members?|plans?|levels?|tiers?)$/', '', $key ) );
+
+    if ( '' === $key ) {
+        return '';
+    }
+
+    $aliases = [
+        'life'          => 'lifetime',
+        'joint'         => 'joint family',
+        'family'        => 'joint family',
+        'household'     => 'joint family',
+        'couple'        => 'joint family',
+        'dual'          => 'joint family',
+        'joint family'  => 'joint family',
+    ];
+
+    /**
+     * Filter the plan-name aliases used to match an imported tier against one
+     * that already exists. Keys and values are both normalised (lowercase,
+     * unpunctuated) names.
+     *
+     * @param string[] $aliases Alias key => canonical key.
+     * @param string   $key     The normalised name being resolved.
+     */
+    $aliases = (array) apply_filters( 'sp_import_tier_aliases', $aliases, $key );
+
+    return $aliases[ $key ] ?? $key;
+}
+
 function sp_import_is_organization_type( string $value ): bool {
     // Normalise: lowercase, collapse whitespace, drop punctuation that
     // societies sprinkle through type names ("Non-Profit", "Org.").
@@ -26324,6 +26385,10 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         'skipped'        => 0,
         'errors'         => [],
         'tiers_created'  => [],
+        // Plan names matched onto a tier that already existed under another
+        // word, as CSV name => existing tier name. Reported so the match is
+        // visible rather than assumed.
+        'tiers_matched'  => [],
         'rows_processed' => 0,
         // Rows that carried an organization name we declined to import because
         // the Membership Type column did not confirm it. Reported to the admin
@@ -26616,11 +26681,23 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     // Pre-load existing tier names → IDs so we don't create duplicates
     // ================================================================
     $tier_map = [];
+    // A second index under the normalised name, so a CSV saying "Joint" or
+    // "Life" finds the built-in "Joint/Family" or "Lifetime" instead of
+    // creating a near-duplicate beside it. Kept separate from the exact-name
+    // index above so an exact match always wins: if a society has genuinely
+    // created both "Joint" and "Joint/Family", each keeps its own members.
+    $tier_alias_map = [];
     $existing_tiers = $wpdb->get_results(
         "SELECT id, name FROM {$prefix}membership_tiers"
     );
     foreach ( $existing_tiers as $t ) {
         $tier_map[ strtolower( $t->name ) ] = (int) $t->id;
+        $norm = sp_import_normalize_tier_name( $t->name );
+        // First one wins — an earlier tier is the older tier, and the one a
+        // society is more likely to have members on already.
+        if ( '' !== $norm && ! isset( $tier_alias_map[ $norm ] ) ) {
+            $tier_alias_map[ $norm ] = [ 'id' => (int) $t->id, 'name' => $t->name ];
+        }
     }
 
     // Keep track of the next sort_order for new tiers
@@ -26818,9 +26895,20 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         if ( $has_tier ) {
             $plan_name = sanitize_text_field( $get( $row, 'tier' ) );
             if ( ! empty( $plan_name ) ) {
-                $key = strtolower( $plan_name );
+                $key  = strtolower( $plan_name );
+                $norm = sp_import_normalize_tier_name( $plan_name );
                 if ( isset( $tier_map[ $key ] ) ) {
                     $tier_id = $tier_map[ $key ];
+                } elseif ( '' !== $norm && isset( $tier_alias_map[ $norm ] ) ) {
+                    // Same tier under a different word. Reuse it and say so —
+                    // a society that disagrees with the match needs to be able
+                    // to see it was made.
+                    $tier_id          = $tier_alias_map[ $norm ]['id'];
+                    $tier_map[ $key ] = $tier_id;
+                    $matched_as       = $tier_alias_map[ $norm ]['name'];
+                    if ( ! isset( $results['tiers_matched'][ $plan_name ] ) ) {
+                        $results['tiers_matched'][ $plan_name ] = $matched_as;
+                    }
                 } else {
                     // Create the tier.
                     // WHY: If the CSV has a membership plan name we haven't seen
@@ -26835,6 +26923,11 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                     ]);
                     $tier_id = (int) $wpdb->insert_id;
                     $tier_map[ $key ] = $tier_id;
+                    // Index the new tier too, so a later row spelling it
+                    // differently joins it rather than creating a third.
+                    if ( '' !== $norm && ! isset( $tier_alias_map[ $norm ] ) ) {
+                        $tier_alias_map[ $norm ] = [ 'id' => $tier_id, 'name' => $plan_name ];
+                    }
                     $results['tiers_created'][] = $plan_name;
                 }
             }
@@ -28984,7 +29077,7 @@ function sp_render_import_page(): void {
                 if (submitBtn) submitBtn.disabled = true;
 
                 // Running totals across all batches
-                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [], orgs_unmatched: 0, orgs_unmatched_types: [] };
+                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [], tiers_matched: {}, orgs_unmatched: 0, orgs_unmatched_types: [] };
                 var updateExistingEl = document.getElementById('sp-import-update-existing');
                 var updateExisting = updateExistingEl ? (updateExistingEl.checked ? 1 : 0) : 1;
                 var replaceNewerEl = document.getElementById('sp-import-replace-newer');
@@ -29030,7 +29123,16 @@ function sp_render_import_page(): void {
                             totals.linked   += d.linked || 0;
                             totals.skipped  += d.skipped || 0;
                             if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
-                            if (d.tiers_created && d.tiers_created.length) totals.tiers_created = totals.tiers_created.concat(d.tiers_created);
+                            if (d.tiers_created && d.tiers_created.length) {
+                                d.tiers_created.forEach(function (t) {
+                                    if (totals.tiers_created.indexOf(t) === -1) totals.tiers_created.push(t);
+                                });
+                            }
+                            if (d.tiers_matched) {
+                                Object.keys(d.tiers_matched).forEach(function (k) {
+                                    if (!totals.tiers_matched[k]) totals.tiers_matched[k] = d.tiers_matched[k];
+                                });
+                            }
                             totals.orgs_unmatched += d.orgs_unmatched || 0;
                             if (d.orgs_unmatched_types && d.orgs_unmatched_types.length) {
                                 d.orgs_unmatched_types.forEach(function (t) {
@@ -29064,6 +29166,32 @@ function sp_render_import_page(): void {
                     // Both the organization notice and the error list write into
                     // errorsEl, so clear it once here rather than inside either.
                     errorsEl.innerHTML = '';
+
+                    // What the import did to the society's tier list. Creating a
+                    // tier is normal and expected; folding one name onto another
+                    // is a judgement the import made on the society's behalf, so
+                    // both get said out loud rather than discovered in Settings.
+                    if (totals.tiers_created.length > 0) {
+                        var createdNote = document.createElement('div');
+                        createdNote.style.marginTop = '14px';
+                        createdNote.textContent =
+                            <?php echo wp_json_encode( __( 'New membership tiers created:', 'societypress' ) . ' ' ); ?>
+                            + totals.tiers_created.join(', ') + '. '
+                            + <?php echo wp_json_encode( __( 'They were created without a price — set dues amounts under Settings.', 'societypress' ) ); ?>;
+                        errorsEl.appendChild(createdNote);
+                    }
+
+                    var matchedKeys = Object.keys(totals.tiers_matched);
+                    if (matchedKeys.length > 0) {
+                        var matchedNote = document.createElement('div');
+                        matchedNote.style.marginTop = '14px';
+                        matchedNote.textContent =
+                            <?php echo wp_json_encode( __( 'Matched onto tiers you already had:', 'societypress' ) . ' ' ); ?>
+                            + matchedKeys.map(function (k) { return k + ' \u2192 ' + totals.tiers_matched[k]; }).join(', ')
+                            + '. '
+                            + <?php echo wp_json_encode( __( 'If any of those should have stayed separate, create the tier and move those members across.', 'societypress' ) ); ?>;
+                        errorsEl.appendChild(matchedNote);
+                    }
 
                     // Organization names we declined to import. Not an error —
                     // for ordinary individuals this is the correct outcome — but
@@ -38326,7 +38454,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.4',
+            'version'     => '1.5.5',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38334,7 +38462,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.4',
+            'version'     => '1.5.5',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38342,7 +38470,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.4',
+            'version'     => '1.5.5',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38350,7 +38478,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.4',
+            'version'     => '1.5.5',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38358,7 +38486,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.4',
+            'version'     => '1.5.5',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

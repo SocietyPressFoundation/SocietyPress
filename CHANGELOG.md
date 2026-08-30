@@ -20,6 +20,30 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.5] — 2026-08-29
+
+**Importing no longer leaves you with the same tier twice.** SocietyPress
+starts with five membership tiers, and an import used to add one for every
+plan name in your file without checking whether it already had that tier under
+a slightly different word. A society whose export said "Joint" and "Life"
+finished the migration with eight tiers — "Joint" sitting beside
+"Joint/Family", "Life" beside "Lifetime" — and a tidying job nobody asked for.
+Those names are now recognised as the tiers you already have.
+
+**The import tells you what it did to your tier list.** Which tiers it created,
+and which names it matched onto tiers you already had, both now appear on the
+results screen when the import finishes. Folding one name onto another is a
+judgement made on your behalf, so it is said out loud rather than left for you
+to find in Settings — and if two of them should have stayed separate, you know
+straight away which members to move.
+
+Genuinely different tiers are left alone. Only the five SocietyPress ships with
+have alternative names recognised; a society's own "Sustaining", "Patron" or
+"Senior" tier is never folded into anything, because putting members on a plan
+and a price that isn't theirs would be worse than a duplicate in a list.
+
+---
+
 ## [1.5.4] — 2026-08-29
 
 **Imported institutions keep their names.** A library or museum in an ENS

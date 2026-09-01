@@ -357,3 +357,25 @@
 .sp-font-mono {
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* ----------------------------------------------------------------- highlight */
+
+/*
+ * The Highlight button's mark. A class rather than an inline background colour
+ * for the same reason the font choices above are classes: it tracks the
+ * society's accent colour, so a page highlighted under one child theme still
+ * looks deliberate under the next one.
+ *
+ * The flat value comes first as the fallback; color-mix overrides it wherever
+ * it is supported. Mixing toward white keeps the accent recognisable while
+ * staying light enough to read body text on, which a society that picked a dark
+ * navy accent would otherwise not get.
+ */
+mark.sp-highlight,
+.sp-highlight {
+	background-color: #f6ecd5;
+	background-color: color-mix( in srgb, var( --sp-color-accent, #c9973a ) 25%, #ffffff );
+	color: inherit;
+	padding: 0 0.15em;
+	border-radius: 2px;
+}

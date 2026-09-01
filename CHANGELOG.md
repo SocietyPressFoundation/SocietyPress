@@ -20,6 +20,28 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.6] — 2026-09-01
+
+**More on the formatting bar, and the same bar everywhere.** Underline,
+justify, a Highlight button, a divider line and a special-characters button
+(©, ½, é, —) have joined the toolbar above the Content box. The divider and
+the special characters were already in SocietyPress, but they sat on a second
+row behind the "Toolbar Toggle" button, which there was no reason to know
+existed — so in practice they may as well not have been there.
+
+**The Rich Text block on a page now has the full toolbar.** Building a page out
+of blocks, the Rich Text block gave you five buttons — bold, italic, two kinds
+of list, and a link — while the Content box on the same screen had the Table
+menu, the Picture menu, fonts, sizes and colours. Same kind of box, two
+different sets of buttons, and no way to tell why. They are now one toolbar.
+
+**Highlight follows your theme.** Highlighted text takes its colour from your
+society's accent colour rather than having a colour written into the page, so
+a page highlighted under one theme still looks right after you switch to
+another one.
+
+---
+
 ## [1.5.5] — 2026-08-29
 
 **Importing no longer leaves you with the same tier twice.** SocietyPress

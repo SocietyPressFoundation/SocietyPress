@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.5
+ * Version:     1.5.6
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.5' );
+define( 'SOCIETYPRESS_VERSION', '1.5.6' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -36208,27 +36208,33 @@ add_action( 'wp_ajax_sp_quick_edit_page', 'sp_handle_quick_edit_page' );
 // ============================================================================
 // PAGE EDITOR — TABLE BUTTON
 //
-// WordPress core ships TinyMCE without the table plugin, so the Content editor
-// on the SocietyPress page screen had no way to build a table short of
-// hand-writing HTML. assets/js/sp-editor-table.js is a small, dependency-free
-// TinyMCE plugin that adds a Table menu (insert, add/delete rows and columns)
-// to the toolbar. It is opted in for the page editor only, via
-// sp_page_editor_enable_table() called immediately before wp_editor().
+// WordPress core ships TinyMCE with a thin toolbar: no table plugin at all, no
+// font size, and text colour parked on a second row behind a toggle button a
+// volunteer has no reason to know exists. assets/js/sp-editor-table.js,
+// sp-editor-image.js and sp-editor-text.js are small, dependency-free TinyMCE
+// plugins adding a Table menu, a Picture menu and a Highlight button, and
+// sp_editor_toolbar_rows() below names the whole toolbar in one place.
+//
+// WHY one place: the Content box on the page screen is built by wp_editor() in
+// PHP, while the page builder's Rich Text widget is started by
+// wp.editor.initialize() in the browser, where the mce_buttons filters never
+// run. Two code paths were producing two different toolbars for what Harold
+// sees as the same box — the widget's was five buttons wide. One list, read by
+// both, is the only thing that keeps them the same.
 // ============================================================================
 
 /**
- * Turn on the dependency-free table button for the next wp_editor() render.
+ * Turn on the full SocietyPress toolbar for the next wp_editor() render.
  *
  * WHY: Registering the mce_* filters right before the page editor's wp_editor()
- *      call scopes the button to that editor — no other rich-text box on the
- *      site gains a table button unless it opts in the same way.
+ *      call scopes them to that editor — no other rich-text box on the site
+ *      gains a Table menu unless it opts in the same way. The page builder's
+ *      Rich Text widget opts in through sp_builder_editor_settings() instead,
+ *      because it is started from JavaScript where these filters never run.
  */
 function sp_page_editor_enable_table(): void {
-    add_filter( 'mce_external_plugins', 'sp_page_editor_table_plugin' );
-    add_filter( 'mce_external_plugins', 'sp_page_editor_image_plugin' );
-    add_filter( 'mce_buttons', 'sp_page_editor_table_button' );
-    add_filter( 'mce_buttons', 'sp_page_editor_image_button' );
-    add_filter( 'mce_buttons', 'sp_page_editor_text_buttons' );
+    add_filter( 'mce_external_plugins', 'sp_page_editor_external_plugins' );
+    add_filter( 'mce_buttons', 'sp_page_editor_first_row' );
     add_filter( 'mce_buttons_2', 'sp_page_editor_second_row' );
     add_filter( 'tiny_mce_before_init', 'sp_page_editor_font_sizes' );
     add_filter( 'mce_css', 'sp_page_editor_table_css' );
@@ -36246,7 +36252,8 @@ function sp_page_editor_enable_table(): void {
 }
 
 /**
- * Point TinyMCE at the table plugin, cache-busted by file modification time.
+ * Point TinyMCE at the SocietyPress editor plugins, cache-busted by file
+ * modification time.
  *
  * WHY the version matters here more than usual: mce_external_plugins takes a
  * bare URL and WordPress adds nothing to it, so without this the browser keeps
@@ -36254,9 +36261,17 @@ function sp_page_editor_enable_table(): void {
  * opened — for as long as it feels like. A volunteer would go on seeing the old
  * Table menu after an update and have no way to know why, and nobody should be
  * told to force-refresh to see a fix that already shipped.
+ *
+ * WHY it takes an array and returns one when the builder calls it with an empty
+ * array: it is an mce_external_plugins filter first, and reusing it verbatim is
+ * what guarantees the browser-started editors load exactly the same three
+ * scripts as the server-rendered one.
  */
-function sp_page_editor_table_plugin( array $plugins ): array {
+function sp_page_editor_external_plugins( array $plugins ): array {
     $plugins['sp_table'] = sp_asset_url( 'assets/js/sp-editor-table.js' );
+    $plugins['sp_image'] = sp_asset_url( 'assets/js/sp-editor-image.js' );
+    $plugins['sp_text']  = sp_asset_url( 'assets/js/sp-editor-text.js' );
+
     return $plugins;
 }
 
@@ -36276,66 +36291,62 @@ function sp_asset_url( string $relative ): string {
     return add_query_arg( 'ver', $ver, SOCIETYPRESS_PLUGIN_URL . $relative );
 }
 
-function sp_page_editor_table_button( array $buttons ): array {
-    $buttons[] = 'sp_table';
-    return $buttons;
-}
-
 /**
- * Point TinyMCE at the picture menu, cache-busted the same way as the table.
+ * The two toolbar rows, named in full, for every SocietyPress rich text box.
+ *
+ * WHY the whole list rather than splicing additions into whatever core hands
+ * over: the browser-started editors in the page builder never see core's list,
+ * so a splice could only ever fix one of the two toolbars. Writing both rows
+ * out means the Content box and the Rich Text widget are reading the same
+ * twenty-odd names, and a button added here appears in both.
+ *
+ * WHY this order: everything that changes how the words look comes first, in
+ * the order someone thinks about it — what kind of text, what size, then bold
+ * and colour. Lists and alignment next, then the things you insert. Row one is
+ * what a volunteer laying out a page reaches for; row two is repair work —
+ * paste as plain text, clear formatting, undo — which is worth having but is
+ * not what anyone is looking for when they start.
+ *
+ * WHY hr and charmap moved up out of row two: both were behind the "Toolbar
+ * Toggle" button, which a volunteer has no reason to know exists. A divider
+ * line and a way to type © or é are ordinary page-writing needs, and in
+ * practice a hidden button may as well not be there.
  */
-function sp_page_editor_image_plugin( array $plugins ): array {
-    $plugins['sp_image'] = sp_asset_url( 'assets/js/sp-editor-image.js' );
-    return $plugins;
+function sp_editor_toolbar_rows(): array {
+    return [
+        'row1' => [
+            'formatselect', 'styleselect', 'fontsizeselect',
+            'bold', 'italic', 'underline',
+            'forecolor', 'sp_highlight',
+            'bullist', 'numlist', 'blockquote',
+            'alignleft', 'aligncenter', 'alignright', 'alignjustify',
+            'link', 'sp_image', 'sp_table',
+            'hr', 'charmap',
+            'wp_adv',
+        ],
+        'row2' => [
+            'strikethrough', 'unlink', 'pastetext', 'removeformat',
+            'outdent', 'indent', 'undo', 'redo',
+            'wp_more', 'spellchecker', 'wp_help',
+        ],
+    ];
 }
 
 /**
- * Put the Picture menu next to the Table menu.
+ * mce_buttons — the first row.
  *
- * WHY a named menu rather than relying on the buttons WordPress already ships:
- * everything needed to place a picture was present but unfindable — alignment
- * sat behind a dropdown inside the media dialog, and the only controls that say
- * anything about the picture itself appear as bare icons after you happen to
- * click it. A volunteer laying out a page went looking for the word "picture",
- * found nothing, and built a two-column table instead.
+ * WHY the incoming list is discarded: see sp_editor_toolbar_rows(). Anything
+ * core would have put here is already named there, deliberately.
  */
-function sp_page_editor_image_button( array $buttons ): array {
-    $buttons[] = 'sp_image';
-    return $buttons;
+function sp_page_editor_first_row( array $buttons ): array {
+    return sp_editor_toolbar_rows()['row1'];
 }
 
 /**
- * Put text size and text color on the first toolbar row.
- *
- * WHY: text color already ships with WordPress, but it sits on the second row
- * behind the "Toolbar Toggle" button — which a volunteer has no reason to know
- * exists, so in practice the feature may as well not be there. Font size is not
- * in either of core's toolbars at all. Both belong in plain sight of someone
- * laying out a page.
- *
- * They go directly after the paragraph/heading select because that is where the
- * eye already is when someone is thinking about how text should look.
- */
-function sp_page_editor_text_buttons( array $buttons ): array {
-    $add = [ 'styleselect', 'fontsizeselect', 'forecolor' ];
-    $at  = array_search( 'formatselect', $buttons, true );
-
-    if ( false === $at ) {
-        return array_merge( $buttons, $add );
-    }
-
-    array_splice( $buttons, $at + 1, 0, $add );
-    return $buttons;
-}
-
-/**
- * Drop text color from the second row now that it lives on the first.
- *
- * WHY bother: two identical color buttons in one editor is the kind of small
- * confusion that makes a volunteer stop trusting the toolbar.
+ * mce_buttons_2 — the second row.
  */
 function sp_page_editor_second_row( array $buttons ): array {
-    return array_values( array_diff( $buttons, [ 'forecolor' ] ) );
+    return sp_editor_toolbar_rows()['row2'];
 }
 
 /**
@@ -36347,24 +36358,50 @@ function sp_page_editor_second_row( array $buttons ): array {
  * subheading, heading, banner — and every one of them is legible.
  */
 function sp_page_editor_font_sizes( array $init ): array {
-    $init['fontsize_formats'] = '13px 16px 20px 24px 32px 42px';
+    $init['fontsize_formats'] = sp_editor_font_sizes();
 
     /*
-     * Font choices, as three names rather than a list of typefaces.
-     *
-     * WHY not a real font dropdown: picking "Georgia" writes the word Georgia
-     * into the page. The child theme IS the society's identity — switch themes
-     * and the logo, colors and typography are all supposed to move together —
-     * but a page with a typeface baked into it does not move. It keeps
-     * rendering Georgia on a theme built around something else, and the only
-     * cure is opening every page and clearing it by hand. That is the same trap
-     * the table color pickers were, one level down.
-     *
-     * These apply a class instead. The class points at the theme's own
-     * --sp-font-body / --sp-font-heading, so a page set in "Heading font"
-     * follows the theme wherever the society takes it.
+     * WHY wp_json_encode here and a bare array in sp_builder_editor_settings():
+     * tiny_mce_before_init values are pasted into a JavaScript object literal by
+     * WordPress, so this one has to arrive already encoded. The builder encodes
+     * its whole settings object in one pass, so handing it a pre-encoded string
+     * would put a quoted string where TinyMCE expects a list, and the Styles
+     * menu would come up empty.
      */
-    $init['style_formats'] = wp_json_encode( [
+    $init['style_formats'] = wp_json_encode( sp_editor_style_formats() );
+
+    return $init;
+}
+
+/**
+ * The text sizes offered in the toolbar.
+ *
+ * WHY these six and not a pixel box: left open, a page ends up with 11px body
+ * copy nobody over fifty can read and a 96px heading that breaks the layout on
+ * a phone. Six steps cover every real need — small print, body, lead-in,
+ * subheading, heading, banner — and every one of them is legible.
+ */
+function sp_editor_font_sizes(): string {
+    return '13px 16px 20px 24px 32px 42px';
+}
+
+/**
+ * Font choices, as three names rather than a list of typefaces.
+ *
+ * WHY not a real font dropdown: picking "Georgia" writes the word Georgia into
+ * the page. The child theme IS the society's identity — switch themes and the
+ * logo, colors and typography are all supposed to move together — but a page
+ * with a typeface baked into it does not move. It keeps rendering Georgia on a
+ * theme built around something else, and the only cure is opening every page
+ * and clearing it by hand. That is the same trap the table color pickers were,
+ * one level down, and the reason the Highlight button applies a class too.
+ *
+ * These apply a class instead. The class points at the theme's own
+ * --sp-font-body / --sp-font-heading, so a page set in "Heading font" follows
+ * the theme wherever the society takes it.
+ */
+function sp_editor_style_formats(): array {
+    return [
         [
             'title'   => __( 'Body font', 'societypress' ),
             'inline'  => 'span',
@@ -36380,9 +36417,36 @@ function sp_page_editor_font_sizes( array $init ): array {
             'inline'  => 'span',
             'classes' => 'sp-font-mono',
         ],
-    ] );
+    ];
+}
 
-    return $init;
+/**
+ * TinyMCE settings for the page builder's Rich Text boxes.
+ *
+ * WHY this has to exist when the mce_* filters already describe the toolbar:
+ * wp.editor.initialize() does not read those filters. WordPress prints one
+ * fixed set of defaults for browser-started editors — a five-button toolbar,
+ * no external plugins, no editor stylesheet — and every Rich Text widget in the
+ * builder inherited it. That is why the widget's toolbar was so much thinner
+ * than the Content box above it despite both being "the rich text editor" as
+ * far as Harold is concerned. Handing the same lists over explicitly is what
+ * closes the gap.
+ *
+ * content_css is added to rather than replaced on the JavaScript side; see the
+ * note there.
+ */
+function sp_builder_editor_settings(): array {
+    $rows = sp_editor_toolbar_rows();
+
+    return [
+        'toolbar1'         => implode( ',', $rows['row1'] ),
+        'toolbar2'         => implode( ',', $rows['row2'] ),
+        'external_plugins' => sp_page_editor_external_plugins( [] ),
+        'content_css'      => sp_asset_url( 'assets/css/sp-editor-table.css' ),
+        'style_formats'    => sp_editor_style_formats(),
+        'fontsize_formats' => sp_editor_font_sizes(),
+        'wpautop'          => true,
+    ];
 }
 
 function sp_page_editor_table_css( string $css ): string {
@@ -36391,11 +36455,12 @@ function sp_page_editor_table_css( string $css ): string {
 }
 
 /**
- * Load the table styling on the front end for pages that contain a table.
+ * Load the editor stylesheet on the front end for pages that need it.
  *
- * WHY: Inserted tables carry the sp-content-table class; without this stylesheet
- *      they would render borderless for visitors even though they look right in
- *      the editor.
+ * WHY: everything the toolbar applies is a class — sp-content-table on a table,
+ *      sp-font-* on a run of text, sp-highlight on a mark. Without this
+ *      stylesheet a table renders borderless and a highlight renders as plain
+ *      text for visitors, even though both look right in the editor.
  */
 add_action( 'wp_enqueue_scripts', function (): void {
     if ( ! is_singular() ) {
@@ -36403,7 +36468,9 @@ add_action( 'wp_enqueue_scripts', function (): void {
     }
     $post = get_post();
     $content = $post ? (string) $post->post_content : '';
-    if ( str_contains( $content, 'sp-content-table' ) || str_contains( $content, 'sp-font-' ) ) {
+    if ( str_contains( $content, 'sp-content-table' )
+        || str_contains( $content, 'sp-font-' )
+        || str_contains( $content, 'sp-highlight' ) ) {
         wp_enqueue_style( 'sp-content-table', sp_asset_url( 'assets/css/sp-editor-table.css' ), [], null );
     }
 } );
@@ -38454,7 +38521,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.5',
+            'version'     => '1.5.6',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38462,7 +38529,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.5',
+            'version'     => '1.5.6',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38470,7 +38537,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.5',
+            'version'     => '1.5.6',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38478,7 +38545,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.5',
+            'version'     => '1.5.6',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38486,7 +38553,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.5',
+            'version'     => '1.5.6',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -47836,6 +47903,16 @@ add_action( "admin_enqueue_scripts", function ( $hook ) {
 
     wp_enqueue_media();
     wp_enqueue_editor();
+
+    /*
+     * WHY the editor stylesheet is also loaded into the admin page itself: the
+     * Table Style gallery is rendered into the parent document, not into
+     * TinyMCE's iframe, so a Rich Text widget on a native WordPress page screen
+     * would open that dialog as a column of unstyled buttons. The SocietyPress
+     * page editor already gets this from sp_page_editor_enable_table(); the
+     * shared handle means loading it here costs nothing there.
+     */
+    wp_enqueue_style( 'sp-content-table', sp_asset_url( 'assets/css/sp-editor-table.css' ), [], null );
 });
 
 
@@ -48264,6 +48341,37 @@ add_action( 'admin_footer', function () {
             });
         }
 
+        // The same toolbar the Content box gets, handed over explicitly because
+        // wp.editor.initialize() never sees the mce_buttons filters that build
+        // it. See sp_builder_editor_settings() in the plugin.
+        var spEditorSettings = <?php echo wp_json_encode( sp_builder_editor_settings() ); ?>;
+
+        function spEditorTinyMCE() {
+            var settings = {};
+            var key;
+
+            for (key in spEditorSettings) {
+                if (Object.prototype.hasOwnProperty.call(spEditorSettings, key)) {
+                    settings[key] = spEditorSettings[key];
+                }
+            }
+
+            // Core's own content_css carries dashicons and the editor stylesheet,
+            // which is what draws the Read More divider and the media
+            // placeholders. Ours has to be appended to it — setting content_css
+            // outright replaces the list, and the editor would come up with
+            // tables styled but core's own furniture unstyled.
+            var defaults = (window.wp && wp.editor && wp.editor.getDefaultSettings)
+                ? (wp.editor.getDefaultSettings().tinymce || {})
+                : {};
+
+            if (defaults.content_css) {
+                settings.content_css = defaults.content_css + ',' + spEditorSettings.content_css;
+            }
+
+            return settings;
+        }
+
         function spInitEditors() {
             if (!window.wp || !wp.editor || !wp.editor.initialize) return;
             spBuilderEditors().forEach(function(el) {
@@ -48271,7 +48379,7 @@ add_action( 'admin_footer', function () {
                 if (!spCardIsOpen(el) || spEditorIsLive(el)) return;
                 try {
                     wp.editor.initialize(el.id, {
-                        tinymce: { wpautop: true },
+                        tinymce: spEditorTinyMCE(),
                         quicktags: true,
                         mediaButtons: true
                     });

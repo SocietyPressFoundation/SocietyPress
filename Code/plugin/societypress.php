@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.6
+ * Version:     1.5.7
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.6' );
+define( 'SOCIETYPRESS_VERSION', '1.5.7' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -38521,7 +38521,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.6',
+            'version'     => '1.5.7',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38529,7 +38529,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.6',
+            'version'     => '1.5.7',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38537,7 +38537,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.6',
+            'version'     => '1.5.7',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38545,7 +38545,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.6',
+            'version'     => '1.5.7',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38553,7 +38553,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.6',
+            'version'     => '1.5.7',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -93162,14 +93162,38 @@ function sp_render_record_import_page(): void {
  * @param  array  $import_map    Column index => field_id mapping.
  * @param  int    $offset        Data rows to skip before importing. 0 starts at the top.
  * @param  int    $limit         Maximum rows to process this call. 0 means every remaining row.
- * @return array  Results with imported/skipped/duplicates/errors counts, plus
- *                rows_read and done for callers that are batching.
+ * @return array  Results with imported/skipped/duplicates/repeats/errors counts,
+ *                plus rows_read and done for callers that are batching.
+ *                'repeats' counts rows kept even though an identical row came
+ *                earlier in the same file — legitimate in a transcribed index,
+ *                a copy-paste slip anywhere else, so the admin is told.
  */
+/**
+ * Helper: Fingerprint one incoming import row.
+ *
+ * WHY this is its own function: the offset skip and the import loop both need
+ * to hash a row, and they must agree exactly. If they ever drifted apart, a
+ * resumed batch would miscount how many copies of a repeated row it had
+ * already passed and start rejecting real records.
+ */
+function sp_record_import_row_fingerprint( array $row, array $import_map ): string {
+    $fields = [];
+    foreach ( $import_map as $col_idx => $field_id ) {
+        $val = isset( $row[ $col_idx ] ) ? trim( $row[ $col_idx ] ) : '';
+        if ( $val !== '' ) {
+            $fields[ $field_id ] = $val;
+        }
+    }
+    ksort( $fields );
+    return md5( serialize( $fields ) );
+}
+
+
 function sp_process_record_import( string $file_path, int $collection_id, array $import_map, int $offset = 0, int $limit = 0 ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $results = [ 'imported' => 0, 'skipped' => 0, 'duplicates' => 0, 'errors' => [] ];
+    $results = [ 'imported' => 0, 'skipped' => 0, 'duplicates' => 0, 'repeats' => 0, 'errors' => [] ];
 
     $handle = fopen( $file_path, 'r' );
     if ( ! $handle ) {
@@ -93195,12 +93219,21 @@ function sp_process_record_import( string $file_path, int $collection_id, array 
         $field_searchable[ (int) $fr->id ] = (bool) $fr->searchable;
     }
 
-    // Build a set of fingerprints for all existing records in this collection.
+    // Count the fingerprints of existing records in this collection.
     // WHY: Duplicate detection. If someone imports the same .genrecord file
     //      twice, or imports an updated file that overlaps with existing data,
     //      we skip rows that already exist rather than creating duplicates.
     //      The fingerprint is a hash of all field values for a record, so two
     //      records are "the same" only if every single field matches exactly.
+    //
+    // WHY counts rather than a yes/no set: a transcribed index legitimately
+    //      repeats an identical line. "Grant Ira [triplets of]" appears three
+    //      times in the sexton book because three infants were buried the same
+    //      day, and the volume records each one. Treating repeats two and three
+    //      as duplicates of the first silently loses two real burials, and the
+    //      only evidence is a "duplicates skipped" number nobody can audit.
+    //      Comparing counts keeps every copy the source offers while a second
+    //      import of the same file still adds nothing.
     $existing_fingerprints = [];
     $existing_records = $wpdb->get_results( $wpdb->prepare(
         "SELECT r.id FROM {$prefix}records r WHERE r.collection_id = %d", $collection_id
@@ -93222,7 +93255,8 @@ function sp_process_record_import( string $file_path, int $collection_id, array 
         }
         foreach ( $record_fields as $rid => $fields ) {
             ksort( $fields );
-            $existing_fingerprints[ md5( serialize( $fields ) ) ] = true;
+            $fp = md5( serialize( $fields ) );
+            $existing_fingerprints[ $fp ] = ( $existing_fingerprints[ $fp ] ?? 0 ) + 1;
         }
     }
     $results['duplicates'] = 0;
@@ -93230,10 +93264,18 @@ function sp_process_record_import( string $file_path, int $collection_id, array 
     // Resume point. Row numbers stay absolute so an error on row 8,214 says
     // 8,214 regardless of which batch happened to reach it.
     $row_num = 1;
+    $seen_fingerprints = [];
     for ( $i = 0; $i < $offset; $i++ ) {
-        if ( fgetcsv( $handle ) === false ) {
+        $skipped_row = fgetcsv( $handle );
+        if ( false === $skipped_row ) {
             break;
         }
+        // Count rows earlier batches already consumed. Without this the
+        // occurrence counter restarts at zero every batch while the database
+        // count keeps climbing, so the third Grant infant would come back as a
+        // duplicate purely because it happened to land after a batch edge.
+        $skipped_fp = sp_record_import_row_fingerprint( $skipped_row, $import_map );
+        $seen_fingerprints[ $skipped_fp ] = ( $seen_fingerprints[ $skipped_fp ] ?? 0 ) + 1;
         $row_num++;
     }
 
@@ -93270,24 +93312,25 @@ function sp_process_record_import( string $file_path, int $collection_id, array 
             continue;
         }
 
-        // Build fingerprint for this incoming row and check for duplicate
-        $incoming_fields = [];
-        foreach ( $import_map as $col_idx => $field_id ) {
-            $val = isset( $row[ $col_idx ] ) ? trim( $row[ $col_idx ] ) : '';
-            if ( $val !== '' ) {
-                $incoming_fields[ $field_id ] = $val;
-            }
-        }
-        ksort( $incoming_fields );
-        $fingerprint = md5( serialize( $incoming_fields ) );
+        // Build fingerprint for this incoming row and check for duplicate.
+        $fingerprint = sp_record_import_row_fingerprint( $row, $import_map );
 
-        if ( isset( $existing_fingerprints[ $fingerprint ] ) ) {
+        // A row is a duplicate only once the collection already holds as many
+        // copies as this file has offered so far — so re-importing the same
+        // file adds nothing, while a source that genuinely lists the same line
+        // three times still lands three records. See the counting note above.
+        $seen = $seen_fingerprints[ $fingerprint ] ?? 0;
+        $seen_fingerprints[ $fingerprint ] = $seen + 1;
+
+        if ( $seen < ( $existing_fingerprints[ $fingerprint ] ?? 0 ) ) {
             $results['duplicates']++;
             continue;
         }
-        // Add this row's fingerprint so we also catch duplicates within the
-        // import file itself (e.g. same row appearing twice in the CSV).
-        $existing_fingerprints[ $fingerprint ] = true;
+        if ( $seen > 0 ) {
+            // Kept, but worth reporting: if the repeat was a copy-paste slip
+            // rather than a real repeated entry, this is how the admin sees it.
+            $results['repeats']++;
+        }
 
         // Insert record shell
         $wpdb->insert( $prefix . 'records', [
@@ -93450,6 +93493,7 @@ function sp_ajax_record_import_batch(): void {
         'imported'   => (int) $results['imported'],
         'skipped'    => (int) $results['skipped'],
         'duplicates' => (int) ( $results['duplicates'] ?? 0 ),
+        'repeats'    => (int) ( $results['repeats'] ?? 0 ),
         'errors'     => array_values( (array) $results['errors'] ),
         'rows_read'  => (int) ( $results['rows_read'] ?? 0 ),
         'done'       => ! empty( $results['done'] ),
@@ -93513,6 +93557,8 @@ function sp_render_record_import_progress( string $temp_file, int $collection_id
             'working' => __( 'Importing %1$s of %2$s records…', 'societypress' ),
             /* translators: 1: records imported, 2: duplicates skipped, 3: empty rows skipped */
             'counts'  => __( 'Imported %1$s records. %2$s duplicates skipped, %3$s empty rows skipped.', 'societypress' ),
+            /* translators: %s: number of identical rows kept */
+            'repeats' => __( '%s identical rows were kept because the source lists them more than once. If that was a copy-paste slip rather than a real repeat, delete the extras from the collection.', 'societypress' ),
             /* translators: %s: number of records imported before the connection dropped */
             'network' => __( 'Lost contact with the server. %s records were imported before it stopped.', 'societypress' ),
             /* translators: %s: number of further items not listed */
@@ -93528,7 +93574,7 @@ function sp_render_record_import_progress( string $temp_file, int $collection_id
         var LINKS = <?php echo wp_json_encode( $links ); ?>;
 
         var offset = 0;
-        var totals = { imported: 0, skipped: 0, duplicates: 0, errors: [] };
+        var totals = { imported: 0, skipped: 0, duplicates: 0, repeats: 0, errors: [] };
 
         function num(n) { return n.toLocaleString(); }
 
@@ -93552,6 +93598,12 @@ function sp_render_record_import_progress( string $temp_file, int $collection_id
             var counts = document.createElement('p');
             counts.textContent = fill(STR.counts, num(totals.imported), num(totals.duplicates), num(totals.skipped));
             note.appendChild(counts);
+
+            if (totals.repeats > 0) {
+                var rep = document.createElement('p');
+                rep.textContent = fill(STR.repeats, num(totals.repeats));
+                note.appendChild(rep);
+            }
 
             resultEl.appendChild(note);
 
@@ -93604,6 +93656,7 @@ function sp_render_record_import_progress( string $temp_file, int $collection_id
                     totals.imported   += r.data.imported;
                     totals.skipped    += r.data.skipped;
                     totals.duplicates += r.data.duplicates;
+                    totals.repeats    += (r.data.repeats || 0);
                     if (r.data.errors && r.data.errors.length) {
                         totals.errors = totals.errors.concat(r.data.errors);
                     }

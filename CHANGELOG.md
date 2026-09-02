@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.7] — 2026-09-01
+
+**Importing a record collection no longer throws away repeated lines.** When a
+transcribed index lists the same entry more than once, it usually means what it
+says. A sexton's book records "Grant Ira [triplets of]" three times because
+three infants were buried; a cemetery volume lists two Groenkes on the same page
+with the same name. The record importer treated any row identical to one it had
+already seen as a duplicate and skipped it, so those extra burials never
+arrived — and the only trace was a "duplicates skipped" number that looked
+reassuring. It now counts copies instead of merely noticing them: a collection
+takes as many copies as the file offers, while importing the same file a second
+time still adds nothing. On a 40,000-row county index this was the difference
+between 311 lost records and none.
+
+The import summary now also reports how many identical rows it kept, so a
+genuine copy-paste slip is still visible rather than silently doubled.
+
+---
+
 ## [1.5.6] — 2026-09-01
 
 **More on the formatting bar, and the same bar everywhere.** Underline,

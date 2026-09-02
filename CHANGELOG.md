@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.8] — 2026-09-01
+
+**A record collection can now be searched from any page.** The genealogical
+records search was only available as a page-builder widget or on the dedicated
+records template. That left out the page most societies actually want it on —
+the research page they have already written, with their own table of local
+cemeteries and their own notes about which courthouse burned in which year.
+Rebuilding that page in the builder to gain a search box is not a trade anyone
+makes, so in practice the search stayed where visitors weren't, and the page
+went on linking out to a file download instead.
+
+Paste `[societypress_records]` into any page or post and the search appears
+there. Add `collection="cemeteries-index"` to search one collection — the slug
+or the ID both work — or leave it off to search all of them. Access rules are
+unchanged: a members-only collection still asks for a login, wherever the
+shortcode sits.
+
+---
+
 ## [1.5.7] — 2026-09-01
 
 **Importing a record collection no longer throws away repeated lines.** When a

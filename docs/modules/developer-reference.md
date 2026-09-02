@@ -15,6 +15,7 @@ Every public-facing module surfaces a shortcode. Page-builder widgets are wrappe
 | Shortcode | What it does |
 |---|---|
 | `[societypress_join]` | Join form / new-member signup |
+| `[societypress_records]` | Genealogical records search (cemetery indexes, census, church records) |
 | `[societypress_volunteers]` | Volunteer-opportunity board |
 | `[sp_donate]` | Public donation form (Stripe + PayPal) |
 | `[sp_database_subscriptions]` | Members-area gateway to paid databases |

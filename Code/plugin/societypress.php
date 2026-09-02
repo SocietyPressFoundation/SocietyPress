@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.7
+ * Version:     1.5.8
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.7' );
+define( 'SOCIETYPRESS_VERSION', '1.5.8' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -38521,7 +38521,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.7',
+            'version'     => '1.5.8',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38529,7 +38529,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.7',
+            'version'     => '1.5.8',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38537,7 +38537,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.7',
+            'version'     => '1.5.8',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38545,7 +38545,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.7',
+            'version'     => '1.5.8',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38553,7 +38553,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.7',
+            'version'     => '1.5.8',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -94913,6 +94913,63 @@ add_filter( 'sp_builder_widget_types', function( array $types ): array {
     ];
     return $types;
 } );
+
+
+/**
+ * Shortcode: [societypress_records]
+ *
+ * WHY: The records search existed only as a page-builder widget or the
+ *      dedicated sp-records template. A society whose research page is
+ *      ordinary page content — a hand-built table of the county's cemeteries,
+ *      an essay about the courthouse fire — had nowhere to put the search
+ *      short of rebuilding the page in the builder. In practice they left the
+ *      page as it was and linked visitors off to a file download instead, so
+ *      the collection they had transcribed never became searchable where
+ *      anyone was actually reading about it. Every other public-facing feature
+ *      carries a shortcode; this is the missing member of that set.
+ *
+ * Attributes mirror the page-builder widget's fields so the two stay
+ * interchangeable:
+ *   collection      Collection ID or slug. Omit to search every collection.
+ *   login_required  "yes" to require a login regardless of collection access.
+ */
+add_action( 'init', function () {
+    add_shortcode( 'societypress_records', 'sp_shortcode_records' );
+} );
+
+function sp_shortcode_records( $atts = array() ): string {
+    $atts = shortcode_atts( array(
+        'collection'     => '',
+        'login_required' => '',
+    ), $atts, 'societypress_records' );
+
+    // Accept a slug as well as an ID. Whoever pastes this into a page knows
+    // the collection by its name, not by a number buried in an admin URL.
+    $collection_id = 0;
+    $collection    = trim( (string) $atts['collection'] );
+    if ( '' !== $collection ) {
+        if ( ctype_digit( $collection ) ) {
+            $collection_id = (int) $collection;
+        } else {
+            global $wpdb;
+            $collection_id = (int) $wpdb->get_var( $wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}sp_record_collections WHERE slug = %s",
+                sanitize_title( $collection )
+            ) );
+        }
+    }
+
+    ob_start();
+    sp_render_records_frontend( array(
+        'collection_id'  => $collection_id,
+        'login_required' => in_array(
+            strtolower( (string) $atts['login_required'] ),
+            array( 'yes', 'true', '1' ),
+            true
+        ),
+    ) );
+    return (string) ob_get_clean();
+}
 
 
 /**

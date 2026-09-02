@@ -387,6 +387,7 @@ All registered via `wp_ajax_` (and `wp_ajax_nopriv_` where noted).
 | Shortcode | Function | Description |
 |-----------|----------|-------------|
 | `[societypress_join]` | Join form | Public signup with tier selection + Stripe checkout |
+| `[societypress_records]` | Records search | Searches transcribed record collections; `collection` takes an ID or slug, omit it to search all |
 | `[societypress_volunteers]` | Volunteer opportunities | Frontend card grid with AJAX signup/cancel |
 
 ---

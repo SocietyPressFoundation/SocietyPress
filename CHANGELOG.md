@@ -20,6 +20,34 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.12] — 2026-09-02
+
+**Records → Review finds the rows an import split wrongly.** An index typed up
+from a book arrives as one line per entry, and splitting that line into columns
+is guesswork — "Abbot Martha Louisa Woodhull" is a surname and three given
+names, or a surname and a maiden name, and no importer can tell which. Most
+guesses are right. A few hundred in forty thousand are not, and once they are
+rows in a table they look exactly like the ones that are.
+
+Every collection now has a Review button. It reads through the collection and
+sets aside the rows that look wrong: a column that is filled in on nearly every
+other record and empty on this one, a column that normally holds two words
+holding five, an entry beginning with De or Van where that is normally part of
+the name beside it, a quotation mark opened and never closed, a whole entry that
+is a note in brackets rather than a name. Each one is listed with its columns
+laid out for editing and two buttons — save the fix, or say it is right as it
+is. The count of what is waiting rides on the Review button in the collections
+list, because a queue nobody is told about is a queue nobody works.
+
+Nothing here is configured. The checks work out what normal looks like from the
+collection itself rather than from any knowledge of what a column is called, so
+they apply to a cemetery index, a marriage register or a set of obituaries
+without being told which is which. The check runs in slices so a collection of
+any size finishes rather than timing out, and it can be run again after a batch
+of corrections — rows already accepted stay accepted.
+
+---
+
 ## [1.5.11] — 2026-09-02
 
 **The help desk takes screenshots now.** Ask for Help had nowhere to put a

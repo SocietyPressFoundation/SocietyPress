@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.11
+ * Version:     1.5.12
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.11' );
+define( 'SOCIETYPRESS_VERSION', '1.5.12' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3071,6 +3071,34 @@ function sp_create_tables(): void {
 
 
     // ========================================================================
+    // sp_record_reviews — the rows of an imported index that look wrong
+    //
+    // WHY a table beside the records rather than a column on them: a scan is
+    //      something a society runs again after correcting a batch, and a
+    //      separate table can be emptied of open rows and refilled without
+    //      touching a forty-thousand-row table or the search blob on it. It
+    //      also keeps what a volunteer has already accepted, which is the one
+    //      thing a re-scan must never undo.
+    //
+    // The unique key on record_id is what lets a re-scan use ON DUPLICATE KEY
+    // rather than checking for each row first.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}record_reviews (
+        id            BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        record_id     BIGINT(20) UNSIGNED NOT NULL,
+        collection_id BIGINT(20) UNSIGNED NOT NULL,
+        reasons       TEXT                NULL,
+        state         VARCHAR(20)         NOT NULL DEFAULT 'open',
+        resolved_by   BIGINT(20) UNSIGNED NULL,
+        resolved_at   DATETIME            NULL,
+        created_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY record_id (record_id),
+        KEY collection_state (collection_id, state)
+    ) {$charset_collate};" );
+
+
+    // ========================================================================
     // sp_tickets — the society's own help desk
     //
     // WHY the environment is stored with the report rather than asked for:
@@ -3133,7 +3161,7 @@ function sp_create_tables(): void {
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.35d' );
+    update_option( 'societypress_db_version', '0.36d' );
 }
 
 
@@ -5734,7 +5762,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Genealogical Records', 'societypress' ),
             'description' => __( 'Build searchable databases of cemetery records, census data, church records, and other genealogical collections.', 'societypress' ),
             'icon'        => 'dashicons-database',
-            'menu_slugs'  => [ 'sp-record-collections', 'sp-import-records', 'sp-record-collection-edit', 'sp-record-browse', 'sp-record-edit' ],
+            'menu_slugs'  => [ 'sp-record-collections', 'sp-import-records', 'sp-record-collection-edit', 'sp-record-browse', 'sp-record-edit', 'sp-record-review' ],
         ],
         'donations' => [
             'name'        => __( 'Donations & Campaigns', 'societypress' ),
@@ -7577,6 +7605,15 @@ add_action( 'admin_menu', function () {
 
     add_submenu_page(
         '',
+        __( 'Review Records — SocietyPress', 'societypress' ),
+        __( 'Review Records', 'societypress' ),
+        'manage_options',
+        'sp-record-review',
+        'sp_render_record_review_page'
+    );
+
+    add_submenu_page(
+        '',
         __( 'Edit Record — SocietyPress', 'societypress' ),
         __( 'Edit Record', 'societypress' ),
         'manage_options',
@@ -8173,6 +8210,7 @@ function sp_get_menu_capability_map(): array {
         'sp-import-records'        => 'sp_manage_records',
         'sp-record-collection-edit'=> 'sp_manage_records',
         'sp-record-browse'         => 'sp_manage_records',
+        'sp-record-review'         => 'sp_manage_records',
         'sp-record-edit'           => 'sp_manage_records',
 
         // Lineage Programs
@@ -38957,7 +38995,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.11',
+            'version'     => '1.5.12',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38965,7 +39003,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.11',
+            'version'     => '1.5.12',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38973,7 +39011,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.11',
+            'version'     => '1.5.12',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38981,7 +39019,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.11',
+            'version'     => '1.5.12',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38989,7 +39027,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.11',
+            'version'     => '1.5.12',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -80522,7 +80560,12 @@ function sp_proper_name_token( string $tok, bool $is_first ): string {
     if ( '' === $tok ) {
         return $tok;
     }
-    static $particles = array( 'de','del','della','di','da','dos','das','du','la','le','van','von','der','den','ter','ten','of','y','e','al','bin' );
+    static $particles = null;
+    if ( null === $particles ) {
+        // One list, shared with the record review checks, so a name split here
+        // and a name questioned there agree about what a particle is.
+        $particles = sp_name_particles();
+    }
     static $romans    = array( 'ii','iii','iv','vi','vii','viii','ix','xi','xii','xiii' );
 
     $bare = rtrim( $tok, '.' );
@@ -91697,6 +91740,13 @@ function sp_render_record_collections_page(): void {
         }
 
         /* Delete button: red text to signal destructive action */
+        /* A collection with rows waiting reads as waiting, not as one more
+           button in the row. */
+        .sp-records-review-waiting {
+            border-color: #dba617;
+            color: #7a5c00;
+            font-weight: 600;
+        }
         .sp-records-delete-btn {
             color: #b32d2e;
             cursor: pointer;
@@ -91809,6 +91859,10 @@ function sp_render_record_collections_page(): void {
                         $edit_url   = admin_url( 'admin.php?page=sp-record-collection-edit&collection_id=' . $c->id );
                         $browse_url = admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $c->id );
                         $import_url = admin_url( 'admin.php?page=sp-import-records&collection_id=' . $c->id );
+                        $review_url = admin_url( 'admin.php?page=sp-record-review&collection_id=' . $c->id );
+                        // The count rides on the button because a queue nobody
+                        // is told about is a queue nobody works.
+                        $review_open = sp_record_review_open_count( (int) $c->id );
                         $export_url = wp_nonce_url(
                             admin_url( 'admin-ajax.php?action=sp_export_genrecord&collection_id=' . $c->id ),
                             'sp_export_genrecord'
@@ -91847,6 +91901,19 @@ function sp_render_record_collections_page(): void {
                             <td>
                                 <a href="<?php echo esc_url( $browse_url ); ?>" class="button button-small"><?php esc_html_e( 'Browse', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $import_url ); ?>" class="button button-small"><?php esc_html_e( 'Import', 'societypress' ); ?></a>
+                                <a href="<?php echo esc_url( $review_url ); ?>" class="button button-small<?php echo $review_open ? ' sp-records-review-waiting' : ''; ?>">
+                                    <?php
+                                    if ( $review_open ) {
+                                        printf(
+                                            /* translators: %s: how many records are waiting to be looked at */
+                                            esc_html__( 'Review (%s)', 'societypress' ),
+                                            esc_html( number_format_i18n( $review_open ) )
+                                        );
+                                    } else {
+                                        esc_html_e( 'Review', 'societypress' );
+                                    }
+                                    ?>
+                                </a>
                                 <a href="<?php echo esc_url( $export_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Export as GENRECORD file', 'societypress' ); ?>"><?php esc_html_e( 'Export', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $gedcom_url ); ?>" class="button button-small sp-gedcom-link" title="<?php esc_attr_e( 'Export as GEDCOM file', 'societypress' ); ?>"><?php esc_html_e( 'GEDCOM', 'societypress' ); ?></a>
                                 <a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
@@ -92585,6 +92652,704 @@ function sp_render_record_browse_page(): void {
  *      dynamically built from the collection's field definitions. Each field
  *      is rendered as the appropriate input type (text, textarea, number, date).
  */
+// ============================================================================
+// RECORD REVIEW — finding the rows an import got wrong, after the fact
+//
+// WHY this exists: a transcribed index arrives as one line per burial, and
+//      splitting that line into columns is guesswork. "Abbot Martha Louisa
+//      Woodhull" is a surname and three given names, or a surname and a maiden
+//      name, and no importer can tell which. Most of the guesses are right, a
+//      few hundred are not, and the wrong ones are indistinguishable from the
+//      right ones once they are rows in a table.
+//
+//      The import's own preview catches problems before rows land. This catches
+//      them afterwards, which is the situation every society is actually in:
+//      the index is already imported, already public, already being searched,
+//      and somebody has to work through the doubtful rows without reading all
+//      forty thousand.
+//
+// WHY the checks read the collection rather than a rulebook: SocietyPress does
+//      not know that a field called "Surname" holds surnames. It can see that
+//      one field is filled in on every row but this one, and that another
+//      normally holds two words but holds five here. Those are the same signals
+//      a person uses when skimming a page for what looks wrong, and they need
+//      no configuring by a volunteer who would not know what to configure.
+// ============================================================================
+
+/**
+ * The name particles that are never a surname on their own.
+ *
+ * Shared with sp_proper_name_token() so a name reviewed here and a name
+ * rendered there agree about what a particle is.
+ *
+ * @return string[]
+ */
+function sp_name_particles(): array {
+    return [ 'de','del','della','di','da','dos','das','du','la','le','van',
+             'von','der','den','ter','ten','of','y','e','al','bin' ];
+}
+
+/**
+ * Why a row was set aside, in words a volunteer can act on.
+ *
+ * @return array<string,string>
+ */
+function sp_record_review_reasons(): array {
+    return [
+        'crowded'   => __( 'More words here than this column usually holds — a maiden name or a two-word surname may have landed in the wrong column.', 'societypress' ),
+        'blank'     => __( 'This column is filled in on nearly every other record, and empty here.', 'societypress' ),
+        'particle'  => __( 'This starts with a word like De or Van that is normally part of the name beside it, not a name on its own.', 'societypress' ),
+        'quotes'    => __( 'A quotation mark is opened and never closed, so the line may have been cut short.', 'societypress' ),
+        'bracketed' => __( 'The whole entry is a note in brackets rather than a name.', 'societypress' ),
+    ];
+}
+
+/**
+ * What "normal" looks like in each column of a collection.
+ *
+ * Runs once at the start of a scan and is handed to every batch, because the
+ * question each check asks — is this value unlike the others? — has no answer
+ * without the others.
+ *
+ * @return array<int,array{fill:float,words:float}> Keyed by field id.
+ */
+function sp_record_field_norms( int $collection_id ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $total = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d", $collection_id
+    ) );
+    if ( $total < 1 ) {
+        return [];
+    }
+
+    // One pass over the values table per collection. The word count is an
+    // average rather than a median because MySQL has no median and the shape we
+    // are looking for — a column of one-word entries with a five-word outlier —
+    // moves the average enough to be caught by the margin the check applies.
+    $rows = (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT v.field_id,
+                COUNT(*) AS filled,
+                AVG( LENGTH(TRIM(v.field_value)) - LENGTH(REPLACE(TRIM(v.field_value), ' ', '')) + 1 ) AS words
+         FROM {$prefix}record_values v
+         INNER JOIN {$prefix}records r ON r.id = v.record_id
+         WHERE r.collection_id = %d AND TRIM(v.field_value) <> ''
+         GROUP BY v.field_id",
+        $collection_id
+    ) );
+
+    $norms = [];
+    foreach ( $rows as $row ) {
+        $norms[ (int) $row->field_id ] = [
+            'fill'  => (float) $row->filled / $total,
+            'words' => (float) $row->words,
+        ];
+    }
+
+    return $norms;
+}
+
+/**
+ * Look at one record's values and say what looks wrong with them.
+ *
+ * @param array<int,string>                        $values Field id => value.
+ * @param array<int,object>                        $fields Field id => definition.
+ * @param array<int,array{fill:float,words:float}> $norms  From sp_record_field_norms().
+ * @return array<int,array{field:int,reason:string}>
+ */
+function sp_record_review_check( array $values, array $fields, array $norms ): array {
+    $found     = [];
+    $particles = sp_name_particles();
+
+    foreach ( $fields as $field_id => $field ) {
+        $value = trim( (string) ( $values[ $field_id ] ?? '' ) );
+        $norm  = $norms[ $field_id ] ?? null;
+
+        // A column that is nearly always filled in, empty on this row. Below
+        // 90% the column is optional — a Notes column is blank far more often
+        // than not, and flagging every blank one would flag the collection.
+        if ( '' === $value ) {
+            if ( $norm && $norm['fill'] >= 0.9 ) {
+                $found[] = [ 'field' => $field_id, 'reason' => 'blank' ];
+            }
+            continue;
+        }
+
+        // Initials and honorifics are not the words we are counting: "J. B.
+        // Smith Jr" is a normal three-token name, not a crowded one.
+        $words = preg_split( '/\s+/u', $value, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+        $solid = array_filter( $words, static function ( $w ) {
+            $bare = strtolower( rtrim( $w, '.' ) );
+            return mb_strlen( $bare ) > 1
+                && ! in_array( $bare, [ 'jr','sr','ii','iii','iv','mr','mrs','ms','miss','dr','rev','capt','lt','col','sgt','maj','gen' ], true );
+        } );
+
+        // Two words past the column's habit, and at least three of them, before
+        // this is worth a volunteer's attention. A column that normally holds
+        // three words is not surprised by four.
+        if ( $norm && count( $solid ) >= 3 && count( $solid ) >= $norm['words'] + 2 ) {
+            $found[] = [ 'field' => $field_id, 'reason' => 'crowded' ];
+        }
+
+        $first = strtolower( rtrim( $words[0], '.' ) );
+        if ( in_array( $first, $particles, true ) ) {
+            $found[] = [ 'field' => $field_id, 'reason' => 'particle' ];
+        }
+
+        // An opened quotation mark with no partner usually means the source
+        // line was truncated mid-phrase.
+        if ( substr_count( $value, '"' ) % 2 !== 0
+             || substr_count( $value, "\u{201C}" ) !== substr_count( $value, "\u{201D}" ) ) {
+            $found[] = [ 'field' => $field_id, 'reason' => 'quotes' ];
+        }
+
+        // "(Mrs.)" in a given name column is the transcriber saying they did
+        // not have a given name, not a given name.
+        if ( preg_match( '/^\(.*\)$/u', $value ) ) {
+            $found[] = [ 'field' => $field_id, 'reason' => 'bracketed' ];
+        }
+    }
+
+    return $found;
+}
+
+/**
+ * Scan one slice of a collection and record what needs looking at.
+ *
+ * @return int How many records were examined.
+ */
+function sp_record_review_scan_batch( int $collection_id, int $offset, int $limit, array $norms ): int {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $field_rows = (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, field_name FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC, id ASC",
+        $collection_id
+    ) );
+    $fields = [];
+    foreach ( $field_rows as $f ) {
+        $fields[ (int) $f->id ] = $f;
+    }
+
+    // Ordered by id so the slices tile the collection exactly once, the same
+    // reason the exporter pages this way.
+    $ids = (array) $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$prefix}records WHERE collection_id = %d ORDER BY id ASC LIMIT %d OFFSET %d",
+        $collection_id,
+        $limit,
+        $offset
+    ) );
+    if ( ! $ids ) {
+        return 0;
+    }
+
+    $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+    $value_rows   = (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$placeholders})",
+        ...array_map( 'absint', $ids )
+    ) );
+
+    $by_record = [];
+    foreach ( $value_rows as $v ) {
+        $by_record[ (int) $v->record_id ][ (int) $v->field_id ] = (string) $v->field_value;
+    }
+
+    foreach ( $ids as $record_id ) {
+        $record_id = (int) $record_id;
+        $problems  = sp_record_review_check( $by_record[ $record_id ] ?? [], $fields, $norms );
+        if ( ! $problems ) {
+            continue;
+        }
+
+        // One row per record however many things are wrong with it: the
+        // volunteer is looking at the whole record either way, and a record
+        // that turns up three times in the queue is three chances to give up.
+        $reasons = [];
+        foreach ( $problems as $p ) {
+            $name = $fields[ $p['field'] ]->field_name ?? '';
+            $reasons[] = $p['reason'] . ':' . $p['field'] . ':' . $name;
+        }
+
+        $wpdb->query( $wpdb->prepare(
+            "INSERT INTO {$prefix}record_reviews (record_id, collection_id, reasons, state, created_at)
+             VALUES (%d, %d, %s, 'open', %s)
+             ON DUPLICATE KEY UPDATE reasons = VALUES(reasons)",
+            $record_id,
+            $collection_id,
+            implode( '|', $reasons ),
+            current_time( 'mysql' )
+        ) );
+    }
+
+    return count( $ids );
+}
+
+/**
+ * How many rows of a collection are still waiting to be looked at.
+ */
+function sp_record_review_open_count( int $collection_id ): int {
+    global $wpdb;
+
+    return (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_record_reviews WHERE collection_id = %d AND state = 'open'",
+        $collection_id
+    ) );
+}
+
+/**
+ * AJAX: examine the next slice of a collection.
+ */
+add_action( 'wp_ajax_sp_record_review_scan', function () {
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+    check_ajax_referer( 'sp_record_review' );
+
+    global $wpdb;
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_POST['collection_id'] ?? 0 );
+    $offset        = absint( $_POST['offset'] ?? 0 );
+
+    if ( ! $collection_id ) {
+        wp_send_json_error( [ 'message' => __( 'No collection specified.', 'societypress' ) ] );
+    }
+
+    // Starting over means clearing what a previous pass decided, but only the
+    // rows still open: a row somebody has already accepted stays accepted, or
+    // the scan would hand them their own finished work back every time.
+    if ( 0 === $offset ) {
+        $wpdb->delete( $prefix . 'record_reviews', [ 'collection_id' => $collection_id, 'state' => 'open' ] );
+        update_option( 'sp_record_review_norms_' . $collection_id, sp_record_field_norms( $collection_id ), false );
+    }
+
+    $norms = (array) get_option( 'sp_record_review_norms_' . $collection_id, [] );
+    $batch = 500;
+    $done  = sp_record_review_scan_batch( $collection_id, $offset, $batch, $norms );
+
+    $total = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$prefix}records WHERE collection_id = %d", $collection_id
+    ) );
+
+    $next     = $offset + $batch;
+    $finished = $done < $batch || $next >= $total;
+
+    if ( $finished ) {
+        delete_option( 'sp_record_review_norms_' . $collection_id );
+        update_option( 'sp_record_review_scanned_' . $collection_id, current_time( 'mysql' ), false );
+    }
+
+    wp_send_json_success( [
+        'offset'   => $next,
+        'total'    => $total,
+        'examined' => min( $next, $total ),
+        'finished' => $finished,
+        'flagged'  => sp_record_review_open_count( $collection_id ),
+    ] );
+} );
+
+/**
+ * AJAX: keep a corrected record, or accept it as it stands.
+ *
+ * WHY both end the same way: the queue exists to be emptied, and a row the
+ * volunteer has looked at is done whether or not it needed changing. Accepting
+ * is not "ignore" — it is the answer "this split is right", which is a real
+ * answer and the commonest one.
+ */
+add_action( 'wp_ajax_sp_record_review_resolve', function () {
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ] );
+    }
+    check_ajax_referer( 'sp_record_review' );
+
+    global $wpdb;
+    $prefix    = $wpdb->prefix . 'sp_';
+    $record_id = absint( $_POST['record_id'] ?? 0 );
+    if ( ! $record_id ) {
+        wp_send_json_error( [ 'message' => __( 'No record specified.', 'societypress' ) ] );
+    }
+
+    $record = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}records WHERE id = %d", $record_id
+    ) );
+    if ( ! $record ) {
+        wp_send_json_error( [ 'message' => __( 'That record is no longer here.', 'societypress' ) ] );
+    }
+
+    $values = isset( $_POST['values'] ) && is_array( $_POST['values'] ) ? wp_unslash( $_POST['values'] ) : [];
+
+    if ( $values ) {
+        $fields = (array) $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, searchable FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC",
+            (int) $record->collection_id
+        ) );
+
+        // Same shape as the record editor's save: replace the row's values
+        // wholesale, then rebuild the search blob, because a corrected surname
+        // that is not in search_text is a correction nobody can find.
+        $wpdb->delete( $prefix . 'record_values', [ 'record_id' => $record_id ] );
+
+        $search_parts = [];
+        foreach ( $fields as $f ) {
+            $val = sanitize_textarea_field( (string) ( $values[ (int) $f->id ] ?? '' ) );
+            if ( '' === $val ) {
+                continue;
+            }
+            $wpdb->insert( $prefix . 'record_values', [
+                'record_id'   => $record_id,
+                'field_id'    => (int) $f->id,
+                'field_value' => $val,
+            ] );
+            if ( $f->searchable ) {
+                $search_parts[] = $val;
+            }
+        }
+
+        $wpdb->update(
+            $prefix . 'records',
+            [ 'search_text' => implode( ' ', $search_parts ) ],
+            [ 'id' => $record_id ]
+        );
+    }
+
+    $wpdb->update(
+        $prefix . 'record_reviews',
+        [
+            'state'       => 'done',
+            'resolved_by' => get_current_user_id(),
+            'resolved_at' => current_time( 'mysql' ),
+        ],
+        [ 'record_id' => $record_id ]
+    );
+
+    wp_send_json_success( [ 'remaining' => sp_record_review_open_count( (int) $record->collection_id ) ] );
+} );
+
+/**
+ * The screen a volunteer works the queue on.
+ */
+function sp_render_record_review_page(): void {
+    global $wpdb;
+
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+
+    $prefix        = $wpdb->prefix . 'sp_';
+    $collection_id = absint( $_GET['collection_id'] ?? 0 );
+
+    $collections = (array) $wpdb->get_results(
+        "SELECT id, name FROM {$prefix}record_collections ORDER BY name ASC"
+    );
+
+    if ( ! $collection_id && $collections ) {
+        $collection_id = (int) $collections[0]->id;
+    }
+
+    $collection = $collection_id ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_collections WHERE id = %d", $collection_id
+    ) ) : null;
+
+    echo '<div class="wrap sp-record-review">';
+    echo '<h1>' . esc_html__( 'Review Records', 'societypress' ) . '</h1>';
+
+    if ( ! $collection ) {
+        echo '<p>' . esc_html__( 'There are no record collections yet.', 'societypress' ) . '</p></div>';
+        return;
+    }
+
+    $fields = (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, field_name FROM {$prefix}record_collection_fields WHERE collection_id = %d ORDER BY sort_order ASC, id ASC",
+        $collection_id
+    ) );
+
+    $scanned = get_option( 'sp_record_review_scanned_' . $collection_id, '' );
+    $open    = sp_record_review_open_count( $collection_id );
+    $per     = 25;
+    $paged   = max( 1, absint( $_GET['paged'] ?? 1 ) );
+    $stamp   = get_option( 'date_format' ) . ', ' . get_option( 'time_format' );
+    ?>
+    <p class="description sp-review-intro">
+        <?php esc_html_e( 'An index that was typed up from a book has to be split into columns, and some of those splits are guesses. This looks through a collection for the rows most likely to have been split wrongly — a given name carrying a maiden name, a surname that is only "De", a line that was cut short — and lists them here so they can be put right without reading the whole index.', 'societypress' ); ?>
+    </p>
+
+    <form method="get" class="sp-review-pick">
+        <input type="hidden" name="page" value="sp-record-review">
+        <label for="sp-review-collection"><?php esc_html_e( 'Collection', 'societypress' ); ?></label>
+        <select name="collection_id" id="sp-review-collection" onchange="this.form.submit()">
+            <?php foreach ( $collections as $c ) : ?>
+                <option value="<?php echo esc_attr( (int) $c->id ); ?>" <?php selected( $collection_id, (int) $c->id ); ?>>
+                    <?php echo esc_html( $c->name ); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <noscript><button type="submit" class="button"><?php esc_html_e( 'Show', 'societypress' ); ?></button></noscript>
+    </form>
+
+    <p class="sp-review-actions">
+        <button type="button" class="button button-primary" id="sp-review-scan"
+                data-collection="<?php echo esc_attr( $collection_id ); ?>">
+            <?php echo $scanned
+                ? esc_html__( 'Check it again', 'societypress' )
+                : esc_html__( 'Check this collection', 'societypress' ); ?>
+        </button>
+        <span class="sp-review-progress" id="sp-review-progress" aria-live="polite"><?php
+            if ( $scanned ) {
+                printf(
+                    /* translators: 1: how many records need a look, 2: when it was last checked */
+                    esc_html( _n( '%1$s record needs a look. Last checked %2$s.', '%1$s records need a look. Last checked %2$s.', $open, 'societypress' ) ),
+                    esc_html( number_format_i18n( $open ) ),
+                    esc_html( mysql2date( $stamp, $scanned ) )
+                );
+            } else {
+                esc_html_e( 'Not checked yet.', 'societypress' );
+            }
+        ?></span>
+    </p>
+
+    <?php
+    $reviews = $open ? (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}record_reviews
+         WHERE collection_id = %d AND state = 'open'
+         ORDER BY record_id ASC
+         LIMIT %d OFFSET %d",
+        $collection_id,
+        $per,
+        ( $paged - 1 ) * $per
+    ) ) : [];
+
+    if ( ! $reviews ) {
+        echo '<div class="sp-review-empty"><p>';
+        echo $scanned
+            ? esc_html__( 'Nothing is waiting. Every row this check set aside has been looked at.', 'societypress' )
+            : esc_html__( 'Press Check this collection to look through it.', 'societypress' );
+        echo '</p></div></div>';
+        sp_record_review_assets( $collection_id );
+        return;
+    }
+
+    // The values for everything on this page, in one query rather than one per row.
+    $record_ids   = array_map( static fn( $r ) => (int) $r->record_id, $reviews );
+    $placeholders = implode( ',', array_fill( 0, count( $record_ids ), '%d' ) );
+    $value_rows   = (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT record_id, field_id, field_value FROM {$prefix}record_values WHERE record_id IN ({$placeholders})",
+        ...$record_ids
+    ) );
+    $values = [];
+    foreach ( $value_rows as $v ) {
+        $values[ (int) $v->record_id ][ (int) $v->field_id ] = (string) $v->field_value;
+    }
+
+    $reason_text = sp_record_review_reasons();
+    $total_pages = (int) ceil( $open / $per );
+    ?>
+
+    <div class="sp-review-list">
+        <?php foreach ( $reviews as $review ) :
+            $rid = (int) $review->record_id;
+        ?>
+            <div class="sp-review-row" data-record="<?php echo esc_attr( $rid ); ?>">
+
+                <ul class="sp-review-why">
+                    <?php
+                    foreach ( explode( '|', (string) $review->reasons ) as $reason ) {
+                        $bits = explode( ':', $reason, 3 );
+                        $key  = $bits[0] ?? '';
+                        $name = $bits[2] ?? '';
+                        if ( ! isset( $reason_text[ $key ] ) ) {
+                            continue;
+                        }
+                        echo '<li><strong>' . esc_html( $name ) . '</strong> — ' . esc_html( $reason_text[ $key ] ) . '</li>';
+                    }
+                    ?>
+                </ul>
+
+                <div class="sp-review-fields">
+                    <?php foreach ( $fields as $f ) :
+                        $fid = (int) $f->id;
+                    ?>
+                        <label class="sp-review-field">
+                            <span><?php echo esc_html( $f->field_name ); ?></span>
+                            <input type="text" data-field="<?php echo esc_attr( $fid ); ?>"
+                                   value="<?php echo esc_attr( $values[ $rid ][ $fid ] ?? '' ); ?>">
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+
+                <p class="sp-review-buttons">
+                    <button type="button" class="button button-primary sp-review-save"><?php esc_html_e( 'Save this fix', 'societypress' ); ?></button>
+                    <button type="button" class="button sp-review-accept"><?php esc_html_e( 'It is right as it is', 'societypress' ); ?></button>
+                    <span class="sp-review-said" aria-live="polite"></span>
+                </p>
+
+            </div>
+        <?php endforeach; ?>
+    </div>
+
+    <?php if ( $total_pages > 1 ) : ?>
+        <div class="tablenav"><div class="tablenav-pages">
+            <?php
+            echo paginate_links( [
+                'base'      => add_query_arg( 'paged', '%#%' ),
+                'format'    => '',
+                'current'   => $paged,
+                'total'     => $total_pages,
+                'prev_text' => '&laquo;',
+                'next_text' => '&raquo;',
+            ] );
+            ?>
+        </div></div>
+    <?php endif; ?>
+
+    </div>
+    <?php
+    sp_record_review_assets( $collection_id );
+}
+
+/**
+ * The styles and behaviour for the review screen.
+ */
+function sp_record_review_assets( int $collection_id ): void {
+    ?>
+    <style>
+        .sp-record-review .sp-review-intro { max-width: 60em; }
+        .sp-record-review .sp-review-pick { margin: 16px 0 8px; }
+        .sp-record-review .sp-review-actions { margin: 0 0 20px; }
+        .sp-record-review .sp-review-progress { margin-left: 10px; color: #50575e; }
+        .sp-review-empty {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 4px;
+            padding: 40px;
+            text-align: center;
+        }
+        .sp-review-row {
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-left: 4px solid #dba617;
+            border-radius: 4px;
+            padding: 14px 18px;
+            margin: 0 0 12px;
+        }
+        .sp-review-row.sp-review-gone { opacity: 0.4; }
+        .sp-review-why { margin: 0 0 12px; padding: 0; list-style: none; color: #50575e; font-size: 13px; }
+        .sp-review-why li { margin: 0 0 4px; }
+        .sp-review-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+        .sp-review-field { display: flex; flex-direction: column; flex: 1 1 180px; min-width: 0; }
+        .sp-review-field span { font-size: 12px; font-weight: 600; color: #646970; margin-bottom: 2px; }
+        .sp-review-buttons { margin: 12px 0 0; }
+        .sp-review-said { margin-left: 10px; color: #007017; font-size: 13px; }
+    </style>
+    <script>
+    (function () {
+        'use strict';
+
+        var ajax  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+        var nonce = <?php echo wp_json_encode( wp_create_nonce( 'sp_record_review' ) ); ?>;
+        var coll  = <?php echo (int) $collection_id; ?>;
+        var text  = <?php echo wp_json_encode( [
+            'scanning' => __( 'Looking through the collection…', 'societypress' ),
+            'examined' => __( 'Looked at %1$s of %2$s.', 'societypress' ),
+            'done'     => __( 'Finished. %s set aside for a look — reloading.', 'societypress' ),
+            'saved'    => __( 'Saved.', 'societypress' ),
+            'accepted' => __( 'Left as it was.', 'societypress' ),
+            'failed'   => __( 'That did not save. Try again.', 'societypress' ),
+        ] ); ?>;
+
+        function post(action, data) {
+            var body = new FormData();
+            body.append('action', action);
+            body.append('_ajax_nonce', nonce);
+            Object.keys(data).forEach(function (k) {
+                if (k === 'values') {
+                    Object.keys(data.values).forEach(function (f) {
+                        body.append('values[' + f + ']', data.values[f]);
+                    });
+                } else {
+                    body.append(k, data[k]);
+                }
+            });
+            return fetch(ajax, { method: 'POST', credentials: 'same-origin', body: body })
+                .then(function (r) { return r.json(); });
+        }
+
+        // ---- The scan, one slice at a time -------------------------------
+        // WHY in slices: a society's index can run to tens of thousands of
+        // rows, and one request that reads all of them is the request the host
+        // kills at thirty seconds, leaving nothing to show for it.
+        var scanBtn  = document.getElementById('sp-review-scan');
+        var progress = document.getElementById('sp-review-progress');
+
+        function scan(offset) {
+            post('sp_record_review_scan', { collection_id: coll, offset: offset })
+                .then(function (res) {
+                    if (!res || !res.success) {
+                        progress.textContent = text.failed;
+                        scanBtn.disabled = false;
+                        return;
+                    }
+                    var d = res.data;
+                    if (d.finished) {
+                        progress.textContent = text.done.replace('%s', d.flagged);
+                        window.location.reload();
+                        return;
+                    }
+                    progress.textContent = text.examined
+                        .replace('%1$s', d.examined)
+                        .replace('%2$s', d.total);
+                    scan(d.offset);
+                })
+                .catch(function () {
+                    progress.textContent = text.failed;
+                    scanBtn.disabled = false;
+                });
+        }
+
+        if (scanBtn) {
+            scanBtn.addEventListener('click', function () {
+                scanBtn.disabled = true;
+                progress.textContent = text.scanning;
+                scan(0);
+            });
+        }
+
+        // ---- Working the queue -------------------------------------------
+        function resolve(row, withValues) {
+            var data = { record_id: row.getAttribute('data-record') };
+
+            if (withValues) {
+                data.values = {};
+                row.querySelectorAll('input[data-field]').forEach(function (input) {
+                    data.values[input.getAttribute('data-field')] = input.value;
+                });
+            }
+
+            var said = row.querySelector('.sp-review-said');
+
+            post('sp_record_review_resolve', data).then(function (res) {
+                if (!res || !res.success) {
+                    said.textContent = text.failed;
+                    return;
+                }
+                said.textContent = withValues ? text.saved : text.accepted;
+                row.classList.add('sp-review-gone');
+                row.querySelectorAll('button, input').forEach(function (el) { el.disabled = true; });
+            }).catch(function () {
+                said.textContent = text.failed;
+            });
+        }
+
+        document.querySelectorAll('.sp-review-row').forEach(function (row) {
+            var save = row.querySelector('.sp-review-save');
+            var keep = row.querySelector('.sp-review-accept');
+            if (save) { save.addEventListener('click', function () { resolve(row, true); }); }
+            if (keep) { keep.addEventListener('click', function () { resolve(row, false); }); }
+        });
+    })();
+    </script>
+    <?php
+}
+
 function sp_render_record_edit_page(): void {
     global $wpdb;
     $prefix        = $wpdb->prefix . 'sp_';

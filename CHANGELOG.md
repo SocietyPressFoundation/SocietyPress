@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.11] — 2026-09-02
+
+**The help desk takes screenshots now.** Ask for Help had nowhere to put a
+picture, so a volunteer describing a fault had to put the screen into words —
+and tickets have arrived saying "got the attached screen" with nothing attached,
+leaving the person answering to guess at what the picture would have shown.
+Both the form and every reply in the conversation now take files, so a
+screenshot can travel in either direction: yours when you file, and yours again
+when somebody answering asks to see the screen. Up to five files a message, 5 MB
+each, pictures and PDFs. Attaching a screenshot with nothing typed is a
+perfectly good reply.
+
+Screenshots of an admin screen are screenshots of members, so these are not put
+in the media library, where everything is readable by anyone who knows the
+address. They are stored outside it and handed back only to the person who filed
+the ticket and whoever answers tickets. The notification email says a file is
+waiting rather than carrying it, so nothing leaves the login the rest of the
+ticket sits behind.
+
+---
+
 ## [1.5.10] — 2026-09-02
 
 **A menu item you add now appears, however deep you put it.** Every theme

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.10
+ * Version:     1.5.11
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.10' );
+define( 'SOCIETYPRESS_VERSION', '1.5.11' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3111,10 +3111,29 @@ function sp_create_tables(): void {
         KEY ticket_id (ticket_id)
     ) {$charset_collate};" );
 
+    // WHY reply_id is nullable rather than a row of its own: an attachment
+    //      belongs to a moment in the conversation, and the first of those
+    //      moments is the report itself, which is not a reply. NULL means "came
+    //      with the original", which is exactly what it means everywhere else.
+    dbDelta( "CREATE TABLE {$prefix}ticket_files (
+        id            BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        ticket_id     BIGINT(20) UNSIGNED NOT NULL,
+        reply_id      BIGINT(20) UNSIGNED NULL,
+        user_id       BIGINT(20) UNSIGNED NOT NULL,
+        original_name VARCHAR(255)        NOT NULL,
+        stored_name   VARCHAR(255)        NOT NULL,
+        mime_type     VARCHAR(100)        NOT NULL,
+        size_bytes    BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        created_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY ticket_id (ticket_id),
+        KEY reply_id (reply_id)
+    ) {$charset_collate};" );
+
 
     // Store the schema version so we can run migrations in future updates
     // without re-running the full dbDelta on every page load.
-    update_option( 'societypress_db_version', '0.34d' );
+    update_option( 'societypress_db_version', '0.35d' );
 }
 
 
@@ -19648,6 +19667,319 @@ function sp_ticket_screen_name( string $slug ): string {
     return $slug;
 }
 
+// ---- Attachments -----------------------------------------------------------
+//
+// WHY the help desk takes files at all: a volunteer describing a fault reaches
+//      for a screenshot before she reaches for words, because the screen in
+//      front of her is the evidence and she has no vocabulary for it. A form
+//      with nowhere to put that picture turns "here is what I saw" into a
+//      paragraph guessing at what the picture would have shown, and the person
+//      answering has to guess back. Tickets have arrived saying "got the
+//      attached screen" with nothing attached.
+//
+// WHY the files are not in the media library: a screenshot of an admin screen
+//      is a screenshot of members — names, addresses, amounts paid. The media
+//      library is world-readable by URL and its contents show up in the grid
+//      for everyone who can upload. These live outside it, behind a permission
+//      check that lets exactly two parties look: the person who filed the
+//      ticket, and whoever answers tickets.
+
+/**
+ * What the help desk accepts, and how much of it.
+ *
+ * WHY PDFs alongside images: the other thing a volunteer has to hand is
+ * whatever she printed or was emailed — a receipt, a report, a statement that
+ * does not match. Everything else is refused because nothing else helps
+ * explain a fault, and every extra type is another thing to have to be sure of.
+ *
+ * @return array<string,string> MIME type => file extension
+ */
+function sp_ticket_file_types(): array {
+    return [
+        'image/jpeg'      => 'jpg',
+        'image/png'       => 'png',
+        'image/gif'       => 'gif',
+        'image/webp'      => 'webp',
+        'application/pdf' => 'pdf',
+    ];
+}
+
+function sp_ticket_file_max_bytes(): int {
+    // A phone screenshot is under 2 MB and a photographed screen under 5. Past
+    // that it is a video or a mistake, and shared hosting will refuse it anyway.
+    return 5 * 1024 * 1024;
+}
+
+function sp_ticket_files_per_post(): int {
+    return 5;
+}
+
+/**
+ * The directory attachments live in, created and hardened on first use.
+ *
+ * WHY three guards rather than one: .htaccess covers Apache, web.config covers
+ * IIS, and neither covers nginx — where the only thing standing between a
+ * screenshot and the open web is that its stored name is random. All three,
+ * because a society does not choose its host's web server and should not have
+ * to know which one it got.
+ *
+ * @return string|null Absolute path, or null if it could not be made.
+ */
+function sp_ticket_files_dir(): ?string {
+    $uploads = wp_upload_dir();
+    if ( ! empty( $uploads['error'] ) ) {
+        return null;
+    }
+
+    $dir = $uploads['basedir'] . '/sp-ticket-files';
+
+    if ( ! file_exists( $dir ) && ! wp_mkdir_p( $dir ) ) {
+        return null;
+    }
+
+    if ( ! file_exists( $dir . '/.htaccess' ) ) {
+        file_put_contents(
+            $dir . '/.htaccess',
+            "Options -Indexes\n<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order Deny,Allow\n  Deny from all\n</IfModule>\n"
+        );
+    }
+    if ( ! file_exists( $dir . '/web.config' ) ) {
+        file_put_contents(
+            $dir . '/web.config',
+            "<configuration>\n  <system.webServer>\n    <authorization>\n      <deny users=\"*\" />\n    </authorization>\n  </system.webServer>\n</configuration>\n"
+        );
+    }
+    if ( ! file_exists( $dir . '/index.php' ) ) {
+        file_put_contents( $dir . '/index.php', '<?php // Silence is golden.' );
+    }
+
+    return $dir;
+}
+
+/**
+ * Take whatever was attached to a ticket or a reply and keep it.
+ *
+ * Anything that fails a check is skipped rather than failing the whole post:
+ * losing the words somebody just typed because their third screenshot was a
+ * .heic is a worse outcome than losing the screenshot.
+ *
+ * @param int      $ticket_id
+ * @param int|null $reply_id  Null when the files came with the original report.
+ * @param string   $field     The name of the file input.
+ * @return int Number of files kept.
+ */
+function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field ): int {
+    global $wpdb;
+
+    if ( empty( $_FILES[ $field ] ) || ! is_array( $_FILES[ $field ]['name'] ?? null ) ) {
+        return 0;
+    }
+
+    $dir = sp_ticket_files_dir();
+    if ( ! $dir ) {
+        error_log( 'SocietyPress: help desk attachments could not be stored — uploads directory not writable.' );
+        return 0;
+    }
+
+    $allowed = sp_ticket_file_types();
+    $names   = $_FILES[ $field ]['name'];
+    $kept    = 0;
+
+    foreach ( array_keys( $names ) as $i ) {
+        if ( $kept >= sp_ticket_files_per_post() ) {
+            break;
+        }
+
+        $error = (int) ( $_FILES[ $field ]['error'][ $i ] ?? UPLOAD_ERR_NO_FILE );
+        $tmp   = (string) ( $_FILES[ $field ]['tmp_name'][ $i ] ?? '' );
+        $size  = (int) ( $_FILES[ $field ]['size'][ $i ] ?? 0 );
+
+        if ( $error !== UPLOAD_ERR_OK || $tmp === '' || ! is_uploaded_file( $tmp ) ) {
+            continue;
+        }
+        if ( $size <= 0 || $size > sp_ticket_file_max_bytes() ) {
+            continue;
+        }
+
+        // The type the browser claims is the type an attacker chooses. Read it
+        // off the bytes instead, and take the extension from what we found.
+        $finfo = finfo_open( FILEINFO_MIME_TYPE );
+        $mime  = $finfo ? (string) finfo_file( $finfo, $tmp ) : '';
+        if ( $finfo ) {
+            finfo_close( $finfo );
+        }
+        if ( ! isset( $allowed[ $mime ] ) ) {
+            continue;
+        }
+
+        // A random stored name is the last line of defence on a web server that
+        // ignores both drop-in config files, and it also stops one ticket's
+        // attachment from overwriting another's.
+        $stored = sprintf( 't%d-%s.%s', $ticket_id, wp_generate_password( 24, false, false ), $allowed[ $mime ] );
+
+        if ( ! move_uploaded_file( $tmp, $dir . '/' . $stored ) ) {
+            continue;
+        }
+
+        $wpdb->insert( $wpdb->prefix . 'sp_ticket_files', [
+            'ticket_id'     => $ticket_id,
+            'reply_id'      => $reply_id,
+            'user_id'       => get_current_user_id(),
+            'original_name' => sanitize_file_name( (string) $names[ $i ] ),
+            'stored_name'   => $stored,
+            'mime_type'     => $mime,
+            'size_bytes'    => $size,
+            'created_at'    => current_time( 'mysql' ),
+        ] );
+
+        $kept++;
+    }
+
+    return $kept;
+}
+
+/**
+ * The attachments belonging to one post in a ticket's conversation.
+ *
+ * @param int      $ticket_id
+ * @param int|null $reply_id Null for the original report.
+ * @return array<int,object>
+ */
+function sp_ticket_files_for( int $ticket_id, ?int $reply_id = null ): array {
+    global $wpdb;
+
+    $sql = $reply_id
+        ? $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}sp_ticket_files WHERE ticket_id = %d AND reply_id = %d ORDER BY id ASC",
+            $ticket_id,
+            $reply_id
+        )
+        : $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}sp_ticket_files WHERE ticket_id = %d AND reply_id IS NULL ORDER BY id ASC",
+            $ticket_id
+        );
+
+    return (array) $wpdb->get_results( $sql );
+}
+
+/**
+ * The address that serves one attachment back.
+ */
+function sp_ticket_file_url( int $file_id ): string {
+    return add_query_arg(
+        [
+            'action'   => 'sp_ticket_file',
+            'file'     => $file_id,
+            '_wpnonce' => wp_create_nonce( 'sp_ticket_file_' . $file_id ),
+        ],
+        admin_url( 'admin-ajax.php' )
+    );
+}
+
+/**
+ * Hand an attachment back to somebody entitled to see it.
+ *
+ * WHY this goes through PHP rather than a direct link: the directory refuses
+ * the web, which is the point — the file is only ever reachable through this
+ * check, and the check is the same one that guards the ticket itself.
+ */
+add_action( 'wp_ajax_sp_ticket_file', function () {
+    global $wpdb;
+
+    $file_id = absint( $_GET['file'] ?? 0 );
+    if ( ! $file_id || ! check_ajax_referer( 'sp_ticket_file_' . $file_id, '_wpnonce', false ) ) {
+        wp_die( esc_html__( 'That link has expired. Open the ticket again.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+
+    $file = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_ticket_files WHERE id = %d", $file_id
+    ) );
+    if ( ! $file ) {
+        wp_die( esc_html__( 'That file is no longer here.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+
+    $ticket = $wpdb->get_row( $wpdb->prepare(
+        "SELECT reporter_id FROM {$wpdb->prefix}sp_tickets WHERE id = %d", (int) $file->ticket_id
+    ) );
+    if ( ! $ticket ) {
+        wp_die( esc_html__( 'That file is no longer here.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+
+    if ( (int) $ticket->reporter_id !== get_current_user_id() && ! sp_can_answer_tickets() ) {
+        wp_die( esc_html__( 'You do not have permission to see that.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+
+    $dir  = sp_ticket_files_dir();
+    $path = $dir ? $dir . '/' . $file->stored_name : '';
+    if ( ! $path || ! file_exists( $path ) ) {
+        wp_die( esc_html__( 'That file is no longer here.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+
+    // Serve as an attachment name the reporter recognises, but never let the
+    // browser decide the type for itself — nosniff plus the type we recorded.
+    nocache_headers();
+    header( 'Content-Type: ' . $file->mime_type );
+    header( 'Content-Length: ' . (int) $file->size_bytes );
+    header( 'X-Content-Type-Options: nosniff' );
+    header( 'Content-Disposition: inline; filename="' . rawurlencode( $file->original_name ) . '"' );
+    readfile( $path );
+    exit;
+} );
+
+/**
+ * Draw the attachments on one post in the conversation.
+ */
+function sp_ticket_render_files( array $files ): void {
+    if ( ! $files ) {
+        return;
+    }
+    ?>
+    <ul class="sp-ticket-files">
+        <?php foreach ( $files as $file ) :
+            $url      = sp_ticket_file_url( (int) $file->id );
+            $is_image = strpos( (string) $file->mime_type, 'image/' ) === 0;
+        ?>
+            <li class="sp-ticket-file">
+                <a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener">
+                    <?php if ( $is_image ) : ?>
+                        <img src="<?php echo esc_url( $url ); ?>" alt="<?php echo esc_attr( $file->original_name ); ?>">
+                    <?php else : ?>
+                        <span class="dashicons dashicons-media-document" aria-hidden="true"></span>
+                    <?php endif; ?>
+                    <span class="sp-ticket-file-name"><?php echo esc_html( $file->original_name ); ?></span>
+                </a>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+    <?php
+}
+
+/**
+ * The attach-a-file question, worded the same on both forms.
+ */
+function sp_ticket_render_file_field( string $id ): void {
+    $types = implode( ',', array_keys( sp_ticket_file_types() ) );
+    ?>
+    <div class="sp-q">
+        <label class="sp-q-label" for="<?php echo esc_attr( $id ); ?>">
+            <?php esc_html_e( 'Add a screenshot, if you have one', 'societypress' ); ?>
+        </label>
+        <input type="file" id="<?php echo esc_attr( $id ); ?>" name="sp_ticket_files[]" multiple
+               accept="<?php echo esc_attr( $types ); ?>">
+        <span class="sp-q-hint">
+            <?php
+            printf(
+                /* translators: 1: how many files, 2: the largest one, e.g. "5 MB" */
+                esc_html__( 'A picture of the screen usually explains it faster than describing it. Up to %1$d files, %2$s each. Pictures and PDFs. Only you and whoever answers can see them.', 'societypress' ),
+                (int) sp_ticket_files_per_post(),
+                esc_html( size_format( sp_ticket_file_max_bytes() ) )
+            );
+            ?>
+        </span>
+    </div>
+    <?php
+}
+
 // ---- Menu ------------------------------------------------------------------
 
 add_action( 'admin_menu', function () {
@@ -19750,6 +20082,7 @@ add_action( 'admin_post_sp_file_ticket', function () {
     ] );
 
     $ticket_id = (int) $wpdb->insert_id;
+    sp_ticket_store_uploads( $ticket_id, null, 'sp_ticket_files' );
     sp_ticket_notify_answerers( $ticket_id );
 
     wp_safe_redirect( add_query_arg(
@@ -19775,12 +20108,18 @@ function sp_ticket_notify_answerers( int $ticket_id ): void {
     $reporter = get_userdata( (int) $ticket->reporter_id );
     $link     = admin_url( 'admin.php?page=sp-ticket&ticket=' . $ticket_id );
 
+    $files = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_ticket_files WHERE ticket_id = %d AND reply_id IS NULL",
+        $ticket_id
+    ) );
+
     $body = sprintf(
-        /* translators: 1: reporter's name, 2: kind of ticket, 3: ticket title, 4: link */
-        __( "%1\$s has filed a help desk ticket.\n\n%2\$s: %3\$s\n\nRead it and reply here:\n%4\$s", 'societypress' ),
+        /* translators: 1: reporter's name, 2: kind of ticket, 3: ticket title, 4: a note about attachments, may be empty, 5: link */
+        __( "%1\$s has filed a help desk ticket.\n\n%2\$s: %3\$s\n\n%4\$sRead it and reply here:\n%5\$s", 'societypress' ),
         $reporter ? $reporter->display_name : __( 'Somebody', 'societypress' ),
         sp_ticket_types()[ $ticket->type ] ?? $ticket->type,
         $ticket->title,
+        sp_ticket_files_note( $files ),
         $link
     );
 
@@ -19824,14 +20163,25 @@ add_action( 'admin_post_sp_reply_ticket', function () {
         wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
     }
 
-    $body = sanitize_textarea_field( wp_unslash( $_POST['body'] ?? '' ) );
-    if ( $body !== '' ) {
+    $body     = sanitize_textarea_field( wp_unslash( $_POST['body'] ?? '' ) );
+    $reply_id = null;
+
+    // A screenshot on its own is a contribution to the conversation, so an
+    // empty box with a file attached still makes a reply to hang it on.
+    $has_files = ! empty( $_FILES['sp_ticket_files']['name'][0] ?? '' );
+
+    if ( $body !== '' || $has_files ) {
         $wpdb->insert( $wpdb->prefix . 'sp_ticket_replies', [
             'ticket_id'  => $ticket_id,
             'user_id'    => get_current_user_id(),
             'body'       => $body,
             'created_at' => current_time( 'mysql' ),
         ] );
+        $reply_id = (int) $wpdb->insert_id;
+    }
+
+    if ( $reply_id ) {
+        sp_ticket_store_uploads( $ticket_id, $reply_id, 'sp_ticket_files' );
     }
 
     $changed = [ 'updated_at' => current_time( 'mysql' ) ];
@@ -19855,6 +20205,31 @@ add_action( 'admin_post_sp_reply_ticket', function () {
     ) );
     exit;
 } );
+
+/**
+ * A line for a notification email saying files came with the message.
+ *
+ * WHY the count and not the files: an attachment on a help desk ticket can be a
+ * screenshot of the member list. Emailing it would put that outside the login
+ * the rest of the ticket sits behind, to an address we cannot vouch for. The
+ * email says there is something to look at; the ticket shows it.
+ */
+function sp_ticket_files_note( int $count ): string {
+    if ( $count < 1 ) {
+        return '';
+    }
+
+    return sprintf(
+        /* translators: %d: how many files were attached */
+        _n(
+            "%d file is attached. Open the ticket to see it.\n\n",
+            "%d files are attached. Open the ticket to see them.\n\n",
+            $count,
+            'societypress'
+        ),
+        $count
+    );
+}
 
 /**
  * Email the other side of the conversation.
@@ -19881,7 +20256,15 @@ function sp_ticket_notify_reply( int $ticket_id, string $body, string $new_statu
         );
     }
 
-    $message = $note . ( $body !== '' ? $body . "\n\n" : '' ) . $link;
+    $files    = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_ticket_files WHERE ticket_id = %d AND reply_id = (
+             SELECT MAX(id) FROM {$wpdb->prefix}sp_ticket_replies WHERE ticket_id = %d
+         )",
+        $ticket_id,
+        $ticket_id
+    ) );
+
+    $message = $note . ( $body !== '' ? $body . "\n\n" : '' ) . sp_ticket_files_note( $files ) . $link;
     $subject = sprintf(
         /* translators: %s: ticket title */
         __( '[Help Desk] %s', 'societypress' ),
@@ -20001,6 +20384,50 @@ function sp_ticket_css(): void {
         }
         .sp-ticket-post-who { color: #646970; font-size: 13px; margin: 0 0 8px; }
         .sp-ticket-post-body { white-space: pre-wrap; margin: 0; }
+        .sp-ticket-files {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 12px 0 0;
+            padding: 0;
+            list-style: none;
+        }
+        .sp-ticket-file a {
+            display: block;
+            width: 150px;
+            padding: 6px;
+            border: 1px solid #dcdcde;
+            border-radius: 4px;
+            text-align: center;
+            text-decoration: none;
+            color: #50575e;
+        }
+        .sp-ticket-file a:hover { border-color: #2271b1; }
+        /* Contain rather than cover: a screenshot cropped to a square hides the
+           part of the screen the person was pointing at. */
+        .sp-ticket-file img {
+            display: block;
+            width: 100%;
+            height: 100px;
+            object-fit: contain;
+            background: #f6f7f7;
+        }
+        .sp-ticket-file .dashicons {
+            display: block;
+            width: 100%;
+            height: 100px;
+            line-height: 100px;
+            font-size: 40px;
+            background: #f6f7f7;
+            color: #787c82;
+        }
+        .sp-ticket-file-name {
+            display: block;
+            margin-top: 6px;
+            font-size: 12px;
+            word-break: break-word;
+        }
+        .sp-ticket-form input[type=file] { display: block; margin-top: 4px; }
         .sp-ticket-env { color: #646970; font-size: 12px; }
         .sp-ticket-env td { padding: 2px 10px 2px 0; }
         .sp-ticket-status {
@@ -20135,7 +20562,7 @@ function sp_render_ticket_new_page(): void {
             <?php endif; ?>
         </p>
 
-        <form class="sp-ticket-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+        <form class="sp-ticket-form" method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="sp_file_ticket">
             <input type="hidden" name="sp_from" value="<?php echo esc_attr( $from ); ?>">
             <?php wp_nonce_field( 'sp_file_ticket' ); ?>
@@ -20192,6 +20619,8 @@ function sp_render_ticket_new_page(): void {
                 <?php endif; ?>
             </div>
             <?php endforeach; ?>
+
+            <?php sp_ticket_render_file_field( 'sp-ticket-attach' ); ?>
 
             <?php submit_button( __( 'Send it', 'societypress' ) ); ?>
         </form>
@@ -20308,6 +20737,8 @@ function sp_render_ticket_page(): void {
                         <?php echo esc_html( $q['terms'][ $ticket->impact ] ); ?>
                     </p>
                 <?php endif; ?>
+
+                <?php sp_ticket_render_files( sp_ticket_files_for( (int) $ticket->id ) ); ?>
             </div>
 
             <?php foreach ( $replies as $reply ) :
@@ -20318,11 +20749,14 @@ function sp_render_ticket_page(): void {
                         <strong><?php echo esc_html( $who ? $who->display_name : __( 'Somebody', 'societypress' ) ); ?></strong>
                         — <?php echo esc_html( mysql2date( $stamp, $reply->created_at ) ); ?>
                     </p>
-                    <p class="sp-ticket-post-body"><?php echo esc_html( $reply->body ); ?></p>
+                    <?php if ( '' !== trim( (string) $reply->body ) ) : ?>
+                        <p class="sp-ticket-post-body"><?php echo esc_html( $reply->body ); ?></p>
+                    <?php endif; ?>
+                    <?php sp_ticket_render_files( sp_ticket_files_for( (int) $ticket->id, (int) $reply->id ) ); ?>
                 </div>
             <?php endforeach; ?>
 
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sp-ticket-form">
+            <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sp-ticket-form">
                 <input type="hidden" name="action" value="sp_reply_ticket">
                 <input type="hidden" name="ticket" value="<?php echo (int) $ticket->id; ?>">
                 <?php wp_nonce_field( 'sp_reply_ticket' ); ?>
@@ -20331,6 +20765,8 @@ function sp_render_ticket_page(): void {
                     <label class="sp-q-label" for="sp-reply"><?php esc_html_e( 'Add to this conversation', 'societypress' ); ?></label>
                     <textarea id="sp-reply" name="body" rows="5"></textarea>
                 </div>
+
+                <?php sp_ticket_render_file_field( 'sp-reply-attach' ); ?>
 
                 <?php if ( $answerer ) : ?>
                 <div class="sp-q">
@@ -38521,7 +38957,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.10',
+            'version'     => '1.5.11',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38529,7 +38965,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.10',
+            'version'     => '1.5.11',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38537,7 +38973,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.10',
+            'version'     => '1.5.11',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38545,7 +38981,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.10',
+            'version'     => '1.5.11',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38553,7 +38989,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.10',
+            'version'     => '1.5.11',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

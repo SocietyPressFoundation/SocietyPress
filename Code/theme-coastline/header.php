@@ -118,10 +118,8 @@
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
                 <nav class="main-navigation" aria-label="<?php esc_attr_e( 'Primary navigation', 'coastline' ); ?>">
                     <?php
-                    wp_nav_menu( [
+                    sp_nav_menu( [
                         'theme_location' => 'primary',
-                        'container'      => false,
-                        'depth'          => 1,
                     ] );
                     ?>
                 </nav>

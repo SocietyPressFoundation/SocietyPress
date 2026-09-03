@@ -43,10 +43,8 @@
              No custom walker needed. -->
         <nav aria-label="<?php esc_attr_e( 'Site navigation', 'prairie' ); ?>">
             <?php
-            wp_nav_menu( [
+            sp_nav_menu( [
                 'theme_location' => 'prairie-sidebar-nav',
-                'container'      => false,
-                'depth'          => 3, /* Allow up to 3 levels of nesting for deep structures */
             ] );
             ?>
         </nav>

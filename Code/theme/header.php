@@ -125,15 +125,11 @@
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
                 <nav class="main-navigation" aria-label="<?php esc_attr_e( 'Primary navigation', 'societypress' ); ?>">
                     <?php
-                    // Three levels, because societies really do nest that deep —
-                    // Resources > Library > Library Catalog. The flyout styling for
-                    // the third level has been in style.css all along; the cap here
-                    // was what kept WordPress from ever rendering it. Societies that
-                    // build only two levels see no change.
-                    wp_nav_menu([
+                    // Depth lives in sp_nav_menu() now, and it is unlimited there.
+                    // See the navigation block in functions.php for why no theme
+                    // gets to decide how much of a society's menu renders.
+                    sp_nav_menu([
                         'theme_location' => 'primary',
-                        'container'      => false,
-                        'depth'          => 3,
                     ]);
                     ?>
                 </nav>

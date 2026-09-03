@@ -119,10 +119,8 @@
                 <?php if ( has_nav_menu( 'primary' ) ) : ?>
                 <nav id="ledger-primary-nav" class="ledger-navigation" aria-label="<?php esc_attr_e( 'Primary navigation', 'ledger' ); ?>">
                     <?php
-                    wp_nav_menu( [
+                    sp_nav_menu( [
                         'theme_location' => 'primary',
-                        'container'      => false,
-                        'depth'          => 2,
                         'walker'         => new Ledger_Nav_Walker(),
                     ] );
                     ?>

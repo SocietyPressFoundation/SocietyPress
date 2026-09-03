@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // the parent theme safe against child theme copies. If a child theme wants
 // its own version it should define a differently-named constant.
 if ( ! defined( 'SOCIETYPRESS_THEME_VERSION' ) ) {
-	define( 'SOCIETYPRESS_THEME_VERSION', '1.5.9' );
+	define( 'SOCIETYPRESS_THEME_VERSION', '1.5.10' );
 }
 
 
@@ -300,3 +300,88 @@ add_action( 'widgets_init', function () {
         ]);
     }
 });
+
+/* =============================================================================
+   PRIMARY NAVIGATION — ONE IMPLEMENTATION, EVERY THEME
+   =============================================================================
+   WHY this exists at all: the depth of a society's menu used to be decided
+   separately in every theme's header.php, and the six of them disagreed —
+   three levels in the parent, two in Ledger and Parlor, one in Coastline.
+   WordPress does not warn about a menu item deeper than the cap; it simply
+   renders nothing for it. So a society that built Resources > Research >
+   Bexar County > the five record pages saw the record pages vanish, and a
+   society that switched from the parent theme to Coastline lost every drop
+   down on the site at once, silently, with no way to tell what had happened.
+
+   A menu item somebody added should appear. That is the whole rule, so depth
+   is unlimited here and no theme sets it again. Themes still style their
+   navigation however they like; they no longer get to decide how much of the
+   society's menu is allowed to exist.
+   ========================================================================== */
+
+// WHY a class: Walker_Nav_Menu has no non-OOP equivalent in WordPress. This is
+// the same forced exception as the plugin's WP_List_Table subclasses.
+class SocietyPress_Nav_Walker extends Walker_Nav_Menu {
+
+    /**
+     * Open a drop down list, tagged with how deep it is.
+     *
+     * WHY the level class: styling arbitrary nesting from descendant selectors
+     * alone means every rule applies to every level below the one it was
+     * written for. A level number in the class lets the stylesheet indent the
+     * mobile panel one step per level without JavaScript, and gives child
+     * themes a predictable hook rather than a chain of .sub-menu .sub-menu.
+     */
+    public function start_lvl( &$output, $depth = 0, $args = null ) {
+        // $depth is 0 for the first drop down, which reads as level 1.
+        $level  = (int) $depth + 1;
+        $indent = str_repeat( "\t", $depth );
+
+        $output .= "\n{$indent}<ul class=\"sub-menu sp-submenu-level-{$level}\">\n";
+    }
+
+    /**
+     * Draw one menu item, telling assistive technology when it opens a menu.
+     *
+     * WHY aria-haspopup on the link rather than only on the caret button: the
+     * caret is added by JavaScript, and a keyboard or screen reader user who
+     * arrives before the script does — or with it blocked — still needs to be
+     * told the item leads somewhere further. The caret carries aria-expanded
+     * once it exists, because it is the control that changes the state.
+     */
+    public function start_el( &$output, $item, $depth = 0, $args = null, $id = 0 ) {
+        $before = $output;
+        parent::start_el( $output, $item, $depth, $args, $id );
+
+        if ( ! in_array( 'menu-item-has-children', (array) $item->classes, true ) ) {
+            return;
+        }
+
+        $added = substr( $output, strlen( $before ) );
+        $added = preg_replace( '/<a\b/', '<a aria-haspopup="true"', $added, 1 );
+        $output = $before . $added;
+    }
+}
+
+/**
+ * Render a society's navigation menu.
+ *
+ * Every theme calls this instead of wp_nav_menu() for navigation a visitor
+ * browses — the header menu, Prairie's sidebar menu. Footer link lists are
+ * flat by design and stay on wp_nav_menu().
+ *
+ * @param array<string,mixed> $args Anything wp_nav_menu() takes. 'depth' is
+ *                                  ignored: no theme caps the society's menu.
+ */
+function sp_nav_menu( array $args = [] ): void {
+    unset( $args['depth'] );
+
+    wp_nav_menu( array_merge(
+        [
+            'container' => false,
+            'walker'    => new SocietyPress_Nav_Walker(),
+        ],
+        $args,
+        [ 'depth' => 0 ]
+    ) );
+}

@@ -20,6 +20,34 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.10] — 2026-09-02
+
+**A menu item you add now appears, however deep you put it.** Every theme
+decided for itself how many levels of drop down menu it would draw, and the six
+of them disagreed — three levels in the SocietyPress theme, two in Ledger and
+Parlor, one in Coastline. WordPress does not warn about a menu item nested
+deeper than the theme allows. It simply renders nothing for it. So a society
+that built Resources → Research → Bexar County Records → the five record pages
+watched the record pages vanish from the menu with no error and nothing to
+click, and a society that switched to Coastline lost every drop down on the site
+at once.
+
+Depth is now unlimited, and no theme sets it any more: all six ask the same
+shared function for their navigation, so the six of them cannot drift apart
+again. Build the menu your society's material actually needs and it renders.
+
+**Deep menus stay on the screen and stay navigable.** Flyouts open to the right
+of their parent, so a menu four or five levels deep used to walk off the edge of
+the window — with the level you were reaching for as the part that disappeared.
+A flyout with no room on the right now opens to the left instead. In the phone
+panel each level is indented one step further than its parent, so level five
+reads as level five rather than as more of level two. Every item that opens a
+menu announces itself to a screen reader whether or not JavaScript has loaded,
+and Escape now closes one level and returns you to the item that opened it,
+rather than collapsing the whole menu and making you start over.
+
+---
+
 ## [1.5.9] — 2026-09-03
 
 **Records results sort by clicking a column heading, and open A–Z.** A

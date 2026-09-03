@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'LEDGER_THEME_VERSION' ) ) {
-    define( 'LEDGER_THEME_VERSION', '1.5.9' );
+    define( 'LEDGER_THEME_VERSION', '1.5.10' );
 }
 
 
@@ -144,17 +144,23 @@ add_action( 'widgets_init', function () {
 
 
 // ============================================================================
-// CUSTOM NAV WALKER — 2-LEVEL DROPDOWN SUPPORT
+// CUSTOM NAV WALKER — LEDGER'S MOBILE TOGGLE, ON TOP OF THE SHARED WALKER
 // ============================================================================
 
 /**
- * Custom walker that adds a mobile submenu toggle button for items with children.
+ * Ledger's walker adds a mobile submenu toggle button to items with children.
  *
- * WHY a custom walker: The default WordPress walker works fine for basic menus,
- * but we need a toggle button injected after each parent link so mobile users
- * can tap to expand/collapse submenus without navigating away from the parent
- * page. WordPress already adds 'menu-item-has-children' to parent items, so
- * this walker just appends the toggle button. CSS and JS handle the rest.
+ * WHY it extends the parent theme's walker rather than WordPress's: the level
+ * classes and aria-haspopup that make arbitrary nesting readable and navigable
+ * are defined once, in SocietyPress_Nav_Walker. A child theme that re-derived
+ * them from Walker_Nav_Menu would drift out of step with the parent the first
+ * time either changed — which is exactly how the six themes ended up with five
+ * different menu depths.
+ *
+ * WHY the declaration is deferred to after_setup_theme: WordPress loads a child
+ * theme's functions.php before its parent's, so SocietyPress_Nav_Walker does not
+ * exist yet while this file is being read. Declaring the subclass inside a hook
+ * that fires after both files are loaded is what makes the extension legal.
  *
  * On desktop: The toggle button is hidden via CSS. Dropdowns use :hover and
  * :focus-within for keyboard accessibility.
@@ -162,10 +168,12 @@ add_action( 'widgets_init', function () {
  * On mobile: The toggle button is visible. JS adds/removes .is-open on the
  * parent <li> to show/hide the submenu.
  */
+add_action( 'after_setup_theme', function () {
+
 // WHY a class: Walker_Nav_Menu has no non-OOP equivalent in WordPress. This
 // extension is the same justified exception as the plugin's WP_List_Table and
 // WP_Widget subclasses — the API forces it.
-class Ledger_Nav_Walker extends Walker_Nav_Menu {
+class Ledger_Nav_Walker extends SocietyPress_Nav_Walker {
 
     /**
      * Starts an element (a single menu item).
@@ -193,3 +201,5 @@ class Ledger_Nav_Walker extends Walker_Nav_Menu {
         }
     }
 }
+
+} );

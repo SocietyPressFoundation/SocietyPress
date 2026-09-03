@@ -150,6 +150,58 @@
             });
         };
 
+        // Above this width the nav is the horizontal bar with hover flyouts;
+        // below it, the stacked hamburger panel, where nothing floats and there
+        // is no edge to run off. Matches the @media block in style.css.
+        var desktop = window.matchMedia('(min-width: 1281px)');
+
+        // Flyouts chain rightward, so a menu nested four or five deep walks off
+        // the right edge of the window and hides the level the visitor was
+        // reaching for. Only the browser knows how much room is left, so the
+        // check happens here and the stylesheet holds the leftward variant.
+        function placeFlyout(item) {
+            var panel = item.querySelector(':scope > .sub-menu');
+            if (!panel || !desktop.matches) {
+                return;
+            }
+
+            // A top level drop down falls below its parent rather than beside
+            // it, so it is not part of this chain.
+            if (!item.closest('.sub-menu')) {
+                return;
+            }
+
+            // Measure from the default side every time: a panel that had no
+            // room a moment ago may have plenty after a resize or a scroll.
+            panel.classList.remove('sp-flyout-left');
+
+            var room = panel.getBoundingClientRect();
+            var margin = 8;
+
+            if (room.right > window.innerWidth - margin) {
+                panel.classList.add('sp-flyout-left');
+            }
+        }
+
+        parentItems.forEach(function (item) {
+            // pointerenter rather than mouseover: it fires once for the item
+            // itself instead of again for every child the pointer crosses.
+            item.addEventListener('pointerenter', function () {
+                placeFlyout(item);
+            });
+            // Keyboard users never generate a pointer event, and :focus-within
+            // opens the same panels for them.
+            item.addEventListener('focusin', function () {
+                placeFlyout(item);
+            });
+        });
+
+        window.addEventListener('resize', function () {
+            document.querySelectorAll('.main-navigation .sp-flyout-left').forEach(function (panel) {
+                panel.classList.remove('sp-flyout-left');
+            });
+        });
+
         parentItems.forEach(function (item) {
             var link = item.querySelector(':scope > a');
             var subMenu = item.querySelector(':scope > .sub-menu');
@@ -201,10 +253,42 @@
             }
         });
 
-        // Close sub-menus on Escape
+        // Escape closes one level and puts focus back on the thing that opened
+        // it, rather than collapsing the whole menu.
+        //
+        // WHY: on a menu nested several levels deep, wiping every open level
+        // means a keyboard user who backed out of one flyout by mistake has to
+        // tab down through the entire tree again to get back to where they
+        // were. Stepping out one level at a time is what a mouse user does by
+        // moving the pointer, and it is the behaviour WAI-ARIA describes for
+        // nested menus.
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') {
+            if (e.key !== 'Escape') {
+                return;
+            }
+
+            var nav = document.querySelector('.main-navigation');
+            if (!nav) {
+                return;
+            }
+
+            // Where focus actually is beats where we last opened something:
+            // the pointer may have opened a different branch in between.
+            var inside = document.activeElement && nav.contains(document.activeElement)
+                ? document.activeElement.closest('li.menu-item-has-children.sp-submenu-open')
+                : null;
+
+            if (!inside) {
                 closeAllSubMenus();
+                return;
+            }
+
+            inside.classList.remove('sp-submenu-open');
+            setExpanded(inside, false);
+
+            var toggle = inside.querySelector(':scope > .sp-submenu-toggle');
+            if (toggle) {
+                toggle.focus();
             }
         });
     }

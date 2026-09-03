@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.5.9
+Version: 1.5.10
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -726,6 +726,22 @@ img {
     border-top: none;
     border-left: 3px solid var(--sp-color-accent, rgba(255, 255, 255, 0.2));
     border-radius: 0 4px 4px 0;
+}
+
+/* The same panel, opening leftward instead.
+   WHY: flyouts chain rightward, so a menu four or five levels deep eventually
+   runs past the right edge of the window and the deepest level — the one the
+   visitor was reaching for — is the part that ends up off screen. theme.js
+   measures each panel as it opens and sets this class when there is no room
+   on the right; only the browser knows how wide the window is, so the
+   measurement has to happen there. Nothing about the level-2 flyout changes
+   on a wide screen. */
+.main-navigation .sub-menu .sub-menu.sp-flyout-left {
+    left: auto;
+    right: 100%;
+    border-left: none;
+    border-right: 3px solid var(--sp-color-accent, rgba(255, 255, 255, 0.2));
+    border-radius: 4px 0 0 4px;
 }
 
 /* Reveal on hover or when JS toggles sp-submenu-open */
@@ -2497,6 +2513,26 @@ input[type="date"]:focus {
         padding: 0;
         background: rgba(0, 0, 0, 0.15);
     }
+
+    /* One step of indent per level, so a visitor can see where they are in a
+       menu that nests further than the eye can hold. The stacked translucent
+       backgrounds already darken with depth; the indent is what tells level 5
+       apart from level 2 rather than merely apart from the page.
+
+       WHY a rule per level instead of a descendant selector: a chained
+       .sub-menu .sub-menu applies to every level below the one it describes as
+       well, so the indents would compound wrongly. The walker stamps each list
+       with its own level, and eight of them is past any menu a society will
+       build — beyond that the indent stops growing, which costs nothing but a
+       little clarity, and the items still render. */
+    .main-navigation .sp-submenu-level-1 > li > a { padding-left: 36px; }
+    .main-navigation .sp-submenu-level-2 > li > a { padding-left: 52px; }
+    .main-navigation .sp-submenu-level-3 > li > a { padding-left: 68px; }
+    .main-navigation .sp-submenu-level-4 > li > a { padding-left: 84px; }
+    .main-navigation .sp-submenu-level-5 > li > a { padding-left: 100px; }
+    .main-navigation .sp-submenu-level-6 > li > a { padding-left: 116px; }
+    .main-navigation .sp-submenu-level-7 > li > a { padding-left: 132px; }
+    .main-navigation .sp-submenu-level-8 > li > a { padding-left: 148px; }
 
     /* Show sub-menus when parent is toggled open */
     .main-navigation > ul > li.menu-item-has-children:hover > .sub-menu {

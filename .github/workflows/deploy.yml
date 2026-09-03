@@ -1,0 +1,194 @@
+name: Deploy
+
+# Runs scripts/deploy.sh from a GitHub runner instead of a workstation.
+#
+# WHY this exists: deploy.sh needs outbound SSH and an ~/.ssh/config that
+# names the servers. A workstation has both. A sandboxed agent session has
+# neither — no ssh client, no port 22 — so a change could be written and
+# pushed but never landed anywhere anyone could look at it. A runner has real
+# network, so the deploy happens here and the server details stay in
+# repository secrets rather than in the tree.
+#
+# Nothing about the destination is written into this file. Hostnames, users,
+# paths and the private site's label all arrive as secrets, so the public repo
+# never names a private site — the same separation scripts/deploy.local.sh
+# gives a workstation.
+#
+# ----------------------------------------------------------------------------
+# One-time setup
+# ----------------------------------------------------------------------------
+# 1. Make a key for this repository alone, so it can be revoked without
+#    touching the key a workstation uses:
+#
+#      ssh-keygen -t ed25519 -f ~/.ssh/societypress_deploy -C "societypress-actions" -N ""
+#
+#    Append the .pub half to ~/.ssh/authorized_keys on each server.
+#
+# 2. Record the servers' host keys, so a deploy that reaches an impostor
+#    fails instead of handing it the plugin:
+#
+#      ssh-keyscan -p 22 primary.example >  known_hosts.txt
+#      ssh-keyscan -p 22 secondary.example >> known_hosts.txt
+#
+#    Verify the fingerprints against what your own client already trusts
+#    (ssh-keygen -lf known_hosts.txt) before pasting them in.
+#
+# 3. Add these repository secrets (Settings → Secrets and variables → Actions):
+#
+#      DEPLOY_SSH_KEY        the PRIVATE half of the key from step 1
+#      DEPLOY_KNOWN_HOSTS    the contents of known_hosts.txt from step 2
+#      PRIMARY_SSH_HOST      hostname or IP of the demo server
+#      PRIMARY_SSH_USER      login on that server
+#      PRIMARY_SSH_PORT      optional, defaults to 22
+#
+#    And, for a secondary site, the four values deploy.local.sh would hold:
+#
+#      SECONDARY_SSH_HOST    hostname or IP  (omit to deploy only to primary)
+#      SECONDARY_SSH_USER    login on that server
+#      SECONDARY_SSH_PORT    optional, defaults to 22
+#      SECONDARY_BASE        tilde-prefixed wp-content path, e.g. ~/domains/…/wp-content
+#      SECONDARY_LABEL       what the deploy log should call that site
+#
+# The workflow has to exist on the default branch before it can be dispatched;
+# after that it can be run against any branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to deploy (deploy.sh argument)'
+        type: choice
+        default: plugin
+        options:
+          - plugin
+          - theme
+          - all
+          - heritage
+          - coastline
+          - prairie
+          - ledger
+          - parlor
+          - installer
+          - bundle
+          - marketing
+      secondary:
+        description: 'Also deploy to the secondary site'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One deploy at a time. Two runs copying into the same directory can leave a
+# site holding half of each.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+
+      - name: Configure SSH
+        env:
+          SSH_KEY:        ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS:    ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PRIMARY_HOST:   ${{ secrets.PRIMARY_SSH_HOST }}
+          PRIMARY_USER:   ${{ secrets.PRIMARY_SSH_USER }}
+          PRIMARY_PORT:   ${{ secrets.PRIMARY_SSH_PORT }}
+          SECONDARY_HOST: ${{ secrets.SECONDARY_SSH_HOST }}
+          SECONDARY_USER: ${{ secrets.SECONDARY_SSH_USER }}
+          SECONDARY_PORT: ${{ secrets.SECONDARY_SSH_PORT }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SSH_KEY:-}" ] || [ -z "${PRIMARY_HOST:-}" ] || [ -z "${PRIMARY_USER:-}" ]; then
+            echo "::error::DEPLOY_SSH_KEY, PRIMARY_SSH_HOST and PRIMARY_SSH_USER must all be set as repository secrets. See the setup notes at the top of this workflow."
+            exit 1
+          fi
+
+          # WHY this is fatal rather than a fallback to StrictHostKeyChecking=no:
+          # a deploy that accepts whatever host key it is offered will hand the
+          # plugin to whoever answers on that address. Recording the host keys
+          # once is cheaper than finding out it happened.
+          if [ -z "${KNOWN_HOSTS:-}" ]; then
+            echo "::error::DEPLOY_KNOWN_HOSTS is empty. Run ssh-keyscan against each server, check the fingerprints, and paste the result into the secret."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_KEY"     > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+          # deploy.sh addresses the demo server by the alias "skystra" and the
+          # secondary by whatever SECONDARY_HOST holds. Both are ssh config
+          # aliases, not hostnames, so the script needs no edits to run here.
+          {
+            echo "Host skystra"
+            echo "  HostName ${PRIMARY_HOST}"
+            echo "  User ${PRIMARY_USER}"
+            echo "  Port ${PRIMARY_PORT:-22}"
+            echo "  IdentityFile ~/.ssh/id_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+            echo "  BatchMode yes"
+          } > ~/.ssh/config
+
+          if [ -n "${SECONDARY_HOST:-}" ]; then
+            {
+              echo ""
+              echo "Host secondary"
+              echo "  HostName ${SECONDARY_HOST}"
+              echo "  User ${SECONDARY_USER:-$PRIMARY_USER}"
+              echo "  Port ${SECONDARY_PORT:-22}"
+              echo "  IdentityFile ~/.ssh/id_deploy"
+              echo "  IdentitiesOnly yes"
+              echo "  StrictHostKeyChecking yes"
+              echo "  BatchMode yes"
+            } >> ~/.ssh/config
+          fi
+
+          chmod 600 ~/.ssh/config
+
+      - name: Configure the secondary site
+        if: ${{ inputs.secondary }}
+        env:
+          SECONDARY_BASE:  ${{ secrets.SECONDARY_BASE }}
+          SECONDARY_LABEL: ${{ secrets.SECONDARY_LABEL }}
+          SECONDARY_HOST:  ${{ secrets.SECONDARY_SSH_HOST }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SECONDARY_BASE:-}" ] || [ -z "${SECONDARY_LABEL:-}" ] || [ -z "${SECONDARY_HOST:-}" ]; then
+            echo "No secondary site configured — deploying to the demo only."
+            exit 0
+          fi
+
+          # The same gitignored file a workstation keeps, rebuilt from secrets
+          # for the length of this run. Single quotes keep the leading ~ from
+          # expanding here: the path belongs to the remote shell.
+          {
+            printf "SECONDARY_HOST='secondary'\n"
+            printf "SECONDARY_BASE='%s'\n"  "$SECONDARY_BASE"
+            printf "SECONDARY_LABEL='%s'\n" "$SECONDARY_LABEL"
+          } > scripts/deploy.local.sh
+
+          echo "Secondary site configured."
+
+      - name: Deploy
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh "$TARGET"
+
+      - name: Remove the key from the runner
+        if: always()
+        run: rm -f ~/.ssh/id_deploy scripts/deploy.local.sh

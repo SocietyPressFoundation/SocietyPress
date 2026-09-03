@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.14] — 2026-09-03
+
+**Website > Files works again.** The screen carried a "What is using this file"
+panel that was meant to stay out of sight until you asked for it. Its styling
+overruled that, so the panel and its full-page dimming layer were sitting over
+the Files screen from the moment it loaded — an empty box you had not asked
+for, and an invisible sheet over everything behind it that quietly ate every
+click. Adding files, opening a folder and ticking a box all did nothing, and
+the panel's close button did nothing either, so the only way out was the
+browser's back button. The panel now stays down until you open it, closes when
+you close it, and Files takes clicks normally.
+
+Marking anything hidden now holds across the whole of SocietyPress, so no other
+screen can grow the same fault.
+
+---
+
 ## [1.5.13] — 2026-09-02
 
 **Record review learned to tell a list from a mistake.** The first pass of the

@@ -48,9 +48,19 @@ Preview shows the first 5 rows mapped. If anything looks wrong, fix the CSV in y
 - All collections (member picks from a dropdown).
 - Login required or not.
 
-**Shortcode:** `[sp_records_search]` for all collections. `[sp_records_search collection="123"]` to lock it to one (use the collection's ID, visible in the admin).
+**Shortcode:** `[societypress_records]` for all collections. `[societypress_records collection="cemetery-index"]` to lock it to one — the collection's slug or its ID both work.
 
 Members type a search term, optionally filter by collection, and see results in a table. Each row expands inline to show the full record. Public/members-only/staff-only field flags determine what each viewer sees.
+
+### Sorting the results
+
+Click any column heading to sort by it; click it again to reverse. An arrow marks the column in use. Results arrive sorted A–Z by the first column — for most collections that's the surname — so a visitor who has not searched for anything still lands on an index in the order they expect.
+
+Sorting happens across the whole collection, not just the twenty-five rows on screen, so page 1 of a sort by Death Date really is the earliest date in the collection. Records with that column empty go last in both directions, and a column of numbers sorts as numbers: Lot 9 before Lot 10, not after Lot 1.
+
+On a phone the table drops its heading row, so the sort appears as two dropdowns beside the search box instead.
+
+Only columns that hold one value can be sorted. When results span several collections there is nothing but Collection to sort by — the table falls back to a summary column, because no set of field names is true of every row in a mixed result. Filter to one collection to get its own columns back.
 
 ## How to handle messy dates
 

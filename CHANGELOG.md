@@ -20,6 +20,26 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.13] — 2026-09-02
+
+**Record review learned to tell a list from a mistake.** The first pass of the
+new Review check treated every column as free text, so a Book column holding
+twelve titles across forty thousand rows had its longest title — "Sexton Burial
+Records City Cemetery #7" — reported as an oddity five hundred times over. A
+column whose values are drawn from a short list is now recognised as a list, and
+judged on whether it is filled in rather than on how long its entries are.
+
+Two more things it was wrong about: a transcriber's aside counted towards the
+length of a name, so "Frank [inf of]" looked like a three-word given name and
+thousands of good rows were set aside; and a middle initial "E." was read as the
+Spanish name particle *e*, which flagged everyone in the index recorded by their
+initials. Notes in brackets no longer count towards a name's length, and a
+single letter is treated as an initial. On a real 40,548-row cemetery index this
+took the queue from 2,279 rows to 872, and what is left are genuine faults —
+surnames split mid-word, maiden names stranded in the wrong column.
+
+---
+
 ## [1.5.12] — 2026-09-02
 
 **Records → Review finds the rows an import split wrongly.** An index typed up

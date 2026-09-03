@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.12
+ * Version:     1.5.13
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.12' );
+define( 'SOCIETYPRESS_VERSION', '1.5.13' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -38995,7 +38995,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.12',
+            'version'     => '1.5.13',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39003,7 +39003,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.12',
+            'version'     => '1.5.13',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39011,7 +39011,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.12',
+            'version'     => '1.5.13',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39019,7 +39019,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.12',
+            'version'     => '1.5.13',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39027,7 +39027,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.12',
+            'version'     => '1.5.13',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92731,6 +92731,7 @@ function sp_record_field_norms( int $collection_id ): array {
     $rows = (array) $wpdb->get_results( $wpdb->prepare(
         "SELECT v.field_id,
                 COUNT(*) AS filled,
+                COUNT(DISTINCT v.field_value) AS distinct_values,
                 AVG( LENGTH(TRIM(v.field_value)) - LENGTH(REPLACE(TRIM(v.field_value), ' ', '')) + 1 ) AS words
          FROM {$prefix}record_values v
          INNER JOIN {$prefix}records r ON r.id = v.record_id
@@ -92741,9 +92742,22 @@ function sp_record_field_norms( int $collection_id ): array {
 
     $norms = [];
     foreach ( $rows as $row ) {
+        $filled   = (int) $row->filled;
+        $distinct = (int) $row->distinct_values;
+
+        // WHY a column can be exempt from the shape checks: some columns are a
+        // list, not free text. A Book column holding twelve titles across forty
+        // thousand rows is a list, and "Sexton Burial Records City Cemetery #7"
+        // is not a long value that went wrong — it is one of the twelve, five
+        // hundred times over. Judging it by the length of its neighbours flags
+        // the collection rather than the mistakes in it. Few distinct values,
+        // each used many times, is what a list looks like from here.
+        $vocabulary = $filled >= 50 && $distinct <= 50 && $distinct <= $filled * 0.05;
+
         $norms[ (int) $row->field_id ] = [
-            'fill'  => (float) $row->filled / $total,
-            'words' => (float) $row->words,
+            'fill'       => (float) $filled / $total,
+            'words'      => (float) $row->words,
+            'vocabulary' => $vocabulary,
         ];
     }
 
@@ -92776,24 +92790,42 @@ function sp_record_review_check( array $values, array $fields, array $norms ): a
             continue;
         }
 
-        // Initials and honorifics are not the words we are counting: "J. B.
-        // Smith Jr" is a normal three-token name, not a crowded one.
         $words = preg_split( '/\s+/u', $value, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
-        $solid = array_filter( $words, static function ( $w ) {
+
+        // A transcriber's aside is not part of the name. "Frank [inf of]" is a
+        // one-name entry with a note attached, and counting the note's words
+        // made every annotated row look crowded — which on this kind of index
+        // is thousands of perfectly good rows.
+        $bare_value = trim( (string) preg_replace( '/[\[(][^\])]*[\])]/u', ' ', $value ) );
+        $counted    = preg_split( '/\s+/u', $bare_value, -1, PREG_SPLIT_NO_EMPTY ) ?: [];
+
+        // Initials, honorifics and joining words are not the words we are
+        // counting: "J. B. Smith Jr" is a normal name, not a crowded one.
+        $solid = array_filter( $counted, static function ( $w ) {
             $bare = strtolower( rtrim( $w, '.' ) );
             return mb_strlen( $bare ) > 1
-                && ! in_array( $bare, [ 'jr','sr','ii','iii','iv','mr','mrs','ms','miss','dr','rev','capt','lt','col','sgt','maj','gen' ], true );
+                && ! in_array( $bare, [ 'jr','sr','ii','iii','iv','mr','mrs','ms','miss','dr','rev','capt','lt','col','sgt','maj','gen' ], true )
+                && ! in_array( $bare, [ 'of','and','the','vda','nee','née' ], true )
+                && ! in_array( $bare, sp_name_particles(), true );
         } );
 
-        // Two words past the column's habit, and at least three of them, before
-        // this is worth a volunteer's attention. A column that normally holds
-        // three words is not surprised by four.
-        if ( $norm && count( $solid ) >= 3 && count( $solid ) >= $norm['words'] + 2 ) {
+        // A word past the column's habit, and at least three of them, before
+        // this is worth a volunteer's attention. Three is the floor because a
+        // first and last name is two, and the shape being hunted is the third
+        // name that should have been a surname or was a maiden name. The
+        // margin is what keeps a column that genuinely holds long values —
+        // "Vol. 9 City Cemetery 3" — from flagging its whole collection.
+        $is_vocabulary = ! empty( $norm['vocabulary'] );
+
+        if ( ! $is_vocabulary && $norm && count( $solid ) >= 3 && count( $solid ) >= $norm['words'] + 1 ) {
             $found[] = [ 'field' => $field_id, 'reason' => 'crowded' ];
         }
 
+        // A single letter is an initial, whatever it spells. "E." is E for
+        // Edward, not the Spanish particle e, and treating it as one flagged
+        // every person in the index recorded by their initials.
         $first = strtolower( rtrim( $words[0], '.' ) );
-        if ( in_array( $first, $particles, true ) ) {
+        if ( ! $is_vocabulary && mb_strlen( $first ) > 1 && in_array( $first, $particles, true ) ) {
             $found[] = [ 'field' => $field_id, 'reason' => 'particle' ];
         }
 

@@ -20,6 +20,41 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.9] — 2026-09-03
+
+**Records results sort by clicking a column heading, and open A–Z.** A
+transcribed collection is imported in the order it was typed — for a cemetery
+roster or a surname index, alphabetical — and the search then ordered the
+results by the row number the import handed out, newest first. That ran the
+whole index backwards: every visitor who arrived before typing anything into the
+search box got Z to A.
+
+Results now arrive sorted A–Z on the first column, and every heading that names
+a single value is a link — click it to sort by that column, click it again to
+reverse, with an arrow marking the column in use. The sort runs across the whole
+collection rather than the page on screen, so the first page of a sort by Death
+Date holds the earliest dates in the collection and not merely the earliest of
+the twenty-five rows already visible. Records with that column empty go last in
+both directions, and a column of numbers sorts as numbers — Lot 9 before Lot 10
+rather than after Lot 1. On a phone, where the table drops its heading row
+entirely, the sort appears as two dropdowns beside the search box.
+
+**A society with one collection now sees that collection's own columns.** The
+results table showed a Collection column beside a run-together Summary column
+until a collection was chosen from the filter — and a society with a single
+collection has no filter to choose from. They were left with a column repeating
+the same name next to a column of mashed-together values, neither of which can
+be ordered by anything a reader recognizes. Their only collection is now treated
+as the chosen one, so the table shows its own field names as columns.
+
+**An import can no longer point two spreadsheet columns at the same field.** The
+mapping screen allowed it, and the result was two stored values for one field:
+the record editor showed one of them and deleted the other on the next save, and
+the detail panel printed whichever came back last. The first column mapped to a
+field now keeps it.
+
+---
+
 ## [1.5.8] — 2026-09-01
 
 **A record collection can now be searched from any page.** The genealogical

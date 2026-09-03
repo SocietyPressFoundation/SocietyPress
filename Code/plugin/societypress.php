@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.8
+ * Version:     1.5.9
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.8' );
+define( 'SOCIETYPRESS_VERSION', '1.5.9' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -38521,7 +38521,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.8',
+            'version'     => '1.5.9',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -38529,7 +38529,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.8',
+            'version'     => '1.5.9',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -38537,7 +38537,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.8',
+            'version'     => '1.5.9',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -38545,7 +38545,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.8',
+            'version'     => '1.5.9',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -38553,7 +38553,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.8',
+            'version'     => '1.5.9',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -92730,11 +92730,22 @@ function sp_render_record_import_page(): void {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Missing data. Please try again.', 'societypress' ) . '</p></div>';
         } else {
             // Build column-index → field_id map
+            //
+            // WHY the same field cannot be claimed twice: mapping two columns
+            // onto one field writes two value rows for it, and everything
+            // downstream assumes one — the record editor shows a single box and
+            // deletes the other on the next save, the detail panel prints
+            // whichever row came back last, and ordering the results by that
+            // column would list the record twice. The first column mapped to a
+            // field keeps it; a later one is dropped rather than quietly
+            // doubling every row in the import.
             $import_map = [];
+            $claimed    = [];
             foreach ( $field_map as $col_idx => $field_id ) {
                 $field_id = absint( $field_id );
-                if ( $field_id > 0 ) {
+                if ( $field_id > 0 && ! isset( $claimed[ $field_id ] ) ) {
                     $import_map[ (int) $col_idx ] = $field_id;
+                    $claimed[ $field_id ]         = true;
                 }
             }
 
@@ -94973,6 +94984,43 @@ function sp_shortcode_records( $atts = array() ): string {
 
 
 /**
+ * Render one sortable column header for the records results table.
+ *
+ * WHY a shared helper: the collection column and the field columns all need the
+ * same link, the same arrow and the same aria-sort, and a table where only some
+ * of the headers behave like headers is worse than one where none of them do.
+ *
+ * Clicking the column that is already sorted flips its direction; clicking any
+ * other column starts it at A-Z, which is what a reader means by "sort by this".
+ *
+ * @param string $key        Column key as it travels in the URL ('coll', 'f12').
+ * @param string $label      Visible column heading.
+ * @param string $active_key Column the results are currently ordered by.
+ * @param string $active_dir 'ASC' or 'DESC'.
+ * @param string $base_url   Current URL with the sort and page args stripped.
+ */
+function sp_records_sort_header( string $key, string $label, string $active_key, string $active_dir, string $base_url ): void {
+    $is_active = ( $key === $active_key );
+    $next_dir  = ( $is_active && 'ASC' === $active_dir ) ? 'desc' : 'asc';
+    $url       = add_query_arg(
+        [ 'sp_rec_sort' => $key, 'sp_rec_dir' => $next_dir ],
+        $base_url
+    );
+
+    $arrow = ( $is_active && 'DESC' === $active_dir ) ? '&#9660;' : '&#9650;';
+    $aria  = '';
+    if ( $is_active ) {
+        $aria = ( 'DESC' === $active_dir ) ? ' aria-sort="descending"' : ' aria-sort="ascending"';
+    }
+
+    echo '<th scope="col"' . ( $is_active ? ' class="sorted"' : '' ) . $aria . '>';
+    echo '<a href="' . esc_url( $url ) . '" class="sp-records-sort-link">';
+    echo esc_html( $label ) . ' <span class="sp-sort-arrow" aria-hidden="true">' . $arrow . '</span>';
+    echo '</a></th>';
+}
+
+
+/**
  * Render: Frontend Records Search
  *
  * WHY: The member-facing (or public-facing) records search. Lets users search
@@ -95005,20 +95053,86 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     $per_page      = 25;
     $page_num      = max( 1, absint( $_GET['sp_rec_pg'] ?? 1 ) );
     $offset        = ( $page_num - 1 ) * $per_page;
+    $sort_key      = isset( $_GET['sp_rec_sort'] ) ? sanitize_key( wp_unslash( $_GET['sp_rec_sort'] ) ) : '';
+    $sort_dir      = ( isset( $_GET['sp_rec_dir'] ) && 'desc' === sanitize_key( wp_unslash( $_GET['sp_rec_dir'] ) ) ) ? 'DESC' : 'ASC';
 
     // Get active collections the user can see
     $access_where = $is_member ? "status = 'active'" : "status = 'active' AND access_level = 'public'";
     $available_collections = $wpdb->get_results(
         "SELECT id, name, record_type FROM {$prefix}record_collections WHERE {$access_where} ORDER BY name ASC"
     );
-    $coll_ids = wp_list_pluck( $available_collections, 'id' );
+    $coll_ids = array_map( 'absint', wp_list_pluck( $available_collections, 'id' ) );
     if ( empty( $coll_ids ) ) {
         echo '<p class="sp-text-secondary">' . esc_html__( 'No record collections are available at this time.', 'societypress' ) . '</p>';
         return;
     }
 
+    // A collection the viewer cannot see cannot be the one on display, whether
+    // it was named in the shortcode or typed into the URL. Falling back to the
+    // full visible set is what the results query already did; this keeps the
+    // columns from describing a collection none of those results came from.
+    if ( $coll_filter && ! in_array( $coll_filter, $coll_ids, true ) ) {
+        $coll_filter = 0;
+    }
+
+    // WHY a society with one collection gets it selected for them: the
+    // Collection and Summary columns exist to make a mixed result set readable.
+    // With one collection there is no mix, so those two columns became a column
+    // repeating the same name beside a column of run-together field values —
+    // and neither is something a reader can order by. Treating their only
+    // collection as the selected one gives them its own field names as columns.
+    if ( ! $coll_filter && 1 === count( $available_collections ) ) {
+        $coll_filter = (int) $available_collections[0]->id;
+    }
+    $show_coll_column = ! $coll_filter;
+
+    // Field definitions for the collection on display, read before the results
+    // query rather than after it: the column being sorted on is one of these,
+    // and the ORDER BY needs its id. Non-public fields drop out here for
+    // non-members, so a hidden field cannot be ordered by either — an ordering
+    // is a readout of the values it hides.
+    $display_fields = [];
+    if ( $coll_filter ) {
+        $coll_fields = $wpdb->get_results( $wpdb->prepare(
+            "SELECT id, field_name, is_public
+             FROM {$prefix}record_collection_fields
+             WHERE collection_id = %d ORDER BY sort_order ASC, id ASC",
+            $coll_filter
+        ) );
+        foreach ( $coll_fields as $cf ) {
+            if ( ! $is_member && ! $cf->is_public ) {
+                continue;
+            }
+            $display_fields[] = $cf;
+        }
+        $display_fields = array_slice( $display_fields, 0, 4 );
+    }
+
+    // Sortable columns, keyed the way they travel in the URL: 'coll' for the
+    // collection name, 'f{id}' for one of the collection's fields. The Summary
+    // column has no key — it prints whichever fields happened to be filled in
+    // on each record, so there is nothing consistent to order it by.
+    $sortable = [];
+    if ( $show_coll_column ) {
+        $sortable['coll'] = __( 'Collection', 'societypress' );
+    }
+    foreach ( $display_fields as $df ) {
+        $sortable[ 'f' . (int) $df->id ] = $df->field_name;
+    }
+    if ( ! isset( $sortable[ $sort_key ] ) ) {
+        // WHY the first column ascending rather than newest first: a transcribed
+        // collection is imported in the order it was typed, which for a cemetery
+        // roster or a surname index is alphabetical. Ordering by row id therefore
+        // ran the whole index backwards — Z to A — for every visitor who had not
+        // sorted or searched, which is all of them on arrival.
+        //
+        // Only the column falls back here, not the direction: on a phone the
+        // direction is its own dropdown, and a Z-A chosen there arrives without
+        // a column name beside it. An absent direction is already A-Z.
+        $sort_key = $sortable ? (string) array_key_first( $sortable ) : '';
+    }
+
     // Build WHERE — defense-in-depth: use prepare() even though $coll_ids came from the DB
-    $coll_ids          = array_map( 'absint', $coll_ids );
     $coll_placeholders = implode( ',', array_fill( 0, count( $coll_ids ), '%d' ) );
     $where = [ $wpdb->prepare( "r.collection_id IN ({$coll_placeholders})", ...$coll_ids ) ];
     if ( $coll_filter && in_array( $coll_filter, $coll_ids, true ) ) {
@@ -95035,18 +95149,43 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     }
     $where_sql = implode( ' AND ', $where );
 
-    // Count + fetch. The JOIN to record_collections is intentionally omitted:
-    // joining there forces the optimizer to materialize and filesort every
-    // matching record before applying LIMIT (O(n log n) on each page load),
-    // whereas filtering r alone lets it walk the id index and stop at $per_page.
-    // The collection name/type we'd get from the join are already in hand via
-    // $available_collections, so we stitch them on in PHP below.
+    // ORDER BY. Ordering on a field means joining the EAV table back in and
+    // letting MySQL sort the matches, which is exactly the work the unsorted
+    // query was written to avoid — but an index nobody can put in alphabetical
+    // order is a file cabinet with the drawers welded shut, and the join is
+    // bounded by the collection filter that any sorted view has set. LEFT, so a
+    // record with nothing in the sorted field still appears, at the end.
+    $join_sql  = '';
+    $order_sql = 'r.id ASC';
+    if ( 'coll' === $sort_key ) {
+        // $available_collections is already ordered by name, so FIELD() puts the
+        // rows in that order without joining record_collections back in.
+        $order_sql = 'FIELD(r.collection_id, ' . implode( ',', $coll_ids ) . ') ' . $sort_dir . ', r.id ASC';
+    } elseif ( '' !== $sort_key ) {
+        $join_sql = " LEFT JOIN {$prefix}record_values sv ON sv.record_id = r.id AND sv.field_id = " . absint( substr( $sort_key, 1 ) );
+        // Blanks last whichever way the column is pointing: a page of empty
+        // cells is not an answer to "sort by death date". Then digits ahead of
+        // letters and compared as numbers, so Lot 9 comes before Lot 10 instead
+        // of after Lot 1. The rest is the collation's own A-Z, accents and case
+        // folded in. Row id breaks the ties so paging stays stable.
+        $order_sql = "CASE WHEN sv.field_value IS NULL OR sv.field_value = '' THEN 1 ELSE 0 END ASC, "
+            . "CASE WHEN sv.field_value REGEXP '^[0-9]+([.][0-9]+)?$' THEN 0 ELSE 1 END {$sort_dir}, "
+            . "CAST(sv.field_value AS DECIMAL(20,4)) {$sort_dir}, "
+            . "sv.field_value {$sort_dir}, r.id ASC";
+    }
+
+    // Count + fetch. The JOIN to record_collections is still intentionally
+    // omitted: joining there forces the optimizer to materialize every matching
+    // record before applying LIMIT, and the collection name/type it would give
+    // us are already in hand via $available_collections, so we stitch them on in
+    // PHP below. The count runs against r alone for the same reason — the sort
+    // join can only change the order of the matches, never how many there are.
     $total   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}records r WHERE {$where_sql}" );
     $records = $wpdb->get_results( $wpdb->prepare(
         "SELECT r.*
-         FROM {$prefix}records r
+         FROM {$prefix}records r{$join_sql}
          WHERE {$where_sql}
-         ORDER BY r.id DESC
+         ORDER BY {$order_sql}
          LIMIT %d OFFSET %d",
         $per_page,
         $offset
@@ -95112,6 +95251,13 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         .sp-records-status { margin-bottom: 14px; color: #555; font-size: 14px; }
         .sp-records-table { width: 100%; border-collapse: collapse; }
         .sp-records-table thead th { padding: 10px 14px; text-align: left; border-bottom: 2px solid #d0d5dd; background: #f8f9fa; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: #555; }
+        .sp-records-table thead th.sorted { color: #1d2327; }
+        .sp-records-sort-link { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+        .sp-records-sort-link:hover { color: var(--sp-color-primary, #2271b1); }
+        .sp-records-sort-link:focus-visible { outline: 2px solid var(--sp-color-primary, #2271b1); outline-offset: 2px; }
+        .sp-records-table thead th .sp-sort-arrow { font-size: 0.7rem; opacity: 0.3; }
+        .sp-records-table thead th.sorted .sp-sort-arrow { opacity: 1; }
+        .sp-records-sort-mobile { display: none; }
         .sp-records-table tbody td { padding: 10px 14px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
         .sp-records-table tbody tr:hover { background: #f8f9fa; cursor: pointer; }
         .sp-records-coll-badge { font-size: 0.75rem; color: #666; background: #f0f0f0; padding: 2px 8px; border-radius: 10px; display: inline-block; }
@@ -95131,6 +95277,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         @media (max-width: 768px) {
             .sp-records-filters { flex-direction: column; }
             .sp-records-table thead { display: none; }
+            .sp-records-sort-mobile { display: block; }
             .sp-records-table tbody tr { display: block; padding: 12px 0; border-bottom: 1px solid #eee; }
             .sp-records-table tbody td { display: block; padding: 3px 0 !important; border-bottom: none !important; }
             .sp-records-table tbody td:before { content: attr(data-label); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; color: #6d7175; display: block; }
@@ -95159,6 +95306,30 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         echo '</select>';
     }
 
+    // Sort controls for the phone layout. On a desktop the column headers are
+    // the sort control; the mobile layout drops the header row entirely (each
+    // record becomes a stack of labelled values), which would otherwise leave a
+    // phone with no way to reorder at all. Hidden by CSS on desktop rather than
+    // duplicated there, but still inside the form, so a search keeps the
+    // ordering the reader chose.
+    if ( $sortable ) {
+        if ( count( $sortable ) > 1 ) {
+            echo '<label for="' . esc_attr( $uid ) . '-sort" class="screen-reader-text">' . esc_html__( 'Sort by', 'societypress' ) . '</label>';
+            echo '<select name="sp_rec_sort" id="' . esc_attr( $uid ) . '-sort" class="sp-records-sort-mobile sp-rec-autosubmit">';
+            foreach ( $sortable as $sort_opt_key => $sort_opt_label ) {
+                echo '<option value="' . esc_attr( $sort_opt_key ) . '"' . selected( $sort_key, $sort_opt_key, false ) . '>'
+                    /* translators: %s: column name */
+                    . esc_html( sprintf( __( 'Sort: %s', 'societypress' ), $sort_opt_label ) ) . '</option>';
+            }
+            echo '</select>';
+        }
+        echo '<label for="' . esc_attr( $uid ) . '-dir" class="screen-reader-text">' . esc_html__( 'Sort direction', 'societypress' ) . '</label>';
+        echo '<select name="sp_rec_dir" id="' . esc_attr( $uid ) . '-dir" class="sp-records-sort-mobile sp-rec-autosubmit">';
+        echo '<option value="asc"' . selected( $sort_dir, 'ASC', false ) . '>' . esc_html__( 'A–Z', 'societypress' ) . '</option>';
+        echo '<option value="desc"' . selected( $sort_dir, 'DESC', false ) . '>' . esc_html__( 'Z–A', 'societypress' ) . '</option>';
+        echo '</select>';
+    }
+
     echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
     echo '</form>';
 
@@ -95169,21 +95340,24 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     if ( empty( $records ) ) {
         echo '<p class="sp-empty-search-result">' . esc_html__( 'No records match your search. Try broadening your query.', 'societypress' ) . '</p>';
     } else {
-        // For multi-collection results, show Collection + first 3 fields
-        // For single-collection, show first 4 fields
-        $show_coll_column = ! $coll_filter || count( $active_coll_ids ) > 1;
+        // One collection on display gets its own field names as columns; a
+        // mixed result set gets Collection plus a summary of each record, since
+        // no set of field names is true of every row in it.
+        //
+        // Every column that names one value is a sort link. Sorting is done in
+        // the query, not in the browser: the table is one page of a result set
+        // that runs to thousands of rows, and reordering the twenty-five rows a
+        // visitor can see would order the wrong thing.
+        $sort_base = remove_query_arg( [ 'sp_rec_sort', 'sp_rec_dir', 'sp_rec_pg' ] );
 
         echo '<table class="sp-records-table">';
         echo '<thead><tr>';
         if ( $show_coll_column ) {
-            echo '<th scope="col">' . esc_html__( 'Collection', 'societypress' ) . '</th>';
+            sp_records_sort_header( 'coll', __( 'Collection', 'societypress' ), $sort_key, $sort_dir, $sort_base );
         }
-        // Show generic column headers (we can't know field names across collections)
-        // For single-collection, use actual field names
-        if ( $coll_filter && isset( $fields_by_coll[ $coll_filter ] ) ) {
-            $display_fields = array_slice( $fields_by_coll[ $coll_filter ], 0, $show_coll_column ? 3 : 4 );
+        if ( $display_fields ) {
             foreach ( $display_fields as $df ) {
-                echo '<th scope="col">' . esc_html( $df->field_name ) . '</th>';
+                sp_records_sort_header( 'f' . (int) $df->id, $df->field_name, $sort_key, $sort_dir, $sort_base );
             }
         } else {
             echo '<th scope="col">' . esc_html__( 'Summary', 'societypress' ) . '</th>';
@@ -95215,8 +95389,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
                 echo '<td data-label="' . esc_attr__( 'Collection', 'societypress' ) . '"><span class="sp-records-coll-badge">' . esc_html( $rec->collection_name ) . '</span></td>';
             }
 
-            if ( $coll_filter && isset( $fields_by_coll[ $coll_filter ] ) ) {
-                $display_fields = array_slice( $fields_by_coll[ $coll_filter ], 0, $show_coll_column ? 3 : 4 );
+            if ( $display_fields ) {
                 foreach ( $display_fields as $df ) {
                     $val = $rec_values[ $df->id ] ?? '';
                     echo '<td data-label="' . esc_attr( $df->field_name ) . '">' . esc_html( wp_trim_words( $val, 8 ) ?: '—' ) . '</td>';
@@ -95345,6 +95518,17 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
             var row = e.target.closest('.sp-record-row');
             if (!row) return;
             toggleRecordRow(row);
+        });
+
+        // The mobile sort dropdowns reorder on change. Reaching past them to
+        // find the Search button to apply a sort is a step nobody expects, and
+        // the page-builder pages this widget sits on do not always load the
+        // shared .sp-autosubmit handler.
+        container.addEventListener('change', function(e) {
+            var el = e.target;
+            if (el && el.classList && el.classList.contains('sp-rec-autosubmit') && el.form) {
+                el.form.submit();
+            }
         });
 
         // Keyboard support: Enter and Space toggle the record detail panel,

@@ -387,6 +387,8 @@ obituaries, and anything else their research committee has digitized.
 - Per-field access control — a "Notes" field might be members-only while
   Name/Date stay public
 - Result pages with contextual highlighting
+- Sortable column headings — click to sort the whole collection by that
+  field, click again to reverse; results open A–Z on the first column
 
 ---
 

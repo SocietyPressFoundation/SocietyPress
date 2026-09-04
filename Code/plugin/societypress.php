@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.19
+ * Version:     1.5.21
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.19' );
+define( 'SOCIETYPRESS_VERSION', '1.5.21' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39080,7 +39080,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.19',
+            'version'     => '1.5.21',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39088,7 +39088,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.19',
+            'version'     => '1.5.21',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39096,7 +39096,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.19',
+            'version'     => '1.5.21',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39104,7 +39104,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.19',
+            'version'     => '1.5.21',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39112,7 +39112,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.19',
+            'version'     => '1.5.21',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -97840,7 +97840,18 @@ function sp_render_store_frontend(): void {
             var badge = document.querySelector('.sp-cart-badge');
             if (!badge) return;
             badge.textContent = count;
-            badge.style.display = count > 0 ? 'inline-flex' : 'none';
+            // Toggle the attribute, not style.display. SocietyPress ships
+            // [hidden] { display: none !important; } — an inline display would
+            // lose to it and the count would never appear.
+            badge.hidden = !(count > 0);
+
+            // Keep the link's accessible name honest as the number changes.
+            var link = badge.closest('a');
+            if (link) {
+                link.setAttribute('aria-label', count > 0
+                    ? <?php echo wp_json_encode( __( 'Cart, %s items', 'societypress' ) ); ?>.replace('%s', count)
+                    : <?php echo wp_json_encode( __( 'Cart', 'societypress' ) ); ?>);
+            }
         }
 
         // Fetch the initial count for everybody. A visitor with no basket yet
@@ -98196,17 +98207,42 @@ function sp_nav_cart_item( string $items, $args ): string {
     }
 
     $count = sp_cart_total_items();
+
+    // Drawn rather than a font glyph or an emoji: it inherits the menu's own
+    // colour through currentColor, so it looks native in the parent theme and
+    // in all five child themes without any of them knowing it is there.
+    $icon = '<svg class="sp-cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+          . ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+          . ' aria-hidden="true" focusable="false">'
+          . '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/>'
+          . '<path d="M2 3h3l2.6 12.4a1.6 1.6 0 0 0 1.6 1.3h8.6a1.6 1.6 0 0 0 1.6-1.3L21 7H6"/>'
+          . '</svg>';
+
     $badge = sprintf(
-        '<span class="sp-cart-badge"%s>%s</span>',
-        $count > 0 ? '' : ' style="display:none"',
+        '<span class="sp-cart-badge" aria-hidden="true"%s>%s</span>',
+        $count > 0 ? '' : ' hidden',
         esc_html( number_format_i18n( $count ) )
     );
 
+    // The badge is decorative to a screen reader — the count belongs in the
+    // link's own name, or it gets read as a stray number after the word Cart.
+    $aria = $count > 0
+        ? sprintf(
+            /* translators: %s: number of items in the cart */
+            _n( 'Cart, %s item', 'Cart, %s items', $count, 'societypress' ),
+            number_format_i18n( $count )
+          )
+        : __( 'Cart', 'societypress' );
+
+    // The count sits inside the basket rather than beside it, so the glyph and
+    // the number read as one object the way a shopper already expects.
     return $items . sprintf(
-        '<li class="menu-item sp-nav-cart"><a href="%s">%s %s</a></li>',
+        '<li class="menu-item sp-nav-cart"><a href="%s" aria-label="%s"><span class="sp-cart-glyph">%s%s</span><span class="sp-cart-word">%s</span></a></li>',
         esc_url( get_permalink( $cart_page->ID ) ),
-        esc_html__( 'Cart', 'societypress' ),
-        $badge
+        esc_attr( $aria ),
+        $icon,
+        $badge,
+        esc_html__( 'Cart', 'societypress' )
     );
 }
 add_filter( 'wp_nav_menu_items', 'sp_nav_cart_item', 10, 2 );
@@ -98224,11 +98260,28 @@ add_action( 'wp_head', function () {
     }
     ?>
     <style id="sp-cart-badge-css">
-    .sp-nav-cart a           { white-space: nowrap; }
-    .sp-cart-badge           { display: inline-flex; align-items: center; justify-content: center;
-                               min-width: 1.35em; height: 1.35em; padding: 0 .4em; margin-left: .35em;
-                               border-radius: 999px; background: #C9973A; color: #0D1F3C;
-                               font-size: .75em; font-weight: 700; line-height: 1; vertical-align: middle; }
+    /* WHY absolute px and not em: the badge inherits from whatever size a theme
+       set its menu to, and at .75em of a small nav the number came out around
+       ten pixels — unreadable, which is the opposite of the point. A count
+       nobody can read is worse than no count.
+       WHY the number sits in the basket: it is the shape every shopper already
+       knows, so the glyph and the count read as one object instead of two. It
+       only works because the cart is drawn big enough to leave the basket
+       empty in the middle — at 18px there was nowhere for a digit to go. */
+    .sp-nav-cart a           { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
+    .sp-cart-glyph           { position: relative; display: inline-flex; flex: 0 0 auto;
+                               width: 34px; height: 34px; }
+    .sp-cart-icon            { width: 34px; height: 34px; }
+    /* Centred on the basket's interior, not on the glyph's box: the wheels sit
+       below the basket, so centring on the box would drop the digit onto the
+       axle. The padding is what lifts it into the empty middle. */
+    .sp-cart-badge           { position: absolute; inset: 0;
+                               display: flex; align-items: center; justify-content: center;
+                               padding: 0 0 5px 2px;
+                               color: #C9973A; font-size: 17px; font-weight: 700; line-height: 1;
+                               font-variant-numeric: tabular-nums;
+                               pointer-events: none; }
+    .sp-cart-word            { font-weight: 700; }
     </style>
     <?php
 } );

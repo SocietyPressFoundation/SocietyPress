@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.21] — 2026-09-03
+
+**The cart in your menu is easier to see.** It is now a proper cart symbol with
+the number of items sitting inside the basket, the way a shopper expects, and
+both are drawn large enough to read without leaning in. The count was
+previously sized relative to whatever your theme used for menu text, which on
+some themes worked out to about ten pixels.
+
+---
+
+## [1.5.20] — 2026-09-03
+
+**A cart symbol in the menu.** The Cart link now carries a drawn cart icon
+alongside the word, and the item count is larger and easier to read.
+
+---
+
 ## [1.5.19] — 2026-09-03
 
 **Clearer wording on the sales tax setting.** The checkbox now says "digital

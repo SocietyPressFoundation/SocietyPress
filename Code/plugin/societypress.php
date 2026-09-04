@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.14
+ * Version:     1.5.15
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.14' );
+define( 'SOCIETYPRESS_VERSION', '1.5.15' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -549,6 +549,11 @@ function sp_maybe_create_default_pages(): void {
         // which is the point: searchable records are what draws researchers in.
         [ 'title' => __( 'Records', 'societypress' ),             'slug' => 'records',     'template' => 'sp-records' ],
         [ 'title' => __( 'Search', 'societypress' ),              'slug' => 'search',      'template' => 'sp-search' ],
+        // WHY the Store and Cart are here: products are the one thing a society
+        // can put on its site that brings money back in, and until these pages
+        // existed the storefront had no address a visitor could be sent to.
+        [ 'title' => __( 'Store', 'societypress' ),               'slug' => 'store',       'template' => 'sp-store' ],
+        [ 'title' => __( 'Cart', 'societypress' ),                'slug' => 'cart',        'template' => 'sp-cart' ],
     ];
 
     // Track page IDs for the nav menu
@@ -615,6 +620,7 @@ function sp_maybe_create_default_pages(): void {
                 [ 'slug' => 'library',     'label' => __( 'Library', 'societypress' ) ],
                 [ 'slug' => 'records',     'label' => __( 'Records', 'societypress' ) ],
                 [ 'slug' => 'newsletters', 'label' => __( 'Newsletters', 'societypress' ) ],
+                [ 'slug' => 'store',       'label' => __( 'Store', 'societypress' ) ],
                 [ 'slug' => 'join',        'label' => __( 'Join', 'societypress' ) ],
                 [ 'slug' => 'directory',   'label' => __( 'Directory', 'societypress' ) ],
                 [ 'slug' => 'my-account',  'label' => __( 'My Account', 'societypress' ) ],
@@ -4262,6 +4268,11 @@ add_action( 'admin_init', function () {
 
         // Backfill phonetic codes for any surnames added before this feature existed
         sp_maybe_backfill_surname_phonetics();
+
+        // Give the store somewhere to live. Guarded on its own flag because
+        // sp_maybe_create_default_pages() never made these and never will on an
+        // install that already has pages — which is every real society.
+        sp_maybe_create_store_pages();
 
         // Recover which file belongs to what from the *_url columns every
         // screen has been writing all along. Guarded to once ever: after the
@@ -39004,7 +39015,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.14',
+            'version'     => '1.5.15',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39012,7 +39023,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.14',
+            'version'     => '1.5.15',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39020,7 +39031,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.14',
+            'version'     => '1.5.15',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39028,7 +39039,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.14',
+            'version'     => '1.5.15',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39036,7 +39047,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.14',
+            'version'     => '1.5.15',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -97886,6 +97897,124 @@ function sp_cart_total_items( ?int $user_id = null ): int {
     }
     return $total;
 }
+
+/**
+ * The Store and Cart pages, created if a society does not have them.
+ *
+ * WHY this exists at all: every other module with a front end gets its page
+ *      from sp_maybe_create_default_pages(), but Store and Cart were never in
+ *      that list — and that function bails the moment a site has any published
+ *      page, so it has not run on a real install in a long time. The result was
+ *      a store with no storefront and a cart with nowhere to stand: a society
+ *      could add products in the admin all day and no visitor could ever reach
+ *      them. Creating the pages here, guarded on its own flag, repairs every
+ *      install that is already out there rather than only the next fresh one.
+ *
+ * WHY it does not force them back: the flag is set whether or not anything was
+ *      created, so a society that deliberately deletes the Store page keeps it
+ *      deleted. We fix the omission once; after that the pages are theirs.
+ */
+function sp_maybe_create_store_pages(): void {
+    if ( get_option( 'sp_store_pages_created' ) ) {
+        return;
+    }
+    update_option( 'sp_store_pages_created', 1 );
+
+    if ( ! sp_module_enabled( 'store' ) ) {
+        return;
+    }
+
+    $wanted = [
+        [ 'title' => __( 'Store', 'societypress' ), 'slug' => 'store', 'template' => 'sp-store' ],
+        [ 'title' => __( 'Cart',  'societypress' ), 'slug' => 'cart',  'template' => 'sp-cart'  ],
+    ];
+
+    foreach ( $wanted as $page ) {
+        // Already assigned to some page? Leave it alone — the society may have
+        // put the template on a page of their own naming.
+        if ( sp_page_using_template( $page['template'] ) ) {
+            continue;
+        }
+        $id = wp_insert_post( [
+            'post_title'   => $page['title'],
+            'post_content' => '',
+            'post_status'  => 'publish',
+            'post_type'    => 'page',
+            'post_name'    => $page['slug'],
+        ] );
+        if ( $id && ! is_wp_error( $id ) ) {
+            update_post_meta( $id, '_wp_page_template', $page['template'] );
+        }
+    }
+}
+
+/**
+ * Append a Cart link, with a live item count, to the primary navigation.
+ *
+ * WHY the count is rendered here and not left to JavaScript: the store page
+ *      already ships an updateCartBadge() that fills in a .sp-cart-badge
+ *      element, and nothing in SocietyPress has ever rendered that element, so
+ *      the function has been quietly returning on its first line since it was
+ *      written. That script also only loads on the store page, so a count that
+ *      depended on it would be blank everywhere else. Printing the number
+ *      server-side means the badge is right on every page of the site, and the
+ *      existing script still updates it in place as items are added.
+ *
+ * WHY a filter rather than a menu item: a menu item has to be added by hand in
+ *      Appearance > Menus, which means the cart is missing until somebody knows
+ *      to go and put it there. Attaching to the menu means every society gets
+ *      it, including the ones already running.
+ */
+function sp_nav_cart_item( string $items, $args ): string {
+    if ( is_admin() || ! sp_module_enabled( 'store' ) ) {
+        return $items;
+    }
+    // Primary navigation only — the cart has no business in a footer menu.
+    if ( ! isset( $args->theme_location ) || 'primary' !== $args->theme_location ) {
+        return $items;
+    }
+    $cart_page = sp_page_using_template( 'sp-cart' );
+    if ( ! $cart_page ) {
+        return $items;
+    }
+
+    $count = sp_cart_total_items();
+    $badge = sprintf(
+        '<span class="sp-cart-badge"%s>%s</span>',
+        $count > 0 ? '' : ' style="display:none"',
+        esc_html( number_format_i18n( $count ) )
+    );
+
+    return $items . sprintf(
+        '<li class="menu-item sp-nav-cart"><a href="%s">%s %s</a></li>',
+        esc_url( get_permalink( $cart_page->ID ) ),
+        esc_html__( 'Cart', 'societypress' ),
+        $badge
+    );
+}
+add_filter( 'wp_nav_menu_items', 'sp_nav_cart_item', 10, 2 );
+
+/**
+ * Styling for the cart badge, on the front end only.
+ *
+ * WHY inline and unconditional: the badge rides in the theme's own menu markup,
+ *      so it has to look right in the parent theme and in all five child themes
+ *      without any of them knowing about it.
+ */
+add_action( 'wp_head', function () {
+    if ( ! sp_module_enabled( 'store' ) ) {
+        return;
+    }
+    ?>
+    <style id="sp-cart-badge-css">
+    .sp-nav-cart a           { white-space: nowrap; }
+    .sp-cart-badge           { display: inline-flex; align-items: center; justify-content: center;
+                               min-width: 1.35em; height: 1.35em; padding: 0 .4em; margin-left: .35em;
+                               border-radius: 999px; background: #C9973A; color: #0D1F3C;
+                               font-size: .75em; font-weight: 700; line-height: 1; vertical-align: middle; }
+    </style>
+    <?php
+} );
 
 /**
  * Match a cart entry against (source, id) regardless of legacy shape.

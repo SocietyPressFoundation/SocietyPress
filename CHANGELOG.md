@@ -20,6 +20,21 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.15] — 2026-09-03
+
+**The store now has a front door.** SocietyPress has had a working shop for
+some time — products, member pricing, card and PayPal checkout, orders, refunds
+— and almost nobody could find it. The Store and Cart pages were never among
+the pages a new site is given, and the routine that creates those pages stops
+the moment a site has any page at all, so no society running SocietyPress has
+ever been handed either one. Both are now created for you, and a **Cart** appears
+in your main menu with a count of what is in it, on every page of the site.
+
+If you already had a page using the Store or Cart layout, yours is left exactly
+as it is.
+
+---
+
 ## [1.5.14] — 2026-09-03
 
 **Website > Files works again.** The screen carried a "What is using this file"

@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.28] — 2026-09-03
+
+**A smaller count on the cart.** The number rode high enough on the glyph to
+compete with it. It is smaller now, and sits where it did against the cart's
+top edge.
+
+---
+
 ## [1.5.27] — 2026-09-03
 
 **The cart is the size it should have been, and it sits with your name.** The

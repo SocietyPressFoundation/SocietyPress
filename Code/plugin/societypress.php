@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.30
+ * Version:     1.5.31
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.30' );
+define( 'SOCIETYPRESS_VERSION', '1.5.31' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5794,7 +5794,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Committees & Leadership', 'societypress' ),
             'description' => __( 'Track officer positions, committee assignments, and manage volunteer opportunities and hours.', 'societypress' ),
             'icon'        => 'dashicons-groups',
-            'menu_slugs'  => [ 'sp-governance', 'sp-committees', 'sp-committee-edit', 'sp-meetings', 'sp-meeting-edit', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-volunteer-opportunity-edit', 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
+            'menu_slugs'  => [ 'sp-governance', 'sp-committees', 'sp-committee-edit', 'sp-meetings', 'sp-meeting-edit', 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-volunteer-opportunity-edit', 'sp-import-volunteers', 'sp-import-committees', 'sp-import-openings', 'sp-ballots', 'sp-ballot-edit', 'sp-ballot-results' ],
         ],
         'store' => [
             'name'        => __( 'Online Store', 'societypress' ),
@@ -7380,6 +7380,37 @@ add_action( 'admin_menu', function () {
         'sp_render_library_lists_page'
     );
 
+    // The three position importers. WHY they sit next to the lists they fill
+    // rather than in one "Import" corner: somebody looking at an empty
+    // Volunteers screen is looking for the way to fill it, and that is where
+    // they are looking.
+    add_submenu_page(
+        'societypress',
+        __( 'Import Volunteers & Officers — SocietyPress', 'societypress' ),
+        __( 'Import Volunteers', 'societypress' ),
+        'manage_options',
+        'sp-import-volunteers',
+        'sp_render_import_volunteers_page'
+    );
+
+    add_submenu_page(
+        'societypress',
+        __( 'Import Committees — SocietyPress', 'societypress' ),
+        __( 'Import Committees', 'societypress' ),
+        'manage_options',
+        'sp-import-committees',
+        'sp_render_import_committees_page'
+    );
+
+    add_submenu_page(
+        'societypress',
+        __( 'Import Volunteer Openings — SocietyPress', 'societypress' ),
+        __( 'Import Openings', 'societypress' ),
+        'manage_options',
+        'sp-import-openings',
+        'sp_render_import_openings_page'
+    );
+
     add_submenu_page(
         'societypress',
         __( 'Import Library — SocietyPress', 'societypress' ),
@@ -8201,6 +8232,9 @@ function sp_get_menu_capability_map(): array {
         // Governance / Volunteers
         'sp-governance'            => 'sp_manage_governance',
         'sp-committees'            => 'sp_manage_governance',
+        'sp-import-volunteers'     => 'sp_manage_governance',
+        'sp-import-committees'     => 'sp_manage_governance',
+        'sp-import-openings'       => 'sp_manage_governance',
         'sp-committee-edit'        => 'sp_manage_governance',
         'sp-meetings'              => 'sp_manage_governance',
         'sp-meeting-edit'          => 'sp_manage_governance',
@@ -13146,12 +13180,12 @@ function sp_default_menu_config(): array {
             // an already-saved layout matches on, so renaming it would strand the
             // admin's arrangement in a group nothing recognizes.
             [ 'id' => 'governance', 'label' => __( 'Meetings & Board', 'societypress' ), 'icon' => 'dashicons-building',
-              'items' => [ 'sp-chair', 'sp-meetings', 'sp-governance', 'sp-committees', 'sp-ballots',
+              'items' => [ 'sp-chair', 'sp-meetings', 'sp-governance', 'sp-committees', 'sp-import-committees', 'sp-ballots',
                            [ 'heading' => __( 'Documents', 'societypress' ) ],
                            'sp-documents', 'sp-document-categories' ] ],
 
             [ 'id' => 'volunteers', 'label' => __( 'Volunteers', 'societypress' ), 'icon' => 'dashicons-groups',
-              'items' => [ 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities' ] ],
+              'items' => [ 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-import-volunteers', 'sp-import-openings' ] ],
 
             [ 'id' => 'library', 'label' => __( 'Library', 'societypress' ), 'icon' => 'dashicons-book-alt',
               'items' => [ 'sp-library-catalog', 'sp-library-categories', 'sp-library-lists', 'sp-database-subscriptions',
@@ -39192,7 +39226,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.30',
+            'version'     => '1.5.31',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39200,7 +39234,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.30',
+            'version'     => '1.5.31',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39208,7 +39242,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.30',
+            'version'     => '1.5.31',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39216,7 +39250,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.30',
+            'version'     => '1.5.31',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39224,7 +39258,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.30',
+            'version'     => '1.5.31',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -81897,6 +81931,851 @@ function sp_render_volunteers_page(): void {
     </div>
     <?php
 }
+
+
+/* ==========================================================================
+   CSV IMPORT — VOLUNTEERS, COMMITTEES AND OPENINGS
+
+   WHY these three arrive together: a society moving in already has all of
+   this written down somewhere, almost always in a spreadsheet a secretary
+   has kept for years. Typing four hundred committee assignments back in by
+   hand is the single most common reason a migration stalls half finished.
+
+   WHY one screen renderer rather than three: the upload / preview / map /
+   run flow is identical for all three, and three copies of it would drift
+   the moment one of them got a fix. What differs between them is a list of
+   columns and a function that writes a row, so that is all each one supplies.
+   ========================================================================== */
+
+/**
+ * Find the member a spreadsheet row is talking about.
+ *
+ * WHY email first and name second: an email address identifies one person,
+ * a name identifies as many people as happen to share it. Societies have
+ * two Mary Smiths more often than anyone expects.
+ *
+ * WHY nothing is created when there is no match: a volunteer is a member
+ * first — a name here that is not in the membership is a mistake in the
+ * file, not a new person. Inventing an account would bury the mistake
+ * instead of reporting it.
+ *
+ * @return int WordPress user id, or 0 when the row matches nobody.
+ */
+function sp_import_match_member( string $email, string $first, string $last ): int {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $email = trim( $email );
+    if ( $email !== '' && is_email( $email ) ) {
+        $user = get_user_by( 'email', $email );
+        if ( $user ) {
+            return (int) $user->ID;
+        }
+
+        // Some societies keep a personal address on file alongside a work one.
+        $alt = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT user_id FROM {$prefix}members WHERE alt_email = %s LIMIT 1",
+            $email
+        ) );
+        if ( $alt ) {
+            return $alt;
+        }
+    }
+
+    $first = trim( $first );
+    $last  = trim( $last );
+    if ( $first === '' || $last === '' ) {
+        return 0;
+    }
+
+    // WHY the count check: two members with the same name is exactly the case
+    // a name lookup cannot resolve, and guessing between them would attach a
+    // position to the wrong person silently.
+    $matches = $wpdb->get_col( $wpdb->prepare(
+        "SELECT user_id FROM {$prefix}members WHERE first_name = %s AND last_name = %s",
+        $first,
+        $last
+    ) );
+
+    return count( $matches ) === 1 ? (int) $matches[0] : 0;
+}
+
+/**
+ * Split a single "name" column into a first and last name.
+ *
+ * WHY this exists: half the spreadsheets in the wild carry one Name column
+ * and half carry two, and asking a volunteer to split a column in Excel
+ * before they can import is where a migration stops.
+ *
+ * @return array{0:string,1:string}
+ */
+function sp_import_split_name( string $name ): array {
+    $name = trim( preg_replace( '/\s+/', ' ', $name ) );
+    if ( $name === '' ) {
+        return [ '', '' ];
+    }
+
+    // "Smith, Mary" — the form a sorted roster is usually kept in.
+    if ( strpos( $name, ',' ) !== false ) {
+        $parts = array_map( 'trim', explode( ',', $name, 2 ) );
+        return [ $parts[1] ?? '', $parts[0] ];
+    }
+
+    $parts = explode( ' ', $name );
+    if ( count( $parts ) === 1 ) {
+        return [ '', $parts[0] ];
+    }
+    $last = array_pop( $parts );
+
+    return [ implode( ' ', $parts ), $last ];
+}
+
+/**
+ * Read a value out of a row using the column mapping the reader chose.
+ */
+function sp_import_mapped_value( array $row, array $map, string $target ): string {
+    foreach ( $map as $csv_column => $mapped_to ) {
+        if ( $mapped_to === $target && isset( $row[ $csv_column ] ) ) {
+            return trim( (string) $row[ $csv_column ] );
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Turn whatever a spreadsheet calls a date into what the database calls one.
+ *
+ * WHY it returns null rather than today: an unreadable start date is missing
+ * information, and recording today's date instead would be an invention that
+ * looks like a fact for ever after.
+ */
+function sp_import_parse_date( string $value ): ?string {
+    $value = trim( $value );
+    if ( $value === '' ) {
+        return null;
+    }
+
+    $stamp = strtotime( $value );
+
+    return $stamp ? gmdate( 'Y-m-d', $stamp ) : null;
+}
+
+/**
+ * Read a yes/no column the many ways a spreadsheet writes one.
+ */
+function sp_import_parse_bool( string $value, bool $default = true ): bool {
+    $value = strtolower( trim( $value ) );
+    if ( $value === '' ) {
+        return $default;
+    }
+
+    return in_array( $value, [ 'yes', 'y', 'true', '1', 'active', 'on' ], true );
+}
+
+/**
+ * The three importers, each described by the columns it accepts and the
+ * function that writes one row.
+ *
+ * WHY a registry rather than three hardcoded screens: the screen renderer,
+ * the menu registration and the capability map all need the same facts about
+ * each importer, and a fact written in three places is a fact that will
+ * disagree with itself.
+ */
+function sp_get_position_importers(): array {
+    return [
+        'volunteers' => [
+            'slug'        => 'sp-import-volunteers',
+            'title'       => __( 'Import Volunteers &amp; Officers', 'societypress' ),
+            'nonce'       => 'sp_import_volunteers',
+            'noun'        => __( 'positions', 'societypress' ),
+            'intro'       => __( 'One row per position held. Volunteers, officers and committee members all live in the same list — the Role Type column is what tells them apart. Everyone named in the file must already be a member.', 'societypress' ),
+            'processor'   => 'sp_import_volunteer_roles_row',
+            'fields'      => [
+                'email'      => __( 'Email Address', 'societypress' ),
+                'full_name'  => __( 'Full Name (if first and last are one column)', 'societypress' ),
+                'first_name' => __( 'First Name', 'societypress' ),
+                'last_name'  => __( 'Last Name', 'societypress' ),
+                'role_title' => __( 'Role / Position Title', 'societypress' ),
+                'committee'  => __( 'Committee', 'societypress' ),
+                'role_type'  => __( 'Role Type (volunteer / officer / committee)', 'societypress' ),
+                'start_date' => __( 'Start Date', 'societypress' ),
+                'end_date'   => __( 'End Date', 'societypress' ),
+                'status'     => __( 'Status (active / inactive)', 'societypress' ),
+            ],
+            'aliases'     => [
+                'name'          => 'full_name',
+                'member'        => 'full_name',
+                'volunteer'     => 'full_name',
+                'e-mail'        => 'email',
+                'email address' => 'email',
+                'first'         => 'first_name',
+                'last'          => 'last_name',
+                'surname'       => 'last_name',
+                'position'      => 'role_title',
+                'title'         => 'role_title',
+                'office'        => 'role_title',
+                'role'          => 'role_title',
+                'job'           => 'role_title',
+                'type'          => 'role_type',
+                'committee name'=> 'committee',
+                'start'         => 'start_date',
+                'from'          => 'start_date',
+                'term start'    => 'start_date',
+                'end'           => 'end_date',
+                'to'            => 'end_date',
+                'term end'      => 'end_date',
+                'active'        => 'status',
+            ],
+        ],
+        'committees' => [
+            'slug'        => 'sp-import-committees',
+            'title'       => __( 'Import Committees', 'societypress' ),
+            'nonce'       => 'sp_import_committees',
+            'noun'        => __( 'committees', 'societypress' ),
+            'intro'       => __( 'One row per committee. Import these before the positions that refer to them, so the committee names on the roster match something real.', 'societypress' ),
+            'processor'   => 'sp_import_committee_row',
+            'fields'      => [
+                'name'        => __( 'Committee Name', 'societypress' ),
+                'description' => __( 'Description', 'societypress' ),
+                'chair_email' => __( 'Chair Email Address', 'societypress' ),
+                'chair_name'  => __( 'Chair Name', 'societypress' ),
+                'active'      => __( 'Active (yes/no)', 'societypress' ),
+                'sort_order'  => __( 'Sort Order', 'societypress' ),
+            ],
+            'aliases'     => [
+                'committee'   => 'name',
+                'title'       => 'name',
+                'notes'       => 'description',
+                'purpose'     => 'description',
+                'chair'       => 'chair_name',
+                'chairman'    => 'chair_name',
+                'chairperson' => 'chair_name',
+                'chair email' => 'chair_email',
+                'email'       => 'chair_email',
+                'order'       => 'sort_order',
+                'sort'        => 'sort_order',
+                'status'      => 'active',
+            ],
+        ],
+        'openings'   => [
+            'slug'        => 'sp-import-openings',
+            'title'       => __( 'Import Volunteer Openings', 'societypress' ),
+            'nonce'       => 'sp_import_openings',
+            'noun'        => __( 'openings', 'societypress' ),
+            'intro'       => __( 'One row per opening you are recruiting for. These are the positions members can sign up for on the website, not the ones already filled.', 'societypress' ),
+            'processor'   => 'sp_import_opportunity_row',
+            'fields'      => [
+                'title'            => __( 'Opening Title', 'societypress' ),
+                'description'      => __( 'Description', 'societypress' ),
+                'committee'        => __( 'Committee', 'societypress' ),
+                'opportunity_type' => __( 'Type (one_time / ongoing)', 'societypress' ),
+                'event_date'       => __( 'Date', 'societypress' ),
+                'start_time'       => __( 'Start Time', 'societypress' ),
+                'end_time'         => __( 'End Time', 'societypress' ),
+                'location'         => __( 'Location', 'societypress' ),
+                'capacity'         => __( 'Number of People Needed', 'societypress' ),
+                'skills_needed'    => __( 'Skills Needed', 'societypress' ),
+                'status'           => __( 'Status (open / closed)', 'societypress' ),
+            ],
+            'aliases'     => [
+                'name'        => 'title',
+                'position'    => 'title',
+                'opportunity' => 'title',
+                'role'        => 'title',
+                'notes'       => 'description',
+                'details'     => 'description',
+                'needed'      => 'capacity',
+                'people'      => 'capacity',
+                'openings'    => 'capacity',
+                'quantity'    => 'capacity',
+                'slots'       => 'capacity',
+                'limit'       => 'capacity',
+                'skills'      => 'skills_needed',
+                'date'        => 'event_date',
+                'when'        => 'event_date',
+                'where'       => 'location',
+                'venue'       => 'location',
+                'type'        => 'opportunity_type',
+                'active'      => 'status',
+            ],
+        ],
+    ];
+}
+
+/**
+ * Look a committee up by name, for the columns that refer to one.
+ *
+ * WHY it does not create missing committees: a spreadsheet full of slightly
+ * different spellings of the same committee would quietly become a list of
+ * committees that all mean the same thing, and nobody would find out until
+ * the roster was already wrong. A name that matches nothing is reported.
+ */
+function sp_import_committee_id( string $name ): int {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $name = trim( $name );
+    if ( $name === '' ) {
+        return 0;
+    }
+
+    return (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$prefix}committees WHERE name = %s LIMIT 1",
+        $name
+    ) );
+}
+
+/**
+ * Write one row of the volunteers / officers file.
+ *
+ * @return array{status:string,message:string} status is added, updated or error.
+ */
+function sp_import_volunteer_roles_row( array $row, array $map ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $email      = sp_import_mapped_value( $row, $map, 'email' );
+    $first      = sp_import_mapped_value( $row, $map, 'first_name' );
+    $last       = sp_import_mapped_value( $row, $map, 'last_name' );
+    $full       = sp_import_mapped_value( $row, $map, 'full_name' );
+    $role_title = sp_import_mapped_value( $row, $map, 'role_title' );
+
+    if ( $first === '' && $last === '' && $full !== '' ) {
+        list( $first, $last ) = sp_import_split_name( $full );
+    }
+
+    if ( $role_title === '' ) {
+        return [ 'status' => 'error', 'message' => __( 'No role or position title.', 'societypress' ) ];
+    }
+
+    $user_id = sp_import_match_member( $email, $first, $last );
+    if ( ! $user_id ) {
+        $who = $email !== '' ? $email : trim( "$first $last" );
+        return [
+            'status'  => 'error',
+            /* translators: %s: the name or email address from the file */
+            'message' => sprintf( __( '%s is not a member — add them to the membership first, or correct the spelling.', 'societypress' ), $who ?: __( '(no name given)', 'societypress' ) ),
+        ];
+    }
+
+    // WHY the type is normalised rather than trusted: a file will say "Officer",
+    // "officer", "Board" or "Board Member" for the same thing, and an unknown
+    // value stored raw would drop the row out of every list that filters on it.
+    $type_raw = strtolower( sp_import_mapped_value( $row, $map, 'role_type' ) );
+    $role_type = 'volunteer';
+    if ( $type_raw !== '' ) {
+        if ( strpos( $type_raw, 'officer' ) !== false || strpos( $type_raw, 'board' ) !== false || strpos( $type_raw, 'director' ) !== false ) {
+            $role_type = 'officer';
+        } elseif ( strpos( $type_raw, 'committee' ) !== false || strpos( $type_raw, 'chair' ) !== false ) {
+            $role_type = 'committee';
+        }
+    }
+
+    $status_raw = sp_import_mapped_value( $row, $map, 'status' );
+    $status     = sp_import_parse_bool( $status_raw, true ) ? 'active' : 'inactive';
+
+    $data = [
+        'user_id'    => $user_id,
+        'role_title' => $role_title,
+        'committee'  => sp_import_mapped_value( $row, $map, 'committee' ) ?: null,
+        'role_type'  => $role_type,
+        'start_date' => sp_import_parse_date( sp_import_mapped_value( $row, $map, 'start_date' ) ),
+        'end_date'   => sp_import_parse_date( sp_import_mapped_value( $row, $map, 'end_date' ) ),
+        'status'     => $status,
+    ];
+
+    // WHY person + title is the match and not person alone: somebody can hold
+    // two positions at once, and treating the second as an edit of the first
+    // would lose one of them.
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$prefix}volunteer_roles WHERE user_id = %d AND role_title = %s LIMIT 1",
+        $user_id,
+        $role_title
+    ) );
+
+    if ( $existing ) {
+        $wpdb->update( $prefix . 'volunteer_roles', $data, [ 'id' => $existing ] );
+        return [ 'status' => 'updated', 'message' => '' ];
+    }
+
+    $wpdb->insert( $prefix . 'volunteer_roles', $data );
+
+    return [ 'status' => 'added', 'message' => '' ];
+}
+
+/**
+ * Write one row of the committees file.
+ */
+function sp_import_committee_row( array $row, array $map ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $name = sp_import_mapped_value( $row, $map, 'name' );
+    if ( $name === '' ) {
+        return [ 'status' => 'error', 'message' => __( 'No committee name.', 'societypress' ) ];
+    }
+
+    $chair_id = 0;
+    $chair_email = sp_import_mapped_value( $row, $map, 'chair_email' );
+    $chair_name  = sp_import_mapped_value( $row, $map, 'chair_name' );
+    if ( $chair_email !== '' || $chair_name !== '' ) {
+        list( $c_first, $c_last ) = sp_import_split_name( $chair_name );
+        $chair_id = sp_import_match_member( $chair_email, $c_first, $c_last );
+        if ( ! $chair_id ) {
+            return [
+                'status'  => 'error',
+                /* translators: 1: committee name, 2: the chair as written in the file */
+                'message' => sprintf( __( '%1$s names %2$s as chair, and that person is not a member.', 'societypress' ), $name, $chair_email ?: $chair_name ),
+            ];
+        }
+    }
+
+    $sort = sp_import_mapped_value( $row, $map, 'sort_order' );
+
+    $data = [
+        'name'          => $name,
+        'slug'          => sanitize_title( $name ),
+        'description'   => sp_import_mapped_value( $row, $map, 'description' ) ?: null,
+        'chair_user_id' => $chair_id ?: null,
+        'active'        => sp_import_parse_bool( sp_import_mapped_value( $row, $map, 'active' ), true ) ? 1 : 0,
+        'sort_order'    => $sort !== '' ? absint( $sort ) : 0,
+    ];
+
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$prefix}committees WHERE name = %s LIMIT 1",
+        $name
+    ) );
+
+    if ( $existing ) {
+        $wpdb->update( $prefix . 'committees', $data, [ 'id' => $existing ] );
+        return [ 'status' => 'updated', 'message' => '' ];
+    }
+
+    $wpdb->insert( $prefix . 'committees', $data );
+
+    return [ 'status' => 'added', 'message' => '' ];
+}
+
+/**
+ * Write one row of the volunteer openings file.
+ */
+function sp_import_opportunity_row( array $row, array $map ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $title = sp_import_mapped_value( $row, $map, 'title' );
+    if ( $title === '' ) {
+        return [ 'status' => 'error', 'message' => __( 'No opening title.', 'societypress' ) ];
+    }
+
+    $committee_name = sp_import_mapped_value( $row, $map, 'committee' );
+    $committee_id   = 0;
+    if ( $committee_name !== '' ) {
+        $committee_id = sp_import_committee_id( $committee_name );
+        if ( ! $committee_id ) {
+            return [
+                'status'  => 'error',
+                /* translators: 1: opening title, 2: committee name as written in the file */
+                'message' => sprintf( __( '%1$s is for the %2$s committee, which does not exist yet — import the committees first.', 'societypress' ), $title, $committee_name ),
+            ];
+        }
+    }
+
+    $type_raw = strtolower( sp_import_mapped_value( $row, $map, 'opportunity_type' ) );
+    $type     = ( strpos( $type_raw, 'ongoing' ) !== false || strpos( $type_raw, 'recurring' ) !== false )
+              ? 'ongoing'
+              : 'one_time';
+
+    $status_raw = sp_import_mapped_value( $row, $map, 'status' );
+    $status     = sp_import_parse_bool( $status_raw, true ) ? 'open' : 'closed';
+
+    $capacity = sp_import_mapped_value( $row, $map, 'capacity' );
+
+    // WHY times go through strtotime as well: a spreadsheet writes half past
+    // one as "1:30 PM", "13:30" or "1330" depending on who typed it.
+    $start_time = sp_import_mapped_value( $row, $map, 'start_time' );
+    $end_time   = sp_import_mapped_value( $row, $map, 'end_time' );
+    $start_stamp = $start_time !== '' ? strtotime( $start_time ) : false;
+    $end_stamp   = $end_time !== '' ? strtotime( $end_time ) : false;
+
+    $data = [
+        'title'            => $title,
+        'description'      => sp_import_mapped_value( $row, $map, 'description' ) ?: null,
+        'committee_id'     => $committee_id ?: null,
+        'opportunity_type' => $type,
+        'event_date'       => sp_import_parse_date( sp_import_mapped_value( $row, $map, 'event_date' ) ),
+        'start_time'       => $start_stamp ? gmdate( 'H:i:s', $start_stamp ) : null,
+        'end_time'         => $end_stamp ? gmdate( 'H:i:s', $end_stamp ) : null,
+        'location'         => sp_import_mapped_value( $row, $map, 'location' ) ?: null,
+        'capacity'         => $capacity !== '' ? absint( $capacity ) : null,
+        'skills_needed'    => sp_import_mapped_value( $row, $map, 'skills_needed' ) ?: null,
+        'status'           => $status,
+    ];
+
+    $existing = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT id FROM {$prefix}volunteer_opportunities WHERE title = %s LIMIT 1",
+        $title
+    ) );
+
+    if ( $existing ) {
+        $wpdb->update( $prefix . 'volunteer_opportunities', $data, [ 'id' => $existing ] );
+        return [ 'status' => 'updated', 'message' => '' ];
+    }
+
+    $data['created_by'] = get_current_user_id();
+    $wpdb->insert( $prefix . 'volunteer_opportunities', $data );
+
+    return [ 'status' => 'added', 'message' => '' ];
+}
+
+/**
+ * Pair a data row up with the file's column headings.
+ *
+ * WHY this is needed: the parser hands back rows as plain lists, in file
+ * order. Everything downstream talks about columns by their heading, and a
+ * short or long row — a trailing comma, a merged cell — would silently shift
+ * every value one column over without it.
+ */
+function sp_import_row_assoc( array $headers, array $row ): array {
+    $out = [];
+    foreach ( $headers as $i => $header ) {
+        $out[ $header ] = $row[ $i ] ?? '';
+    }
+
+    return $out;
+}
+
+/**
+ * Upload, preview, map and run — the whole flow for one of the three files.
+ *
+ * WHY the two steps are one function: the second step needs the first step's
+ * temporary file and column mapping, and splitting them across two screens
+ * would mean holding that state somewhere a browser could lose it halfway.
+ */
+function sp_render_position_import_screen( string $key ): void {
+    $importers = sp_get_position_importers();
+    if ( ! isset( $importers[ $key ] ) ) {
+        return;
+    }
+    $cfg = $importers[ $key ];
+
+    $results = null;
+    $preview = null;
+
+    $upload_dir = wp_upload_dir();
+    $temp_dir   = $upload_dir['basedir'] . '/sp-import-temp';
+
+    // ------------------------------------------------------------------
+    // Step 2 — run the import against the file step 1 put aside.
+    // ------------------------------------------------------------------
+    if ( ( $_POST['sp_position_import_action'] ?? '' ) === 'run_import' ) {
+        check_admin_referer( $cfg['nonce'] );
+
+        // WHY only the basename comes back from the form: a full path from a
+        // browser is a path an attacker chose. The directory is ours.
+        $token     = sanitize_file_name( wp_unslash( $_POST['sp_import_temp_file'] ?? '' ) );
+        $temp_file = $token !== '' ? realpath( $temp_dir . '/' . $token ) : false;
+        $real_dir  = realpath( $temp_dir );
+        if ( ! $temp_file || ! $real_dir || strpos( $temp_file, $real_dir ) !== 0 ) {
+            $temp_file = '';
+        }
+
+        $raw_map = isset( $_POST['sp_field_map'] ) && is_array( $_POST['sp_field_map'] ) ? $_POST['sp_field_map'] : [];
+        $map     = [];
+        foreach ( $raw_map as $csv_col => $target ) {
+            $target = sanitize_text_field( $target );
+            if ( $target !== '' ) {
+                $map[ sanitize_text_field( wp_unslash( $csv_col ) ) ] = $target;
+            }
+        }
+
+        if ( $temp_file !== '' && file_exists( $temp_file ) ) {
+            $parsed  = sp_parse_import_file( $temp_file );
+            $results = [ 'added' => 0, 'updated' => 0, 'errors' => [] ];
+
+            $headers = $parsed['headers'] ?? [];
+            foreach ( ( $parsed['rows'] ?? [] ) as $index => $row ) {
+                $outcome = call_user_func( $cfg['processor'], sp_import_row_assoc( $headers, $row ), $map );
+                if ( $outcome['status'] === 'error' ) {
+                    // WHY the row number: "three rows failed" sends somebody
+                    // hunting through four hundred lines. The number ends the hunt.
+                    $results['errors'][] = sprintf(
+                        /* translators: 1: row number in the file, 2: what went wrong */
+                        __( 'Row %1$d: %2$s', 'societypress' ),
+                        (int) $index + 2,
+                        $outcome['message']
+                    );
+                } else {
+                    $results[ $outcome['status'] ]++;
+                }
+            }
+
+            wp_delete_file( $temp_file );
+        } else {
+            $results = [
+                'added'   => 0,
+                'updated' => 0,
+                'errors'  => [ __( 'The uploaded file has expired. Please upload it again.', 'societypress' ) ],
+            ];
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 1 — take the upload and show what is in it.
+    // ------------------------------------------------------------------
+    if ( ( $_POST['sp_position_import_action'] ?? '' ) === 'preview' ) {
+        check_admin_referer( $cfg['nonce'] );
+
+        if ( ! empty( $_FILES['import_file']['tmp_name'] ) ) {
+            if ( ! sp_is_valid_import_upload( $_FILES['import_file']['tmp_name'] ) ) {
+                echo '<div class="notice notice-error"><p>' . esc_html__( 'That file does not look like a CSV or spreadsheet. Please upload a .csv, .tsv, or .xlsx file.', 'societypress' ) . '</p></div>';
+            } else {
+                if ( ! is_dir( $temp_dir ) ) {
+                    wp_mkdir_p( $temp_dir );
+                    file_put_contents( $temp_dir . '/.htaccess', 'Deny from all' );
+                }
+
+                // The extension has to survive: the parser picks CSV or XLSX by it.
+                $orig_ext = strtolower( pathinfo( $_FILES['import_file']['name'] ?? 'import.csv', PATHINFO_EXTENSION ) );
+                $safe_ext = in_array( $orig_ext, [ 'csv', 'tsv', 'txt', 'xlsx' ], true ) ? $orig_ext : 'csv';
+                $temp_file = $temp_dir . '/' . $key . '-import-' . wp_generate_password( 12, false ) . '.' . $safe_ext;
+                move_uploaded_file( $_FILES['import_file']['tmp_name'], $temp_file );
+
+                $parsed = sp_parse_import_file( $temp_file );
+                if ( $parsed && ! empty( $parsed['headers'] ) ) {
+                    $preview = [
+                        'headers'     => $parsed['headers'],
+                        'sample_rows' => array_map(
+                            static fn( $r ) => sp_import_row_assoc( $parsed['headers'], $r ),
+                            array_slice( $parsed['rows'], 0, 5 )
+                        ),
+                        'row_count'   => count( $parsed['rows'] ),
+                        'temp_file'   => basename( $temp_file ),
+                    ];
+                } else {
+                    wp_delete_file( $temp_file );
+                    echo '<div class="notice notice-error"><p>' . esc_html__( 'That file has no column headings in its first row, so there is nothing to map.', 'societypress' ) . '</p></div>';
+                }
+            }
+        }
+    }
+
+    // WHY the columns are guessed rather than left blank: a file exported from
+    // the spreadsheet a society already keeps usually has the right headings
+    // already, and making somebody set fifteen dropdowns that were going to be
+    // right anyway is the difference between a five minute job and an evening.
+    $auto_map = [];
+    if ( $preview ) {
+        foreach ( $preview['headers'] as $header ) {
+            $needle = strtolower( trim( $header ) );
+
+            if ( isset( $cfg['fields'][ $needle ] ) ) {
+                $auto_map[ $header ] = $needle;
+                continue;
+            }
+            foreach ( $cfg['fields'] as $field_key => $label ) {
+                if ( strtolower( wp_strip_all_tags( $label ) ) === $needle ) {
+                    $auto_map[ $header ] = $field_key;
+                    continue 2;
+                }
+            }
+            // Headings with spaces or underscores mean the same thing.
+            $squashed = str_replace( [ ' ', '-' ], '_', $needle );
+            if ( isset( $cfg['fields'][ $squashed ] ) ) {
+                $auto_map[ $header ] = $squashed;
+                continue;
+            }
+            if ( isset( $cfg['aliases'][ $needle ] ) ) {
+                $auto_map[ $header ] = $cfg['aliases'][ $needle ];
+            }
+        }
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php echo esc_html( wp_strip_all_tags( $cfg['title'] ) ); ?></h1>
+
+        <?php if ( $results ) : ?>
+            <?php $total = (int) $results['added'] + (int) $results['updated']; ?>
+            <div class="notice notice-<?php echo $total > 0 ? 'success' : 'warning'; ?>">
+                <p>
+                    <?php
+                    printf(
+                        /* translators: 1: number added, 2: number updated */
+                        esc_html__( 'Added %1$d, updated %2$d.', 'societypress' ),
+                        (int) $results['added'],
+                        (int) $results['updated']
+                    );
+                    ?>
+                </p>
+            </div>
+
+            <?php if ( ! empty( $results['errors'] ) ) : ?>
+                <div class="notice notice-error">
+                    <p>
+                        <strong>
+                            <?php
+                            printf(
+                                /* translators: %d: number of rows that could not be imported */
+                                esc_html( _n( '%d row was not imported:', '%d rows were not imported:', count( $results['errors'] ), 'societypress' ) ),
+                                count( $results['errors'] )
+                            );
+                            ?>
+                        </strong>
+                    </p>
+                    <ul class="sp-import-error-list">
+                        <?php foreach ( $results['errors'] as $error ) : ?>
+                            <li><?php echo esc_html( $error ); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <p class="description">
+                        <?php esc_html_e( 'Nothing was created for these rows. Fix them in the file and upload it again — the rows that worked will be updated rather than duplicated.', 'societypress' ); ?>
+                    </p>
+                </div>
+            <?php endif; ?>
+
+            <p>
+                <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $cfg['slug'] ) ); ?>" class="button button-primary">
+                    <?php esc_html_e( 'Import Another File', 'societypress' ); ?>
+                </a>
+            </p>
+
+        <?php elseif ( $preview ) : ?>
+            <div class="card sp-import-card-wide">
+                <h2><?php esc_html_e( 'Check the columns', 'societypress' ); ?></h2>
+                <p class="description">
+                    <?php
+                    printf(
+                        /* translators: 1: number of rows, 2: what is being imported */
+                        esc_html__( 'This file has %1$d rows of %2$s. Each column below is set to the thing SocietyPress thinks it holds — change any that are wrong, and set anything you do not want to import to "Do not import".', 'societypress' ),
+                        (int) $preview['row_count'],
+                        esc_html( $cfg['noun'] )
+                    );
+                    ?>
+                </p>
+
+                <form method="post">
+                    <?php wp_nonce_field( $cfg['nonce'] ); ?>
+                    <input type="hidden" name="sp_position_import_action" value="run_import">
+                    <input type="hidden" name="sp_import_temp_file" value="<?php echo esc_attr( $preview['temp_file'] ); ?>">
+
+                    <table class="widefat striped">
+                        <thead>
+                            <tr>
+                                <th><?php esc_html_e( 'Column in your file', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'Import it as', 'societypress' ); ?></th>
+                                <th><?php esc_html_e( 'First few values', 'societypress' ); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ( $preview['headers'] as $header ) : ?>
+                                <tr>
+                                    <td><strong><?php echo esc_html( $header ); ?></strong></td>
+                                    <td>
+                                        <select name="sp_field_map[<?php echo esc_attr( $header ); ?>]">
+                                            <option value=""><?php esc_html_e( '— Do not import —', 'societypress' ); ?></option>
+                                            <?php foreach ( $cfg['fields'] as $field_key => $label ) : ?>
+                                                <option value="<?php echo esc_attr( $field_key ); ?>"
+                                                    <?php selected( $auto_map[ $header ] ?? '', $field_key ); ?>>
+                                                    <?php echo esc_html( wp_strip_all_tags( $label ) ); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </td>
+                                    <td class="sp-import-sample-cell">
+                                        <?php
+                                        $samples = [];
+                                        foreach ( $preview['sample_rows'] as $sample ) {
+                                            $value = trim( (string) ( $sample[ $header ] ?? '' ) );
+                                            if ( $value !== '' ) {
+                                                $samples[] = $value;
+                                            }
+                                        }
+                                        echo esc_html( implode( ', ', array_slice( $samples, 0, 3 ) ) );
+                                        ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+
+                    <p>
+                        <?php
+                        submit_button(
+                            sprintf(
+                                /* translators: 1: number of rows, 2: what is being imported */
+                                __( 'Import %1$d %2$s', 'societypress' ),
+                                (int) $preview['row_count'],
+                                wp_strip_all_tags( $cfg['noun'] )
+                            ),
+                            'primary',
+                            'submit',
+                            false
+                        );
+                        ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $cfg['slug'] ) ); ?>" class="button sp-import-btn-gap">
+                            <?php esc_html_e( 'Cancel', 'societypress' ); ?>
+                        </a>
+                    </p>
+                </form>
+            </div>
+
+        <?php else : ?>
+            <div class="card sp-import-card-wide">
+                <h2><?php esc_html_e( 'Choose a file', 'societypress' ); ?></h2>
+                <p class="description"><?php echo esc_html( $cfg['intro'] ); ?></p>
+
+                <form method="post" enctype="multipart/form-data">
+                    <?php wp_nonce_field( $cfg['nonce'] ); ?>
+                    <input type="hidden" name="sp_position_import_action" value="preview">
+
+                    <table class="form-table" role="presentation">
+                        <tr>
+                            <th scope="row">
+                                <label for="sp-position-import-file"><?php esc_html_e( 'Spreadsheet', 'societypress' ); ?></label>
+                            </th>
+                            <td>
+                                <input type="file" id="sp-position-import-file" name="import_file" accept=".csv,.tsv,.txt,.xlsx" required>
+                                <p class="description">
+                                    <?php esc_html_e( 'A .csv, .tsv or .xlsx file whose first row is the column headings. Nothing is changed until you have seen the columns and pressed Import.', 'societypress' ); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <?php submit_button( __( 'Upload and Check', 'societypress' ), 'primary' ); ?>
+                </form>
+
+                <hr>
+
+                <h3><?php esc_html_e( 'Columns you can import', 'societypress' ); ?></h3>
+                <p class="description">
+                    <?php esc_html_e( 'Name your columns anything you like — you get to say what each one is on the next screen. These are what they can become.', 'societypress' ); ?>
+                </p>
+                <ul class="sp-import-field-list">
+                    <?php foreach ( $cfg['fields'] as $label ) : ?>
+                        <li><?php echo esc_html( wp_strip_all_tags( $label ) ); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <style>
+        /* Shared by all three position importers. */
+        .sp-import-card-wide   { max-width: 100%; padding: 4px 20px 20px; }
+        .sp-import-error-list  { margin: 0 0 10px 20px; list-style: disc; }
+        .sp-import-btn-gap     { margin-left: 8px; }
+        .sp-import-sample-cell { color: #646970; }
+        .sp-import-field-list  { margin: 0 0 10px 20px; list-style: disc; column-width: 260px; }
+    </style>
+    <?php
+}
+
+/** The three screens, each one line of difference from the others. */
+function sp_render_import_volunteers_page(): void { sp_render_position_import_screen( 'volunteers' ); }
+function sp_render_import_committees_page(): void { sp_render_position_import_screen( 'committees' ); }
+function sp_render_import_openings_page(): void   { sp_render_position_import_screen( 'openings' ); }
 
 /**
  * Render: Volunteer Hours Page

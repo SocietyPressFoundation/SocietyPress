@@ -20,6 +20,30 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.31] — 2026-09-03
+
+**Volunteers, officers, committees and openings can be imported from a
+spreadsheet.** Three new screens take a .csv, .tsv or .xlsx file, show you what
+is in it, let you say what each column holds, and then fill the lists — the
+same upload-and-check flow the members, events and library imports already use.
+
+- **Import Volunteers** takes one row per position held. Volunteers, officers
+  and committee members are all the same list underneath, so a Role Type column
+  is what tells them apart, and it reads Officer, Board, Director, Committee and
+  Chair as the right thing without being taught.
+- **Import Committees** takes the committee list itself, chair included.
+- **Import Openings** takes the positions you are recruiting for.
+
+Everyone named in a file has to be a member already: a name that matches nobody
+is reported with its row number rather than quietly turned into a new person,
+because that is a typo far more often than it is a stranger. Names are matched
+on email first and only then on name, and a name shared by two members is
+reported rather than guessed at. Running the same file again updates what is
+already there instead of duplicating it, so a spreadsheet can stay the master
+copy and be re-imported after edits.
+
+---
+
 ## [1.5.30] — 2026-09-03
 
 **The dashboard's columns are even, and the empty strip down the middle is

@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'HERITAGE_THEME_VERSION' ) ) {
-    define( 'HERITAGE_THEME_VERSION', '1.5.30' );
+    define( 'HERITAGE_THEME_VERSION', '1.5.31' );
 }
 
 /**

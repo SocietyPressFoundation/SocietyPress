@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.5.24
+Version: 1.5.25
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -540,8 +540,8 @@ img {
        slightly off-center from adjacent text. flex-shrink: 0 keeps it
        a perfect circle even if the header runs out of room. */
     display: block;
-    width: 28px;
-    height: 28px;
+    width: 35px;
+    height: 35px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;
@@ -1040,25 +1040,41 @@ img {
     color: var(--sp-color-header-text, #fff);
 }
 
-/* The trigger button — avatar + name + caret */
+/* The trigger — avatar + name + caret.
+
+   WHY no background and no border: the old rule filled it with
+   rgba(255,255,255,0.1) and outlined it in rgba(255,255,255,0.2), which only
+   works on a dark header. Every society running a light header — cream, white,
+   pale anything — got a ghost box floating around the member's name that no
+   setting could turn off. The member's name is a menu item like Home or
+   Events, so it is drawn like one.
+
+   WHY the 2px lift: with the padding gone the name and photo centre on the
+   line box, which includes descender space the word does not use. Two pixels
+   puts them on the optical middle of the menu instead. */
 .sp-user-trigger {
+    position: relative;
+    top: -2px;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
+    padding: 0;
+    background: none;
+    border: 0;
     color: var(--sp-color-header-text, #fff);
     font-size: 0.85rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: opacity 0.2s ease;
     white-space: nowrap;
 }
 
+/* WHY opacity and not a background: a hover tint has to be painted in a colour
+   that reads on the header, and SocietyPress does not know what colour that
+   is — each of the five child themes picks its own. Fading works on any of
+   them. */
 .sp-user-trigger:hover {
-    background: rgba(255, 255, 255, 0.2);
+    opacity: 0.7;
 }
 
 /* Small downward caret */

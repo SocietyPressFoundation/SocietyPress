@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.24
+ * Version:     1.5.25
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.24' );
+define( 'SOCIETYPRESS_VERSION', '1.5.25' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -10276,7 +10276,7 @@ function sp_user_menu() {
 
     echo '<a href="' . esc_url( $account_url ) . '" class="sp-user-trigger" aria-haspopup="true">';
     if ( $avatar_url ) {
-        echo '<img class="sp-user-avatar" src="' . esc_url( $avatar_url ) . '" alt="" width="28" height="28" loading="lazy">';
+        echo '<img class="sp-user-avatar" src="' . esc_url( $avatar_url ) . '" alt="" width="35" height="35" loading="lazy">';
     }
     echo '<span class="sp-user-name">' . esc_html( $display_name ) . '</span>';
     echo '<span class="sp-user-caret" aria-hidden="true">&#9662;</span>';
@@ -39080,7 +39080,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.24',
+            'version'     => '1.5.25',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39088,7 +39088,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.24',
+            'version'     => '1.5.25',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39096,7 +39096,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.24',
+            'version'     => '1.5.25',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39104,7 +39104,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.24',
+            'version'     => '1.5.25',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39112,7 +39112,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.24',
+            'version'     => '1.5.25',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -98211,7 +98211,7 @@ function sp_nav_cart_item( string $items, $args ): string {
     // Drawn rather than a font glyph or an emoji: it inherits the menu's own
     // colour through currentColor, so it looks native in the parent theme and
     // in all five child themes without any of them knowing it is there.
-    $icon = '<svg class="sp-cart-icon" viewBox="0 0 24 23" fill="none" stroke="currentColor"'
+    $icon = '<svg class="sp-cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
           . ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
           . ' aria-hidden="true" focusable="false">'
           . '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/>'
@@ -98234,15 +98234,16 @@ function sp_nav_cart_item( string $items, $args ): string {
           )
         : __( 'Cart', 'societypress' );
 
-    // The count sits inside the basket rather than beside it, so the glyph and
-    // the number read as one object the way a shopper already expects.
+    // WHY no visible word: a cart glyph is one of the few symbols every
+    // shopper already reads without a label, and the word made the item twice
+    // as wide as any other in the menu. The name still reaches a screen
+    // reader through aria-label, which is where it belongs.
     return $items . sprintf(
-        '<li class="menu-item sp-nav-cart"><a href="%s" aria-label="%s"><span class="sp-cart-glyph">%s%s</span><span class="sp-cart-word">%s</span></a></li>',
+        '<li class="menu-item sp-nav-cart"><a href="%s" aria-label="%s"><span class="sp-cart-glyph">%s%s</span></a></li>',
         esc_url( get_permalink( $cart_page->ID ) ),
         esc_attr( $aria ),
         $icon,
-        $badge,
-        esc_html__( 'Cart', 'societypress' )
+        $badge
     );
 }
 add_filter( 'wp_nav_menu_items', 'sp_nav_cart_item', 10, 2 );
@@ -98260,48 +98261,44 @@ add_action( 'wp_head', function () {
     }
     ?>
     <style id="sp-cart-badge-css">
-    /* WHY absolute px and not em: the badge inherits from whatever size a theme
-       set its menu to, and at .75em of a small nav the number came out around
-       ten pixels — unreadable, which is the opposite of the point. A count
-       nobody can read is worse than no count.
-       WHY the number sits in the basket: it is the shape every shopper already
-       knows, so the glyph and the count read as one object instead of two. It
-       only works because the cart is drawn big enough to leave the basket
-       empty in the middle — at 18px there was nowhere for a digit to go. */
-    /* WHY baseline and not center: centring made the whole item sit lower than
-       its neighbours, because the 34px glyph drove the line box. Aligning on
-       the baseline puts the word Cart on exactly the same line as Home and
-       Events, and — with the viewBox cropped to the wheels above — puts the
-       wheels on that line too. */
-    .sp-nav-cart a           { white-space: nowrap; display: inline-flex; align-items: baseline; gap: 12px; }
+    /* Measured off Charles's corrected header, 2026-09-03. Placement, colour
+       and size are transcribed from that file rather than re-derived.
+
+       WHY absolute px and not em: the badge inherits from whatever size a
+       theme set its menu to, and at .75em of a small nav the number came out
+       around ten pixels — unreadable, which is the opposite of the point. */
+
+    /* WHY centre and not baseline: the cart is a symbol, not a word, so it has
+       no baseline to share with Home and Events. It reads correctly only when
+       its own middle sits on the middle of the menu line.
+       WHY the negative block margins: the glyph is taller than the menu's line
+       box, and without them it drives the line height and makes the whole nav
+       bar grow around one item. The margins let it overflow the line instead
+       of expanding it. */
+    .sp-nav-cart a           { white-space: nowrap; display: inline-flex;
+                               align-items: center; }
     .sp-cart-glyph           { position: relative; display: inline-block; flex: 0 0 auto;
-                               width: 34px; height: 32.6px; }
-    .sp-cart-icon            { width: 34px; height: 32.6px; display: block; }
-    /* WHY the count sits on the corner and not in the basket: on the disc it
-       needs to carry, it is wider than the basket's interior, so in the middle
-       it covered the cart and the whole thing read as a gold coin with wheels.
-       On the corner the cart stays a cart and the number stays readable.
-       WHY a disc rather than a stroked number: a stroke has to be painted in
-       the menu's background colour, and SocietyPress does not know it — each
-       of the five child themes picks its own. Navy on gold is 6.24:1 wherever
-       it lands.
-       WHY the currentColor ring: gold on a cream menu has almost no edge, as
-       the SAGHS theme showed. currentColor is the menu's own text colour, so
-       by definition it contrasts with the menu's background — the ring
-       separates the disc on a light theme and on a dark one alike.
+                               width: 40px; height: 40px; margin-block: -12px; }
+    .sp-cart-icon            { width: 40px; height: 40px; display: block; }
+
+    /* WHY a pale fill with a navy outline rather than a solid gold disc: solid
+       gold at this size read as a coin sitting on the cart, and on a cream
+       menu it had almost no edge. The outline draws the shape and the pale
+       fill lets the digits carry the weight — navy on #EACC91 is 9.9:1.
+       WHY these two fixed colours and not currentColor: the badge is the
+       plugin's own object, not the menu's, and it has to look identical in
+       the parent theme and in all five child themes. The pair is the
+       SocietyPress brand pair, so it lands the same way everywhere.
        It grows into a pill past one digit rather than clipping. */
-    .sp-cart-badge           { position: absolute; left: 50%; top: -6px;
-                               min-width: 22px; height: 22px; padding: 0 5px;
+    .sp-cart-badge           { position: absolute; left: 47%; top: -10px;
+                               min-width: 31px; height: 31px; padding: 0 5px;
                                border-radius: 999px; box-sizing: border-box;
                                display: flex; align-items: center; justify-content: center;
-                               background: #C9973A; color: #0D1F3C;
-                               box-shadow: 0 0 0 2px currentColor;
-                               font-size: 14px; font-weight: 700; line-height: 1;
+                               background: #EACC91; color: #0D1F3C;
+                               border: 2px solid #0D1F3C;
+                               font-size: 25px; font-weight: 700; line-height: 1;
                                font-variant-numeric: tabular-nums;
                                pointer-events: none; }
-    /* WHY no bold: bolder reads as darker, and Cart looked heavier than every
-       other item in the menu. It is a menu item like any other. */
-    .sp-cart-word            { font-weight: inherit; }
     </style>
     <?php
 } );

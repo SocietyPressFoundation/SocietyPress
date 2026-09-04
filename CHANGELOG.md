@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.25] — 2026-09-03
+
+**The cart is a symbol now, and the member's name lost its ghost box.** The
+word "Cart" is gone from the menu — a shopping-cart glyph is one of the few
+symbols a visitor reads without a label, and the word made the item twice as
+wide as anything else in the navigation. The name still reaches screen readers.
+The cart is centred on the menu line rather than sitting on the text baseline,
+and the count rides above it on a pale gold pill outlined in navy, which reads
+clearly on a light menu and a dark one alike.
+
+**The signed-in member's name no longer sits in a floating box.** The name and
+photo were drawn with a translucent white fill and border, which is only
+invisible on a dark header. Every society running a cream, white or otherwise
+light header saw a pale rectangle around the member's name that no setting
+could switch off. The name is a menu item now, drawn like the rest of them, and
+the profile photo is larger.
+
+---
+
 ## [1.5.24] — 2026-09-03
 
 **The cart count is bigger and sits on the corner.** The number now rides on a

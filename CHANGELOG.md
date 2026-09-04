@@ -20,6 +20,28 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.16] — 2026-09-03
+
+**Anyone can buy from your store now — no account required.** Until this
+release the shop only worked for signed-in members: a visitor who clicked Add
+to Cart got no response at all, and the cart page told them to log in first.
+That is backwards for a society, because the people buying your cemetery
+transcriptions and surname indexes are usually researchers who found you
+through a search engine and have no reason to want an account.
+
+A visitor's basket now follows them for thirty days, and they check out with
+just a name and an email for the receipt. If they do have a membership, the
+cart offers them a chance to sign in for member pricing rather than quietly
+charging them full price — and anything already in their basket comes with them
+through the login instead of vanishing.
+
+**Orders now record where to send things.** SocietyPress has always had places
+to store a shipping address on an order and has never once filled them in, so
+no society was ever told where to post what somebody bought. Checkout now asks,
+for members and visitors alike, and the answer is saved with the order.
+
+---
+
 ## [1.5.15] — 2026-09-03
 
 **The store now has a front door.** SocietyPress has had a working shop for

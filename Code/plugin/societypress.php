@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.15
+ * Version:     1.5.16
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.15' );
+define( 'SOCIETYPRESS_VERSION', '1.5.16' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39015,7 +39015,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.15',
+            'version'     => '1.5.16',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39023,7 +39023,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.15',
+            'version'     => '1.5.16',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39031,7 +39031,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.15',
+            'version'     => '1.5.16',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39039,7 +39039,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.15',
+            'version'     => '1.5.16',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39047,7 +39047,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.15',
+            'version'     => '1.5.16',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -97728,7 +97728,6 @@ function sp_render_store_frontend(): void {
     (function() {
         var ajaxUrl  = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
         var nonce    = '<?php echo esc_js( wp_create_nonce( 'sp_store_cart' ) ); ?>';
-        var loggedIn = <?php echo is_user_logged_in() ? 'true' : 'false'; ?>;
         var cartUrl  = '<?php
             // Find the cart page URL by looking for a page with the sp-cart template
             $cart_pages = get_pages( [ 'meta_key' => '_wp_page_template', 'meta_value' => 'sp-cart' ] );
@@ -97743,8 +97742,9 @@ function sp_render_store_frontend(): void {
             badge.style.display = count > 0 ? 'inline-flex' : 'none';
         }
 
-        // Fetch initial cart count on page load
-        if (loggedIn) {
+        // Fetch the initial count for everybody. A visitor with no basket yet
+        // has no cookie, so this is a cheap miss rather than a wasted session.
+        {
             var fd = new FormData();
             fd.append('action', 'sp_cart_get');
             fd.append('_ajax_nonce', nonce);
@@ -97759,10 +97759,6 @@ function sp_render_store_frontend(): void {
         document.querySelectorAll('.sp-store-add-to-cart').forEach(function(btn) {
             btn.addEventListener('click', function(e) {
                 e.preventDefault();
-                if (!loggedIn) {
-                    spAlert('<?php echo esc_js( __( 'Please log in to make purchases.', 'societypress' ) ); ?>');
-                    return;
-                }
                 var card   = this.closest('.sp-store-card');
                 var itemId = card.getAttribute('data-item-id');
                 // data-source is 'library' for catalog-rows-with-a-price or
@@ -97841,9 +97837,16 @@ function sp_render_store_frontend(): void {
  */
 function sp_get_cart( ?int $user_id = null ): array {
     $user_id = $user_id ?: get_current_user_id();
-    if ( ! $user_id ) return [];
 
-    $cart = get_user_meta( $user_id, 'sp_cart', true );
+    if ( $user_id ) {
+        $cart = get_user_meta( $user_id, 'sp_cart', true );
+    } else {
+        // A visitor with no account. Their basket lives in a transient keyed by
+        // a cookie we only issue once they put something in it — see
+        // sp_cart_guest_token() for why that matters.
+        $token = sp_cart_guest_token();
+        $cart  = $token ? get_transient( 'sp_cart_' . $token ) : [];
+    }
     if ( ! is_array( $cart ) ) return [];
 
     $normalized = [];
@@ -97875,7 +97878,6 @@ function sp_get_cart( ?int $user_id = null ): array {
  */
 function sp_save_cart( array $cart, ?int $user_id = null ): void {
     $user_id = $user_id ?: get_current_user_id();
-    if ( ! $user_id ) return;
 
     // Clean up: drop zero-quantity or invalid entries, re-index
     $cart = array_values( array_filter( $cart, function ( $item ) {
@@ -97883,8 +97885,122 @@ function sp_save_cart( array $cart, ?int $user_id = null ): void {
             && ( (int) ( $item['id'] ?? 0 ) ) > 0
             && ( (int) ( $item['qty'] ?? 0 ) ) > 0;
     } ) );
-    update_user_meta( $user_id, 'sp_cart', $cart );
+
+    if ( $user_id ) {
+        update_user_meta( $user_id, 'sp_cart', $cart );
+        return;
+    }
+
+    $token = sp_cart_guest_token( true );
+    if ( ! $token ) {
+        return;
+    }
+    if ( $cart ) {
+        set_transient( 'sp_cart_' . $token, $cart, 30 * DAY_IN_SECONDS );
+    } else {
+        delete_transient( 'sp_cart_' . $token );
+    }
 }
+
+/**
+ * The cookie that identifies a logged-out visitor's basket.
+ *
+ * WHY it is not issued on sight: a cookie set for every visitor makes every
+ *      page response unique, which is exactly what full-page caches use to
+ *      decide a response cannot be reused. Issuing it only when somebody
+ *      actually puts something in the basket means a society's cache keeps
+ *      working for the readers who never shop, which is most of them.
+ *
+ * WHY a token and a transient rather than the session: WordPress has no
+ *      session, and putting the basket itself in a cookie would let a visitor
+ *      edit their own prices. The cookie carries nothing but a random name for
+ *      a row we control.
+ *
+ * @param bool $create Mint and set a token when the visitor has none.
+ */
+function sp_cart_guest_token( bool $create = false ): string {
+    if ( ! empty( $_COOKIE['sp_cart'] ) ) {
+        $token = preg_replace( '/[^a-f0-9]/', '', (string) $_COOKIE['sp_cart'] );
+        if ( 32 === strlen( $token ) ) {
+            return $token;
+        }
+    }
+    if ( ! $create ) {
+        return '';
+    }
+
+    try {
+        $token = bin2hex( random_bytes( 16 ) );
+    } catch ( Exception $e ) {
+        return '';
+    }
+
+    // Readable for the rest of this request, not just the next one.
+    $_COOKIE['sp_cart'] = $token;
+
+    if ( ! headers_sent() ) {
+        setcookie( 'sp_cart', $token, [
+            'expires'  => time() + 30 * DAY_IN_SECONDS,
+            'path'     => COOKIEPATH ? COOKIEPATH : '/',
+            'domain'   => COOKIE_DOMAIN,
+            'secure'   => is_ssl(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ] );
+    }
+    return $token;
+}
+
+/**
+ * Carry a basket across the moment somebody logs in.
+ *
+ * WHY: a researcher fills a basket, then signs in at checkout to get member
+ *      pricing, and without this the basket they built is simply gone — the
+ *      worst possible moment to lose it. Their items are merged into whatever
+ *      the account already held, quantities added rather than replaced.
+ */
+add_action( 'wp_login', function ( $login, $user ) {
+    $token = sp_cart_guest_token();
+    if ( ! $token || ! $user instanceof WP_User ) {
+        return;
+    }
+    $guest = get_transient( 'sp_cart_' . $token );
+    delete_transient( 'sp_cart_' . $token );
+    if ( ! headers_sent() ) {
+        setcookie( 'sp_cart', '', [
+            'expires' => time() - 3600,
+            'path'    => COOKIEPATH ? COOKIEPATH : '/',
+            'domain'  => COOKIE_DOMAIN,
+        ] );
+    }
+    unset( $_COOKIE['sp_cart'] );
+    if ( ! is_array( $guest ) || ! $guest ) {
+        return;
+    }
+
+    $cart = sp_get_cart( $user->ID );
+    foreach ( $guest as $entry ) {
+        if ( ! is_array( $entry ) ) continue;
+        $source = ( ( $entry['source'] ?? '' ) === 'product' ) ? 'product' : 'library';
+        $id     = (int) ( $entry['id'] ?? 0 );
+        $qty    = (int) ( $entry['qty'] ?? 0 );
+        if ( $id < 1 || $qty < 1 ) continue;
+
+        $merged = false;
+        foreach ( $cart as &$existing ) {
+            if ( sp_cart_entry_matches( $existing, $source, $id ) ) {
+                $existing['qty'] = min( 99, (int) $existing['qty'] + $qty );
+                $merged = true;
+                break;
+            }
+        }
+        unset( $existing );
+        if ( ! $merged ) {
+            $cart[] = [ 'source' => $source, 'id' => $id, 'qty' => min( 99, $qty ) ];
+        }
+    }
+    sp_save_cart( $cart, $user->ID );
+}, 10, 2 );
 
 /**
  * Get the total number of items in the cart (sum of quantities).
@@ -98035,7 +98151,17 @@ function sp_cart_entry_matches( array $entry, string $source, int $id ): bool {
  * WHY: Called when a member clicks "Add to Cart" on the store page. If the
  *      item is already in the cart, we add to the existing quantity (not replace).
  */
-add_action( 'wp_ajax_sp_cart_add', function () {
+/**
+ * The four cart endpoints, reachable with or without an account.
+ *
+ * WHY the nopriv twins matter: these were registered on wp_ajax_ alone, which
+ *      WordPress only fires for signed-in users. A logged-out visitor clicking
+ *      Add to Cart got back "0" and nothing happened, so the store was in
+ *      practice members-only. For a genealogical society that is backwards —
+ *      the people buying a cemetery transcription found the site through a
+ *      search engine and have no account and no reason to want one.
+ */
+function sp_ajax_cart_add(): void {
     check_ajax_referer( 'sp_store_cart' );
 
     $item_id = (int) ( $_POST['item_id'] ?? 0 );
@@ -98074,15 +98200,19 @@ add_action( 'wp_ajax_sp_cart_add', function () {
         'message'     => __( 'Added to cart.', 'societypress' ),
         'total_items' => sp_cart_total_items(),
     ] );
-} );
+}
+add_action( 'wp_ajax_sp_cart_add',        'sp_ajax_cart_add' );
+add_action( 'wp_ajax_nopriv_sp_cart_add', 'sp_ajax_cart_add' );
 
 /**
  * AJAX: Get cart contents (for badge count and cart page).
  */
-add_action( 'wp_ajax_sp_cart_get', function () {
+function sp_ajax_cart_get(): void {
     check_ajax_referer( 'sp_store_cart' );
     wp_send_json_success( sp_build_cart_response() );
-} );
+}
+add_action( 'wp_ajax_sp_cart_get',        'sp_ajax_cart_get' );
+add_action( 'wp_ajax_nopriv_sp_cart_get', 'sp_ajax_cart_get' );
 
 /**
  * AJAX: Update item quantity in cart.
@@ -98090,7 +98220,7 @@ add_action( 'wp_ajax_sp_cart_get', function () {
  * Both `source` and `item_id` are required to disambiguate (since a library
  * item and a product can theoretically share an id).
  */
-add_action( 'wp_ajax_sp_cart_update', function () {
+function sp_ajax_cart_update(): void {
     check_ajax_referer( 'sp_store_cart' );
 
     $item_id = (int) ( $_POST['item_id'] ?? 0 );
@@ -98112,12 +98242,14 @@ add_action( 'wp_ajax_sp_cart_update', function () {
 
     sp_save_cart( $cart );
     wp_send_json_success( sp_build_cart_response() );
-} );
+}
+add_action( 'wp_ajax_sp_cart_update',        'sp_ajax_cart_update' );
+add_action( 'wp_ajax_nopriv_sp_cart_update', 'sp_ajax_cart_update' );
 
 /**
  * AJAX: Remove item from cart.
  */
-add_action( 'wp_ajax_sp_cart_remove', function () {
+function sp_ajax_cart_remove(): void {
     check_ajax_referer( 'sp_store_cart' );
 
     $item_id = (int) ( $_POST['item_id'] ?? 0 );
@@ -98130,7 +98262,9 @@ add_action( 'wp_ajax_sp_cart_remove', function () {
     sp_save_cart( $cart );
 
     wp_send_json_success( sp_build_cart_response() );
-} );
+}
+add_action( 'wp_ajax_sp_cart_remove',        'sp_ajax_cart_remove' );
+add_action( 'wp_ajax_nopriv_sp_cart_remove', 'sp_ajax_cart_remove' );
 
 /**
  * Create a pending order row from the logged-in buyer's current cart.
@@ -98143,7 +98277,25 @@ add_action( 'wp_ajax_sp_cart_remove', function () {
  *
  * @return array|WP_Error [ 'order_id' => int, 'subtotal' => float, 'items' => [...] ]
  */
-function sp_store_create_pending_order() {
+/**
+ * The buyer details posted from the checkout form.
+ *
+ * WHY a helper: both payment flows need exactly the same fields off the same
+ *      form, and they had already drifted apart once by each fetching the
+ *      current user their own way.
+ */
+function sp_store_posted_buyer(): array {
+    $keys = [ 'name', 'email', 'phone', 'address_1', 'address_2', 'city', 'state', 'postal', 'country' ];
+    $out  = [];
+    foreach ( $keys as $k ) {
+        $out[ $k ] = isset( $_POST[ 'buyer_' . $k ] )
+            ? sanitize_text_field( wp_unslash( (string) $_POST[ 'buyer_' . $k ] ) )
+            : '';
+    }
+    return $out;
+}
+
+function sp_store_create_pending_order( array $buyer = [] ) {
     $cart = sp_get_cart();
     if ( empty( $cart ) ) {
         return new WP_Error( 'empty_cart', __( 'Your cart is empty.', 'societypress' ) );
@@ -98152,7 +98304,20 @@ function sp_store_create_pending_order() {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
     $user   = wp_get_current_user();
-    $member = sp_get_member_by_user_id( $user->ID );
+    $member = $user->ID ? sp_get_member_by_user_id( $user->ID ) : null;
+
+    // A buyer with no account has to tell us who they are, or the receipt has
+    // nowhere to go and the society cannot fulfil what they bought.
+    $buyer_name  = trim( (string) ( $buyer['name'] ?? '' ) );
+    $buyer_email = sanitize_email( (string) ( $buyer['email'] ?? '' ) );
+    if ( ! $user->ID ) {
+        if ( '' === $buyer_name ) {
+            return new WP_Error( 'no_name', __( 'Please enter your name.', 'societypress' ) );
+        }
+        if ( ! is_email( $buyer_email ) ) {
+            return new WP_Error( 'no_email', __( 'Please enter an email address we can send your receipt to.', 'societypress' ) );
+        }
+    }
 
     $order_items    = [];
     $subtotal       = 0;
@@ -98199,21 +98364,46 @@ function sp_store_create_pending_order() {
     $shipping_total = round( $shipping_total, 2 );
     $total          = round( $subtotal + $shipping_total, 2 );
 
+    // Whoever is buying, prefer what they typed at checkout over what the
+    // account happens to hold — a member may well be shipping this somewhere
+    // other than their membership address.
+    $name = $buyer_name;
+    if ( '' === $name ) {
+        $name = $member
+            ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) )
+            : (string) $user->display_name;
+    }
+    $email = is_email( $buyer_email ) ? $buyer_email : (string) $user->user_email;
+    $phone = trim( (string) ( $buyer['phone'] ?? '' ) );
+    if ( '' === $phone ) {
+        $phone = (string) ( $member->phone ?? '' );
+    }
+
     $now = current_time( 'mysql' );
     $wpdb->insert( $prefix . 'orders', [
-        'user_id'        => $user->ID,
-        'status'         => 'pending',
-        'subtotal'       => $subtotal,
-        'shipping_total' => $shipping_total,
-        'tax'            => 0.00,
-        'total'          => $total,
-        'customer_name'  => $member
-            ? trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) )
-            : $user->display_name,
-        'customer_email' => $user->user_email,
-        'customer_phone' => $member->phone ?? '',
-        'created_at'     => $now,
-        'updated_at'     => $now,
+        // NULL, not 0, for a buyer with no account: the column is nullable
+        // precisely so a guest order is distinguishable from one placed by
+        // user 0, which does not exist.
+        'user_id'            => $user->ID ? $user->ID : null,
+        'status'             => 'pending',
+        'subtotal'           => $subtotal,
+        'shipping_total'     => $shipping_total,
+        'tax'                => 0.00,
+        'total'              => $total,
+        'customer_name'      => $name,
+        'customer_email'     => $email,
+        'customer_phone'     => $phone,
+        // These columns have existed since the table was written and nothing
+        // has ever filled them, so no order has ever recorded where it was to
+        // be sent. Whatever the buyer gives us now gets kept.
+        'shipping_address_1' => trim( (string) ( $buyer['address_1'] ?? '' ) ),
+        'shipping_address_2' => trim( (string) ( $buyer['address_2'] ?? '' ) ),
+        'shipping_city'      => trim( (string) ( $buyer['city'] ?? '' ) ),
+        'shipping_state'     => trim( (string) ( $buyer['state'] ?? '' ) ),
+        'shipping_postal'    => trim( (string) ( $buyer['postal'] ?? '' ) ),
+        'shipping_country'   => trim( (string) ( $buyer['country'] ?? '' ) ) ?: 'US',
+        'created_at'         => $now,
+        'updated_at'         => $now,
     ] );
     $order_id = (int) $wpdb->insert_id;
 
@@ -98316,7 +98506,9 @@ function sp_store_finalize_paid_order( int $order_id, string $payment_method, ar
  *      the post-payment finalize step can verify the PaymentIntent server-to-
  *      server before trusting client-side success signals.
  */
-add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
+// Paired with a nopriv registration below: a buyer without an account has
+// to be able to reach checkout, not just the basket.
+$sp_h_sp_store_create_payment_intent = function () {
     check_ajax_referer( 'sp_store_cart' );
 
     $settings = sp_settings();
@@ -98324,7 +98516,7 @@ add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
         wp_send_json_error( [ 'message' => __( 'Card payments are not set up on this site.', 'societypress' ) ] );
     }
 
-    $created = sp_store_create_pending_order();
+    $created = sp_store_create_pending_order( sp_store_posted_buyer() );
     if ( is_wp_error( $created ) ) {
         wp_send_json_error( [ 'message' => $created->get_error_message() ] );
     }
@@ -98384,7 +98576,9 @@ add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
         'order_id'      => $order_id,
         'client_secret' => $body['client_secret'],
     ] );
-} );
+};
+add_action( 'wp_ajax_sp_store_create_payment_intent',        $sp_h_sp_store_create_payment_intent );
+add_action( 'wp_ajax_nopriv_sp_store_create_payment_intent', $sp_h_sp_store_create_payment_intent );
 
 
 /**
@@ -98395,7 +98589,9 @@ add_action( 'wp_ajax_sp_store_create_payment_intent', function () {
  *      PaymentIntent id; we verify it server-to-server to make sure nobody is
  *      forging a success signal, then mark the order paid.
  */
-add_action( 'wp_ajax_sp_store_finalize_stripe', function () {
+// Paired with a nopriv registration below: a buyer without an account has
+// to be able to reach checkout, not just the basket.
+$sp_h_sp_store_finalize_stripe = function () {
     check_ajax_referer( 'sp_store_cart' );
 
     $settings   = sp_settings();
@@ -98439,7 +98635,9 @@ add_action( 'wp_ajax_sp_store_finalize_stripe', function () {
 
     sp_store_finalize_paid_order( $order_id, 'stripe', [ 'stripe_payment_intent' => $pi_id ] );
     wp_send_json_success( [ 'order_id' => $order_id ] );
-} );
+};
+add_action( 'wp_ajax_sp_store_finalize_stripe',        $sp_h_sp_store_finalize_stripe );
+add_action( 'wp_ajax_nopriv_sp_store_finalize_stripe', $sp_h_sp_store_finalize_stripe );
 
 
 /**
@@ -98492,7 +98690,9 @@ add_action( 'template_redirect', function () {
  *      flow), then ask PayPal to create their side of the order and return
  *      the PayPal order id so the SDK can pop the approval sheet.
  */
-add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
+// Paired with a nopriv registration below: a buyer without an account has
+// to be able to reach checkout, not just the basket.
+$sp_h_sp_store_create_paypal_order = function () {
     check_ajax_referer( 'sp_store_cart' );
 
     $settings = sp_settings();
@@ -98500,7 +98700,7 @@ add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
         wp_send_json_error( [ 'message' => __( 'PayPal is not set up on this site.', 'societypress' ) ] );
     }
 
-    $created = sp_store_create_pending_order();
+    $created = sp_store_create_pending_order( sp_store_posted_buyer() );
     if ( is_wp_error( $created ) ) {
         wp_send_json_error( [ 'message' => $created->get_error_message() ] );
     }
@@ -98548,7 +98748,9 @@ add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
         'order_id'        => $order_id,
         'paypal_order_id' => $paypal['id'],
     ] );
-} );
+};
+add_action( 'wp_ajax_sp_store_create_paypal_order',        $sp_h_sp_store_create_paypal_order );
+add_action( 'wp_ajax_nopriv_sp_store_create_paypal_order', $sp_h_sp_store_create_paypal_order );
 
 
 /**
@@ -98558,7 +98760,9 @@ add_action( 'wp_ajax_sp_store_create_paypal_order', function () {
  *      hands us the PayPal order id; we capture (actually charge) and mark
  *      the order paid.
  */
-add_action( 'wp_ajax_sp_store_capture_paypal_order', function () {
+// Paired with a nopriv registration below: a buyer without an account has
+// to be able to reach checkout, not just the basket.
+$sp_h_sp_store_capture_paypal_order = function () {
     check_ajax_referer( 'sp_store_cart' );
 
     $settings = sp_settings();
@@ -98596,7 +98800,9 @@ add_action( 'wp_ajax_sp_store_capture_paypal_order', function () {
     ] );
 
     wp_send_json_success( [ 'order_id' => (int) $order->id ] );
-} );
+};
+add_action( 'wp_ajax_sp_store_capture_paypal_order',        $sp_h_sp_store_capture_paypal_order );
+add_action( 'wp_ajax_nopriv_sp_store_capture_paypal_order', $sp_h_sp_store_capture_paypal_order );
 
 
 /**
@@ -98958,6 +99164,14 @@ function sp_render_cart_page(): void {
         .sp-cart-login-msg { text-align:center; padding:40px 20px; }
         .sp-pay-panel { border:1px solid var(--sp-border-color,#e5e7eb); border-radius:8px; padding:24px; margin-top:20px; background:#fafafa; }
         .sp-pay-panel h3 { margin:0 0 6px 0; font-size:18px; }
+        .sp-buyer-fields { margin:0 0 20px 0; }
+        .sp-buyer-legend { font-weight:600; margin:0 0 8px 0; font-size:14px; }
+        .sp-buyer-fields label { display:block; font-size:12px; color:#555; margin:10px 0 3px 0; }
+        .sp-buyer-fields input { width:100%; padding:8px 10px; border:1px solid var(--sp-border-color,#e5e7eb); border-radius:4px; font-size:14px; }
+        .sp-buyer-row { display:flex; gap:10px; }
+        .sp-buyer-row > span { flex:1; min-width:0; }
+        .sp-cart-member-hint { margin:0 0 16px 0; padding:10px 14px; border-left:3px solid var(--sp-accent-color,#C9973A); background:rgba(201,151,58,.08); font-size:14px; }
+        .sp-cart-member-hint p { margin:0; }
         .sp-pay-panel .sp-pay-sub { color:#666; font-size:13px; margin:0 0 18px 0; }
         .sp-pay-section { background:#fff; border:1px solid var(--sp-border-color,#e5e7eb); border-radius:6px; padding:16px; margin-bottom:14px; }
         .sp-pay-section-label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#666; margin-bottom:10px; }
@@ -98996,14 +99210,18 @@ function sp_render_cart_page(): void {
         <?php endif; ?>
 
         <?php if ( ! is_user_logged_in() ) : ?>
-            <div class="sp-cart-login-msg">
+            <?php // WHY an offer and not a wall: a visitor may buy without an
+                  // account, but a member who forgot to sign in would silently
+                  // pay list price. This is the one place to catch that. ?>
+            <div class="sp-cart-member-hint">
                 <p><?php printf(
                     /* translators: %s: login URL */
-                    __( 'Please <a href="%s">log in</a> to view your cart and make purchases.', 'societypress' ),
+                    __( 'Already a member? <a href="%s">Log in</a> for member pricing. Everyone else can check out below — no account needed.', 'societypress' ),
                     esc_url( wp_login_url( get_permalink() ) )
                 ); ?></p>
             </div>
-        <?php else : ?>
+        <?php endif; ?>
+
             <div id="sp-cart-content">
                 <p class="sp-cart-loading-p"><?php esc_html_e( 'Loading cart…', 'societypress' ); ?></p>
             </div>
@@ -99011,6 +99229,57 @@ function sp_render_cart_page(): void {
             <div id="sp-pay-panel" class="sp-pay-panel" style="display:none;">
                 <h3><?php esc_html_e( 'Payment', 'societypress' ); ?></h3>
                 <p class="sp-pay-sub" id="sp-pay-total-line"></p>
+
+                <?php
+                // WHY these are asked of everyone and not just guests: the
+                // shipping columns have been on sp_orders since it was written
+                // and nothing ever filled them, so no society has ever been
+                // told where to post the book somebody bought. A signed-in
+                // member's details are pre-filled; they can still change them,
+                // because the order may not be going to their own address.
+                $sp_cu  = wp_get_current_user();
+                $sp_mem = $sp_cu->ID ? sp_get_member_by_user_id( $sp_cu->ID ) : null;
+                $sp_nm  = $sp_mem
+                    ? trim( ( $sp_mem->first_name ?? '' ) . ' ' . ( $sp_mem->last_name ?? '' ) )
+                    : (string) $sp_cu->display_name;
+                ?>
+                <div class="sp-buyer-fields">
+                    <p class="sp-buyer-legend"><?php esc_html_e( 'Where should this go?', 'societypress' ); ?></p>
+                    <label for="sp-buyer-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label>
+                    <input type="text" id="sp-buyer-name" autocomplete="name" required
+                           value="<?php echo esc_attr( $sp_nm ); ?>">
+
+                    <label for="sp-buyer-email"><?php esc_html_e( 'Email (for your receipt)', 'societypress' ); ?></label>
+                    <input type="email" id="sp-buyer-email" autocomplete="email" required
+                           value="<?php echo esc_attr( (string) $sp_cu->user_email ); ?>">
+
+                    <label for="sp-buyer-phone"><?php esc_html_e( 'Phone (optional)', 'societypress' ); ?></label>
+                    <input type="tel" id="sp-buyer-phone" autocomplete="tel"
+                           value="<?php echo esc_attr( (string) ( $sp_mem->phone ?? '' ) ); ?>">
+
+                    <div id="sp-buyer-shipping">
+                        <label for="sp-buyer-address-1"><?php esc_html_e( 'Address', 'societypress' ); ?></label>
+                        <input type="text" id="sp-buyer-address-1" autocomplete="address-line1">
+                        <input type="text" id="sp-buyer-address-2" autocomplete="address-line2"
+                               placeholder="<?php esc_attr_e( 'Apartment, suite, etc. (optional)', 'societypress' ); ?>">
+
+                        <div class="sp-buyer-row">
+                            <span>
+                                <label for="sp-buyer-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
+                                <input type="text" id="sp-buyer-city" autocomplete="address-level2">
+                            </span>
+                            <span>
+                                <label for="sp-buyer-state"><?php esc_html_e( 'State', 'societypress' ); ?></label>
+                                <input type="text" id="sp-buyer-state" autocomplete="address-level1">
+                            </span>
+                            <span>
+                                <label for="sp-buyer-postal"><?php esc_html_e( 'ZIP', 'societypress' ); ?></label>
+                                <input type="text" id="sp-buyer-postal" autocomplete="postal-code">
+                            </span>
+                        </div>
+                    </div>
+                    <div class="sp-pay-error" id="sp-buyer-error" role="alert" aria-live="assertive"></div>
+                </div>
 
                 <?php if ( $stripe_configured ) : ?>
                 <div class="sp-pay-section">
@@ -99037,10 +99306,9 @@ function sp_render_cart_page(): void {
 
                 <button type="button" class="sp-pay-cancel" id="sp-pay-cancel-btn">&larr; <?php esc_html_e( 'Back to cart', 'societypress' ); ?></button>
             </div>
-        <?php endif; ?>
     </div>
 
-    <?php if ( is_user_logged_in() && ( $stripe_configured || $paypal_configured ) ) : ?>
+    <?php if ( $stripe_configured || $paypal_configured ) : ?>
     <?php if ( $stripe_configured ) : ?>
         <script src="https://js.stripe.com/v3/"></script>
     <?php endif; ?>
@@ -99049,7 +99317,6 @@ function sp_render_cart_page(): void {
     <?php endif; ?>
     <?php endif; ?>
 
-    <?php if ( is_user_logged_in() ) : ?>
     <script>
     (function() {
         var ajaxUrl  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
@@ -99085,6 +99352,35 @@ function sp_render_cart_page(): void {
             var d = document.createElement('div');
             d.textContent = str == null ? '' : String(str);
             return d.innerHTML;
+        }
+
+        // Buyer details ride with whichever payment call the visitor picks.
+        function buyerFields() {
+            function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+            return {
+                buyer_name:      v('sp-buyer-name'),
+                buyer_email:     v('sp-buyer-email'),
+                buyer_phone:     v('sp-buyer-phone'),
+                buyer_address_1: v('sp-buyer-address-1'),
+                buyer_address_2: v('sp-buyer-address-2'),
+                buyer_city:      v('sp-buyer-city'),
+                buyer_state:     v('sp-buyer-state'),
+                buyer_postal:    v('sp-buyer-postal')
+            };
+        }
+
+        // Caught here as well as on the server so the visitor is told before a
+        // payment sheet opens, not after it fails.
+        function buyerReady() {
+            var b   = buyerFields();
+            var err = document.getElementById('sp-buyer-error');
+            var msg = '';
+            if (!b.buyer_name)  { msg = <?php echo wp_json_encode( __( 'Please enter your name.', 'societypress' ) ); ?>; }
+            else if (!b.buyer_email || b.buyer_email.indexOf('@') < 1) {
+                msg = <?php echo wp_json_encode( __( 'Please enter an email address we can send your receipt to.', 'societypress' ) ); ?>;
+            }
+            if (err) { err.textContent = msg; }
+            return !msg;
         }
 
         function cartAjax(action, data, cb, errCb) {
@@ -99230,7 +99526,8 @@ function sp_render_cart_page(): void {
             var errEl = document.getElementById('sp-stripe-error');
             errEl.textContent = '';
 
-            cartAjax('sp_store_create_payment_intent', {}, function(data) {
+            if (!buyerReady()) { return; }
+            cartAjax('sp_store_create_payment_intent', buyerFields(), function(data) {
                 stripeOrderId = data.order_id;
                 try {
                     stripeObj = Stripe(stripePubKey);
@@ -99296,7 +99593,8 @@ function sp_render_cart_page(): void {
                 createOrder: function() {
                     errEl.textContent = '';
                     return new Promise(function(resolve, reject) {
-                        cartAjax('sp_store_create_paypal_order', {}, function(data) {
+                        if (!buyerReady()) { return reject(new Error('buyer')); }
+                        cartAjax('sp_store_create_paypal_order', buyerFields(), function(data) {
                             resolve(data.paypal_order_id);
                         }, function(msg) {
                             errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not start PayPal checkout.', 'societypress' ) ); ?>;
@@ -99336,7 +99634,7 @@ function sp_render_cart_page(): void {
         cartAjax('sp_cart_get', {}, renderCart);
     })();
     </script>
-    <?php endif;
+    <?php
 }
 
 

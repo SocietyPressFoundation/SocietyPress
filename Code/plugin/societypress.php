@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.29
+ * Version:     1.5.30
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.29' );
+define( 'SOCIETYPRESS_VERSION', '1.5.30' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -18282,6 +18282,32 @@ function sp_render_dashboard_page_legacy(): void {
 // meta-box-order_…, saved over its own AJAX endpoints.
 // ---------------------------------------------------------------------------
 
+
+/**
+ * The four containers WordPress's dashboard markup provides, in order.
+ *
+ * WHY named here rather than inline: the registration loop fills them and the
+ * render loop hides the unused ones, and both have to mean the same thing by
+ * "the third column".
+ */
+function sp_dashboard_contexts(): array {
+    return [ 'normal', 'side', 'column3', 'column4' ];
+}
+
+/**
+ * How many columns the dashboard is laid out in, 1 to 4.
+ *
+ * WHY not $screen->get_columns(): that is populated while Screen Options is
+ * drawn, which happens after the boxes have already been assigned to columns.
+ * Reading the stored preference directly gives the same answer at both moments.
+ */
+function sp_dashboard_column_count(): int {
+    $screen = get_current_screen();
+    $saved  = $screen ? (int) get_user_option( 'screen_layout_' . $screen->id ) : 0;
+
+    return max( 1, min( 4, $saved ?: 2 ) );
+}
+
 /**
  * Register the dashboard's boxes, and ask core for everything that drives them.
  */
@@ -18294,6 +18320,13 @@ add_action( 'load-toplevel_page_societypress', function () {
     // The Layout chooser under Screen Options. Two columns to begin with, the
     // same as WordPress's own dashboard.
     add_screen_option( 'layout_columns', [ 'max' => 4, 'default' => 2 ] );
+
+    // WHY the count is read here and not taken from the screen: the boxes are
+    // assigned to their columns now, at load, and the grid that lays those
+    // columns out is drawn later, at render. If the two read the preference
+    // differently they disagree, and a disagreement shows up as cards piled
+    // into two columns while the page is measured for three.
+    $columns = sp_dashboard_column_count();
 
     // WHY this comes first: a person arriving at the dashboard is far more
     // often here to deal with something than to read a number.
@@ -18321,7 +18354,7 @@ add_action( 'load-toplevel_page_societypress', function () {
             $card['label'],
             'sp_render_dashboard_card',
             $screen,
-            ( $column % 2 === 0 ) ? 'normal' : 'side',
+            sp_dashboard_contexts()[ $column % $columns ],
             'default',
             [ 'card' => $key ]
         );
@@ -18406,8 +18439,8 @@ function sp_render_dashboard_page(): void {
     $who       = $org_name !== '' ? $org_name : $site_name;
 
     $screen      = get_current_screen();
-    $columns     = $screen ? absint( $screen->get_columns() ) : 2;
-    $columns_css = $columns ? ' columns-' . $columns : '';
+    $columns     = sp_dashboard_column_count();
+    $columns_css = ' columns-' . $columns;
 
     // Everything registered, less whatever this person has unticked. Used only
     // to tell an empty page apart from a broken one.
@@ -18452,6 +18485,45 @@ function sp_render_dashboard_page(): void {
                 <?php esc_html_e( 'Your dashboard is empty. Open Screen Options, at the top right of this page, and tick what you would like to see here.', 'societypress' ); ?>
             </p>
         <?php endif; ?>
+
+        <?php
+        // WHY the layout is written here instead of left to WordPress: core's
+        // dashboard stylesheet floats the four containers at fixed percentages
+        // — 49.5% and 50.5% at two columns, 33% and 33.5% at three — and those
+        // percentages assume every container has something in it. SocietyPress
+        // fills only as many as the reader asked for, so at three columns core
+        // narrowed the first column to make room for a third that was empty and
+        // left a dead strip two hundred pixels wide down the middle of the
+        // screen. A grid of equal columns with one real gutter cannot do that,
+        // whatever the count.
+        //
+        // WHY !important: core's own rules are written with three ids, so
+        // nothing short of this outranks them from inside the page.
+        ?>
+        <style id="sp-dash-columns-css">
+            #wpbody-content #dashboard-widgets {
+                display: grid;
+                grid-template-columns: repeat(<?php echo (int) $columns; ?>, minmax(0, 1fr));
+                gap: 20px;
+            }
+            #wpbody-content #dashboard-widgets .postbox-container {
+                width: auto !important;
+                float: none !important;
+            }
+            /* The wrap and the sortables both carry 8px of their own margin,
+               which would sit inside the grid gap and make the gutter uneven. */
+            #dashboard-widgets-wrap { margin: 0; }
+            #wpbody-content #dashboard-widgets .meta-box-sortables { margin: 0; }
+            <?php foreach ( sp_dashboard_contexts() as $i => $unused ) :
+                if ( $i < $columns ) {
+                    continue;
+                }
+                // A container nobody is filling is not a narrow column, it is
+                // nothing — so it takes no space in the grid.
+                ?>
+            #wpbody-content #dashboard-widgets #postbox-container-<?php echo (int) $i + 1; ?> { display: none; }
+            <?php endforeach; ?>
+        </style>
 
         <div id="dashboard-widgets-wrap">
             <div id="dashboard-widgets" class="metabox-holder<?php echo esc_attr( $columns_css ); ?>">
@@ -39120,7 +39192,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.29',
+            'version'     => '1.5.30',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39128,7 +39200,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.29',
+            'version'     => '1.5.30',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39136,7 +39208,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.29',
+            'version'     => '1.5.30',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39144,7 +39216,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.29',
+            'version'     => '1.5.30',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39152,7 +39224,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.29',
+            'version'     => '1.5.30',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

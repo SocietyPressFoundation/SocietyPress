@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.30] — 2026-09-03
+
+**The dashboard's columns are even, and the empty strip down the middle is
+gone.** The cards were only ever placed in two columns however many you asked
+for in Screen Options, and WordPress's own dashboard stylesheet then sized the
+first column for the count you picked — so at three columns the left side was
+squeezed to make room for a third column that had nothing in it, leaving two
+hundred pixels of blank page between the two that did. The cards now spread
+across as many columns as you choose, every column is the same width, and the
+space between them is one even gutter.
+
+---
+
 ## [1.5.29] — 2026-09-03
 
 **The cart count is smaller again.** Down to 14px digits in an 18px pill, still

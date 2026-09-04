@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.24] — 2026-09-03
+
+**The cart count is bigger and sits on the corner.** The number now rides on a
+large gold disc at the top right of the cart, outlined in your menu's own text
+colour so it reads clearly whether your menu is light or dark — and the cart
+underneath still looks like a cart.
+
+---
+
 ## [1.5.23] — 2026-09-03
 
 **The cart icon looks like a cart again.** The number's disc was wider than the

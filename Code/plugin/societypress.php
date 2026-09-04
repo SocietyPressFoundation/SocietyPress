@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.23
+ * Version:     1.5.24
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.23' );
+define( 'SOCIETYPRESS_VERSION', '1.5.24' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39080,7 +39080,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.23',
+            'version'     => '1.5.24',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39088,7 +39088,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.23',
+            'version'     => '1.5.24',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39096,7 +39096,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.23',
+            'version'     => '1.5.24',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39104,7 +39104,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.23',
+            'version'     => '1.5.24',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39112,7 +39112,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.23',
+            'version'     => '1.5.24',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -98273,10 +98273,10 @@ add_action( 'wp_head', function () {
        the baseline puts the word Cart on exactly the same line as Home and
        Events, and — with the viewBox cropped to the wheels above — puts the
        wheels on that line too. */
-    .sp-nav-cart a           { white-space: nowrap; display: inline-flex; align-items: baseline; gap: 7px; }
+    .sp-nav-cart a           { white-space: nowrap; display: inline-flex; align-items: baseline; gap: 12px; }
     .sp-cart-glyph           { position: relative; display: inline-block; flex: 0 0 auto;
-                               width: 30px; height: 28.75px; }
-    .sp-cart-icon            { width: 30px; height: 28.75px; display: block; }
+                               width: 34px; height: 32.6px; }
+    .sp-cart-icon            { width: 34px; height: 32.6px; display: block; }
     /* WHY the count sits on the corner and not in the basket: on the disc it
        needs to carry, it is wider than the basket's interior, so in the middle
        it covered the cart and the whole thing read as a gold coin with wheels.
@@ -98290,13 +98290,13 @@ add_action( 'wp_head', function () {
        by definition it contrasts with the menu's background — the ring
        separates the disc on a light theme and on a dark one alike.
        It grows into a pill past one digit rather than clipping. */
-    .sp-cart-badge           { position: absolute; left: 50%; top: -3px;
-                               min-width: 18px; height: 18px; padding: 0 4px;
+    .sp-cart-badge           { position: absolute; left: 50%; top: -6px;
+                               min-width: 22px; height: 22px; padding: 0 5px;
                                border-radius: 999px; box-sizing: border-box;
                                display: flex; align-items: center; justify-content: center;
                                background: #C9973A; color: #0D1F3C;
-                               box-shadow: 0 0 0 1.5px currentColor;
-                               font-size: 12px; font-weight: 700; line-height: 1;
+                               box-shadow: 0 0 0 2px currentColor;
+                               font-size: 14px; font-weight: 700; line-height: 1;
                                font-variant-numeric: tabular-nums;
                                pointer-events: none; }
     /* WHY no bold: bolder reads as darker, and Cart looked heavier than every

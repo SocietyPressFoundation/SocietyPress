@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.5.26
+Version: 1.5.27
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -461,9 +461,15 @@ img {
     transition: background 0.2s ease, color 0.2s ease;
 }
 
+/* WHY no background tint: it was rgba(255,255,255,0.12), which is invisible
+   on a dark header and a pale smudge on a light one — every society running a
+   cream or white header got a box around whichever page they were on that no
+   setting could turn off. An underline reads the same way on any background,
+   and the current page keeps the colour it already had. */
 .main-navigation a:hover,
-.main-navigation .current-menu-item a {
-    background: rgba(255, 255, 255, 0.12);
+.main-navigation a:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 4px;
 }
 
 /* WHY explicit focus indicator: the browser default focus ring is a thin
@@ -540,8 +546,8 @@ img {
        slightly off-center from adjacent text. flex-shrink: 0 keeps it
        a perfect circle even if the header runs out of room. */
     display: block;
-    width: 35px;
-    height: 35px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     object-fit: cover;
     flex-shrink: 0;

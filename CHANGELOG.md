@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.27] — 2026-09-03
+
+**The cart is the size it should have been, and it sits with your name.** The
+glyph and its count were drawn a quarter too large, and the cart sat in the
+middle of the menu among the pages. It now sits at the right end of the bar
+beside the signed-in member's name, which is where a shopper looks for it.
+
+**The page you are on is no longer inside a box.** The current menu item, and
+any item under the pointer, were filled with translucent white — invisible on a
+dark header and a pale smudge on a light one, with no setting to turn it off.
+Hovering underlines the item instead, which reads the same on any header
+colour, and the current page keeps the colour it already had.
+
+**A left-aligned menu now lines up with the logo.** Menu links carry padding so
+they stay easy to click, which left the first word sitting eighteen pixels
+inside the row while the logo above it sat on the edge. The row is pulled over
+by exactly that padding, so the two line up and every click target is the size
+it was.
+
+---
+
 ## [1.5.26] — 2026-09-03
 
 **An update now shows up the first time you load the page.** The offline

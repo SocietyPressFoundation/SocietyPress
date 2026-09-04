@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.26
+ * Version:     1.5.27
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.26' );
+define( 'SOCIETYPRESS_VERSION', '1.5.27' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -9046,6 +9046,18 @@ body { padding-top: " . ( $header_height + 3 ) . 'px !important; }';
         $css .= "
 @media (min-width: 1025px) {
 .site-header.sp-header-stacked .main-navigation:not(.sp-user-menu) > ul { justify-content: {$justify} !important; }";
+
+        // WHY the negative margin on Left: menu links carry horizontal padding
+        //      so they have a comfortable click target, which means the first
+        //      link's text starts 18px inside the row. Against a logo sitting on
+        //      the container edge directly above it, the menu read as
+        //      accidentally indented. Pulling the row over by exactly that
+        //      padding lines the first word up with the logo without taking a
+        //      single pixel off anybody's click target.
+        if ( 'left' === $nav_align ) {
+            $css .= "
+.site-header.sp-header-stacked .main-navigation:not(.sp-user-menu) > ul { margin-left: -18px; }";
+        }
 
         // WHY the margin reset: items carrying .sp-nav-right are pushed over by
         // margin-left:auto, and an auto margin eats the free space before
@@ -39108,7 +39120,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.26',
+            'version'     => '1.5.27',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39116,7 +39128,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.26',
+            'version'     => '1.5.27',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39124,7 +39136,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.26',
+            'version'     => '1.5.27',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39132,7 +39144,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.26',
+            'version'     => '1.5.27',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39140,7 +39152,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.26',
+            'version'     => '1.5.27',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -98303,11 +98315,15 @@ add_action( 'wp_head', function () {
        box, and without them it drives the line height and makes the whole nav
        bar grow around one item. The margins let it overflow the line instead
        of expanding it. */
+    /* WHY margin-left:auto: the cart is not one more destination in the list of
+       destinations — it belongs with the member's own controls at the right
+       end of the bar, which is where every shopper looks for it. */
+    .sp-nav-cart             { margin-left: auto; }
     .sp-nav-cart a           { white-space: nowrap; display: inline-flex;
                                align-items: center; }
     .sp-cart-glyph           { position: relative; display: inline-block; flex: 0 0 auto;
-                               width: 40px; height: 40px; margin-block: -12px; }
-    .sp-cart-icon            { width: 40px; height: 40px; display: block; }
+                               width: 32px; height: 32px; margin-block: -8px; }
+    .sp-cart-icon            { width: 32px; height: 32px; display: block; }
 
     /* WHY a pale fill with a navy outline rather than a solid gold disc: solid
        gold at this size read as a coin sitting on the cart, and on a cream
@@ -98318,13 +98334,13 @@ add_action( 'wp_head', function () {
        the parent theme and in all five child themes. The pair is the
        SocietyPress brand pair, so it lands the same way everywhere.
        It grows into a pill past one digit rather than clipping. */
-    .sp-cart-badge           { position: absolute; left: 47%; top: -10px;
-                               min-width: 31px; height: 31px; padding: 0 5px;
+    .sp-cart-badge           { position: absolute; left: 47%; top: -9px;
+                               min-width: 25px; height: 25px; padding: 0 2px;
                                border-radius: 999px; box-sizing: border-box;
                                display: flex; align-items: center; justify-content: center;
                                background: #EACC91; color: #0D1F3C;
                                border: 2px solid #0D1F3C;
-                               font-size: 25px; font-weight: 700; line-height: 1;
+                               font-size: 21px; font-weight: 700; line-height: 1;
                                font-variant-numeric: tabular-nums;
                                pointer-events: none; }
     </style>

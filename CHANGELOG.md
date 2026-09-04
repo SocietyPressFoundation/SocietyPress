@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.17] — 2026-09-03
+
+**Sell a file and the buyer gets it the moment they pay.** Attach a PDF, an
+EPUB, a ZIP, a spreadsheet or an image to any store product and it becomes a
+download: as soon as the payment clears, the buyer's receipt carries a private
+link, good for thirty days and five downloads. No account needed, so a
+researcher who bought your surname index at midnight has it at midnight instead
+of waiting for a volunteer to email it out.
+
+The file itself never sits on a public address. It is kept in a folder that
+refuses web requests outright and is only ever handed over after the link is
+checked — so the thing you sell is not quietly downloadable by anyone who
+guesses at it.
+
+**And when someone writes in saying their link stopped working**, you can see
+exactly what they were given. Every order now lists its downloads, how many
+times each has been used and when it runs out, with the link there to copy back
+into a reply.
+
+---
+
 ## [1.5.16] — 2026-09-03
 
 **Anyone can buy from your store now — no account required.** Until this

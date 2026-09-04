@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.16
+ * Version:     1.5.17
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.16' );
+define( 'SOCIETYPRESS_VERSION', '1.5.17' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2290,6 +2290,11 @@ function sp_create_tables(): void {
         shipping_fee    DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         image_url       VARCHAR(500)        NULL,
         preview_url     VARCHAR(2048)       NULL,
+        -- The file a buyer receives for a digital product. Kept outside the
+        -- media library, in a directory that refuses the web, so a paid PDF is
+        -- not sitting on a guessable URL.
+        download_file   VARCHAR(255)        NULL,
+        download_name   VARCHAR(255)        NULL,
         store_category  VARCHAR(50)         NULL,
         stock_qty       INT                 NULL,
         active          TINYINT(1)          NOT NULL DEFAULT 1,
@@ -2328,6 +2333,31 @@ function sp_create_tables(): void {
         KEY order_id (order_id),
         KEY library_item_id (library_item_id),
         KEY product_id (product_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_store_downloads — What a paid order entitles someone to download
+    //
+    // WHY a row per purchase rather than a link to the product: the entitlement
+    //      belongs to the order, not to the file. A buyer who paid keeps their
+    //      link if the society later swaps the file or unpublishes the product,
+    //      and a link handed round does not become a permanent public mirror of
+    //      something the society sells — it expires, and it counts.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}store_downloads (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        order_id        BIGINT(20) UNSIGNED NOT NULL,
+        product_id      BIGINT(20) UNSIGNED NOT NULL,
+        token           VARCHAR(64)         NOT NULL,
+        stored_name     VARCHAR(255)        NOT NULL,
+        original_name   VARCHAR(255)        NOT NULL,
+        downloads       INT UNSIGNED        NOT NULL DEFAULT 0,
+        max_downloads   INT UNSIGNED        NOT NULL DEFAULT 5,
+        expires_at      DATETIME            NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY token (token),
+        KEY order_id (order_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -39015,7 +39045,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.16',
+            'version'     => '1.5.17',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39023,7 +39053,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.16',
+            'version'     => '1.5.17',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39031,7 +39061,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.16',
+            'version'     => '1.5.17',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39039,7 +39069,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.16',
+            'version'     => '1.5.17',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39047,7 +39077,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.16',
+            'version'     => '1.5.17',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -98452,6 +98482,223 @@ function sp_store_create_pending_order( array $buyer = [] ) {
  * WHY: Stripe and PayPal have different success signals but identical
  *      post-payment bookkeeping. One helper keeps them consistent.
  */
+/**
+ * Where a product's downloadable file is kept.
+ *
+ * WHY not the media library: everything in the media library is reachable by
+ *      anyone who guesses or is handed the URL. A society selling a surname
+ *      index for eighteen dollars would be putting the thing it sells on a
+ *      public address. This directory refuses the web outright and the file is
+ *      only ever handed over by sp_store_download, after checking the buyer's
+ *      token. Same arrangement as help-desk screenshots, for the same reason.
+ */
+function sp_store_files_dir(): ?string {
+    $uploads = wp_upload_dir();
+    if ( ! empty( $uploads['error'] ) ) {
+        return null;
+    }
+    $dir = $uploads['basedir'] . '/sp-store-files';
+    if ( ! file_exists( $dir ) && ! wp_mkdir_p( $dir ) ) {
+        return null;
+    }
+    if ( ! file_exists( $dir . '/.htaccess' ) ) {
+        file_put_contents(
+            $dir . '/.htaccess',
+            "Options -Indexes\n<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Order Deny,Allow\n  Deny from all\n</IfModule>\n"
+        );
+    }
+    if ( ! file_exists( $dir . '/web.config' ) ) {
+        file_put_contents(
+            $dir . '/web.config',
+            "<configuration>\n  <system.webServer>\n    <authorization>\n      <deny users=\"*\" />\n    </authorization>\n  </system.webServer>\n</configuration>\n"
+        );
+    }
+    if ( ! file_exists( $dir . '/index.php' ) ) {
+        file_put_contents( $dir . '/index.php', '<?php // Silence is golden.' );
+    }
+    return $dir;
+}
+
+/**
+ * What a society is allowed to sell as a download.
+ *
+ * WHY a list and not "anything": this directory is written to from an admin
+ *      form, and an uploads folder that will accept a .php is a way into the
+ *      site however well the directory is guarded.
+ */
+function sp_store_download_types(): array {
+    return [
+        'pdf'  => 'application/pdf',
+        'epub' => 'application/epub+zip',
+        'zip'  => 'application/zip',
+        'csv'  => 'text/csv',
+        'txt'  => 'text/plain',
+        'jpg|jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+    ];
+}
+
+/**
+ * Keep the file attached to a product on the product edit screen.
+ *
+ * @return array|null [ stored_name, original_name ] or null if nothing usable came in.
+ */
+function sp_store_save_product_file( string $field = 'download_file' ): ?array {
+    if ( empty( $_FILES[ $field ]['name'] ) || ! empty( $_FILES[ $field ]['error'] ) ) {
+        return null;
+    }
+    $dir = sp_store_files_dir();
+    if ( ! $dir ) {
+        return null;
+    }
+    $original = sanitize_file_name( (string) $_FILES[ $field ]['name'] );
+    $check    = wp_check_filetype( $original, sp_store_download_types() );
+    if ( empty( $check['ext'] ) ) {
+        return null;
+    }
+    try {
+        $stored = 'p' . bin2hex( random_bytes( 16 ) ) . '.' . $check['ext'];
+    } catch ( Exception $e ) {
+        return null;
+    }
+    if ( ! @move_uploaded_file( $_FILES[ $field ]['tmp_name'], $dir . '/' . $stored ) ) {
+        return null;
+    }
+    return [ 'stored_name' => $stored, 'original_name' => $original ];
+}
+
+/**
+ * Turn a paid order into download entitlements for whatever in it is digital.
+ *
+ * WHY the grant copies the file name instead of pointing at the product: a
+ *      society that later replaces the 2019 index with the 2026 one should not
+ *      silently change what an earlier buyer paid for, and a product that goes
+ *      inactive should not strand somebody's receipt.
+ */
+function sp_store_grant_downloads( int $order_id ): int {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT oi.product_id, p.download_file, p.download_name
+           FROM {$prefix}order_items oi
+           JOIN {$prefix}store_products p ON p.id = oi.product_id
+          WHERE oi.order_id = %d AND p.download_file IS NOT NULL AND p.download_file <> ''",
+        $order_id
+    ) );
+    if ( ! $rows ) {
+        return 0;
+    }
+
+    $granted = 0;
+    foreach ( $rows as $row ) {
+        // One grant per product per order, however many copies were bought.
+        $exists = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}store_downloads WHERE order_id = %d AND product_id = %d",
+            $order_id, (int) $row->product_id
+        ) );
+        if ( $exists ) {
+            continue;
+        }
+        try {
+            $token = bin2hex( random_bytes( 24 ) );
+        } catch ( Exception $e ) {
+            continue;
+        }
+        $wpdb->insert( $prefix . 'store_downloads', [
+            'order_id'      => $order_id,
+            'product_id'    => (int) $row->product_id,
+            'token'         => $token,
+            'stored_name'   => (string) $row->download_file,
+            'original_name' => (string) ( $row->download_name ?: $row->download_file ),
+            'max_downloads' => 5,
+            'expires_at'    => gmdate( 'Y-m-d H:i:s', time() + 30 * DAY_IN_SECONDS ),
+            'created_at'    => current_time( 'mysql' ),
+        ] );
+        if ( $wpdb->insert_id ) {
+            $granted++;
+        }
+    }
+    return $granted;
+}
+
+/**
+ * Every download an order entitles somebody to.
+ */
+function sp_store_order_downloads( int $order_id ): array {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    return (array) $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}store_downloads WHERE order_id = %d ORDER BY id",
+        $order_id
+    ) );
+}
+
+function sp_store_download_url( string $token ): string {
+    return add_query_arg(
+        [ 'action' => 'sp_store_download', 'token' => $token ],
+        admin_url( 'admin-ajax.php' )
+    );
+}
+
+/**
+ * Hand over a purchased file.
+ *
+ * WHY the token is the whole check and there is no login test: the buyer may
+ *      well not have an account — that is the point of guest checkout — so the
+ *      link in their receipt has to stand on its own. It is long, it expires,
+ *      and it stops working after a handful of uses, which is the trade a
+ *      society makes for not forcing a researcher to register.
+ */
+function sp_ajax_store_download(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $token = isset( $_GET['token'] ) ? preg_replace( '/[^a-f0-9]/', '', (string) $_GET['token'] ) : '';
+    if ( 48 !== strlen( $token ) ) {
+        wp_die( esc_html__( 'That download link is not valid.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+
+    $grant = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}store_downloads WHERE token = %s", $token
+    ) );
+    if ( ! $grant ) {
+        wp_die( esc_html__( 'That download link is not valid.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+    if ( $grant->expires_at && strtotime( $grant->expires_at . ' UTC' ) < time() ) {
+        wp_die(
+            esc_html__( 'This download link has expired. Please contact the society and they can send you a new one.', 'societypress' ),
+            '', [ 'response' => 410 ]
+        );
+    }
+    if ( (int) $grant->downloads >= (int) $grant->max_downloads ) {
+        wp_die(
+            esc_html__( 'This download link has been used the maximum number of times. Please contact the society and they can send you a new one.', 'societypress' ),
+            '', [ 'response' => 429 ]
+        );
+    }
+
+    $dir  = sp_store_files_dir();
+    $path = $dir ? $dir . '/' . basename( (string) $grant->stored_name ) : '';
+    if ( ! $path || ! is_readable( $path ) ) {
+        wp_die( esc_html__( 'That file is no longer on the server. Please contact the society.', 'societypress' ), '', [ 'response' => 404 ] );
+    }
+
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$prefix}store_downloads SET downloads = downloads + 1 WHERE id = %d", (int) $grant->id
+    ) );
+
+    $type = wp_check_filetype( $path, sp_store_download_types() );
+    nocache_headers();
+    header( 'Content-Type: ' . ( $type['type'] ?: 'application/octet-stream' ) );
+    header( 'Content-Disposition: attachment; filename="' . basename( (string) $grant->original_name ) . '"' );
+    header( 'Content-Length: ' . filesize( $path ) );
+    readfile( $path );
+    exit;
+}
+add_action( 'wp_ajax_sp_store_download',        'sp_ajax_store_download' );
+add_action( 'wp_ajax_nopriv_sp_store_download', 'sp_ajax_store_download' );
+
 function sp_store_finalize_paid_order( int $order_id, string $payment_method, array $extra_fields = [] ): bool {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -98491,6 +98738,9 @@ function sp_store_finalize_paid_order( int $order_id, string $payment_method, ar
         'order',
         $order_id
     );
+
+    // Before the receipt, so the email can carry the links.
+    sp_store_grant_downloads( $order_id );
 
     sp_send_store_order_email( $order_id );
     return true;
@@ -98865,6 +99115,28 @@ function sp_send_store_order_email( int $order_id ): void {
         esc_html( sp_format_currency( $order->total ) ),
         __( 'We will be in touch regarding pickup or delivery of your items.', 'societypress' )
     );
+
+    // Anything digital in this order gets its links in the receipt. WHY here
+    // and not a separate email: a second message is one more thing to end up in
+    // a spam folder, and the receipt is the message a buyer keeps.
+    $downloads = sp_store_order_downloads( $order_id );
+    if ( $downloads ) {
+        $links = '';
+        foreach ( $downloads as $d ) {
+            $links .= sprintf(
+                '<li><a href="%s">%s</a></li>',
+                esc_url( sp_store_download_url( (string) $d->token ) ),
+                esc_html( (string) $d->original_name )
+            );
+        }
+        $body_html .= sprintf(
+            '<h3>%s</h3><p>%s</p><ul>%s</ul><p style="font-size:13px;color:#666;">%s</p>',
+            esc_html__( 'Your downloads', 'societypress' ),
+            esc_html__( 'These are ready now — no account needed, just click.', 'societypress' ),
+            $links,
+            esc_html__( 'These links are yours alone. They work for 30 days and up to five downloads. If you need them again after that, just ask us.', 'societypress' )
+        );
+    }
 
     $html = function_exists( 'sp_build_email_html' )
         ? sp_build_email_html( $subject, $body_html )
@@ -99817,9 +100089,24 @@ function sp_render_store_product_edit_page(): void {
             echo '<div class="notice notice-error"><p>' . esc_html__( 'Title is required.', 'societypress' ) . '</p></div>';
         } else {
             if ( $product_id ) {
+                // A new upload replaces the old one; no upload leaves whatever
+                // is there alone, so re-saving a product does not wipe its file.
+                $uploaded = sp_store_save_product_file();
+                if ( $uploaded ) {
+                    $data['download_file'] = $uploaded['stored_name'];
+                    $data['download_name'] = $uploaded['original_name'];
+                } elseif ( ! empty( $_POST['sp_remove_download'] ) ) {
+                    $data['download_file'] = null;
+                    $data['download_name'] = null;
+                }
                 $wpdb->update( $prefix . 'store_products', $data, [ 'id' => $product_id ] );
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Product updated.', 'societypress' ) . '</p></div>';
             } else {
+                $uploaded = sp_store_save_product_file();
+                if ( $uploaded ) {
+                    $data['download_file'] = $uploaded['stored_name'];
+                    $data['download_name'] = $uploaded['original_name'];
+                }
                 $wpdb->insert( $prefix . 'store_products', $data );
                 $product_id = (int) $wpdb->insert_id;
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Product added.', 'societypress' ) . '</p></div>';
@@ -99844,7 +100131,7 @@ function sp_render_store_product_edit_page(): void {
         <h1><?php echo $product ? esc_html__( 'Edit Store Product', 'societypress' ) : esc_html__( 'Add Store Product', 'societypress' ); ?></h1>
         <p><a href="<?php echo esc_url( $back_url ); ?>"><?php esc_html_e( '&larr; Back to Store Products', 'societypress' ); ?></a></p>
 
-        <form method="post" class="sp-max-w-700">
+        <form method="post" class="sp-max-w-700" enctype="multipart/form-data">
             <?php wp_nonce_field( 'sp_store_product_save' ); ?>
 
             <table class="form-table">
@@ -99892,6 +100179,27 @@ function sp_render_store_product_edit_page(): void {
                     <td>
                         <input type="number" name="shipping_fee" id="sp-prod-shipping" value="<?php echo esc_attr( number_format( (float) ( $product->shipping_fee ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150">
                         <p class="description"><?php esc_html_e( 'Shipping fee per unit of this item. Multiplied by quantity at checkout. Set to 0 for no shipping (digital, pickup-only, or shipping-included pricing).', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-prod-download"><?php esc_html_e( 'File to send the buyer', 'societypress' ); ?></label></th>
+                    <td>
+                        <?php if ( ! empty( $product->download_file ) ) : ?>
+                            <p class="sp-prod-current-file">
+                                <strong><?php echo esc_html( (string) ( $product->download_name ?: $product->download_file ) ); ?></strong>
+                            </p>
+                            <p>
+                                <label>
+                                    <input type="checkbox" name="sp_remove_download" value="1">
+                                    <?php esc_html_e( 'Remove this file (the item goes back to being something you post)', 'societypress' ); ?>
+                                </label>
+                            </p>
+                        <?php endif; ?>
+                        <input type="file" name="download_file" id="sp-prod-download"
+                               accept=".pdf,.epub,.zip,.csv,.txt,.jpg,.jpeg,.png">
+                        <p class="description"><?php
+                            esc_html_e( 'Attach a file and this becomes something the buyer downloads. As soon as their payment goes through they get a private link, in their receipt and on screen, good for 30 days and five downloads. The file is never listed publicly. Leave empty for anything you post out. PDF, EPUB, ZIP, CSV, TXT, JPG or PNG.', 'societypress' );
+                        ?></p>
                     </td>
                 </tr>
                 <?php
@@ -100500,6 +100808,56 @@ function sp_render_order_detail_page(): void {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+
+            <?php
+            // WHY the society can see these: the first support question any
+            // shop gets is "my download link stopped working". Without the
+            // links in front of whoever answers the email, the only remedy is
+            // guesswork. Shown only where the order has downloads at all.
+            $sp_dls = sp_store_order_downloads( $order_id );
+            if ( $sp_dls ) : ?>
+            <h3 class="sp-order-detail-box-heading"><?php esc_html_e( 'Downloads', 'societypress' ); ?></h3>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e( 'File', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Used', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Good until', 'societypress' ); ?></th>
+                        <th><?php esc_html_e( 'Link', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ( $sp_dls as $sp_dl ) :
+                    $sp_expired = $sp_dl->expires_at && strtotime( $sp_dl->expires_at . ' UTC' ) < time();
+                    $sp_spent   = (int) $sp_dl->downloads >= (int) $sp_dl->max_downloads;
+                ?>
+                    <tr>
+                        <td><?php echo esc_html( (string) $sp_dl->original_name ); ?></td>
+                        <td><?php printf(
+                            /* translators: 1: times downloaded, 2: maximum downloads */
+                            esc_html__( '%1$d of %2$d', 'societypress' ),
+                            (int) $sp_dl->downloads, (int) $sp_dl->max_downloads
+                        ); ?></td>
+                        <td>
+                            <?php echo esc_html( $sp_dl->expires_at
+                                ? date_i18n( get_option( 'date_format' ), strtotime( $sp_dl->expires_at . ' UTC' ) )
+                                : __( 'No limit', 'societypress' ) ); ?>
+                            <?php if ( $sp_expired ) : ?>
+                                — <strong><?php esc_html_e( 'expired', 'societypress' ); ?></strong>
+                            <?php elseif ( $sp_spent ) : ?>
+                                — <strong><?php esc_html_e( 'all used up', 'societypress' ); ?></strong>
+                            <?php endif; ?>
+                        </td>
+                        <td><input type="text" class="large-text code" readonly
+                                   onclick="this.select();"
+                                   value="<?php echo esc_attr( sp_store_download_url( (string) $sp_dl->token ) ); ?>"></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <p class="description"><?php esc_html_e( 'Click a link to select it, then copy it into an email if the buyer needs it again.', 'societypress' ); ?></p>
+            <?php endif; ?>
+
             <?php if ( ! in_array( $order->status, [ 'refunded', 'failed' ], true ) ) : ?>
                 <form method="post" class="sp-mt-12">
                     <?php wp_nonce_field( 'sp_convert_order_' . $order_id, 'sp_convert_nonce' ); ?>

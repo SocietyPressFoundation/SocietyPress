@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.29] — 2026-09-03
+
+**The cart count is smaller again.** Down to 14px digits in an 18px pill, still
+sitting on the same line against the cart's top edge.
+
+---
+
 ## [1.5.28] — 2026-09-03
 
 **A smaller count on the cart.** The number rode high enough on the glyph to

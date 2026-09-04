@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.19] — 2026-09-03
+
+**Clearer wording on the sales tax setting.** The checkbox now says "digital
+downloads" rather than just "downloads", and the help text spells out that it
+means any product you attached a file to. The worked example is a neutral 6.5%
+instead of a real city's rate, so nobody reads it as an assumption about where
+their society is.
+
+---
+
 ## [1.5.18] — 2026-09-03
 
 **Sales tax, if your state asks for it.** Store orders have always had a place

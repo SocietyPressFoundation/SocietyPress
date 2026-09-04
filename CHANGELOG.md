@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.23] — 2026-09-03
+
+**The cart icon looks like a cart again.** The number's disc was wider than the
+basket it sat in, so the whole thing read as a gold coin with wheels. The count
+now sits on the top corner of the cart, where it does not cover it, and carries
+a thin outline in your menu's own text colour so it stands out whether your menu
+is light or dark. The cart is a little smaller and sits closer to the word.
+
+---
+
 ## [1.5.22] — 2026-09-03
 
 **Four fixes to the cart in your menu.** The word "Cart" was heavier than every

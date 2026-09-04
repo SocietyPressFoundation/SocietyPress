@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.26] — 2026-09-03
+
+**An update now shows up the first time you load the page.** The offline
+support kept a copy of the site's stylesheets and scripts and used the saved
+copy before checking for a newer one, so the first visit after an update was
+drawn with the previous release's design. Somebody told a volunteer a fix was
+live, the volunteer opened the site, and the old thing was still there. Styles
+and scripts are fetched fresh now, with the saved copy kept only for when the
+network is unreachable. Photos and fonts are still served from the saved copy,
+because those don't change within a release.
+
+---
+
 ## [1.5.25] — 2026-09-03
 
 **The cart is a symbol now, and the member's name lost its ghost box.** The

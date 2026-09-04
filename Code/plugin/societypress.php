@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.25
+ * Version:     1.5.26
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.25' );
+define( 'SOCIETYPRESS_VERSION', '1.5.26' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -9190,8 +9190,16 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-function isStaticAsset(url) {
-    return /\.(css|js|woff2?|ttf|otf|eot|svg|png|jpg|jpeg|gif|webp|ico|avif)(\?|$)/i.test(url.pathname);
+// Fonts and pictures never change inside a release, so serving them from the
+// cache costs nothing and saves a lot on a slow connection.
+function isImmutableAsset(url) {
+    return /\.(woff2?|ttf|otf|eot|svg|png|jpg|jpeg|gif|webp|ico|avif)(\?|$)/i.test(url.pathname);
+}
+
+// Stylesheets and scripts are what a release actually changes, so they are
+// fetched fresh and only fall back to the cache when the network is gone.
+function isCodeAsset(url) {
+    return /\.(css|js)(\?|$)/i.test(url.pathname);
 }
 
 self.addEventListener('fetch', (event) => {
@@ -9210,9 +9218,29 @@ self.addEventListener('fetch', (event) => {
     if (url.pathname.startsWith('/wp-json/')) return;
     if (url.pathname === '/wp-admin/admin-ajax.php') return;
 
-    // Static assets: cache-first, refresh in background. Speeds up repeat
-    // visits dramatically; CSS/JS/images don't change between version bumps.
-    if (isStaticAsset(url)) {
+    // WHY stylesheets and scripts are not cache-first: they were, and it meant
+    // the first page load after an update was drawn with the previous
+    // release's CSS. A volunteer who had just been told a fix was live opened
+    // the site and saw the old thing, and the only cure anybody could offer
+    // was "clear your cache" — which is not an answer you can give the people
+    // running these societies. Network-first costs one request and removes the
+    // whole problem; the cache is still there for when the network is not.
+    if (isCodeAsset(url)) {
+        event.respondWith(
+            fetch(req).then((res) => {
+                if (res && res.ok && res.type === 'basic') {
+                    const clone = res.clone();
+                    caches.open(STATIC_CACHE).then((c) => c.put(req, clone)).catch(() => {});
+                }
+                return res;
+            }).catch(() => caches.match(req))
+        );
+        return;
+    }
+
+    // Fonts and images: cache-first, refresh in background. Speeds up repeat
+    // visits dramatically and they don't change between version bumps.
+    if (isImmutableAsset(url)) {
         event.respondWith(
             caches.match(req).then((cached) => {
                 const fetchPromise = fetch(req).then((res) => {
@@ -39080,7 +39108,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.25',
+            'version'     => '1.5.26',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39088,7 +39116,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.25',
+            'version'     => '1.5.26',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39096,7 +39124,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.25',
+            'version'     => '1.5.26',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39104,7 +39132,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.25',
+            'version'     => '1.5.26',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39112,7 +39140,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.25',
+            'version'     => '1.5.26',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

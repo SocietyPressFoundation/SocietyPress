@@ -358,12 +358,16 @@ img {
     .site-header.sp-header-stacked .header-nav-area {
         flex: 0 0 auto;
         width: 100%;
-        /* Pull the row up by the padding the links carry above their text.
-           WHY not just reduce that padding: it is the click target. These sites
-           are run and read by people for whom a smaller target is a real cost,
-           and a few pixels of tidiness is not worth it. Moving the whole row
-           leaves every target exactly the size it was. */
-        margin-top: -10px;
+        /* Pull the row up by most of the padding the links carry above their
+           text, but not all of it. WHY not the full amount: a logo with a
+           descending flourish — and a lot of society logos have one — ends up
+           almost touching the menu. Three pixels of the padding are left in
+           place so the two never collide.
+           WHY not just reduce the padding itself: it is the click target.
+           These sites are run and read by people for whom a smaller target is
+           a real cost, and a few pixels of tidiness is not worth it. Moving
+           the whole row leaves every target exactly the size it was. */
+        margin-top: -7px;
     }
 
     /* WHY :not(.sp-user-menu): the signed-in user menu is ALSO a

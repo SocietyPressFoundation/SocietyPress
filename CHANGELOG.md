@@ -41,6 +41,33 @@ it was.
 
 ---
 
+## [1.5.27] — 2026-09-03
+
+**The cart sits with your name now, at the size it should be.** The glyph and
+its count were drawn about a quarter too large, and the cart sat in the middle
+of the menu among the pages because nothing pushed it anywhere else. It moves
+to the right end of the bar beside the signed-in member's name, which is where
+a shopper looks for it, and the count is sized to sit on the cart rather than
+cover it.
+
+**The page you are on is no longer inside a box.** The current menu item, and
+any item under the pointer, were filled with translucent white — invisible on a
+dark header and a pale smudge on a light one, with no setting to turn it off.
+Hovering underlines the item instead, which reads the same on any header
+colour, and the current page keeps the colour it already had.
+
+**A left-aligned menu now lines up with the logo.** Menu links carry padding so
+they stay easy to click, which left the first word sitting eighteen pixels
+inside the row while the logo above it sat on the edge. The row is pulled over
+by exactly that padding, so the two line up and every click target keeps its
+size.
+
+**The menu no longer crowds the logo.** Society logos often finish with a
+descending flourish, and the menu row sat close enough to touch it. There are
+three more pixels between them.
+
+---
+
 ## [1.5.26] — 2026-09-03
 
 **An update now shows up the first time you load the page.** The offline

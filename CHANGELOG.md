@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.18] — 2026-09-03
+
+**Sales tax, if your state asks for it.** Store orders have always had a place
+to record tax and have always recorded zero. Settings → Store now takes a rate,
+the name your state calls it, and a tick box for leaving downloads alone. Set a
+rate and it appears in the cart before anyone commits, on the order, and on the
+receipt; leave it at zero — which is right for most societies — and nothing
+about your store changes.
+
+Tax is worked out on the items, not on postage, because whether postage is
+taxable is one of the things that differs from state to state and guessing on
+your behalf would be worse than not guessing. What applies to your society is a
+question for your treasurer or your state comptroller; SocietyPress holds the
+number they give you and does the arithmetic.
+
+---
+
 ## [1.5.17] — 2026-09-03
 
 **Sell a file and the buyer gets it the moment they pay.** Attach a PDF, an

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.17
+ * Version:     1.5.18
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.17' );
+define( 'SOCIETYPRESS_VERSION', '1.5.18' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -162,6 +162,9 @@ register_activation_hook( __FILE__, function () {
             // Store — configurable product source
             'store_acq_code'               => '',
             'store_flat_shipping'          => 0,
+            'store_tax_rate'               => 0,
+            'store_tax_label'              => 'Sales Tax',
+            'store_tax_physical_only'      => 1,
             'store_intro_text'             => '',
             // Analytics — Google Analytics integration
             'analytics_google_id'          => '',
@@ -31305,6 +31308,34 @@ add_action( 'admin_init', function () {
     );
 
     add_settings_field(
+        'store_tax_rate',
+        __( 'Sales Tax Rate', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="number" name="societypress_settings[store_tax_rate]" value="%s" step="0.001" min="0" max="100" class="sp-w-150"> %%',
+                esc_attr( number_format( (float) ( $settings['store_tax_rate'] ?? 0 ), 3, '.', '' ) )
+            );
+            printf(
+                '<p><input type="text" name="societypress_settings[store_tax_label]" value="%s" class="sp-w-150" placeholder="%s"></p>',
+                esc_attr( (string) ( $settings['store_tax_label'] ?? '' ) ),
+                esc_attr__( 'Sales Tax', 'societypress' )
+            );
+            printf(
+                '<p><label><input type="checkbox" name="societypress_settings[store_tax_physical_only]" value="1" %s> %s</label></p>',
+                checked( ! empty( $settings['store_tax_physical_only'] ), true, false ),
+                esc_html__( 'Do not charge tax on downloads', 'societypress' )
+            );
+            echo '<p class="description">' . esc_html__(
+                'Leave at 0 and no tax is charged, which is what most societies want. If your state requires it, put your combined rate here — 8.25 for eight and a quarter percent. Tax is worked out on the items only, not on postage. Ask your treasurer or your state comptroller what applies to you; SocietyPress does not know your state\'s rules and does not try to guess them.',
+                'societypress'
+            ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_store_section'
+    );
+
+    add_settings_field(
         'store_flat_shipping',
         __( 'Flat Shipping Rate', 'societypress' ),
         function () {
@@ -32578,6 +32609,9 @@ function sp_sanitize_settings( array $input ): array {
         // Organization
         'store_acq_code'          => fn() => sanitize_text_field( $input['store_acq_code'] ?? '' ),
         'store_flat_shipping'     => fn() => max( 0, round( (float) ( $input['store_flat_shipping'] ?? 0 ), 2 ) ),
+        'store_tax_rate'          => fn() => max( 0, min( 100, round( (float) ( $input['store_tax_rate'] ?? 0 ), 3 ) ) ),
+        'store_tax_label'         => fn() => sanitize_text_field( (string) ( $input['store_tax_label'] ?? '' ) ),
+        'store_tax_physical_only' => fn() => empty( $input['store_tax_physical_only'] ) ? 0 : 1,
         'store_intro_text'        => fn() => sanitize_textarea_field( $input['store_intro_text'] ?? '' ),
         // Outbound email identity — wizard-set today, but covered here so a
         // future Email settings tab can't accidentally bypass header-safe input.
@@ -32844,6 +32878,7 @@ function sp_sanitize_settings( array $input ): array {
             'organization_email', 'community_forum_url', 'help_requests_notify_all',
             'currency_symbol', 'currency_position',
             'store_acq_code', 'store_intro_text', 'store_flat_shipping',
+            'store_tax_rate', 'store_tax_label', 'store_tax_physical_only',
         ]);
     }
 
@@ -39045,7 +39080,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.17',
+            'version'     => '1.5.18',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39053,7 +39088,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.17',
+            'version'     => '1.5.18',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39061,7 +39096,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.17',
+            'version'     => '1.5.18',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39069,7 +39104,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.17',
+            'version'     => '1.5.18',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39077,7 +39112,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.17',
+            'version'     => '1.5.18',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -63541,6 +63576,41 @@ function sp_user_is_active_member(): bool {
  * @param mixed     $member_price The member price (null/'' = none).
  * @param bool|null $is_member    Pass to avoid a per-row DB hit; null = look up.
  */
+/**
+ * Work out the tax on an order.
+ *
+ * WHY one society-set rate and not a per-state engine: the rules that decide
+ *      what a genealogical society owes on a book — nexus, what counts as a
+ *      publication, which local district adds a fraction — change constantly
+ *      and differ by address. A rate table shipped in a plugin is out of date
+ *      the week it ships, and a volunteer treasurer cannot audit one. A single
+ *      number the society is told to get from their own accountant is honest
+ *      about where the knowledge lives. It defaults to zero, which is right
+ *      for most societies most of the time.
+ *
+ * WHY postage is excluded: whether shipping is taxable is one of the things
+ *      that varies by state, so charging on it would be picking a side. Items
+ *      only, and the setting text says so.
+ *
+ * @param float $taxable_subtotal Item total that tax applies to.
+ * @return float
+ */
+function sp_store_calculate_tax( float $taxable_subtotal ): float {
+    $rate = (float) ( sp_settings()['store_tax_rate'] ?? 0 );
+    if ( $rate <= 0 || $taxable_subtotal <= 0 ) {
+        return 0.00;
+    }
+    return round( $taxable_subtotal * ( $rate / 100 ), 2 );
+}
+
+/**
+ * The label a society wants on the tax line.
+ */
+function sp_store_tax_label(): string {
+    $label = trim( (string) ( sp_settings()['store_tax_label'] ?? '' ) );
+    return $label !== '' ? $label : __( 'Sales Tax', 'societypress' );
+}
+
 function sp_store_effective_price( $regular, $member_price, ?bool $is_member = null ): float {
     $regular = (float) $regular;
     if ( $member_price === null || $member_price === '' ) {
@@ -96989,7 +97059,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
 
     if ( $source === 'product' ) {
         $row = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, title, sku, description, price, member_price, shipping_fee, image_url, preview_url, store_category, stock_qty
+            "SELECT id, title, sku, description, price, member_price, shipping_fee, image_url, preview_url, download_file, store_category, stock_qty
              FROM {$prefix}store_products
              WHERE id = %d AND active = 1",
             $id
@@ -97009,6 +97079,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
             'regular_price'  => (float) $row->price,
             'member_price'   => ( $row->member_price === null ) ? null : (float) $row->member_price,
             'shipping_fee'   => (float) ( $row->shipping_fee ?? 0 ),
+            'is_digital'     => ! empty( $row->download_file ),
             'image_url'      => $row->image_url ?: null,
             'preview_url'    => $row->preview_url ?: null,
             'store_category' => $row->store_category ?: null,
@@ -98349,9 +98420,11 @@ function sp_store_create_pending_order( array $buyer = [] ) {
         }
     }
 
-    $order_items    = [];
-    $subtotal       = 0;
-    $shipping_total = 0;
+    $order_items       = [];
+    $subtotal          = 0;
+    $shipping_total    = 0;
+    $taxable_subtotal  = 0;
+    $tax_physical_only = ! empty( sp_settings()['store_tax_physical_only'] );
 
     foreach ( $cart as $entry ) {
         $source  = ( $entry['source'] ?? 'library' );
@@ -98376,6 +98449,11 @@ function sp_store_create_pending_order( array $buyer = [] ) {
         ];
         $subtotal       += $line_total;
         $shipping_total += $line_shipping;
+        // A download is excluded when the society has said downloads are not
+        // taxed where they are; otherwise everything counts.
+        if ( ! $tax_physical_only || empty( $lookup['is_digital'] ) ) {
+            $taxable_subtotal += $line_total;
+        }
     }
 
     if ( empty( $order_items ) ) {
@@ -98392,7 +98470,8 @@ function sp_store_create_pending_order( array $buyer = [] ) {
     }
 
     $shipping_total = round( $shipping_total, 2 );
-    $total          = round( $subtotal + $shipping_total, 2 );
+    $tax            = sp_store_calculate_tax( round( $taxable_subtotal, 2 ) );
+    $total          = round( $subtotal + $shipping_total + $tax, 2 );
 
     // Whoever is buying, prefer what they typed at checkout over what the
     // account happens to hold — a member may well be shipping this somewhere
@@ -98418,7 +98497,7 @@ function sp_store_create_pending_order( array $buyer = [] ) {
         'status'             => 'pending',
         'subtotal'           => $subtotal,
         'shipping_total'     => $shipping_total,
-        'tax'                => 0.00,
+        'tax'                => $tax,
         'total'              => $total,
         'customer_name'      => $name,
         'customer_email'     => $email,
@@ -98470,6 +98549,7 @@ function sp_store_create_pending_order( array $buyer = [] ) {
         'order_id'       => $order_id,
         'subtotal'       => $subtotal,
         'shipping_total' => $shipping_total,
+        'tax'            => $tax,
         'total'          => $total,
         'items'          => $order_items,
     ];
@@ -99116,6 +99196,16 @@ function sp_send_store_order_email( int $order_id ): void {
         __( 'We will be in touch regarding pickup or delivery of your items.', 'societypress' )
     );
 
+    // A tax line only appears when tax was actually charged, so the receipt of
+    // a society that charges none is not cluttered with a row of zeroes.
+    if ( (float) $order->tax > 0 ) {
+        $body_html .= sprintf(
+            '<p style="margin:4px 0;"><strong>%s:</strong> %s</p>',
+            esc_html( sp_store_tax_label() ),
+            esc_html( sp_format_currency( $order->tax ) )
+        );
+    }
+
     // Anything digital in this order gets its links in the receipt. WHY here
     // and not a separate email: a second message is one more thing to end up in
     // a spam folder, and the receipt is the message a buyer keeps.
@@ -99329,7 +99419,9 @@ function sp_build_cart_response(): array {
     $cart   = sp_get_cart();
 
     $items          = [];
-    $subtotal       = 0;
+    $subtotal          = 0;
+    $taxable_subtotal  = 0;
+    $tax_physical_only = ! empty( sp_settings()['store_tax_physical_only'] );
     $shipping_total = 0;
     $total_items    = 0;
 
@@ -99358,6 +99450,9 @@ function sp_build_cart_response(): array {
 
         $subtotal       += $line_total;
         $shipping_total += $line_shipping;
+        if ( ! $tax_physical_only || empty( $lookup['is_digital'] ) ) {
+            $taxable_subtotal += $line_total;
+        }
         $total_items    += $qty;
     }
 
@@ -99369,11 +99464,15 @@ function sp_build_cart_response(): array {
     }
     $shipping_total = round( $shipping_total, 2 );
 
+    $tax = sp_store_calculate_tax( round( $taxable_subtotal, 2 ) );
+
     return [
         'items'          => $items,
         'subtotal'       => $subtotal,
         'shipping_total' => $shipping_total,
-        'total'          => round( $subtotal + $shipping_total, 2 ),
+        'tax'            => $tax,
+        'tax_label'      => sp_store_tax_label(),
+        'total'          => round( $subtotal + $shipping_total + $tax, 2 ),
         'total_items'    => $total_items,
     ];
 }
@@ -99626,6 +99725,15 @@ function sp_render_cart_page(): void {
             return d.innerHTML;
         }
 
+        // The society types the tax label itself, so it goes through an escape
+        // on the way into the markup. escapeHtml() elsewhere in the plugin is a
+        // different script's local, not in scope here.
+        function escText(v) {
+            var d = document.createElement('div');
+            d.textContent = String(v == null ? '' : v);
+            return d.innerHTML;
+        }
+
         // Buyer details ride with whichever payment call the visitor picks.
         function buyerFields() {
             function v(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
@@ -99719,12 +99827,21 @@ function sp_render_cart_page(): void {
 
             html += '</tbody></table>';
             var shippingTotal = (data && typeof data.shipping_total === 'number') ? data.shipping_total : 0;
+            var taxTotal      = (data && typeof data.tax === 'number') ? data.tax : 0;
+            var taxLabel      = (data && data.tax_label) ? data.tax_label : '<?php echo esc_js( __( 'Sales Tax', 'societypress' ) ); ?>';
             html += '<div class="sp-cart-footer">' +
                 '<a href="' + storeUrl + '" class="sp-cart-continue">&larr; <?php echo esc_js( __( 'Continue Shopping', 'societypress' ) ); ?></a>' +
                 '<div class="sp-cart-actions">';
+            // Show the breakdown whenever anything is added on top of the items,
+            // so a total larger than the prices on screen is always explained.
+            if (shippingTotal > 0 || taxTotal > 0) {
+                html += '<div class="sp-cart-subtotal"><span><?php echo esc_js( __( 'Subtotal:', 'societypress' ) ); ?></span>' + fmtCurrency(data.subtotal) + '</div>';
+            }
             if (shippingTotal > 0) {
-                html += '<div class="sp-cart-subtotal"><span><?php echo esc_js( __( 'Subtotal:', 'societypress' ) ); ?></span>' + fmtCurrency(data.subtotal) + '</div>' +
-                    '<div class="sp-cart-shipping"><span><?php echo esc_js( __( 'Shipping:', 'societypress' ) ); ?></span>' + fmtCurrency(shippingTotal) + '</div>';
+                html += '<div class="sp-cart-shipping"><span><?php echo esc_js( __( 'Shipping:', 'societypress' ) ); ?></span>' + fmtCurrency(shippingTotal) + '</div>';
+            }
+            if (taxTotal > 0) {
+                html += '<div class="sp-cart-tax"><span>' + escText(taxLabel) + ':</span>' + fmtCurrency(taxTotal) + '</div>';
             }
             html += '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + fmtCurrency(data.total) + '</div>';
 

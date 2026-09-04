@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.22] — 2026-09-03
+
+**Four fixes to the cart in your menu.** The word "Cart" was heavier than every
+other item beside it, and sat a few pixels below them; both now match the rest
+of your menu exactly. The cart's wheels rest on the same line the menu text
+sits on. And the number of items now has its own gold disc behind it instead of
+floating over the cart's white outline, so it can actually be read — on a light
+menu or a dark one, in any of the themes. It stretches to a pill if the count
+reaches double figures.
+
+---
+
 ## [1.5.21] — 2026-09-03
 
 **The cart in your menu is easier to see.** It is now a proper cart symbol with

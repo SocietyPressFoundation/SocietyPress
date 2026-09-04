@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.21
+ * Version:     1.5.22
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.21' );
+define( 'SOCIETYPRESS_VERSION', '1.5.22' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39080,7 +39080,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.21',
+            'version'     => '1.5.22',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39088,7 +39088,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.21',
+            'version'     => '1.5.22',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39096,7 +39096,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.21',
+            'version'     => '1.5.22',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39104,7 +39104,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.21',
+            'version'     => '1.5.22',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39112,7 +39112,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.21',
+            'version'     => '1.5.22',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -98211,7 +98211,7 @@ function sp_nav_cart_item( string $items, $args ): string {
     // Drawn rather than a font glyph or an emoji: it inherits the menu's own
     // colour through currentColor, so it looks native in the parent theme and
     // in all five child themes without any of them knowing it is there.
-    $icon = '<svg class="sp-cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+    $icon = '<svg class="sp-cart-icon" viewBox="0 0 24 23" fill="none" stroke="currentColor"'
           . ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
           . ' aria-hidden="true" focusable="false">'
           . '<circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/>'
@@ -98268,20 +98268,35 @@ add_action( 'wp_head', function () {
        knows, so the glyph and the count read as one object instead of two. It
        only works because the cart is drawn big enough to leave the basket
        empty in the middle — at 18px there was nowhere for a digit to go. */
-    .sp-nav-cart a           { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; }
-    .sp-cart-glyph           { position: relative; display: inline-flex; flex: 0 0 auto;
-                               width: 34px; height: 34px; }
-    .sp-cart-icon            { width: 34px; height: 34px; }
-    /* Centred on the basket's interior, not on the glyph's box: the wheels sit
-       below the basket, so centring on the box would drop the digit onto the
-       axle. The padding is what lifts it into the empty middle. */
-    .sp-cart-badge           { position: absolute; inset: 0;
+    /* WHY baseline and not center: centring made the whole item sit lower than
+       its neighbours, because the 34px glyph drove the line box. Aligning on
+       the baseline puts the word Cart on exactly the same line as Home and
+       Events, and — with the viewBox cropped to the wheels above — puts the
+       wheels on that line too. */
+    .sp-nav-cart a           { white-space: nowrap; display: inline-flex; align-items: baseline; gap: 7px; }
+    .sp-cart-glyph           { position: relative; display: inline-block; flex: 0 0 auto;
+                               width: 36px; height: 34.5px; }
+    .sp-cart-icon            { width: 36px; height: 34.5px; display: block; }
+    /* WHY the number gets its own disc: naked gold over the cart's white
+       strokes was the thing that could not be read, and a text stroke would
+       have to be painted in the menu's background colour — which SocietyPress
+       does not know, because every child theme picks its own. A filled disc
+       carries its own contrast (navy on gold, 6.24:1) and so is legible on any
+       theme's menu, light or dark. Sat in the basket, where the count belongs. */
+    /* Grows into a pill past one digit rather than clipping — a society selling
+       booklets by the dozen will see 12 in there, and 100 is not impossible. */
+    .sp-cart-badge           { position: absolute; left: 50%; top: 7px;
+                               transform: translateX(-50%);
+                               min-width: 20px; height: 20px; padding: 0 5px;
+                               border-radius: 999px; box-sizing: border-box;
                                display: flex; align-items: center; justify-content: center;
-                               padding: 0 0 5px 2px;
-                               color: #C9973A; font-size: 17px; font-weight: 700; line-height: 1;
+                               background: #C9973A; color: #0D1F3C;
+                               font-size: 13px; font-weight: 700; line-height: 1;
                                font-variant-numeric: tabular-nums;
                                pointer-events: none; }
-    .sp-cart-word            { font-weight: 700; }
+    /* WHY no bold: bolder reads as darker, and Cart looked heavier than every
+       other item in the menu. It is a menu item like any other. */
+    .sp-cart-word            { font-weight: inherit; }
     </style>
     <?php
 } );

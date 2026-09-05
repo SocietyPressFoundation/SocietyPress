@@ -20,6 +20,39 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.32] — 2026-09-04
+
+**Album photos are filed under the album they belong to.** The Files screen
+grew a folder called Albums the day it was built, but the only thing that ever
+landed in it was each album's cover picture — the photos inside the albums were
+in Unfiled with everything else, which on a society with a few galleries is
+hundreds of pictures in one heap. Every album now has its own folder inside
+Albums, holding its photos and its cover, and the folder follows the album when
+it is renamed. Adding photos, importing a gallery and approving a Picture Wall
+submission all file as they go, and a society that already has albums has them
+sorted a few at a time as the admin is used.
+
+Deleting an album no longer leaves a folder named after it: the photos go back
+to Unfiled, because deleting an album deletes the grouping, not the pictures.
+
+**Phone numbers read the same everywhere.** A number imported as 2103425242 now
+shows as 210-342-5242 in the directory, the member list, the printed roster, the
+contact card, the account page and the footer. Only the display changes — the
+number is stored exactly as it was typed or imported, so exports still match the
+file they came from, and anything that is not a ten-digit number is left alone.
+
+**The shopping cart only appears once there is something in it.** Most people
+who visit a society's website are not there to buy anything, and a cart icon on
+every page made the site look like a shop first. It shows up the moment
+something is added, without a page reload.
+
+**A centred menu stays centred with the store switched on.** The cart was
+pinned to the right end of the menu bar, which used up the space a centred menu
+needs and pushed it back to the left. The cart now rides at the end of the menu
+and sits wherever the society put their menu.
+
+---
+
 ## [1.5.31] — 2026-09-03
 
 **Volunteers, officers, committees and openings can be imported from a

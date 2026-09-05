@@ -37,7 +37,7 @@ $org_email   = $sp['organization_email']   ?? '';
                 <?php if ( $org_phone ) : ?>
                     <p class="footer-text">
                         <a href="tel:<?php echo esc_attr( preg_replace( '/[^0-9+]/', '', $org_phone ) ); ?>">
-                            <?php echo esc_html( $org_phone ); ?>
+                            <?php echo esc_html( sp_format_phone( (string) $org_phone ) ); ?>
                         </a>
                     </p>
                 <?php endif; ?>

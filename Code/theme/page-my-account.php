@@ -735,15 +735,15 @@ $sp_section_locked = function ( $section ) {
                         <dd><?php echo esc_html( $user->user_email ); ?></dd>
                         <?php if ( sp_m( $member, 'phone' ) ) : ?>
                             <dt><?php esc_html_e( 'Home Phone', 'societypress' ); ?></dt>
-                            <dd><?php echo esc_html( sp_m( $member, 'phone' ) ); ?></dd>
+                            <dd><?php echo esc_html( sp_format_phone( (string) sp_m( $member, 'phone' ) ) ); ?></dd>
                         <?php endif; ?>
                         <?php if ( sp_m( $member, 'cell' ) ) : ?>
                             <dt><?php esc_html_e( 'Cell Phone', 'societypress' ); ?></dt>
-                            <dd><?php echo esc_html( sp_m( $member, 'cell' ) ); ?></dd>
+                            <dd><?php echo esc_html( sp_format_phone( (string) sp_m( $member, 'cell' ) ) ); ?></dd>
                         <?php endif; ?>
                         <?php if ( sp_m( $member, 'work_phone' ) ) : ?>
                             <dt><?php esc_html_e( 'Work Phone', 'societypress' ); ?></dt>
-                            <dd><?php echo esc_html( sp_m( $member, 'work_phone' ) ); ?></dd>
+                            <dd><?php echo esc_html( sp_format_phone( (string) sp_m( $member, 'work_phone' ) ) ); ?></dd>
                         <?php endif; ?>
                         <?php if ( sp_m( $member, 'website' ) ) : ?>
                             <dt><?php esc_html_e( 'Website', 'societypress' ); ?></dt>

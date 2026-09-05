@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.31
+ * Version:     1.5.32
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.31' );
+define( 'SOCIETYPRESS_VERSION', '1.5.32' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1771,6 +1771,7 @@ function sp_create_tables(): void {
         slug                    VARCHAR(255)        NOT NULL,
         description             TEXT                NULL,
         cover_image_id          BIGINT(20) UNSIGNED NULL,
+        file_folder_id          BIGINT(20) UNSIGNED NULL,
         event_id                BIGINT(20) UNSIGNED NULL,
         visibility              VARCHAR(20)         NOT NULL DEFAULT 'public',
         submission_type         VARCHAR(20)         NOT NULL DEFAULT 'curated',
@@ -3606,14 +3607,18 @@ function sp_get_file_usage( int $file_id ): array {
             continue;
         }
 
-        $out[] = [
+        // WHY keyed and not appended: a photo can be both an album's cover and
+        // one of its photos, which is two links to one album. Naming the album
+        // twice in "what is using this" reads as a mistake rather than as the
+        // two true facts it is.
+        $out[ $row->object_type . ':' . (int) $row->object_id ] = [
             'label' => (string) $name,
             'type'  => $def['label'],
             'url'   => sprintf( $def['edit_url'], $row->object_id ),
         ];
     }
 
-    return $out;
+    return array_values( $out );
 }
 
 /**
@@ -4053,6 +4058,340 @@ function sp_get_or_create_file_folder( string $name, ?int $parent_id = null ): i
     return (int) $wpdb->insert_id;
 }
 
+/**
+ * The folder one photo album's files are filed in.
+ *
+ * WHY a folder per album rather than one "Albums" folder: the album is
+ *      already the society's decision about which photos belong together.
+ *      Files exists to show that decision, not to re-pile it — and one folder
+ *      holding every photo from every album is exactly the pile the screen
+ *      was built to end.
+ *
+ * WHY the id is stored on the album instead of looked up by name: two albums
+ *      are allowed to share a title, and an album is allowed to be renamed.
+ *      A name lookup turns both of those into either the wrong folder or a
+ *      second one beside the first, with the photos left in whichever the
+ *      volunteer is not looking at.
+ *
+ * @param int $album_id sp_photo_albums row id.
+ * @return int Folder id, or 0 if the album is gone.
+ */
+function sp_album_file_folder( int $album_id ): int {
+    global $wpdb;
+
+    $albums = $wpdb->prefix . 'sp_photo_albums';
+
+    $album = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, title, file_folder_id FROM {$albums} WHERE id = %d",
+        $album_id
+    ) );
+
+    if ( ! $album ) {
+        return 0;
+    }
+
+    $name = trim( (string) $album->title );
+    if ( '' === $name ) {
+        /* translators: %d: album id, used when an album has not been titled yet. */
+        $name = sprintf( __( 'Album %d', 'societypress' ), $album_id );
+    }
+
+    $folders = $wpdb->prefix . 'sp_file_folders';
+    $current = (int) $album->file_folder_id;
+
+    if ( $current ) {
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, name FROM {$folders} WHERE id = %d",
+            $current
+        ) );
+
+        // Renaming the album renames its folder. The volunteer renamed one
+        // thing; ending up with two names for it is the surprise.
+        if ( $existing ) {
+            if ( (string) $existing->name !== $name ) {
+                $wpdb->update( $folders, [ 'name' => $name ], [ 'id' => $current ], [ '%s' ], [ '%d' ] );
+            }
+
+            return $current;
+        }
+    }
+
+    // The same name the registry files album covers under, so an album's
+    // folder sits beside its siblings rather than at the top level.
+    $parent = sp_get_or_create_file_folder( __( 'Albums', 'societypress' ) );
+
+    $folder = sp_get_or_create_file_folder( $name, $parent ?: null );
+    if ( ! $folder ) {
+        return 0;
+    }
+
+    $wpdb->update( $albums, [ 'file_folder_id' => $folder ], [ 'id' => $album_id ], [ '%d' ], [ '%d' ] );
+
+    return $folder;
+}
+
+/**
+ * File one of an album's files into the album's folder.
+ *
+ * WHY only two cases move: a file somebody dragged into a folder of their own
+ *      stays there, because their filing outranks ours. Unfiled is nobody's
+ *      decision, and the parent Albums folder is only ever where the cover
+ *      backfill left covers before albums had folders of their own.
+ *
+ * @param int $file_id   sp_files row id.
+ * @param int $folder_id The album's folder.
+ * @return bool Whether the file was moved.
+ */
+function sp_place_album_file( int $file_id, int $folder_id ): bool {
+    global $wpdb;
+
+    if ( $file_id < 1 || $folder_id < 1 ) {
+        return false;
+    }
+
+    $current = $wpdb->get_var( $wpdb->prepare(
+        "SELECT folder_id FROM {$wpdb->prefix}sp_files WHERE id = %d",
+        $file_id
+    ) );
+
+    $parent = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT parent_id FROM {$wpdb->prefix}sp_file_folders WHERE id = %d",
+        $folder_id
+    ) );
+
+    if ( null !== $current && ( ! $parent || (int) $current !== $parent ) ) {
+        return false;
+    }
+
+    return sp_move_file_to_folder( $file_id, $folder_id );
+}
+
+/**
+ * Put one photo from an album on the Files screen, in the album's folder.
+ *
+ * @param int $album_id      sp_photo_albums row id.
+ * @param int $attachment_id Media library id of the photo.
+ * @param int $folder_id     The album's folder, when the caller already has it.
+ * @return int The sp_files row id, or 0 if there was nothing to file.
+ */
+function sp_file_album_photo( int $album_id, int $attachment_id, int $folder_id = 0 ): int {
+    global $wpdb;
+
+    $file_id = sp_register_attachment_file( $attachment_id );
+    if ( ! $file_id ) {
+        return 0;
+    }
+
+    // WHY the link is written here rather than through sp_link_file(): that
+    // one clears the field before writing, because a record has one cover and
+    // one agenda. An album holds hundreds of photos in the same slot, so
+    // clearing the slot to add the second photo would forget the first.
+    $wpdb->query( $wpdb->prepare(
+        "INSERT IGNORE INTO {$wpdb->prefix}sp_file_links (file_id, object_type, object_id, field)
+         VALUES (%d, 'photo_album', %d, 'photo')",
+        $file_id,
+        $album_id
+    ) );
+
+    sp_place_album_file( $file_id, $folder_id ?: sp_album_file_folder( $album_id ) );
+
+    return $file_id;
+}
+
+/**
+ * Reconcile one album's photos with the Files screen.
+ *
+ * WHY a reconcile rather than an add and a remove at each call site: an album
+ *      is saved as a whole — photos added, photos taken out and the cover
+ *      changed in one submit — and the save handler already works that way.
+ *      One pass over what the album now holds is shorter than three hooks and
+ *      cannot be got half right.
+ *
+ * @param int $album_id sp_photo_albums row id.
+ * @return int How many of the album's files were filed.
+ */
+function sp_sync_album_files( int $album_id ): int {
+    global $wpdb;
+
+    if ( $album_id < 1 ) {
+        return 0;
+    }
+
+    $folder = sp_album_file_folder( $album_id );
+    if ( ! $folder ) {
+        return 0;
+    }
+
+    $attachments = array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare(
+        "SELECT DISTINCT attachment_id FROM {$wpdb->prefix}sp_photo_album_items
+         WHERE album_id = %d AND attachment_id > 0",
+        $album_id
+    ) ) );
+
+    $filed    = 0;
+    $file_ids = [];
+
+    foreach ( array_unique( $attachments ) as $attachment_id ) {
+        $file_id = sp_file_album_photo( $album_id, $attachment_id, $folder );
+        if ( $file_id ) {
+            $file_ids[] = $file_id;
+            $filed++;
+        }
+    }
+
+    // The cover belongs in the album's folder too, but it is already linked
+    // as the cover. Linking it a second time as a photo would make the file's
+    // "what is using this" panel name the same album twice.
+    $cover = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT cover_image_id FROM {$wpdb->prefix}sp_photo_albums WHERE id = %d",
+        $album_id
+    ) );
+
+    if ( $cover > 0 ) {
+        $cover_file = sp_register_attachment_file( $cover );
+        if ( $cover_file && sp_place_album_file( $cover_file, $folder ) ) {
+            $filed++;
+        }
+    }
+
+    // A photo taken out of the album stops being one of its files. The file
+    // and whatever folder it sits in both survive — only the album's claim on
+    // it goes away.
+    $links = $wpdb->prefix . 'sp_file_links';
+
+    if ( $file_ids ) {
+        $keep = implode( ',', array_map( 'intval', $file_ids ) );
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$links}
+             WHERE object_type = 'photo_album' AND object_id = %d AND field = 'photo'
+               AND file_id NOT IN ({$keep})",
+            $album_id
+        ) );
+    } else {
+        $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$links}
+             WHERE object_type = 'photo_album' AND object_id = %d AND field = 'photo'",
+            $album_id
+        ) );
+    }
+
+    return $filed;
+}
+
+/**
+ * Let go of an album's files when the album itself is deleted.
+ *
+ * WHY the photos survive: deleting an album deletes the grouping, not the
+ *      pictures. They are still in the media library and may well be in
+ *      another album, so they go back to Unfiled rather than sitting in a
+ *      folder named after something that no longer exists.
+ *
+ * @param int $album_id sp_photo_albums row id, read before the row is gone.
+ */
+function sp_forget_album_files( int $album_id ): void {
+    global $wpdb;
+
+    if ( $album_id < 1 ) {
+        return;
+    }
+
+    $folder = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT file_folder_id FROM {$wpdb->prefix}sp_photo_albums WHERE id = %d",
+        $album_id
+    ) );
+
+    $wpdb->delete(
+        $wpdb->prefix . 'sp_file_links',
+        [ 'object_type' => 'photo_album', 'object_id' => $album_id ],
+        [ '%s', '%d' ]
+    );
+
+    if ( ! $folder ) {
+        return;
+    }
+
+    $wpdb->update( $wpdb->prefix . 'sp_files', [ 'folder_id' => null ], [ 'folder_id' => $folder ], [ '%d' ], [ '%d' ] );
+    $wpdb->update( $wpdb->prefix . 'sp_file_folders', [ 'parent_id' => null ], [ 'parent_id' => $folder ], [ '%d' ], [ '%d' ] );
+    $wpdb->delete( $wpdb->prefix . 'sp_file_folders', [ 'id' => $folder ], [ '%d' ] );
+}
+
+/**
+ * Give every album that already exists its folder full of photos.
+ *
+ * WHY this is needed on top of sp_backfill_file_records(): that pass reads the
+ *      file columns on each record, and an album's photos are not columns on
+ *      the album — they are rows in a table beside it. So the one screen
+ *      holding more files than any other was the one screen the backfill could
+ *      not see, and every society's gallery landed in Unfiled.
+ *
+ * WHY it works a few albums at a time: a society with twenty years of event
+ *      photos has thousands of them, and filing all of them inside one admin
+ *      page load is how a one-time upgrade becomes a request that times out —
+ *      after which nothing is recorded as done and the next page load starts
+ *      over from the beginning. The cursor makes each run finish what it can
+ *      and the next one pick up from there.
+ *
+ * @param int $limit How many albums to file this run. 0 does all of them.
+ * @return int How many albums were filed.
+ */
+function sp_backfill_album_files( int $limit = 0 ): int {
+    global $wpdb;
+
+    $albums = $wpdb->prefix . 'sp_photo_albums';
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $albums ) ) ) !== $albums ) {
+        sp_finish_album_files_backfill();
+        return 0;
+    }
+
+    $cursor = (int) get_option( 'sp_album_files_cursor', 0 );
+
+    $ids = $limit > 0
+        ? (array) $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$albums} WHERE id > %d ORDER BY id ASC LIMIT %d", $cursor, $limit ) )
+        : (array) $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$albums} WHERE id > %d ORDER BY id ASC", $cursor ) );
+
+    $done = 0;
+
+    foreach ( $ids as $id ) {
+        sp_sync_album_files( (int) $id );
+        $cursor = (int) $id;
+        $done++;
+    }
+
+    update_option( 'sp_album_files_cursor', $cursor, false );
+
+    // Short of a full batch means there was nothing after it.
+    if ( ! $ids || ( $limit > 0 && count( $ids ) < $limit ) || 0 === $limit ) {
+        sp_finish_album_files_backfill();
+    }
+
+    return $done;
+}
+
+/**
+ * Mark the album backfill finished and put its bookkeeping away.
+ */
+function sp_finish_album_files_backfill(): void {
+    update_option( 'sp_album_files_backfilled', 1 );
+    delete_option( 'sp_album_files_backfill_pending' );
+    delete_option( 'sp_album_files_cursor' );
+}
+
+/**
+ * Work through the album backfill a few albums per admin page load.
+ *
+ * WHY admin_init and not cron: a society on shared hosting with no visitors
+ *      overnight has no reliable cron, and this is the pass that decides
+ *      whether their gallery is filed or in one heap. Anyone opening the admin
+ *      moves it along.
+ */
+add_action( 'admin_init', function () {
+    if ( get_option( 'sp_album_files_backfilled' ) || ! get_option( 'sp_album_files_backfill_pending' ) ) {
+        return;
+    }
+
+    sp_backfill_album_files( 3 );
+} );
+
 
 /**
  * Seed default membership tiers if none exist yet.
@@ -4324,6 +4663,16 @@ add_action( 'admin_init', function () {
         if ( ! get_option( 'sp_files_attachments_backfilled' ) ) {
             sp_backfill_attachment_files();
             update_option( 'sp_files_attachments_backfilled', 1 );
+        }
+
+        // Album photos last, because the two passes above put them in Unfiled
+        // — they are rows in a table beside the album rather than columns on
+        // it, so neither pass could see which album they belonged to. Asking
+        // for it rather than running it here keeps the upgrade request short;
+        // the admin_init worker files a few albums per page load until it is
+        // through them.
+        if ( ! get_option( 'sp_album_files_backfilled' ) ) {
+            update_option( 'sp_album_files_backfill_pending', 1, false );
         }
 
         // WHY: Without saving the new version, the upgrade check fires on every admin
@@ -9632,6 +9981,53 @@ function sp_user_has_member_record( $user_id ) {
 //        echo sp_obfuscate_email( $email_address );
 //
 //        The JS assembler runs automatically on every frontend page.
+
+/**
+ * A phone number as a volunteer would write it down.
+ *
+ * WHY at all: a society's phone numbers arrive from three places — typed into
+ *      a form, imported from a spreadsheet, and carried across from an old
+ *      site — and each writes them differently. An import in particular
+ *      usually hands over ten bare digits, so a directory ends up with
+ *      2103425242 sitting beside (210) 342-5242 in the same column and neither
+ *      reads as a phone number at a glance.
+ *
+ * WHY it formats on display and never on save: the digits somebody typed are
+ *      what they typed. Rewriting the stored value means an export no longer
+ *      matches the file it came from, and it destroys anything the pattern
+ *      does not recognize. Formatting at the point of reading leaves the
+ *      record alone and still puts one shape in front of every reader.
+ *
+ * WHY dashes and not parentheses: it is the shorter of the two, it does not
+ *      wrap mid-number in a narrow directory column, and it is how the number
+ *      is written on almost every society's own letterhead.
+ *
+ * Anything that is not ten digits — international numbers, extensions, a note
+ * in the field — comes back exactly as it was stored.
+ *
+ * @param string $phone The stored value.
+ * @return string Formatted for reading, or the original.
+ */
+function sp_format_phone( string $phone ): string {
+    $phone = trim( $phone );
+    if ( '' === $phone ) {
+        return '';
+    }
+
+    $digits = preg_replace( '/\D/', '', $phone );
+
+    // Half of any imported list writes the country code and half does not.
+    // They are the same number, so they should read the same way.
+    if ( 11 === strlen( $digits ) && '1' === $digits[0] ) {
+        $digits = substr( $digits, 1 );
+    }
+
+    if ( 10 !== strlen( $digits ) ) {
+        return $phone;
+    }
+
+    return substr( $digits, 0, 3 ) . '-' . substr( $digits, 3, 3 ) . '-' . substr( $digits, 6 );
+}
 
 /**
  * Returns an obfuscated <span> that JS will convert to a mailto: link.
@@ -22351,18 +22747,8 @@ class SP_Members_List_Table extends WP_List_Table {
         if ( ! $phone ) {
             return '—';
         }
-        // Format 10-digit US/CA numbers as (XXX) XXX-XXXX for readability.
-        // WHY: Raw digit strings are hard for elderly users to scan in a list.
-        //      Non-10-digit values (international) are shown as-is.
-        $digits = preg_replace( '/\D/', '', $phone );
-        if ( strlen( $digits ) === 10 ) {
-            return esc_html(
-                '(' . substr( $digits, 0, 3 ) . ') '
-                . substr( $digits, 3, 3 ) . '-'
-                . substr( $digits, 6 )
-            );
-        }
-        return esc_html( $phone );
+        // One shape for every phone number on the site. See sp_format_phone().
+        return esc_html( sp_format_phone( $phone ) );
     }
 
     /**
@@ -23527,7 +23913,7 @@ add_action( 'admin_init', function () {
                         <td><?php echo esc_html( $statuses[ $m->status ] ?? sp_localized_status( $m->status ) ); ?></td>
                         <td><?php echo esc_html( $exp ); ?></td>
                         <td><?php echo esc_html( $m->user_email ?: '—' ); ?></td>
-                        <td><?php echo esc_html( $phone ?: '—' ); ?></td>
+                        <td><?php echo esc_html( $phone ? sp_format_phone( $phone ) : '—' ); ?></td>
                     </tr>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -23611,9 +23997,9 @@ add_action( 'admin_init', function () {
         // Phones — only if the member allows their phone in the directory.
         $phones = [];
         if ( ! empty( $m->dir_show_phone ) ) {
-            if ( ! empty( $m->phone ) )      { $phones[] = __( 'Home', 'societypress' ) . ' ' . $m->phone; }
-            if ( ! empty( $m->cell ) )       { $phones[] = __( 'Cell', 'societypress' ) . ' ' . $m->cell; }
-            if ( ! empty( $m->work_phone ) ) { $phones[] = __( 'Work', 'societypress' ) . ' ' . $m->work_phone; }
+            if ( ! empty( $m->phone ) )      { $phones[] = __( 'Home', 'societypress' ) . ' ' . sp_format_phone( $m->phone ); }
+            if ( ! empty( $m->cell ) )       { $phones[] = __( 'Cell', 'societypress' ) . ' ' . sp_format_phone( $m->cell ); }
+            if ( ! empty( $m->work_phone ) ) { $phones[] = __( 'Work', 'societypress' ) . ' ' . sp_format_phone( $m->work_phone ); }
         }
 
         // Email — only if the member allows their email in the directory.
@@ -39226,7 +39612,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.31',
+            'version'     => '1.5.32',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39234,7 +39620,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.31',
+            'version'     => '1.5.32',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39242,7 +39628,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.31',
+            'version'     => '1.5.32',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39250,7 +39636,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.31',
+            'version'     => '1.5.32',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39258,7 +39644,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.31',
+            'version'     => '1.5.32',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -45315,7 +45701,7 @@ function sp_render_directory( array $settings ): void {
                                 printf(
                                     '<a href="tel:%s">%s</a>',
                                     esc_attr( preg_replace( '/[^+0-9]/', '', $m->phone ) ),
-                                    esc_html( $m->phone )
+                                    esc_html( sp_format_phone( $m->phone ) )
                                 );
                             }
                             ?>
@@ -46034,7 +46420,7 @@ function sp_ajax_member_detail(): void {
 
     // Phone — society setting + member preference
     if ( ! empty( $settings['dir_show_phone'] ) && ! empty( $member->dir_show_phone ) && $member->phone ) {
-        $data['phone'] = $member->phone;
+        $data['phone'] = sp_format_phone( (string) $member->phone );
     }
 
     // Email — society setting + member preference
@@ -50207,7 +50593,7 @@ function sp_render_builder_widget_contact_card( array $s ): void {
         $tel = preg_replace( '/[^0-9+]/', '', $phone );
         echo '<div class="sp-contact-card__row">';
         echo '<span class="dashicons dashicons-phone sp-contact-card__icon"></span>';
-        echo '<a href="tel:' . esc_attr( $tel ) . '">' . esc_html( $phone ) . '</a>';
+        echo '<a href="tel:' . esc_attr( $tel ) . '">' . esc_html( sp_format_phone( $phone ) ) . '</a>';
         echo '</div>';
     }
     if ( $show_email && $email ) {
@@ -71633,6 +72019,11 @@ function sp_render_gallery_page(): void {
         $album_id = absint( $_POST['album_id'] );
         check_admin_referer( 'sp_delete_album_' . $album_id );
 
+        // Before the row goes: it is the only place the album's folder id is
+        // recorded, so reading it afterwards would leave an orphan folder
+        // named after an album nobody can find.
+        sp_forget_album_files( $album_id );
+
         $wpdb->delete( $prefix . 'photo_album_items', [ 'album_id' => $album_id ] );
         $wpdb->delete( $prefix . 'photo_albums', [ 'id' => $album_id ] );
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Album deleted.', 'societypress' ) . '</p></div>';
@@ -71816,6 +72207,11 @@ function sp_render_album_edit_page(): void {
             $removed_ids = implode( ',', array_map( 'intval', $existing ) );
             $wpdb->query( "DELETE FROM {$prefix}photo_album_items WHERE id IN ({$removed_ids})" );
         }
+
+        // The album's photos are files too. Filing them here is what puts them
+        // on the Files screen under the album they belong to, instead of in
+        // the Unfiled pile with everything else nobody has claimed.
+        sp_sync_album_files( (int) $album_id );
 
         echo '<div class="notice notice-success"><p>' . esc_html__( 'Album saved.', 'societypress' ) . '</p></div>';
     }
@@ -98836,6 +99232,11 @@ function sp_render_store_frontend(): void {
             // lose to it and the count would never appear.
             badge.hidden = !(count > 0);
 
+            // The whole cart item is hidden until there is something in it, so
+            // the first thing added has to bring the icon with it.
+            var item = badge.closest('.sp-nav-cart');
+            if (item) item.hidden = !(count > 0);
+
             // Keep the link's accessible name honest as the number changes.
             var link = badge.closest('a');
             if (link) {
@@ -99229,8 +99630,17 @@ function sp_nav_cart_item( string $items, $args ): string {
     // shopper already reads without a label, and the word made the item twice
     // as wide as any other in the menu. The name still reaches a screen
     // reader through aria-label, which is where it belongs.
+    //
+    // WHY it is rendered hidden rather than left out when the cart is empty:
+    //      an empty cart is not worth a place in the menu — most visitors to a
+    //      society's site never buy anything, and a permanent cart icon says
+    //      the site is a shop first. But leaving the markup out entirely would
+    //      mean the icon could not appear when somebody adds their first item,
+    //      because adding to the cart never reloads the page. So it ships in
+    //      place and unhides itself the moment the count goes above zero.
     return $items . sprintf(
-        '<li class="menu-item sp-nav-cart"><a href="%s" aria-label="%s"><span class="sp-cart-glyph">%s%s</span></a></li>',
+        '<li class="menu-item sp-nav-cart"%s><a href="%s" aria-label="%s"><span class="sp-cart-glyph">%s%s</span></a></li>',
+        $count > 0 ? '' : ' hidden',
         esc_url( get_permalink( $cart_page->ID ) ),
         esc_attr( $aria ),
         $icon,
@@ -99266,10 +99676,19 @@ add_action( 'wp_head', function () {
        box, and without them it drives the line height and makes the whole nav
        bar grow around one item. The margins let it overflow the line instead
        of expanding it. */
-    /* WHY margin-left:auto: the cart is not one more destination in the list of
-       destinations — it belongs with the member's own controls at the right
-       end of the bar, which is where every shopper looks for it. */
-    .sp-nav-cart             { margin-left: auto; }
+    /* WHY no margin-left:auto any more: an auto margin on the last item eats
+       every pixel of slack in the menu row, which is the space justify-content
+       needs to do anything. A society whose theme centres its menu — and the
+       parent theme offers that as a setting — had it silently shoved back to
+       the left the day the store was switched on. The cart rides at the end of
+       the menu and sits wherever that society put their menu. */
+    /* WHY the front end needs its own [hidden] rule: the plugin's
+       [hidden]{display:none!important} is printed into admin_head only, so out
+       here the attribute is just the browser's own display:none — and any
+       theme with a display rule on its menu items outranks it. An empty cart
+       has to be gone, not faintly present. */
+    .sp-nav-cart[hidden],
+    .sp-cart-badge[hidden]   { display: none !important; }
     .sp-nav-cart a           { white-space: nowrap; display: inline-flex;
                                align-items: center; }
     .sp-cart-glyph           { position: relative; display: inline-block; flex: 0 0 auto;
@@ -111724,6 +112143,9 @@ add_action( 'admin_init', function () {
         'submission_type'         => "ALTER TABLE {$table} ADD COLUMN submission_type VARCHAR(20) NOT NULL DEFAULT 'curated' AFTER visibility, ADD KEY submission_type (submission_type)",
         'accepts_submissions'     => "ALTER TABLE {$table} ADD COLUMN accepts_submissions TINYINT(1) NOT NULL DEFAULT 0 AFTER submission_type",
         'submission_instructions' => "ALTER TABLE {$table} ADD COLUMN submission_instructions TEXT NULL AFTER accepts_submissions",
+        // The folder on the Files screen that holds this album's photos. See
+        // sp_album_file_folder() for why the id lives here and not the name.
+        'file_folder_id'          => "ALTER TABLE {$table} ADD COLUMN file_folder_id BIGINT(20) UNSIGNED NULL AFTER cover_image_id",
     ];
     foreach ( $cols as $col => $sql ) {
         $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
@@ -111899,6 +112321,11 @@ add_action( 'init', function () {
             'submission_status' => 'pending',
             'submission_note'   => sanitize_textarea_field( wp_unslash( $_POST['submission_note'] ?? '' ) ),
         ] );
+
+        // A submitted photo is filed with the rest of its album straight away,
+        // before it is moderated. Pending is a status on the photo, not a
+        // reason for the file to be invisible to the officer reviewing it.
+        sp_file_album_photo( $album_id, (int) $attach_id );
 
         // Notify staff
         $admin_email = sp_settings()['admin_email'] ?? get_bloginfo( 'admin_email' );
@@ -124330,7 +124757,14 @@ function sp_gallery_import_add_item( int $album_id, int $attachment_id, int $sor
         'sort_order'        => $sort_order,
         'submission_status' => 'approved',
     ] );
-    return (int) $wpdb->insert_id;
+
+    $item_id = (int) $wpdb->insert_id;
+
+    // An imported photo is a file like any other. Filing it as it arrives
+    // means the Files screen is already sorted when the import finishes.
+    sp_file_album_photo( $album_id, $attachment_id );
+
+    return $item_id;
 }
 
 /**
@@ -124565,6 +124999,7 @@ function sp_ajax_gallery_import_batch(): void {
         ) );
         if ( $first ) {
             $wpdb->update( $albums_table, [ 'cover_image_id' => $first ], [ 'id' => $album_id ] );
+            sp_link_file_by_attachment( $first, 'photo_album', $album_id, 'cover_image_id' );
         }
     }
 
@@ -124674,6 +125109,7 @@ function sp_render_import_gallery_page(): void {
             ) );
             if ( $first ) {
                 $wpdb->update( $wpdb->prefix . 'sp_photo_albums', [ 'cover_image_id' => $first ], [ 'id' => $album_id ] );
+                sp_link_file_by_attachment( $first, 'photo_album', $album_id, 'cover_image_id' );
             }
         }
 

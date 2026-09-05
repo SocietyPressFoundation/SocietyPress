@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.32
+ * Version:     1.5.33
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.32' );
+define( 'SOCIETYPRESS_VERSION', '1.5.33' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39612,7 +39612,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.32',
+            'version'     => '1.5.33',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39620,7 +39620,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.32',
+            'version'     => '1.5.33',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39628,7 +39628,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.32',
+            'version'     => '1.5.33',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39636,7 +39636,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.32',
+            'version'     => '1.5.33',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39644,7 +39644,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.32',
+            'version'     => '1.5.33',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -99233,9 +99233,16 @@ function sp_render_store_frontend(): void {
             badge.hidden = !(count > 0);
 
             // The whole cart item is hidden until there is something in it, so
-            // the first thing added has to bring the icon with it.
+            // the first thing added has to bring the icon with it — and the
+            // menu has to give back the room it reserved when the last item is
+            // taken out again.
             var item = badge.closest('.sp-nav-cart');
-            if (item) item.hidden = !(count > 0);
+            if (item) {
+                item.hidden = !(count > 0);
+                if (item.parentNode && item.parentNode.classList) {
+                    item.parentNode.classList.toggle('sp-menu-has-cart', count > 0);
+                }
+            }
 
             // Keep the link's accessible name honest as the number changes.
             var link = badge.closest('a');
@@ -99569,6 +99576,48 @@ function sp_maybe_create_store_pages(): void {
 }
 
 /**
+ * The society's cart page, when there is a cart to link to at all.
+ *
+ * @return WP_Post|null The page carrying the cart template, or null.
+ */
+function sp_nav_cart_page(): ?WP_Post {
+    if ( is_admin() || ! sp_module_enabled( 'store' ) ) {
+        return null;
+    }
+
+    $page = sp_page_using_template( 'sp-cart' );
+
+    return $page ?: null;
+}
+
+/**
+ * Tell the menu it is carrying a cart, so the CSS can leave room for one.
+ *
+ * WHY a class on the list and not a :has() selector: the rule it drives is the
+ *      space the menu is centred inside, and getting that wrong shows up as a
+ *      menu overlapping the cart. A class is decided on the server where the
+ *      count is already known, and works the same in every browser a society's
+ *      volunteers actually run.
+ *
+ * @param array<string, mixed> $args Menu arguments, defaults already applied.
+ * @return array<string, mixed> The arguments, with the class added or not.
+ */
+function sp_nav_cart_menu_class( array $args ): array {
+    if ( 'primary' !== ( $args['theme_location'] ?? '' ) ) {
+        return $args;
+    }
+
+    if ( ! sp_nav_cart_page() || sp_cart_total_items() < 1 ) {
+        return $args;
+    }
+
+    $args['menu_class'] = trim( ( $args['menu_class'] ?? '' ) . ' sp-menu-has-cart' );
+
+    return $args;
+}
+add_filter( 'wp_nav_menu_args', 'sp_nav_cart_menu_class' );
+
+/**
  * Append a Cart link, with a live item count, to the primary navigation.
  *
  * WHY the count is rendered here and not left to JavaScript: the store page
@@ -99586,14 +99635,11 @@ function sp_maybe_create_store_pages(): void {
  *      it, including the ones already running.
  */
 function sp_nav_cart_item( string $items, $args ): string {
-    if ( is_admin() || ! sp_module_enabled( 'store' ) ) {
-        return $items;
-    }
     // Primary navigation only — the cart has no business in a footer menu.
     if ( ! isset( $args->theme_location ) || 'primary' !== $args->theme_location ) {
         return $items;
     }
-    $cart_page = sp_page_using_template( 'sp-cart' );
+    $cart_page = sp_nav_cart_page();
     if ( ! $cart_page ) {
         return $items;
     }
@@ -99676,12 +99722,39 @@ add_action( 'wp_head', function () {
        box, and without them it drives the line height and makes the whole nav
        bar grow around one item. The margins let it overflow the line instead
        of expanding it. */
-    /* WHY no margin-left:auto any more: an auto margin on the last item eats
-       every pixel of slack in the menu row, which is the space justify-content
-       needs to do anything. A society whose theme centres its menu — and the
-       parent theme offers that as a setting — had it silently shoved back to
-       the left the day the store was switched on. The cart rides at the end of
-       the menu and sits wherever that society put their menu. */
+    /* The cart sits at the right end of the menu bar, and the menu keeps the
+       alignment its theme gave it inside the space that is left.
+
+       WHY the cart is taken out of the flow rather than pushed over with
+       margin-left:auto: an auto margin eats every pixel of slack in the row,
+       and slack is the only thing justify-content has to work with. A society
+       whose theme centres its menu — and the parent theme offers that as a
+       setting — had it silently shoved back to the left the day the store was
+       switched on. Positioned, the cart claims the right end without taking
+       the row's spare width with it.
+
+       WHY the list then reserves that width in padding: an absolutely
+       positioned cart overlaps whatever is underneath it, and a centred menu
+       one item too wide would slide straight under the basket. The reserve
+       makes the centring happen inside the space the cart is not using, which
+       is what "centred" means once something is pinned beside it. The class is
+       only on the list while the cart is actually showing, so an empty cart
+       leaves no gap.
+
+       WHY a variable: the reserve has to match the width of the glyph plus the
+       padding the theme's menu links carry. A child theme that changes either
+       can set --sp-cart-reserve rather than fight this rule.
+
+       WHY only on the wide layout: below the parent theme's 1281px the menu is
+       a stacked panel behind the hamburger, where there is no right end to sit
+       at — a positioned cart would land on top of the first link. Stacked, it
+       is one more row like every other. */
+    @media (min-width: 1281px) {
+        .main-navigation > ul { position: relative; }
+        ul.sp-menu-has-cart   { padding-inline-end: var(--sp-cart-reserve, 72px); }
+        .sp-nav-cart          { position: absolute; inset-inline-end: 0;
+                                top: 50%; transform: translateY(-50%); }
+    }
     /* WHY the front end needs its own [hidden] rule: the plugin's
        [hidden]{display:none!important} is printed into admin_head only, so out
        here the attribute is just the browser's own display:none — and any

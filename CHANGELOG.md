@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.33] — 2026-09-04
+
+**The cart is back at the right end of the menu bar, and the menu centres in
+the space beside it.** Yesterday's fix moved the cart in among the menu items
+to stop it dragging a centred menu off-centre. It now holds the right end
+again without taking the row's spare width with it, and a menu set to centre
+does so inside the space the cart is not using. A theme that left-aligns its
+menu is unaffected. Behind the hamburger, where the menu is a stacked list,
+the cart is one more row like every other.
+
+---
+
 ## [1.5.32] — 2026-09-04
 
 **Album photos are filed under the album they belong to.** The Files screen

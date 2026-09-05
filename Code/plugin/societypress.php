@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.33
+ * Version:     1.5.34
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.33' );
+define( 'SOCIETYPRESS_VERSION', '1.5.34' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39612,7 +39612,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.33',
+            'version'     => '1.5.34',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39620,7 +39620,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.33',
+            'version'     => '1.5.34',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39628,7 +39628,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.33',
+            'version'     => '1.5.34',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39636,7 +39636,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.33',
+            'version'     => '1.5.34',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39644,7 +39644,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.33',
+            'version'     => '1.5.34',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -50096,7 +50096,12 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
 
     $fuzzy = sp_surname_fuzzy_requested();
 
-    echo '<form method="get" class="sp-surname-search-form">';
+    sp_list_anchor( 'sp-surnames' );
+    // Pagination hangs off the current address so the search term survives a
+    // page turn; the anchor rides along so the turn lands on the results.
+    $sp_pg_base = remove_query_arg( 'sp_pg' ) . '#sp-surnames';
+
+    echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-surnames' ) ) . '" class="sp-surname-search-form">';
     // Keep the page's own context (page_id on a plain-permalink site, anything
     // else the page is carrying); a fresh search starts back at page one.
     sp_carry_query_args( [ 'sp_surname', 'sp_fuzzy', 'sp_page' ] );
@@ -50271,7 +50276,7 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
             // Per-page picker. It is a plain form so it works with JavaScript off;
             // the hidden fields carry the current search, sort and page context
             // along with it. Resizing the page starts back at page one.
-            echo '<form method="get" class="sp-surname-perpage-form">';
+            echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-surnames' ) ) . '" class="sp-surname-perpage-form">';
             sp_carry_query_args( [ 'sp_per', 'sp_page' ] );
             echo '<label for="sp-surname-perpage">' . esc_html__( 'Results Per Page:', 'societypress' ) . ' </label>';
             echo '<select name="sp_per" id="sp-surname-perpage" onchange="this.form.submit();">';
@@ -50338,17 +50343,17 @@ function sp_render_builder_widget_surname_lookup( array $s ): void {
                 echo '<span class="sp-surname-pager-label">' . esc_html__( 'Jump to Page:', 'societypress' ) . '</span>';
 
                 if ( $page > 1 ) {
-                    echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $page - 1 ) ) . '" rel="prev">' . esc_html__( 'Previous', 'societypress' ) . '</a>';
+                    echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $page - 1, $sp_pg_base ) ) . '" rel="prev">' . esc_html__( 'Previous', 'societypress' ) . '</a>';
                 }
                 for ( $p = 1; $p <= $total_pages; $p++ ) {
                     if ( $p === $page ) {
                         echo '<span class="sp-surname-page sp-surname-page-current" aria-current="page">' . esc_html( number_format_i18n( $p ) ) . '</span>';
                     } else {
-                        echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $p ) ) . '">' . esc_html( number_format_i18n( $p ) ) . '</a>';
+                        echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $p, $sp_pg_base ) ) . '">' . esc_html( number_format_i18n( $p ) ) . '</a>';
                     }
                 }
                 if ( $page < $total_pages ) {
-                    echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $page + 1 ) ) . '" rel="next">' . esc_html__( 'Next', 'societypress' ) . '</a>';
+                    echo '<a class="sp-surname-page" href="' . esc_url( add_query_arg( 'sp_pg', $page + 1, $sp_pg_base ) ) . '" rel="next">' . esc_html__( 'Next', 'societypress' ) . '</a>';
                 }
                 echo '</nav>';
             }
@@ -59311,7 +59316,7 @@ function sp_render_events_listing( array $settings ): void {
     $cats_table   = $wpdb->prefix . 'sp_event_categories';
     $reg_table    = $wpdb->prefix . 'sp_event_registrations';
     $per_page     = (int) ( $settings['events_per_page'] ?? 12 );
-    $base_url     = get_permalink();
+    $base_url     = get_permalink() . '#sp-events';
 
     // ---- Collect filter parameters from the URL ----
     $search     = isset( $_GET['sp_search'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_search'] ) ) : '';
@@ -59442,6 +59447,7 @@ function sp_render_events_listing( array $settings ): void {
     <!-- FILTER BAR: Search, Category, Timeframe, View Toggle             -->
     <!-- ================================================================ -->
     <div class="sp-events-filters">
+        <?php sp_list_anchor( 'sp-events' ); ?>
         <form method="get" action="<?php echo esc_url( $base_url ); ?>" class="sp-events-filter-form">
             <?php
             // Filtering must not change which view you are looking at — carry
@@ -71097,7 +71103,8 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         echo '</div>';
 
         // Search form
-        echo '<form method="get" class="sp-catalog-search-form" id="' . esc_attr( $uid ) . '-form" role="tabpanel" aria-labelledby="' . esc_attr( $uid ) . '-tab-' . esc_attr( $search_field ) . '">';
+        sp_list_anchor( 'sp-catalog' );
+        echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-catalog' ) ) . '" class="sp-catalog-search-form" id="' . esc_attr( $uid ) . '-form" role="tabpanel" aria-labelledby="' . esc_attr( $uid ) . '-tab-' . esc_attr( $search_field ) . '">';
         // Searching narrows what is already on screen, so the active media /
         // subject / source filters ride along; only the page number resets.
         sp_carry_query_args( [ 'sp_lib_search', 'sp_lib_field', 'sp_lib_pg' ] );
@@ -71107,7 +71114,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         echo '</form>';
 
         // Additional filter dropdowns (media type, source, sort)
-        echo '<form method="get" class="sp-catalog-filter-row" id="' . esc_attr( $uid ) . '-filters">';
+        echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-catalog' ) ) . '" class="sp-catalog-filter-row" id="' . esc_attr( $uid ) . '-filters">';
         // Everything the page is carrying — the active search among it — comes
         // through; the three selects below supply their own values.
         sp_carry_query_args( [ 'sp_lib_media', 'sp_lib_acq', 'sp_lib_sort', 'sp_lib_pg' ] );
@@ -71364,7 +71371,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         // ---- Pagination ----
         if ( $total_pages > 1 ) {
             echo '<div class="sp-catalog-pagination">';
-            $base_url = remove_query_arg( 'sp_lib_pg' );
+            $base_url = remove_query_arg( 'sp_lib_pg' ) . '#sp-catalog';
 
             // Previous
             if ( $page_num > 1 ) {
@@ -74834,14 +74841,15 @@ function sp_frontend_resources_directory(): void {
 
     // Search form — searches title, description, and category name. It narrows
     // whatever is on screen, so the chosen category rides along.
-    echo '<form method="get" class="sp-res-dir-search-form">';
+    sp_list_anchor( 'sp-resources' );
+    echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-resources' ) ) . '" class="sp-res-dir-search-form">';
     sp_carry_query_args( [ 'sp_resource' ] );
     echo '<input type="text" name="sp_resource" value="' . esc_attr( $search ) . '" placeholder="' . esc_attr__( 'Search resources…', 'societypress' ) . '" class="sp-res-dir-search-input">';
     echo '<button type="submit" class="sp-btn sp-btn-primary">' . esc_html__( 'Search', 'societypress' ) . '</button>';
     echo '</form>';
 
     // Category dropdown — auto-submits, clears any active search
-    echo '<form method="get">';
+    echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-resources' ) ) . '">';
     sp_carry_query_args( [ 'sp_rcat', 'sp_resource' ] );
     echo '<select name="sp_rcat" class="sp-autosubmit sp-res-dir-cat-select">';
     echo '<option value="0">' . esc_html__( 'All Categories', 'societypress' ) . '</option>';
@@ -74922,6 +74930,64 @@ function sp_frontend_resources_directory(): void {
  *
  * @return array{where:string, params:array}
  */
+/**
+ * The address of a list block on the page it lives on.
+ *
+ * WHY it exists: every one of these blocks is a search box and a table dropped
+ *      partway down a page a society wrote themselves, and above it there is
+ *      usually a heading, an explanation and a few links. A plain GET form
+ *      reloads the page and the browser lands at the top of it, so pressing
+ *      Search — the one thing the reader came to do — appears to throw the
+ *      results away and they have to scroll back down to find them. Reported
+ *      on the vertical files, but it was never about vertical files.
+ *
+ * WHY a fragment and not JavaScript: the browser does this natively, and it
+ *      does it before the first paint rather than jumping the page afterwards.
+ *      A submitted GET form keeps the fragment from its action and replaces
+ *      only the query, and WordPress's add_query_arg() carries a fragment
+ *      through too, so one anchor serves the form and every pagination link.
+ *
+ * @param string $anchor The id on the block's wrapper.
+ * @return string The page's own address with the anchor on the end.
+ */
+function sp_list_anchor_url( string $anchor ): string {
+    // get_permalink() is false on anything that is not a singular view, and
+    // these blocks are also reachable through shortcodes. Falling back to the
+    // request with its query stripped gives the same clean address.
+    $url = get_permalink();
+    if ( ! $url ) {
+        $url = remove_query_arg( array_keys( (array) $_GET ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+    }
+
+    return $url . '#' . $anchor;
+}
+
+/**
+ * Mark where a list block starts, so the browser can land there.
+ *
+ * WHY a span of its own rather than an id on the block's wrapper: several of
+ *      these blocks already put a per-render random id on their wrapper so
+ *      their own JavaScript can find them, and an element gets one id. A
+ *      dedicated marker also survives a block being restyled or rewrapped.
+ *
+ * WHY scroll-margin-top: landing with the search box flush against the top of
+ *      the window reads as though the page has been cut off, and a child theme
+ *      with a sticky header would cover it outright. A little room above it
+ *      shows the reader they are partway down a page.
+ *
+ * @param string $anchor The id to place.
+ */
+function sp_list_anchor( string $anchor ): void {
+    static $styled = false;
+
+    if ( ! $styled ) {
+        echo '<style id="sp-list-anchor-css">.sp-list-anchor { display: block; scroll-margin-top: 24px; }</style>';
+        $styled = true;
+    }
+
+    echo '<span class="sp-list-anchor" id="' . esc_attr( $anchor ) . '" aria-hidden="true"></span>';
+}
+
 function sp_vertical_files_filter(): array {
     $filter = [
         'where'  => "( call_number LIKE %s OR media_type = %s )",
@@ -75014,8 +75080,11 @@ function sp_render_vertical_files_frontend(): void {
         )
     );
 
-    // Base URL for every control on the page, minus the argument that control owns.
-    $base = remove_query_arg( [ 'sp_vf_pg' ] );
+    // Base URL for every control on the page, minus the argument that control
+    // owns. The anchor rides along so paging lands on the table rather than at
+    // the top of whatever the society wrote above it.
+    $anchor = sp_list_anchor_url( 'sp-vertical-files' );
+    $base   = remove_query_arg( [ 'sp_vf_pg' ] ) . '#sp-vertical-files';
     ?>
     <style id="sp-vertical-files-css">
         .sp-vf-controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 16px; }
@@ -75047,8 +75116,9 @@ function sp_render_vertical_files_frontend(): void {
         }
     </style>
 
+    <?php sp_list_anchor( 'sp-vertical-files' ); ?>
     <div class="sp-vertical-files">
-        <form method="get" class="sp-vf-controls">
+        <form method="get" action="<?php echo esc_url( $anchor ); ?>" class="sp-vf-controls">
             <?php
             // Carry any query args the page itself needs (page id on a plain
             // permalink setup, for one) through the form as hidden fields.
@@ -75088,7 +75158,7 @@ function sp_render_vertical_files_frontend(): void {
 
             <?php if ( $search !== '' ) : ?>
                 <div class="sp-vf-control">
-                    <a href="<?php echo esc_url( remove_query_arg( [ 'sp_vf_q', 'sp_vf_field', 'sp_vf_pg' ] ) ); ?>">
+                    <a href="<?php echo esc_url( remove_query_arg( [ 'sp_vf_q', 'sp_vf_field', 'sp_vf_pg' ] ) . '#sp-vertical-files' ); ?>">
                         <?php esc_html_e( 'Show all', 'societypress' ); ?>
                     </a>
                 </div>
@@ -98028,7 +98098,8 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
 
     // Search + filter bar. The form owns every sp_rec_* value it submits;
     // everything else the page is carrying comes through as hidden fields.
-    echo '<form method="get" class="sp-records-filters">';
+    sp_list_anchor( 'sp-records' );
+    echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-records' ) ) . '" class="sp-records-filters">';
     sp_carry_query_args( [ 'sp_rec_*' ] );
     // Visually-hidden label for the search input — screen readers need it, sighted users have the placeholder
     echo '<label for="sp-rec-q" class="screen-reader-text">' . esc_html__( 'Search records', 'societypress' ) . '</label>';
@@ -98156,7 +98227,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         // Pagination
         if ( $total_pages > 1 ) {
             echo '<div class="sp-records-pagination">';
-            $base_url = remove_query_arg( 'sp_rec_pg' );
+            $base_url = remove_query_arg( 'sp_rec_pg' ) . '#sp-records';
             if ( $page_num > 1 ) {
                 echo '<a href="' . esc_url( add_query_arg( 'sp_rec_pg', $page_num - 1, $base_url ) ) . '">&laquo; ' . esc_html__( 'Prev', 'societypress' ) . '</a>';
             }
@@ -105669,7 +105740,8 @@ function sp_frontend_documents(): void {
             '6months'  => __( 'Past 6 months', 'societypress' ),
             '12months' => __( 'Past 12 months', 'societypress' ),
         ];
-        echo '<form method="get" class="sp-doc-filter">';
+        sp_list_anchor( 'sp-documents' );
+        echo '<form method="get" action="' . esc_url( sp_list_anchor_url( 'sp-documents' ) ) . '" class="sp-doc-filter">';
         // The open folder (and the page's own id on a plain-permalink site) has
         // to ride along, or picking a range drops the visitor back on the
         // folder list instead of filtering the folder they were reading.

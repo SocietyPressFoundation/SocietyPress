@@ -20,6 +20,21 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.34] — 2026-09-04
+
+**Searching a list no longer throws you back to the top of the page.** These
+search boxes sit partway down a page the society wrote themselves, under a
+heading and a few paragraphs of explanation. Pressing Search reloaded the page
+and the browser landed at the very top, so the results the reader had just
+asked for were a long scroll away and looked, for a moment, like nothing had
+happened. Every list block now lands on its own results instead: vertical
+files, surnames, the library catalog, records, events, resources and documents.
+Turning to the next page of results does the same.
+
+Reported against the vertical files, but it was never about vertical files.
+
+---
+
 ## [1.5.33] — 2026-09-04
 
 **The cart is back at the right end of the menu bar, and the menu centres in

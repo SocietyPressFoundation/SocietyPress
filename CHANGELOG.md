@@ -20,6 +20,31 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.38] — 2026-09-08
+
+**The library's Category field is gone; Media Type does the job.** A catalog
+item carried both a Media Type and a Category, and the two shipped with
+near-identical lists — Books, Periodicals, Maps, Microfilm — so a cataloger
+had to guess which one to use and often filled in both. Only one of them
+earned its place: Media Type can be filtered on in the public catalog and the
+admin catalog, drives the Browse by Collection cards, and arrives filled in
+from an import. Category could only ever be set by hand, one item at a time,
+and nothing anywhere let a researcher or a librarian search by it. Removing
+it takes away the guesswork and leaves the field that actually works. The
+Library Categories admin screen goes with it, and the catalog page builder
+block loses its unusable "Filter by category" setting. Nothing stored is
+deleted, so a society that had filled the field in keeps that data.
+
+## [1.5.37] — 2026-09-08
+
+**A new library item no longer assumes it can be checked out.** The "Item can
+be checked out" box started ticked, so every book a cataloger added quietly
+declared itself lendable. Most genealogical and historical society libraries
+are reference-only — local history and rare material does not leave the
+building — which made the default wrong for the majority of collections, and
+wrong in a way nobody had reason to notice. New items now start unticked; a
+lending library ticks the box, and existing items are untouched.
+
 ## [1.5.36] — 2026-09-08
 
 **Members-only pages no longer appear in the menu for people who aren't

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.36
+ * Version:     1.5.38
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.36' );
+define( 'SOCIETYPRESS_VERSION', '1.5.38' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -219,10 +219,6 @@ register_activation_hook( __FILE__, function () {
     // Seed default resource link categories so the Library > Resources page
     // has useful categories from day one (Genealogy Databases, etc.).
     sp_maybe_seed_resource_categories();
-
-    // Seed default library item categories so the catalog has sensible
-    // classification from day one (Books, Periodicals, Maps, etc.).
-    sp_maybe_seed_library_categories();
 
     // Seed default document categories (Meeting Minutes, Society Documents)
     // so the Documents module is ready to use on day one.
@@ -4537,45 +4533,6 @@ function sp_maybe_seed_resource_categories(): void {
 
 
 /**
- * Seed default library item categories if none exist yet.
- *
- * WHY: Same reasoning as resource categories — Harold needs a starting point.
- *      These cover the physical media types most genealogical society libraries
- *      actually have on their shelves.
- *
- * SAFETY: Only runs if the library_categories table is empty.
- */
-function sp_maybe_seed_library_categories(): void {
-    global $wpdb;
-    $table = $wpdb->prefix . 'sp_library_categories';
-
-    $count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table}" );
-    if ( $count > 0 ) {
-        return;
-    }
-
-    $defaults = [
-        [ 'name' => 'Books',         'slug' => 'books',         'sort_order' => 1 ],
-        [ 'name' => 'Periodicals',   'slug' => 'periodicals',   'sort_order' => 2 ],
-        [ 'name' => 'Maps',          'slug' => 'maps',          'sort_order' => 3 ],
-        [ 'name' => 'Microfilm',     'slug' => 'microfilm',     'sort_order' => 4 ],
-        [ 'name' => 'Photographs',   'slug' => 'photographs',   'sort_order' => 5 ],
-        [ 'name' => 'Manuscripts',   'slug' => 'manuscripts',   'sort_order' => 6 ],
-        [ 'name' => 'CD/DVD',        'slug' => 'cd-dvd',        'sort_order' => 7 ],
-    ];
-
-    foreach ( $defaults as $cat ) {
-        $wpdb->insert( $table, [
-            'name'       => $cat['name'],
-            'slug'       => $cat['slug'],
-            'sort_order' => $cat['sort_order'],
-            'active'     => 1,
-        ] );
-    }
-}
-
-
-/**
  * Seed default document categories if none exist yet.
  *
  * WHY: Most societies immediately need "Meeting Minutes" and "Society Documents"
@@ -4635,7 +4592,6 @@ add_action( 'admin_init', function () {
         sp_maybe_seed_event_categories();
         sp_maybe_create_newsletter_category();
         sp_maybe_seed_resource_categories();
-        sp_maybe_seed_library_categories();
         sp_maybe_seed_document_categories();
 
         // Backfill phonetic codes for any surnames added before this feature existed
@@ -6125,7 +6081,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Library Catalog', 'societypress' ),
             'description' => __( 'Manage your society\'s book and media collection. Members can browse and search the catalog online.', 'societypress' ),
             'icon'        => 'dashicons-book-alt',
-            'menu_slugs'  => [ 'sp-library-catalog', 'sp-library-categories', 'sp-library-lists', 'sp-import-library', 'sp-library-enrich', 'sp-library-item-edit' ],
+            'menu_slugs'  => [ 'sp-library-catalog', 'sp-library-lists', 'sp-import-library', 'sp-library-enrich', 'sp-library-item-edit' ],
         ],
         'newsletters' => [
             'name'        => __( 'Newsletter Archive', 'societypress' ),
@@ -7709,15 +7665,6 @@ add_action( 'admin_menu', function () {
         'sp_render_library_catalog_page'
     );
 
-    add_submenu_page(
-        'societypress',
-        __( 'Library Categories — SocietyPress', 'societypress' ),
-        __( 'Library Categories', 'societypress' ),
-        'manage_options',
-        'sp-library-categories',
-        'sp_render_library_categories_page'
-    );
-
     // Catalog Options — the Media Type / Subject / Location lists catalogers
     // pick from, and which columns the public results table shows.
     add_submenu_page(
@@ -8602,7 +8549,6 @@ function sp_get_menu_capability_map(): array {
         // Library
         'sp-library-catalog'       => 'sp_manage_library',
         'sp-library-lists'         => 'sp_manage_library',
-        'sp-library-categories'    => 'sp_manage_library',
         'sp-import-library'        => 'sp_manage_library',
         'sp-library-enrich'        => 'sp_manage_library',
         'sp-library-item-edit'     => 'sp_manage_library',
@@ -13606,7 +13552,7 @@ function sp_default_menu_config(): array {
               'items' => [ 'sp-volunteer-roster', 'sp-volunteer-hours', 'sp-volunteer-opportunities', 'sp-import-volunteers', 'sp-import-openings' ] ],
 
             [ 'id' => 'library', 'label' => __( 'Library', 'societypress' ), 'icon' => 'dashicons-book-alt',
-              'items' => [ 'sp-library-catalog', 'sp-library-categories', 'sp-library-lists', 'sp-database-subscriptions',
+              'items' => [ 'sp-library-catalog', 'sp-library-lists', 'sp-database-subscriptions',
                            [ 'heading' => __( 'Moving data in and out', 'societypress' ) ],
                            'sp-import-library', 'sp-library-enrich' ] ],
 
@@ -39634,7 +39580,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.36',
+            'version'     => '1.5.38',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39642,7 +39588,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.36',
+            'version'     => '1.5.38',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39650,7 +39596,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.36',
+            'version'     => '1.5.38',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39658,7 +39604,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.36',
+            'version'     => '1.5.38',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39666,7 +39612,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.36',
+            'version'     => '1.5.38',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -48246,24 +48192,12 @@ function sp_builder_fields_library_catalog( $index, array $settings ): void {
     global $wpdb;
     $show_search    = $settings['show_search'] ?? true;
     $show_landing   = $settings['show_landing'] ?? true;
-    $category_id    = $settings['category_id'] ?? '';
     $available_only = $settings['available_only'] ?? false;
     $count          = $settings['count'] ?? 25;
     $login_required = $settings['login_required'] ?? false;
-
-    $categories = $wpdb->get_results(
-        "SELECT id, name FROM {$wpdb->prefix}sp_library_categories WHERE active = 1 ORDER BY sort_order, name"
-    );
     ?>
     <div class="sp-builder-field">
         <p class="description"><?php esc_html_e( 'Displays a searchable, browsable library catalog with collection stats, tabbed search, browse-by-type cards, popular subjects, and a paginated results table with expandable detail rows.', 'societypress' ); ?></p>
-        <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-category_id"><?php esc_html_e( 'Filter by category', 'societypress' ); ?></label>
-        <select name="sp_widgets[<?php echo esc_attr( $index ); ?>][settings][category_id]" id="sp-w-<?php echo esc_attr( $index ); ?>-category_id">
-            <option value=""><?php esc_html_e( 'All Categories', 'societypress' ); ?></option>
-            <?php foreach ( $categories as $cat ) : ?>
-                <option value="<?php echo esc_attr( $cat->id ); ?>" <?php selected( $category_id, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
-            <?php endforeach; ?>
-        </select>
     </div>
     <div class="sp-builder-field">
         <label class="sp-field-label" for="sp-w-<?php echo esc_attr( $index ); ?>-count"><?php esc_html_e( 'Items per page', 'societypress' ); ?></label>
@@ -48891,7 +48825,6 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
         case 'library_catalog':
             return [
                 'show_search'    => ! empty( $settings['show_search'] ),
-                'category_id'    => absint( $settings['category_id'] ?? 0 ),
                 'available_only' => ! empty( $settings['available_only'] ),
                 'count'          => in_array( (int) ( $settings['count'] ?? -1 ), [ 10, 25, 50, 100 ], true )
                                     ? (int) $settings['count'] : 25,
@@ -70670,7 +70603,6 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     // ---- Widget settings ----
     $show_search    = $s['show_search'] ?? true;
     $show_landing   = $s['show_landing'] ?? true;
-    $category_id    = absint( $s['category_id'] ?? 0 );
     $available_only = $s['available_only'] ?? false;
     $per_page       = max( 1, (int) ( $s['count'] ?? 25 ) );
 
@@ -70702,9 +70634,6 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
     // ---- Build WHERE clause ----
     $where = [ '1=1' ];
-    if ( $category_id ) {
-        $where[] = $wpdb->prepare( 'li.category_id = %d', $category_id );
-    }
     if ( $available_only ) {
         $where[] = 'li.available = 1';
     }
@@ -70755,9 +70684,8 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     $offset = ( $page_num - 1 ) * $per_page;
     $total  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items li WHERE {$where_sql}" );
     $items  = $wpdb->get_results( $wpdb->prepare(
-        "SELECT li.*, lc.name as category_name
+        "SELECT li.*
          FROM {$prefix}library_items li
-         LEFT JOIN {$prefix}library_categories lc ON li.category_id = lc.id
          WHERE {$where_sql}
          ORDER BY {$order_sql}
          LIMIT %d OFFSET %d",
@@ -71580,7 +71508,6 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     html += field('<?php echo esc_js( __( 'Publisher Location', 'societypress' ) ); ?>', d.publisher_location);
                     html += field('<?php echo esc_js( __( 'Published', 'societypress' ) ); ?>', d.pub_date);
                     html += field('<?php echo esc_js( __( 'Media Type', 'societypress' ) ); ?>', d.media_type);
-                    html += field('<?php echo esc_js( __( 'Category', 'societypress' ) ); ?>', d.category_name);
                     html += field('<?php echo esc_js( __( 'Call Number', 'societypress' ) ); ?>', d.call_number);
                     html += field('<?php echo esc_js( __( 'ISBN', 'societypress' ) ); ?>', d.isbn);
                     html += field('<?php echo esc_js( __( 'LCCN', 'societypress' ) ); ?>', d.lccn);
@@ -76621,7 +76548,6 @@ function sp_render_library_item_edit_page(): void {
             'isbn'                => sanitize_text_field( wp_unslash( $_POST['isbn'] ?? '' ) ) ?: null,
             'call_number'         => sanitize_text_field( wp_unslash( $_POST['call_number'] ?? '' ) ) ?: null,
             'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
-            'category_id'         => absint( $_POST['category_id'] ?? 0 ) ?: null,
             'shelf_location'      => sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ?: null,
             'geographic_location' => sp_library_list_posted_value( 'geographic_location' ) ?: null,
             'acquisition_number'  => $parse_int( $_POST['acquisition_number'] ?? '' ),
@@ -76668,7 +76594,6 @@ function sp_render_library_item_edit_page(): void {
     $item = $item_id ? $wpdb->get_row( $wpdb->prepare(
         "SELECT * FROM {$prefix}library_items WHERE id = %d", $item_id
     ) ) : null;
-    $categories = $wpdb->get_results( "SELECT * FROM {$prefix}library_categories WHERE active = 1 ORDER BY sort_order ASC, name ASC" );
     ?>
     <style>
     /*
@@ -76767,17 +76692,6 @@ function sp_render_library_item_edit_page(): void {
                     <th scope="col"><label for="media_type"><?php esc_html_e( 'Media Type', 'societypress' ); ?></label></th>
                     <td><?php sp_library_list_field( 'media_type', (string) ( $item->media_type ?? '' ) ); ?>
                     <p class="description"><?php esc_html_e( 'Managed at Library → Catalog Options.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="category_id"><?php esc_html_e( 'Category', 'societypress' ); ?></label></th>
-                    <td>
-                        <select name="category_id" id="category_id">
-                            <option value="0"><?php esc_html_e( '— None —', 'societypress' ); ?></option>
-                            <?php foreach ( $categories as $cat ) : ?>
-                                <option value="<?php echo $cat->id; ?>" <?php selected( $item->category_id ?? 0, $cat->id ); ?>><?php echo esc_html( $cat->name ); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </td>
                 </tr>
                 <tr>
                     <th scope="col"><label for="subject"><?php esc_html_e( 'Subject Tags', 'societypress' ); ?></label></th>
@@ -76936,7 +76850,17 @@ function sp_render_library_item_edit_page(): void {
                 </tr>
                 <tr>
                     <th scope="col"><?php esc_html_e( 'Available', 'societypress' ); ?></th>
-                    <td><label><input type="checkbox" name="available" value="1" <?php checked( $item->available ?? 1 ); ?>> <?php esc_html_e( 'Item can be checked out', 'societypress' ); ?></label></td>
+                    <?php
+                    // WHY a new item starts unticked: most genealogical and
+                    //      historical society libraries are reference-only —
+                    //      local history and rare material does not leave the
+                    //      building. Defaulting to "can be checked out" quietly
+                    //      declares the whole collection lendable, and a
+                    //      cataloger adding a book has no reason to notice.
+                    //      A lending library ticks the box; everyone else is
+                    //      right by default. Existing items keep what they have.
+                    ?>
+                    <td><label><input type="checkbox" name="available" value="1" <?php checked( $item->available ?? 0 ); ?>> <?php esc_html_e( 'Item can be checked out', 'societypress' ); ?></label></td>
                 </tr>
                 <tr>
                     <th scope="col"><?php esc_html_e( 'Use Serials', 'societypress' ); ?></th>
@@ -76960,96 +76884,6 @@ function sp_render_library_item_edit_page(): void {
     </div>
     <?php
 }
-
-/**
- * Render: Library Categories Page
- *
- * WHY: Manage categories for library items (Books, Periodicals, Maps, etc.).
- *      Same two-column layout as resource categories.
- */
-function sp_render_library_categories_page(): void {
-    global $wpdb;
-    $prefix = $wpdb->prefix . 'sp_';
-
-    if ( isset( $_POST['sp_save_library_cat'] ) && check_admin_referer( 'sp_library_cat_save' ) ) {
-        $cat_id = absint( $_POST['cat_id'] ?? 0 );
-        $data = [
-            'name'       => sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) ),
-            'slug'       => sanitize_title( wp_unslash( $_POST['name'] ?? '' ) ),
-            'sort_order' => absint( $_POST['sort_order'] ?? 0 ),
-            'active'     => ! empty( $_POST['active'] ) ? 1 : 0,
-        ];
-        if ( ! empty( $data['name'] ) ) {
-            if ( $cat_id ) {
-                $wpdb->update( $prefix . 'library_categories', $data, [ 'id' => $cat_id ] );
-            } else {
-                $wpdb->insert( $prefix . 'library_categories', $data );
-            }
-            echo '<div class="notice notice-success"><p>' . esc_html__( 'Category saved.', 'societypress' ) . '</p></div>';
-        }
-    }
-
-    if ( ( $_POST['action'] ?? '' ) === 'delete' && ! empty( $_POST['cat_id'] ) ) {
-        $cat_id = absint( $_POST['cat_id'] );
-        check_admin_referer( 'sp_delete_library_cat_' . $cat_id );
-        $wpdb->update( $prefix . 'library_items', [ 'category_id' => null ], [ 'category_id' => $cat_id ] );
-        $wpdb->delete( $prefix . 'library_categories', [ 'id' => $cat_id ] );
-        delete_transient( 'sp_library_catalog_stats' );
-        echo '<div class="notice notice-success"><p>' . esc_html__( 'Category deleted.', 'societypress' ) . '</p></div>';
-    }
-
-    $categories = $wpdb->get_results( "SELECT * FROM {$prefix}library_categories ORDER BY sort_order ASC, name ASC" );
-    $editing = null;
-    if ( ( $_GET['action'] ?? '' ) === 'edit' && ! empty( $_GET['cat_id'] ) ) {
-        $editing = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$prefix}library_categories WHERE id = %d", absint( $_GET['cat_id'] ) ) );
-    }
-    ?>
-    <div class="wrap">
-        <h1><?php esc_html_e( 'Library Categories', 'societypress' ); ?></h1>
-        <style id="sp-libcat-css">
-            .sp-libcat-layout { display: flex; gap: 24px; margin-top: 16px; }
-            .sp-libcat-form-col { flex: 0 0 350px; background: #fff; border: 1px solid #ccd0d4; border-radius: 4px; padding: 20px; }
-        </style>
-        <div class="sp-libcat-layout">
-            <div class="sp-libcat-form-col">
-                <h3 class="sp-mt-0"><?php echo $editing ? esc_html__( 'Edit Category', 'societypress' ) : esc_html__( 'Add Category', 'societypress' ); ?></h3>
-                <form method="post">
-                    <?php wp_nonce_field( 'sp_library_cat_save' ); ?>
-                    <input type="hidden" name="cat_id" value="<?php echo $editing ? $editing->id : 0; ?>">
-                    <p><label class="sp-fw-600"><?php esc_html_e( 'Name', 'societypress' ); ?></label><br>
-                        <input type="text" name="name" value="<?php echo esc_attr( $editing->name ?? '' ); ?>" class="regular-text" required></p>
-                    <p><label class="sp-fw-600"><?php esc_html_e( 'Sort Order', 'societypress' ); ?></label><br>
-                        <input type="number" name="sort_order" value="<?php echo esc_attr( $editing->sort_order ?? 0 ); ?>" min="0" class="sp-w-80"></p>
-                    <p><label><input type="checkbox" name="active" value="1" <?php checked( $editing->active ?? 1 ); ?>> <?php esc_html_e( 'Active', 'societypress' ); ?></label></p>
-                    <p><input type="submit" name="sp_save_library_cat" class="button button-primary" value="<?php echo $editing ? esc_attr__( 'Update', 'societypress' ) : esc_attr__( 'Add Category', 'societypress' ); ?>">
-                        <?php if ( $editing ) : ?><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a><?php endif; ?></p>
-                </form>
-            </div>
-            <div class="sp-flex-1">
-                <table class="wp-list-table widefat striped">
-                    <thead><tr><th scope="col"><?php esc_html_e( 'Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'URL Name', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th><th scope="col"><?php esc_html_e( 'Active', 'societypress' ); ?></th></tr></thead>
-                    <tbody>
-                        <?php foreach ( $categories as $cat ) :
-                            $edit_url   = admin_url( 'admin.php?page=sp-library-categories&action=edit&cat_id=' . $cat->id );
-                            // delete via POST form in row actions
-                        ?>
-                            <tr>
-                                <td><strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
-                                    <div class="row-actions"><span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span><span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-categories' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr__( 'Delete this library category? Items in it will become uncategorized.', 'societypress' ); ?>"><?php wp_nonce_field( 'sp_delete_library_cat_' . $cat->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="cat_id" value="<?php echo (int) $cat->id; ?>"><button type="submit" class="sp-link-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span></div>
-                                </td>
-                                <td><?php echo esc_html( $cat->slug ); ?></td>
-                                <td><?php echo (int) $cat->sort_order; ?></td>
-                                <td><?php echo $cat->active ? esc_html__( 'Yes', 'societypress' ) : esc_html__( 'No', 'societypress' ); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    <?php
-}
-
 
 // ============================================================================
 // LIBRARY IMPORT — CSV IMPORT FOR LIBRARY CATALOG
@@ -89408,9 +89242,8 @@ function sp_ajax_library_item_detail(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
     $item = $wpdb->get_row( $wpdb->prepare(
-        "SELECT li.*, lc.name as category_name
+        "SELECT li.*
          FROM {$prefix}library_items li
-         LEFT JOIN {$prefix}library_categories lc ON li.category_id = lc.id
          WHERE li.id = %d",
         $item_id
     ) );
@@ -89473,7 +89306,6 @@ function sp_ajax_library_item_detail(): void {
         'isbn'                => $item->isbn ?: '',
         'call_number'         => $item->call_number ?: '',
         'lccn'                => $item->lccn ?: '',
-        'category_name'       => $item->category_name ?: '',
         'shelf_location'      => $item->shelf_location ?: '',
         'geographic_location' => $item->geographic_location ?: '',
         'county'              => $item->county ?: '',

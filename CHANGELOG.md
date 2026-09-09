@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.35] — 2026-09-08
+
+**The library catalog no longer shows filters that have nothing in them.** A
+catalog only carries the details a society actually recorded, and plenty of
+collections have never used media types, shelf locations or acquisition codes
+at all. Until now the filter dropdowns appeared regardless, offering "All
+Types" and nothing else, and the browse panels — Browse by Collection, Popular
+Subjects, By Media Type, By Acquisition — stood as headings over empty white
+space. Both read as a broken page rather than an empty shelf: researchers
+opened a dropdown expecting choices and found none, and librarians assumed the
+screen had failed to load. Every one of these controls now appears only once
+there is something behind it, on the public catalog and in the admin catalog
+alike, so a filter on screen is always a filter that works.
+
 ## [1.5.34] — 2026-09-04
 
 **Searching a list no longer throws you back to the top of the page.** These

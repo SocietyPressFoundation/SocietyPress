@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.34
+ * Version:     1.5.35
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.34' );
+define( 'SOCIETYPRESS_VERSION', '1.5.35' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39612,7 +39612,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.34',
+            'version'     => '1.5.35',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39620,7 +39620,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.34',
+            'version'     => '1.5.35',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39628,7 +39628,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.34',
+            'version'     => '1.5.35',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39636,7 +39636,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.34',
+            'version'     => '1.5.35',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39644,7 +39644,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.34',
+            'version'     => '1.5.35',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -71120,22 +71120,32 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         sp_carry_query_args( [ 'sp_lib_media', 'sp_lib_acq', 'sp_lib_sort', 'sp_lib_pg' ] );
 
         // Media type filter
-        echo '<select name="sp_lib_media" aria-label="' . esc_attr__( 'Filter by media type', 'societypress' ) . '" class="sp-autosubmit">';
-        echo '<option value="">' . esc_html__( 'All Types', 'societypress' ) . '</option>';
-        foreach ( $media_types as $mt ) {
-            $sel = ( $media_filter === $mt ) ? ' selected' : '';
-            echo '<option value="' . esc_attr( $mt ) . '"' . $sel . '>' . esc_html( $mt ) . '</option>';
+        // WHY the emptiness check: a catalog that carries no media types at all
+        //      — a fresh install, or an import that never mapped the column —
+        //      would otherwise render a dropdown whose only entry is "All
+        //      Types". A researcher opens it, finds nothing to choose, and
+        //      reasonably concludes the search is broken. A filter with nothing
+        //      to filter by is worse than no filter, so it does not appear.
+        if ( $media_types ) {
+            echo '<select name="sp_lib_media" aria-label="' . esc_attr__( 'Filter by media type', 'societypress' ) . '" class="sp-autosubmit">';
+            echo '<option value="">' . esc_html__( 'All Types', 'societypress' ) . '</option>';
+            foreach ( $media_types as $mt ) {
+                $sel = ( $media_filter === $mt ) ? ' selected' : '';
+                echo '<option value="' . esc_attr( $mt ) . '"' . $sel . '>' . esc_html( $mt ) . '</option>';
+            }
+            echo '</select>';
         }
-        echo '</select>';
 
         // Acquisition code filter
-        echo '<select name="sp_lib_acq" aria-label="' . esc_attr__( 'Filter by source', 'societypress' ) . '" class="sp-autosubmit">';
-        echo '<option value="">' . esc_html__( 'All Sources', 'societypress' ) . '</option>';
-        foreach ( $acq_codes as $ac ) {
-            $sel = ( $acq_filter === $ac ) ? ' selected' : '';
-            echo '<option value="' . esc_attr( $ac ) . '"' . $sel . '>' . esc_html( $ac ) . '</option>';
+        if ( $acq_codes ) {
+            echo '<select name="sp_lib_acq" aria-label="' . esc_attr__( 'Filter by source', 'societypress' ) . '" class="sp-autosubmit">';
+            echo '<option value="">' . esc_html__( 'All Sources', 'societypress' ) . '</option>';
+            foreach ( $acq_codes as $ac ) {
+                $sel = ( $acq_filter === $ac ) ? ' selected' : '';
+                echo '<option value="' . esc_attr( $ac ) . '"' . $sel . '>' . esc_html( $ac ) . '</option>';
+            }
+            echo '</select>';
         }
-        echo '</select>';
 
         // Sort
         echo '<select name="sp_lib_sort" aria-label="' . esc_attr__( 'Sort results', 'societypress' ) . '" class="sp-autosubmit">';
@@ -71171,51 +71181,66 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     //      or subject area without typing anything. Once a filter is active
     //      these collapse so the results take center stage.
     // ================================================================
-    if ( $show_landing && ! $has_active_filter ) {
+    // WHY the count checks: both halves of this section are built entirely from
+    //      catalogued values. A collection with no media types has no cards to
+    //      show, and one with no subjects has no tags — leaving a heading
+    //      standing over empty space, which reads as a broken link rather than
+    //      an empty shelf. Each half appears only when it has something to
+    //      offer, and the section as a whole disappears when neither does.
+    $has_type_browse    = ! empty( $stats['type_counts'] );
+    $has_subject_browse = ! empty( $stats['subject_counts'] );
+
+    if ( $show_landing && ! $has_active_filter && ( $has_type_browse || $has_subject_browse ) ) {
         echo '<div class="sp-catalog-browse">';
 
-        // ---- Browse by media type ----
-        echo '<h3>' . esc_html__( 'Browse by Collection', 'societypress' ) . '</h3>';
-        echo '<div class="sp-catalog-type-grid">';
-
-        // WHY: Simple SVG icons give visual weight to the cards without adding
-        //      external dependencies. Each icon is a single inline <svg> — no
-        //      icon font, no image requests, no accessibility issues.
-        $type_icons = [
-            'Book'          => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
-            'Periodicals'   => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 4v16"/></svg>',
-            'Map'           => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
-            'Vertical File' => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
-            'eBook'         => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="12" y2="14"/></svg>',
-            'Rare Books'    => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
-        ];
-
+        // Both halves link back to this page with a filter applied.
         $base_catalog_url = get_permalink();
-        foreach ( $stats['type_counts'] as $tc ) {
-            $filter_url = add_query_arg( 'sp_lib_media', $tc->media_type, $base_catalog_url );
-            $icon = $type_icons[ $tc->media_type ] ?? $type_icons['Book'];
-            $is_active = ( $media_filter === $tc->media_type ) ? ' active' : '';
 
-            echo '<a href="' . esc_url( $filter_url ) . '" class="sp-catalog-type-card' . $is_active . '">';
-            echo '<span class="sp-catalog-type-icon">' . $icon . '</span>';
-            echo '<span class="sp-catalog-type-name">' . esc_html( $tc->media_type ) . '</span>';
-            /* translators: %s: formatted number of catalog items */
-            echo '<span class="sp-catalog-type-count">' . esc_html( sprintf( __( '%s items', 'societypress' ), number_format( $tc->cnt ) ) ) . '</span>';
-            echo '</a>';
+        // ---- Browse by media type ----
+        if ( $has_type_browse ) {
+            echo '<h3>' . esc_html__( 'Browse by Collection', 'societypress' ) . '</h3>';
+            echo '<div class="sp-catalog-type-grid">';
+
+            // WHY: Simple SVG icons give visual weight to the cards without adding
+            //      external dependencies. Each icon is a single inline <svg> — no
+            //      icon font, no image requests, no accessibility issues.
+            $type_icons = [
+                'Book'          => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+                'Periodicals'   => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16v16H4z"/><path d="M4 8h16"/><path d="M8 4v16"/></svg>',
+                'Map'           => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
+                'Vertical File' => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+                'eBook'         => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="6" x2="15" y2="6"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="12" y2="14"/></svg>',
+                'Rare Books'    => '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+            ];
+
+            foreach ( $stats['type_counts'] as $tc ) {
+                $filter_url = add_query_arg( 'sp_lib_media', $tc->media_type, $base_catalog_url );
+                $icon = $type_icons[ $tc->media_type ] ?? $type_icons['Book'];
+                $is_active = ( $media_filter === $tc->media_type ) ? ' active' : '';
+
+                echo '<a href="' . esc_url( $filter_url ) . '" class="sp-catalog-type-card' . $is_active . '">';
+                echo '<span class="sp-catalog-type-icon">' . $icon . '</span>';
+                echo '<span class="sp-catalog-type-name">' . esc_html( $tc->media_type ) . '</span>';
+                /* translators: %s: formatted number of catalog items */
+                echo '<span class="sp-catalog-type-count">' . esc_html( sprintf( __( '%s items', 'societypress' ), number_format( $tc->cnt ) ) ) . '</span>';
+                echo '</a>';
+            }
+            echo '</div>'; // close type grid
         }
-        echo '</div>'; // close type grid
 
         // ---- Browse by subject ----
-        echo '<h3>' . esc_html__( 'Popular Subjects', 'societypress' ) . '</h3>';
-        echo '<div class="sp-catalog-subject-cloud">';
-        foreach ( $stats['subject_counts'] as $subj_name => $subj_cnt ) {
-            $subj_url = add_query_arg( 'sp_lib_subject', $subj_name, $base_catalog_url );
-            echo '<a href="' . esc_url( $subj_url ) . '" class="sp-catalog-subject-tag">';
-            echo esc_html( $subj_name );
-            echo ' <span class="sp-tag-count">(' . number_format( $subj_cnt ) . ')</span>';
-            echo '</a>';
+        if ( $has_subject_browse ) {
+            echo '<h3>' . esc_html__( 'Popular Subjects', 'societypress' ) . '</h3>';
+            echo '<div class="sp-catalog-subject-cloud">';
+            foreach ( $stats['subject_counts'] as $subj_name => $subj_cnt ) {
+                $subj_url = add_query_arg( 'sp_lib_subject', $subj_name, $base_catalog_url );
+                echo '<a href="' . esc_url( $subj_url ) . '" class="sp-catalog-subject-tag">';
+                echo esc_html( $subj_name );
+                echo ' <span class="sp-tag-count">(' . number_format( $subj_cnt ) . ')</span>';
+                echo '</a>';
+            }
+            echo '</div>'; // close subject cloud
         }
-        echo '</div>'; // close subject cloud
 
         echo '</div>'; // close .sp-catalog-browse
 
@@ -76361,8 +76386,21 @@ function sp_render_library_catalog_page(): void {
             </div>
         </div>
 
-        <?php if ( ! $search && ! $media_filter && ! $shelf_filter && ! $acq_filter ) : ?>
+        <?php
+        // WHY each card is conditional: a breakdown of a field nobody has filled
+        //      in is a titled white box with nothing under it. The librarian
+        //      cannot tell whether that means "no data yet" or "this screen is
+        //      broken", and reasonably assumes the latter. A card earns its
+        //      place by having rows; the grid earns its place by having cards.
+        $has_media_breakdown = ! empty( $stats_by_media );
+        $has_acq_breakdown   = ! empty( $stats_by_acq );
+        $has_recent          = ! empty( $stats_recent );
+        $show_breakdowns     = ! $search && ! $media_filter && ! $shelf_filter && ! $acq_filter
+            && ( $has_media_breakdown || $has_acq_breakdown || $has_recent );
+        ?>
+        <?php if ( $show_breakdowns ) : ?>
         <div class="sp-catalog-breakdown-grid">
+            <?php if ( $has_media_breakdown ) : ?>
             <div class="sp-catalog-breakdown-card">
                 <h3><?php esc_html_e( 'By Media Type', 'societypress' ); ?></h3>
                 <?php foreach ( $stats_by_media as $row ) : ?>
@@ -76372,6 +76410,8 @@ function sp_render_library_catalog_page(): void {
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
+            <?php if ( $has_acq_breakdown ) : ?>
             <div class="sp-catalog-breakdown-card">
                 <h3><?php esc_html_e( 'By Acquisition', 'societypress' ); ?></h3>
                 <?php foreach ( $stats_by_acq as $row ) : ?>
@@ -76381,6 +76421,8 @@ function sp_render_library_catalog_page(): void {
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
+            <?php if ( $has_recent ) : ?>
             <div class="sp-catalog-breakdown-card">
                 <h3><?php esc_html_e( 'Recently Added', 'societypress' ); ?></h3>
                 <?php foreach ( $stats_recent as $row ) : ?>
@@ -76392,6 +76434,7 @@ function sp_render_library_catalog_page(): void {
                     </div>
                 <?php endforeach; ?>
             </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
@@ -76401,6 +76444,12 @@ function sp_render_library_catalog_page(): void {
             <div>
                 <input type="text" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php echo esc_attr__( 'Search title, author, call #, subject, surname…', 'societypress' ); ?>" class="sp-catalog-search-input">
             </div>
+            <?php
+            // Same rule as the public catalog: a dropdown whose only entry is
+            // "All …" tells the librarian nothing and looks broken, so a filter
+            // appears only once the collection has values to filter on.
+            ?>
+            <?php if ( $media_types ) : ?>
             <div>
                 <select name="media_type">
                     <option value=""><?php esc_html_e( 'All Media Types', 'societypress' ); ?></option>
@@ -76409,6 +76458,8 @@ function sp_render_library_catalog_page(): void {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
+            <?php if ( $shelf_locations ) : ?>
             <div>
                 <select name="shelf">
                     <option value=""><?php esc_html_e( 'All Locations', 'societypress' ); ?></option>
@@ -76417,6 +76468,8 @@ function sp_render_library_catalog_page(): void {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
+            <?php if ( $acq_codes ) : ?>
             <div>
                 <select name="acq_code">
                     <option value=""><?php esc_html_e( 'All Acquisition Types', 'societypress' ); ?></option>
@@ -76425,6 +76478,7 @@ function sp_render_library_catalog_page(): void {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <?php endif; ?>
             <input type="submit" class="button" value="<?php echo esc_attr__( 'Filter', 'societypress' ); ?>">
             <?php if ( $search || $media_filter || $shelf_filter || $acq_filter ) : ?>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>

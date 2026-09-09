@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.42] — 2026-09-08
+
+**A stray note in the Store's table definition stopped filling the error log.**
+An explanatory comment sat inside the statement that builds the store products
+table. WordPress reads that statement a line at a time and has no notion of an
+SQL comment, so it took the note for a column and tried to add it to the table
+on every single admin page load — failing each time and writing the failure to
+the log. The columns themselves were always created correctly and no data was
+affected; the note now sits above the statement instead of inside it.
+
 ## [1.5.41] — 2026-09-08
 
 **Media Type, Subject and Location now take as many values as an item needs.**

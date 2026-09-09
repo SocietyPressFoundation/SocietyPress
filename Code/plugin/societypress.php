@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.38
+ * Version:     1.5.39
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.38' );
+define( 'SOCIETYPRESS_VERSION', '1.5.39' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1936,12 +1936,14 @@ function sp_create_tables(): void {
         cover_url           VARCHAR(500)        NULL,
         store_category      VARCHAR(50)         NULL,
         store_description   TEXT                NULL,
+        for_sale            TINYINT(1)          NOT NULL DEFAULT 0,
         created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY system_id (system_id),
         KEY category_id (category_id),
         KEY available (available),
+        KEY for_sale (for_sale),
         KEY call_number (call_number),
         KEY shelf_location (shelf_location),
         KEY media_type (media_type),
@@ -4924,6 +4926,49 @@ add_action( 'admin_init', function () {
     if ( empty( $col ) ) {
         $wpdb->query( "ALTER TABLE {$table} ADD COLUMN role_type VARCHAR(20) NOT NULL DEFAULT 'volunteer' AFTER committee" );
         $wpdb->query( "ALTER TABLE {$table} ADD KEY role_type (role_type)" );
+    }
+} );
+
+
+// ============================================================================
+// MIGRATION: library_items.for_sale
+//
+// WHY: The Store used to decide what was for sale by looking for a price —
+//      any catalog item with a Value above 0 appeared in the shop. But a
+//      library records what an item is worth for insurance and accession
+//      long before anyone considers selling it, and most societies never
+//      sell from the collection at all. A catalog imported with its values
+//      intact would quietly put thousands of reference books in the shop
+//      window the day the Store was switched on.
+//
+// WHY the backfill is conditional: a society already running a Store has
+//      items on sale right now purely because they carry a price, and an
+//      upgrade must not empty their shop overnight. Where the Store is on,
+//      every priced item keeps selling. Where it is off, nothing is opted
+//      in, so switching the Store on later shows an empty shop rather than
+//      the whole library.
+// ============================================================================
+add_action( 'admin_init', function () {
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_library_items';
+
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+        return;
+    }
+
+    if ( $wpdb->get_results( "SHOW COLUMNS FROM {$table} LIKE 'for_sale'" ) ) {
+        return;
+    }
+
+    $wpdb->query( "ALTER TABLE {$table} ADD COLUMN for_sale TINYINT(1) NOT NULL DEFAULT 0 AFTER store_description" );
+    $wpdb->query( "ALTER TABLE {$table} ADD KEY for_sale (for_sale)" );
+
+    $settings = get_option( 'societypress_settings', [] );
+    if ( ! empty( $settings['modules']['store'] ) ) {
+        $wpdb->query( "UPDATE {$table} SET for_sale = 1 WHERE item_value IS NOT NULL AND item_value > 0" );
     }
 } );
 
@@ -39580,7 +39625,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.38',
+            'version'     => '1.5.39',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39588,7 +39633,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.38',
+            'version'     => '1.5.39',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39596,7 +39641,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.38',
+            'version'     => '1.5.39',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39604,7 +39649,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.38',
+            'version'     => '1.5.39',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39612,7 +39657,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.38',
+            'version'     => '1.5.39',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -76569,6 +76614,7 @@ function sp_render_library_item_edit_page(): void {
             // Store-only fields. Set independently from library metadata so a
             // for-sale item can carry marketing copy without polluting the
             // catalog's physical/bibliographic description.
+            'for_sale'            => ! empty( $_POST['for_sale'] ) ? 1 : 0,
             'store_category'      => sanitize_text_field( wp_unslash( $_POST['store_category'] ?? '' ) ) ?: null,
             'store_description'   => sanitize_textarea_field( wp_unslash( $_POST['store_description'] ?? '' ) ) ?: null,
         ];
@@ -76814,9 +76860,14 @@ function sp_render_library_item_edit_page(): void {
             <!-- ====== STORE LISTING ====== -->
             <h2><?php esc_html_e( 'Store Listing', 'societypress' ); ?></h2>
             <p class="description sp-lib-edit-store-help">
-                <?php esc_html_e( 'These fields apply only when this item is for sale (Value above 0). They are independent of the library catalog Description above, so marketing copy stays separate from physical/bibliographic notes.', 'societypress' ); ?>
+                <?php esc_html_e( 'Only items you tick below are offered for sale. Recording what an item is worth does not put it in the Store. These fields are separate from the catalog Description above, so marketing copy stays apart from physical and bibliographic notes.', 'societypress' ); ?>
             </p>
             <table class="form-table">
+                <tr>
+                    <th scope="col"><?php esc_html_e( 'Offer for sale', 'societypress' ); ?></th>
+                    <td><label><input type="checkbox" name="for_sale" value="1" <?php checked( $item->for_sale ?? 0 ); ?>> <?php esc_html_e( 'List this item for sale in the Store', 'societypress' ); ?></label>
+                    <p class="description"><?php esc_html_e( 'Needs a Value above 0 to have a price. Leave unticked for anything held in the collection — a value recorded for insurance or accession is not a price.', 'societypress' ); ?></p></td>
+                </tr>
                 <tr>
                     <th scope="col"><label for="store_category"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
                     <td><input type="text" name="store_category" id="store_category" class="regular-text" value="<?php echo esc_attr( $item->store_category ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., Books, Apparel, Pins, Maps', 'societypress' ); ?>">
@@ -98430,7 +98481,13 @@ function sp_store_get_unified_listing( array $args = [] ): array {
 
     // ---- Library-source products ----
     $store_acq_code = trim( $settings['store_acq_code'] ?? '' );
-    $lib_where      = 'item_value IS NOT NULL AND item_value > 0';
+    // WHY for_sale and not just a price: a library records what an item is
+    //      worth for insurance and accession long before anyone thinks about
+    //      selling it, and most never sell anything at all. Treating any
+    //      valued item as merchandise put whole reference collections in the
+    //      shop window. Selling is now something a librarian says explicitly;
+    //      the price still has to be there for the listing to make sense.
+    $lib_where      = 'for_sale = 1 AND item_value IS NOT NULL AND item_value > 0';
     if ( $store_acq_code !== '' ) {
         $lib_where .= $wpdb->prepare( ' AND acq_code = %s', $store_acq_code );
     }
@@ -98566,7 +98623,7 @@ function sp_store_lookup( string $source, int $id ): ?array {
     $row = $wpdb->get_row( $wpdb->prepare(
         "SELECT id, title, author, pub_year, description, store_description, item_value, shipping_fee, cover_url, store_category
          FROM {$prefix}library_items
-         WHERE id = %d AND item_value IS NOT NULL AND item_value > 0",
+         WHERE id = %d AND for_sale = 1 AND item_value IS NOT NULL AND item_value > 0",
         $id
     ) );
     if ( ! $row ) return null;

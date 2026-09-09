@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.39] — 2026-09-08
+
+**Recording what an item is worth no longer puts it up for sale.** The Store
+decided what to offer by looking for a price: any catalog item with a Value
+above 0 appeared in the shop. But a library records what an item is worth for
+insurance and accession long before anyone considers selling it, and most
+societies never sell from the collection at all — so a catalog imported with
+its values intact would quietly put thousands of reference books in the shop
+window the moment the Store was switched on. Selling is now something a
+librarian says explicitly: each item has a "List this item for sale in the
+Store" tick box, off unless chosen, and a price is still needed for the
+listing to make sense. Societies already running a Store keep every priced
+item on sale, so nothing disappears from an existing shop on upgrade.
+
 ## [1.5.38] — 2026-09-08
 
 **The library's Category field is gone; Media Type does the job.** A catalog

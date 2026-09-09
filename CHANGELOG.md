@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.36] — 2026-09-08
+
+**Members-only pages no longer appear in the menu for people who aren't
+members.** The menu hid "Members" and "Member Directory" from logged-out
+visitors, but it decided by asking whether anyone was signed in — not whether
+the person signed in actually belongs to the society. Anyone with a site
+account but no membership, a volunteer or a lapsed member among them, saw
+those links, followed them, and hit a wall. The menu now asks the same
+question the page itself asks, so a link that appears is a link that opens.
+This covers the member directory and every page a society has marked
+members-only.
+
+**A catalog import now shows what it actually brought in.** The import
+reported the number of items and nothing more, so a catalog could arrive
+cleanly with only titles and authors — every other column left on "Skip", or
+blank in the export — and read as a complete success. Months later the
+searching and filtering had nothing to work with and nobody knew why. The
+results screen now lists every field alongside the column it came from and
+how many items received a value, and says plainly when a field arrived empty
+so the mapping can be corrected and the import run again.
+
 ## [1.5.35] — 2026-09-08
 
 **The library catalog no longer shows filters that have nothing in them.** A

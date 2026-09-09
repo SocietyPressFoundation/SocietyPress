@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.35
+ * Version:     1.5.36
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.35' );
+define( 'SOCIETYPRESS_VERSION', '1.5.36' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -10640,6 +10640,7 @@ function sp_affiliation_logos( string $slot = 'below' ): void {
 // WHY: Some pages only make sense for certain audiences:
 //      - "Join" is irrelevant for someone who's already a member
 //      - "Directory" (sp-directory template) is members-only by design
+//      - Any page the society flagged members-only (_sp_members_only meta)
 //      - "My Account" (sp-my-account template) only works when logged in
 //
 //      Rather than expecting Harold to create multiple menus with visibility
@@ -10653,6 +10654,16 @@ function sp_affiliation_logos( string $slot = 'below' ): void {
 
 add_filter( 'wp_nav_menu_objects', function ( array $items ): array {
     $logged_in = is_user_logged_in();
+
+    // WHY membership and not just login: the pages being hidden here gate on
+    //      "is this person a member?", but this filter used to ask only "is
+    //      anyone logged in?". Those two answers differ for exactly the people
+    //      the nav is meant to protect — a visitor with a site account, a
+    //      volunteer, a lapsed member — who logged in, saw "Members" and
+    //      "Member Directory" in the nav, clicked, and hit a wall. Asking the
+    //      same question the page asks keeps the menu honest.
+    //      Computed once per menu render rather than per item.
+    $is_member = $logged_in && sp_is_member();
 
     // Cache page template lookups to avoid N queries per menu render
     static $template_cache = [];
@@ -10687,10 +10698,21 @@ add_filter( 'wp_nav_menu_objects', function ( array $items ): array {
             }
         }
 
+        // Any page the society marked members-only, plus the directory, which
+        // is members-only by design. Non-members never see the link, whether
+        // they are logged out or logged in without a membership.
+        if ( ! isset( $template_cache[ 'gated_' . $page_id ] ) ) {
+            $template_cache[ 'gated_' . $page_id ] = get_post_meta( $page_id, '_sp_members_only', true ) === '1';
+        }
+        if ( ! $is_member && ( $template_cache[ 'gated_' . $page_id ] || $template === 'sp-directory' ) ) {
+            unset( $items[ $key ] );
+            continue;
+        }
+
         // Hide for logged-out visitors
         if ( ! $logged_in ) {
-            // Directory and My Account — require login anyway
-            if ( in_array( $template, [ 'sp-directory', 'sp-my-account' ], true ) ) {
+            // My Account needs a login, member or not.
+            if ( $template === 'sp-my-account' ) {
                 unset( $items[ $key ] );
                 continue;
             }
@@ -39612,7 +39634,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.35',
+            'version'     => '1.5.36',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39620,7 +39642,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.35',
+            'version'     => '1.5.36',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39628,7 +39650,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.35',
+            'version'     => '1.5.36',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39636,7 +39658,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.35',
+            'version'     => '1.5.36',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39644,7 +39666,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.35',
+            'version'     => '1.5.36',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -77059,9 +77081,18 @@ function sp_process_library_import( string $file_path, array $field_map ): array
     $prefix = $wpdb->prefix . 'sp_';
 
     $results = [
-        'imported' => 0,
-        'skipped'  => 0,
-        'errors'   => [],
+        'imported'   => 0,
+        'skipped'    => 0,
+        'errors'     => [],
+        // WHY the fill census: an import can report thousands of rows and
+        //      still land almost nothing, because a column left on "Skip" —
+        //      or one the export filled with blanks — fails silently. The
+        //      librarian sees "19,731 items imported", trusts it, and only
+        //      discovers months later that every filter is empty. Counting
+        //      how many rows actually received each field turns that into
+        //      something visible on the results screen.
+        'field_fill' => [],
+        'field_cols' => [],
     ];
 
     $handle = fopen( $file_path, 'r' );
@@ -77104,6 +77135,17 @@ function sp_process_library_import( string $file_path, array $field_map ): array
                 $target_to_index[ $target ] = $idx;
             }
         }
+    }
+
+    // Remember which CSV column fed each field, so the results screen can name
+    // the column the librarian chose rather than just the field that stayed empty.
+    foreach ( $target_to_index as $target => $col_idx ) {
+        $results['field_cols'][ $target ] = $headers[ $col_idx ] ?? sprintf(
+            /* translators: %d: CSV column number */
+            __( 'column %d', 'societypress' ),
+            $col_idx + 1
+        );
+        $results['field_fill'][ $target ] = 0;
     }
 
     // Helper to get a value from a row by target key
@@ -77243,6 +77285,13 @@ function sp_process_library_import( string $file_path, array $field_map ): array
             }
         } else {
             $results['imported']++;
+            // Tally which fields actually arrived with something in them.
+            foreach ( $results['field_fill'] as $target => $unused ) {
+                $written = $data[ $target ] ?? ( $target === 'value' ? $data['item_value'] ?? null : null );
+                if ( $written !== null && $written !== '' ) {
+                    $results['field_fill'][ $target ]++;
+                }
+            }
             // Track for duplicate detection within the same import
             if ( $system_id !== null ) {
                 $existing_ids[ $system_id ] = true;
@@ -77560,6 +77609,8 @@ function sp_render_library_import_page(): void {
         .sp-lib-import-col-num { width: 30px; }
         .sp-lib-import-col-map { width: 280px; }
         .sp-lib-import-hr { margin: 20px 0; }
+        .sp-lib-import-fill-table { max-width: 700px; margin-bottom: 20px; }
+        .sp-lib-import-fill-empty td { background: #fcf0f1; }
     </style>
     <div class="wrap">
         <h1><?php esc_html_e( 'Import Library Catalog', 'societypress' ); ?></h1>
@@ -77592,6 +77643,84 @@ function sp_render_library_import_page(): void {
                         <?php endforeach; ?>
                     </ul>
                 </div>
+            <?php endif; ?>
+
+            <?php
+            // ------------------------------------------------------------
+            // What actually landed, field by field.
+            //
+            // WHY this screen exists: the count of imported rows says nothing
+            //      about how complete those rows are. A catalog can import
+            //      cleanly and still arrive with only a title and an author,
+            //      because the remaining columns were left on "Skip" or the
+            //      export filled them with blanks. Nothing failed, so nothing
+            //      was reported, and the gap surfaced much later as filters
+            //      with no choices in them. Showing the per-field counts here
+            //      — and calling out the empty ones — puts the problem in
+            //      front of the person who can still fix it by re-importing.
+            // ------------------------------------------------------------
+            $fill  = $results['field_fill'] ?? [];
+            $cols  = $results['field_cols'] ?? [];
+            $empty = array_keys( array_filter( $fill, static function ( $n ) {
+                return (int) $n === 0;
+            } ) );
+            ?>
+            <?php if ( $fill && $results['imported'] > 0 ) : ?>
+                <?php if ( $empty ) : ?>
+                    <div class="notice notice-warning">
+                        <p>
+                            <strong><?php esc_html_e( 'Some fields came in empty.', 'societypress' ); ?></strong>
+                            <?php
+                            printf(
+                                esc_html(
+                                    /* translators: %s: number of fields that received no data */
+                                    _n(
+                                        '%s field was mapped but no row had a value for it. That field will have nothing to search or filter on.',
+                                        '%s fields were mapped but no row had a value for them. Those fields will have nothing to search or filter on.',
+                                        count( $empty ),
+                                        'societypress'
+                                    )
+                                ),
+                                number_format( count( $empty ) )
+                            );
+                            ?>
+                            <?php esc_html_e( 'Check the highlighted rows below — usually the column was pointed at the wrong heading, or that heading is blank in the export. You can re-run the import with a corrected mapping.', 'societypress' ); ?>
+                        </p>
+                    </div>
+                <?php endif; ?>
+
+                <h2><?php esc_html_e( 'What was filled in', 'societypress' ); ?></h2>
+                <table class="wp-list-table widefat striped sp-lib-import-fill-table">
+                    <thead>
+                        <tr>
+                            <th scope="col"><?php esc_html_e( 'Catalog field', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'From column', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Items with a value', 'societypress' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $fill as $target => $count ) : ?>
+                            <tr<?php echo (int) $count === 0 ? ' class="sp-lib-import-fill-empty"' : ''; ?>>
+                                <td><?php echo esc_html( $target_fields[ $target ] ?? $target ); ?></td>
+                                <td><?php echo esc_html( $cols[ $target ] ?? '' ); ?></td>
+                                <td>
+                                    <?php
+                                    if ( (int) $count === 0 ) {
+                                        echo '<strong>' . esc_html__( 'none', 'societypress' ) . '</strong>';
+                                    } else {
+                                        printf(
+                                            /* translators: 1: rows with a value, 2: rows imported */
+                                            esc_html__( '%1$s of %2$s', 'societypress' ),
+                                            esc_html( number_format( (int) $count ) ),
+                                            esc_html( number_format( $results['imported'] ) )
+                                        );
+                                    }
+                                    ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
             <?php endif; ?>
 
             <?php

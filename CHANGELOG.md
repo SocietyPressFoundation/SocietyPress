@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.41] — 2026-09-08
+
+**Media Type, Subject and Location now take as many values as an item needs.**
+A book about Texas cemeteries during the Civil War is all three subjects, and a
+volume can be both a periodical and a rare book, but these fields held one
+value each. Catalogers did the only thing available and typed several into the
+single box, which the catalog then read as one long value: the public filters
+offered "Book, Rare Books" and "Rare Books, Book" as though they were two
+different collections, and the subject facets split "Alamo, The" into "Alamo"
+and "The" — a subject nobody had chosen.
+
+Each of the three is now a list of tick boxes drawn from the society's own
+vocabulary, with a box to narrow a long list by typing and the same "add one
+that is not listed" it always had. Filters, the Browse by Collection cards, the
+Popular Subjects tags and the admin breakdowns all count individual values, so
+a facet means what it says. Existing catalogs are converted on upgrade, and the
+conversion consults the society's vocabulary before treating any comma as a
+separator, so terms that contain one survive whole.
+
 ## [1.5.40] — 2026-09-08
 
 **A reference-only library is no longer asked about lending.** Society

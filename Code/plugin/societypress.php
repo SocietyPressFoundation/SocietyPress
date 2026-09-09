@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.40
+ * Version:     1.5.41
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.40' );
+define( 'SOCIETYPRESS_VERSION', '1.5.41' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1908,7 +1908,7 @@ function sp_create_tables(): void {
         pub_year            SMALLINT UNSIGNED   NULL,
         pub_month           TINYINT UNSIGNED    NULL,
         pub_day             TINYINT UNSIGNED    NULL,
-        media_type          VARCHAR(50)         NULL,
+        media_type          VARCHAR(191)        NULL,
         use_serials         TINYINT(1)          NOT NULL DEFAULT 0,
         isbn                VARCHAR(20)         NULL,
         call_number         VARCHAR(50)         NULL,
@@ -4927,6 +4927,58 @@ add_action( 'admin_init', function () {
         $wpdb->query( "ALTER TABLE {$table} ADD COLUMN role_type VARCHAR(20) NOT NULL DEFAULT 'volunteer' AFTER committee" );
         $wpdb->query( "ALTER TABLE {$table} ADD KEY role_type (role_type)" );
     }
+} );
+
+
+// ============================================================================
+// MIGRATION: comma-joined catalog values become properly separated ones
+//
+// WHY: Media Type, Subject and Location were single-value fields, so catalogers
+//      and legacy imports packed several values into one cell separated by
+//      commas. The public catalog then offered "Book, Rare Books" and "Rare
+//      Books, Book" as two different collections, and the subject facets split
+//      "Alamo, The" into "Alamo" and "The" — a subject nobody chose.
+//
+// WHY the split consults the society's own vocabulary: a comma is inside some
+//      real terms. Matching the longest known terms first rescues them before
+//      the remaining commas are treated as separators.
+//
+// The column is widened first: several values no longer fit in the 50
+// characters a single media type needed.
+// ============================================================================
+add_action( 'admin_init', function () {
+    if ( get_transient( 'sp_schema_synced' ) === SOCIETYPRESS_VERSION ) {
+        return;
+    }
+    if ( get_option( 'sp_library_values_separated' ) ) {
+        return;
+    }
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_library_items';
+
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $table ) ) ) !== $table ) {
+        return;
+    }
+
+    $wpdb->query( "ALTER TABLE {$table} MODIFY media_type VARCHAR(191) NULL" );
+
+    $kinds = [ 'media_type' => 'media_type', 'subject' => 'subject', 'geographic_location' => 'geographic_location' ];
+    foreach ( $kinds as $column => $kind ) {
+        $rows = $wpdb->get_results(
+            "SELECT id, {$column} AS val FROM {$table}
+             WHERE {$column} IS NOT NULL AND {$column} != '' AND {$column} LIKE '%,%'"
+        );
+        foreach ( $rows as $row ) {
+            $joined = sp_library_join_values( sp_library_split_values( (string) $row->val, $kind ) );
+            if ( $joined !== (string) $row->val ) {
+                $wpdb->update( $table, [ $column => $joined ], [ 'id' => (int) $row->id ] );
+            }
+        }
+    }
+
+    delete_transient( 'sp_library_catalog_stats' );
+    update_option( 'sp_library_values_separated', 1, false );
 } );
 
 
@@ -39625,7 +39677,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.40',
+            'version'     => '1.5.41',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39633,7 +39685,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.40',
+            'version'     => '1.5.41',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39641,7 +39693,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.40',
+            'version'     => '1.5.41',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39649,7 +39701,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.40',
+            'version'     => '1.5.41',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39657,7 +39709,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.40',
+            'version'     => '1.5.41',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -70703,7 +70755,7 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         }
     }
     if ( $media_filter ) {
-        $where[] = $wpdb->prepare( 'li.media_type = %s', $media_filter );
+        $where[] = sp_library_value_match_sql( 'li.media_type', $media_filter );
     }
     if ( $subj_filter ) {
         // Subject is comma-separated — match as substring
@@ -70747,20 +70799,18 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     $stats = get_transient( 'sp_library_catalog_stats' );
     if ( false === $stats ) {
         $total_items = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items" );
-        $type_counts = $wpdb->get_results(
-            "SELECT media_type, COUNT(*) as cnt FROM {$prefix}library_items WHERE media_type IS NOT NULL AND media_type != '' GROUP BY media_type ORDER BY cnt DESC"
-        );
+        $type_counts = [];
+        foreach ( sp_library_value_counts( 'media_type', 'media_type' ) as $mt_name => $mt_cnt ) {
+            $type_counts[] = (object) [ 'media_type' => $mt_name, 'cnt' => $mt_cnt ];
+        }
         // Top subjects for the tag cloud
         $subject_rows = $wpdb->get_col(
             "SELECT subject FROM {$prefix}library_items WHERE subject IS NOT NULL AND subject != ''"
         );
         $subject_counts = [];
         foreach ( $subject_rows as $subj_raw ) {
-            foreach ( explode( ',', $subj_raw ) as $part ) {
-                $part = trim( $part );
-                if ( $part ) {
-                    $subject_counts[ $part ] = ( $subject_counts[ $part ] ?? 0 ) + 1;
-                }
+            foreach ( sp_library_split_values( (string) $subj_raw, 'subject' ) as $part ) {
+                $subject_counts[ $part ] = ( $subject_counts[ $part ] ?? 0 ) + 1;
             }
         }
         arsort( $subject_counts );
@@ -71364,9 +71414,18 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
 
                     case 'media_type':
                         echo '<td data-label="' . esc_attr( $label ) . '">';
-                        echo $item->media_type
-                            ? '<span class="sp-item-media-type">' . esc_html( $item->media_type ) . '</span>'
+                        $mt_display = sp_library_display_values( (string) ( $item->media_type ?? '' ), 'media_type' );
+                        echo $mt_display
+                            ? '<span class="sp-item-media-type">' . esc_html( $mt_display ) . '</span>'
                             : '—';
+                        echo '</td>';
+                        break;
+
+                    // Subject holds several values; the storage separator is
+                    // never something a researcher should see.
+                    case 'subject':
+                        echo '<td data-label="' . esc_attr( $label ) . '">';
+                        echo esc_html( sp_library_display_values( (string) ( $item->subject ?? '' ), 'subject' ) ?: '—' );
                         echo '</td>';
                         break;
 
@@ -75790,6 +75849,170 @@ function sp_library_list_add( string $kind, string $value ): void {
  * @param string $kind    One of sp_library_list_kinds().
  * @param string $current The value currently on the item.
  */
+/**
+ * How several values share one catalog field.
+ *
+ * WHY a pipe and not a comma: a comma is already inside the vocabulary. "Alamo,
+ *      The" and "Addresses, Lectures & Essays" are single subjects, so splitting
+ *      a stored value on commas tears real terms in half and invents facets
+ *      ("Alamo", "The") that no cataloger chose. A pipe appears in none of the
+ *      shipped lists and is not something a cataloger types, so it can separate
+ *      values without ever being mistaken for one.
+ */
+const SP_LIBRARY_VALUE_SEP = '|';
+
+/**
+ * The individual values held in one catalog field.
+ *
+ * WHY the legacy branch: catalogs imported before multi-select arrived hold
+ *      comma-joined text from the old system. Rather than demand a migration
+ *      before anything reads correctly, an un-migrated value is split against
+ *      the society's own vocabulary — longest term first, so "Alamo, The" is
+ *      recognised whole before its comma is considered a separator.
+ *
+ * @param string $stored The raw column value.
+ * @param string $kind   Which list governs it, for the legacy split.
+ * @return string[]
+ */
+function sp_library_split_values( string $stored, string $kind = '' ): array {
+    $stored = trim( $stored );
+    if ( $stored === '' ) {
+        return [];
+    }
+
+    if ( strpos( $stored, SP_LIBRARY_VALUE_SEP ) !== false ) {
+        $parts = explode( SP_LIBRARY_VALUE_SEP, $stored );
+    } elseif ( $kind !== '' && strpos( $stored, ',' ) !== false ) {
+        $parts = sp_library_split_legacy_value( $stored, $kind );
+    } else {
+        $parts = [ $stored ];
+    }
+
+    $out = [];
+    foreach ( $parts as $part ) {
+        $part = trim( $part );
+        if ( $part !== '' && ! in_array( $part, $out, true ) ) {
+            $out[] = $part;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Join chosen values back into one column value.
+ *
+ * @param string[] $values
+ */
+function sp_library_join_values( array $values ): string {
+    $clean = [];
+    foreach ( $values as $v ) {
+        $v = trim( str_replace( SP_LIBRARY_VALUE_SEP, ' ', (string) $v ) );
+        if ( $v !== '' && ! in_array( $v, $clean, true ) ) {
+            $clean[] = $v;
+        }
+    }
+    return implode( SP_LIBRARY_VALUE_SEP, $clean );
+}
+
+/**
+ * Split old comma-joined text using the society's vocabulary as the guide.
+ *
+ * Longest known terms are matched first, so a term that itself contains a comma
+ * survives intact; whatever is left over is split on the commas between them.
+ *
+ * @return string[]
+ */
+function sp_library_split_legacy_value( string $stored, string $kind ): array {
+    $known = sp_get_library_lists()[ $kind ] ?? [];
+    usort( $known, static function ( $a, $b ) {
+        return strlen( $b ) - strlen( $a );
+    } );
+
+    // Stand each comma-bearing term aside behind a marker the split cannot
+    // touch, so it comes back whole and in the place the cataloger put it.
+    $held = [];
+    $work = $stored;
+    foreach ( $known as $term ) {
+        if ( $term === '' || strpos( $term, ',' ) === false ) {
+            continue;
+        }
+        $pos = stripos( $work, $term );
+        while ( $pos !== false ) {
+            $marker = "\x00" . count( $held ) . "\x00";
+            $held[ $marker ] = substr( $work, $pos, strlen( $term ) );
+            $work = substr_replace( $work, $marker, $pos, strlen( $term ) );
+            $pos = stripos( $work, $term );
+        }
+    }
+
+    $out = [];
+    foreach ( explode( ',', $work ) as $part ) {
+        $part = trim( strtr( $part, $held ) );
+        if ( $part !== '' ) {
+            $out[] = $part;
+        }
+    }
+    return $out;
+}
+
+/**
+ * A WHERE fragment matching one value inside a multi-value column.
+ *
+ * WHY not a plain equality: the column may hold several values, so "Book" has
+ *      to match the "Book" in "Book|Rare Books" without also matching a term
+ *      that merely contains those letters. Wrapping both sides in separators
+ *      makes the comparison exact on whole values.
+ */
+/**
+ * A stored multi-value rendered for a reader.
+ *
+ * The separator is a storage detail; on screen the values read as a list.
+ */
+function sp_library_display_values( string $stored, string $kind = '' ): string {
+    return implode( ', ', sp_library_split_values( $stored, $kind ) );
+}
+
+/**
+ * Every distinct value used in a multi-value column, with how many items carry it.
+ *
+ * WHY it counts in PHP rather than GROUP BY: one row can hold several values,
+ *      so grouping on the column counts combinations — "Book|Rare Books" became
+ *      a collection of its own, listed separately from "Book", and a reversed
+ *      "Rare Books|Book" became a third. Splitting first gives the facets a
+ *      researcher expects, each with an honest total.
+ *
+ * @return array<string,int> value => count, most used first
+ */
+function sp_library_value_counts( string $column, string $kind = '' ): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_library_items';
+    $col   = preg_replace( '/[^a-z_]/', '', $column );
+    if ( $col === '' ) {
+        return [];
+    }
+
+    $rows   = $wpdb->get_col( "SELECT {$col} FROM {$table} WHERE {$col} IS NOT NULL AND {$col} != ''" );
+    $counts = [];
+    foreach ( $rows as $raw ) {
+        foreach ( sp_library_split_values( (string) $raw, $kind ) as $value ) {
+            $counts[ $value ] = ( $counts[ $value ] ?? 0 ) + 1;
+        }
+    }
+    arsort( $counts );
+    return $counts;
+}
+
+function sp_library_value_match_sql( string $column, string $value ): string {
+    global $wpdb;
+    $sep = SP_LIBRARY_VALUE_SEP;
+    return $wpdb->prepare(
+        "CONCAT( %s, {$column}, %s ) LIKE %s",
+        $sep,
+        $sep,
+        '%' . $wpdb->esc_like( $sep . $value . $sep ) . '%'
+    );
+}
+
 function sp_library_list_field( string $kind, string $current ): void {
     static $script_printed = false;
 
@@ -75798,17 +76021,41 @@ function sp_library_list_field( string $kind, string $current ): void {
         return;
     }
 
-    $choices = sp_library_list_choices( $kind, $current );
+    $choices  = sp_library_list_choices( $kind, $current );
+    $selected = sp_library_split_values( $current, $kind );
     ?>
-    <select name="<?php echo esc_attr( $kind ); ?>" id="<?php echo esc_attr( $kind ); ?>" class="sp-liblist-select">
-        <option value=""><?php esc_html_e( '— Not set —', 'societypress' ); ?></option>
+    <?php
+    // WHY tick boxes rather than one dropdown: a book about Texas cemeteries
+    //      during the Civil War is all three subjects, and a volume that is
+    //      both a periodical and a rare book is both. Forcing one choice made
+    //      catalogers type "Book, Rare Books" into a single-value field, which
+    //      is why the public filters offered "Book, Rare Books" and "Rare
+    //      Books, Book" as if they were different collections.
+    ?>
+    <?php
+    // WHY a filter box: the Subject list runs to several hundred terms once a
+    //      society has catalogued for a few decades. Scrolling that to find
+    //      "Cemeteries" is the sort of chore that makes a volunteer give up and
+    //      leave the field blank, which is how a catalog ends up unsearchable.
+    ?>
+    <?php if ( count( $choices ) > 12 ) : ?>
+        <input type="search" class="sp-liblist-filter regular-text"
+               placeholder="<?php esc_attr_e( 'Type to narrow this list…', 'societypress' ); ?>"
+               aria-label="<?php esc_attr_e( 'Narrow the list below', 'societypress' ); ?>">
+    <?php endif; ?>
+    <fieldset class="sp-liblist-boxes" data-kind="<?php echo esc_attr( $kind ); ?>">
         <?php foreach ( $choices as $choice ) : ?>
-            <option value="<?php echo esc_attr( $choice ); ?>" <?php selected( $current, $choice ); ?>>
+            <label class="sp-liblist-box">
+                <input type="checkbox" name="<?php echo esc_attr( $kind ); ?>[]"
+                       value="<?php echo esc_attr( $choice ); ?>"
+                       <?php checked( in_array( $choice, $selected, true ) ); ?>>
                 <?php echo esc_html( $choice ); ?>
-            </option>
+            </label>
         <?php endforeach; ?>
-        <option value="__sp_new__"><?php esc_html_e( '— Add new… —', 'societypress' ); ?></option>
-    </select>
+    </fieldset>
+    <p class="sp-liblist-addnew">
+        <button type="button" class="button-link sp-liblist-addnew-toggle"><?php esc_html_e( '+ Add one that is not listed', 'societypress' ); ?></button>
+    </p>
     <span class="sp-liblist-new" hidden>
         <label class="screen-reader-text" for="<?php echo esc_attr( $kind ); ?>__new">
             <?php
@@ -75831,13 +76078,33 @@ function sp_library_list_field( string $kind, string $current ): void {
     }
     $script_printed = true;
     ?>
+    <style>
+        .sp-liblist-boxes { max-height: 220px; overflow-y: auto; border: 1px solid #dcdcde; background: #fff; border-radius: 4px; padding: 8px 10px; max-width: 460px; }
+        .sp-liblist-box { display: block; padding: 2px 0; }
+        .sp-liblist-box.sp-liblist-hidden { display: none; }
+        .sp-liblist-filter { max-width: 460px; margin: 0 0 6px; display: block; }
+        .sp-liblist-addnew { margin: 6px 0 0; }
+    </style>
     <script>
     (function () {
-        document.addEventListener('change', function (e) {
-            if (!e.target.matches('.sp-liblist-select')) return;
-            var box = e.target.parentNode.querySelector('.sp-liblist-new');
+        // Narrowing hides rows; it never unticks one, so a term chosen earlier
+        // stays chosen even while it is filtered out of sight.
+        document.addEventListener('input', function (e) {
+            if (!e.target.matches('.sp-liblist-filter')) return;
+            var box = e.target.parentNode.querySelector('.sp-liblist-boxes');
             if (!box) return;
-            box.hidden = e.target.value !== '__sp_new__';
+            var needle = e.target.value.trim().toLowerCase();
+            box.querySelectorAll('.sp-liblist-box').forEach(function (row) {
+                var hit = !needle || row.textContent.toLowerCase().indexOf(needle) !== -1;
+                row.classList.toggle('sp-liblist-hidden', !hit && !row.querySelector('input').checked);
+            });
+        });
+        document.addEventListener('click', function (e) {
+            if (!e.target.matches('.sp-liblist-addnew-toggle')) return;
+            var wrap = e.target.closest('p').parentNode;
+            var box = wrap.querySelector('.sp-liblist-new');
+            if (!box) return;
+            box.hidden = !box.hidden;
             if (!box.hidden) {
                 var field = box.querySelector('input');
                 if (field) field.focus();
@@ -75859,23 +76126,21 @@ function sp_library_list_field( string $kind, string $current ): void {
  */
 function sp_library_list_posted_value( string $kind ): string {
     // phpcs:disable WordPress.Security.NonceVerification.Missing -- callers verify.
-    $chosen = sanitize_text_field( wp_unslash( $_POST[ $kind ] ?? '' ) );
+    $chosen = array_map(
+        'sanitize_text_field',
+        array_map( 'wp_unslash', (array) ( $_POST[ $kind ] ?? [] ) )
+    );
 
-    if ( $chosen !== '__sp_new__' ) {
-        return $chosen;
-    }
-
+    // Anything typed into "add one that is not listed" joins the vocabulary so
+    // the next cataloger finds it already there.
     $new = sanitize_text_field( wp_unslash( $_POST[ $kind . '__new' ] ?? '' ) );
     $new = trim( $new );
-
-    // "Add new" chosen but nothing typed: store nothing rather than the marker.
-    if ( $new === '' ) {
-        return '';
+    if ( $new !== '' ) {
+        sp_library_list_add( $kind, $new );
+        $chosen[] = $new;
     }
 
-    sp_library_list_add( $kind, $new );
-
-    return $new;
+    return sp_library_join_values( $chosen );
     // phpcs:enable WordPress.Security.NonceVerification.Missing
 }
 
@@ -76218,7 +76483,8 @@ function sp_render_library_catalog_page(): void {
     $acq_filter   = isset( $_GET['acq_code'] ) ? sanitize_text_field( wp_unslash( $_GET['acq_code'] ) ) : '';
 
     // Get distinct values for filter dropdowns
-    $media_types     = $wpdb->get_col( "SELECT DISTINCT media_type FROM {$prefix}library_items WHERE media_type IS NOT NULL AND media_type != '' ORDER BY media_type ASC" );
+    $media_types     = array_keys( sp_library_value_counts( 'media_type', 'media_type' ) );
+    sort( $media_types );
     $shelf_locations = $wpdb->get_col( "SELECT DISTINCT shelf_location FROM {$prefix}library_items WHERE shelf_location IS NOT NULL AND shelf_location != '' ORDER BY shelf_location ASC" );
     $acq_codes       = $wpdb->get_col( "SELECT DISTINCT acq_code FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' ORDER BY acq_code ASC" );
 
@@ -76236,7 +76502,7 @@ function sp_render_library_catalog_page(): void {
         }
     }
     if ( $media_filter ) {
-        $where[] = $wpdb->prepare( 'li.media_type = %s', $media_filter );
+        $where[] = sp_library_value_match_sql( 'li.media_type', $media_filter );
     }
     if ( $shelf_filter ) {
         $where[] = $wpdb->prepare( 'li.shelf_location = %s', $shelf_filter );
@@ -76406,7 +76672,10 @@ function sp_render_library_catalog_page(): void {
         $stats_total     = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items" );
         $stats_available = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}library_items WHERE available = 1" );
         $stats_value     = (float) $wpdb->get_var( "SELECT COALESCE(SUM(item_value), 0) FROM {$prefix}library_items" );
-        $stats_by_media  = $wpdb->get_results( "SELECT media_type, COUNT(*) as cnt FROM {$prefix}library_items WHERE media_type IS NOT NULL AND media_type != '' GROUP BY media_type ORDER BY cnt DESC LIMIT 10" );
+        $stats_by_media  = [];
+    foreach ( array_slice( sp_library_value_counts( 'media_type', 'media_type' ), 0, 10, true ) as $mt_name => $mt_cnt ) {
+        $stats_by_media[] = (object) [ 'media_type' => $mt_name, 'cnt' => $mt_cnt ];
+    }
         $stats_by_acq    = $wpdb->get_results( "SELECT acq_code, COUNT(*) as cnt FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' GROUP BY acq_code ORDER BY cnt DESC LIMIT 10" );
         $stats_recent    = $wpdb->get_results( "SELECT title, author, media_type, created_at FROM {$prefix}library_items ORDER BY created_at DESC LIMIT 5" );
         ?>
@@ -76562,7 +76831,7 @@ function sp_render_library_catalog_page(): void {
                                 </div>
                             </td>
                             <td><?php echo esc_html( $item->author ?: '—' ); ?></td>
-                            <td><?php echo esc_html( $item->media_type ?: '—' ); ?></td>
+                            <td><?php echo esc_html( sp_library_display_values( (string) ( $item->media_type ?? '' ), 'media_type' ) ?: '—' ); ?></td>
                             <td><?php echo esc_html( $item->call_number ?: '—' ); ?></td>
                             <td><?php echo esc_html( $item->shelf_location ?: '—' ); ?></td>
                             <td><?php echo esc_html( $item->pub_year ?: '—' ); ?></td>
@@ -77192,13 +77461,15 @@ function sp_process_library_import( string $file_path, array $field_map ): array
             'pub_year'            => $parse_int( $get( $row, 'pub_year' ) ),
             'pub_month'           => $parse_int( $get( $row, 'pub_month' ) ),
             'pub_day'             => $parse_int( $get( $row, 'pub_day' ) ),
-            'media_type'          => mb_substr( $get( $row, 'media_type' ), 0, 50 ) ?: null,
+            // Legacy exports pack several values into one comma-joined cell;
+            // stored the same way a cataloger's tick boxes would store them.
+            'media_type'          => mb_substr( sp_library_join_values( sp_library_split_values( $get( $row, 'media_type' ), 'media_type' ) ), 0, 191 ) ?: null,
             'use_serials'         => $get( $row, 'use_serials' ) === '1' ? 1 : 0,
             'isbn'                => mb_substr( $get( $row, 'isbn' ), 0, 20 ) ?: null,
             'call_number'         => mb_substr( $get( $row, 'call_number' ), 0, 50 ) ?: null,
             'lccn'                => mb_substr( $get( $row, 'lccn' ), 0, 20 ) ?: null,
             'shelf_location'      => $shelf ? mb_substr( $shelf, 0, 100 ) : null,
-            'geographic_location' => mb_substr( $get( $row, 'geographic_location' ), 0, 200 ) ?: null,
+            'geographic_location' => mb_substr( sp_library_join_values( sp_library_split_values( $get( $row, 'geographic_location' ), 'geographic_location' ) ), 0, 200 ) ?: null,
             'acquisition_number'  => $parse_int( $get( $row, 'acquisition_number' ) ),
             'acq_year'            => $parse_int( $get( $row, 'acq_year' ) ),
             'acq_month'           => $parse_int( $get( $row, 'acq_month' ) ),
@@ -77209,7 +77480,7 @@ function sp_process_library_import( string $file_path, array $field_map ): array
             'county'              => mb_substr( $get( $row, 'county' ), 0, 200 ) ?: null,
             'state'               => mb_substr( $get( $row, 'state' ), 0, 100 ) ?: null,
             'surname'             => mb_substr( $get( $row, 'surname' ), 0, 255 ) ?: null,
-            'subject'             => mb_substr( $get( $row, 'subject' ), 0, 250 ) ?: null,
+            'subject'             => mb_substr( sp_library_join_values( sp_library_split_values( $get( $row, 'subject' ), 'subject' ) ), 0, 250 ) ?: null,
             'librarian_notes'     => $get( $row, 'librarian_notes' ) ?: null,
             'updated_by'          => mb_substr( $get( $row, 'updated_by' ), 0, 50 ) ?: null,
             'last_updated_date'   => $last_updated,
@@ -89390,13 +89661,8 @@ function sp_ajax_library_item_detail(): void {
         }
     }
 
-    // Parse subject field into array of individual tags
-    $subjects = [];
-    if ( $item->subject ) {
-        $subjects = array_map( 'trim', explode( ',', $item->subject ) );
-        $subjects = array_filter( $subjects );
-        $subjects = array_values( $subjects );
-    }
+    // Individual subject tags, however the row happens to store them.
+    $subjects = sp_library_split_values( (string) ( $item->subject ?? '' ), 'subject' );
 
     // Parse surnames similarly
     $surnames = [];
@@ -89416,12 +89682,12 @@ function sp_ajax_library_item_detail(): void {
         'publisher_location'  => $item->publisher_location ?: '',
         'pub_date'            => $pub_date,
         'pub_year'            => $item->pub_year ?: '',
-        'media_type'          => $item->media_type ?: '',
+        'media_type'          => sp_library_display_values( (string) ( $item->media_type ?? '' ), 'media_type' ),
         'isbn'                => $item->isbn ?: '',
         'call_number'         => $item->call_number ?: '',
         'lccn'                => $item->lccn ?: '',
         'shelf_location'      => $item->shelf_location ?: '',
-        'geographic_location' => $item->geographic_location ?: '',
+        'geographic_location' => sp_library_display_values( (string) ( $item->geographic_location ?? '' ), 'geographic_location' ),
         'county'              => $item->county ?: '',
         'state'               => $item->state ?: '',
         'subjects'            => $subjects,
@@ -89484,7 +89750,7 @@ function sp_ajax_export_library(): void {
     }
     $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( wp_unslash( $_GET['media_type'] ) ) : '';
     if ( $media_filter ) {
-        $where[] = $wpdb->prepare( 'li.media_type = %s', $media_filter );
+        $where[] = sp_library_value_match_sql( 'li.media_type', $media_filter );
     }
     $shelf_filter = isset( $_GET['shelf'] ) ? sanitize_text_field( wp_unslash( $_GET['shelf'] ) ) : '';
     if ( $shelf_filter ) {
@@ -89533,13 +89799,13 @@ function sp_ajax_export_library(): void {
             $item->pub_year,
             $item->pub_month,
             $item->pub_day,
-            $item->media_type,
+            sp_library_display_values( (string) ( $item->media_type ?? '' ), 'media_type' ),
             $item->use_serials,
             $item->isbn,
             $item->call_number,
             $item->lccn,
             $item->shelf_location,
-            $item->geographic_location,
+            sp_library_display_values( (string) ( $item->geographic_location ?? '' ), 'geographic_location' ),
             $item->acquisition_number,
             $item->acq_year,
             $item->acq_month,
@@ -89550,7 +89816,7 @@ function sp_ajax_export_library(): void {
             $item->county,
             $item->state,
             $item->surname,
-            $item->subject,
+            sp_library_display_values( (string) ( $item->subject ?? '' ), 'subject' ),
             $item->librarian_notes,
             $item->updated_by,
             $item->last_updated_date,
@@ -93088,7 +93354,7 @@ function sp_render_search_library( array $items ): void {
                 $meta_parts = [];
                 if ( ! empty( $item->author ) )      $meta_parts[] = esc_html( $item->author );
                 if ( ! empty( $item->call_number ) )  $meta_parts[] = esc_html( $item->call_number );
-                if ( ! empty( $item->media_type ) )   $meta_parts[] = esc_html( $item->media_type );
+                if ( ! empty( $item->media_type ) )   $meta_parts[] = esc_html( sp_library_display_values( (string) $item->media_type, 'media_type' ) );
                 echo implode( ' · ', $meta_parts );
                 ?>
             </div>

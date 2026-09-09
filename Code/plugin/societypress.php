@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.39
+ * Version:     1.5.40
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.39' );
+define( 'SOCIETYPRESS_VERSION', '1.5.40' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39625,7 +39625,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.39',
+            'version'     => '1.5.40',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39633,7 +39633,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.39',
+            'version'     => '1.5.40',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39641,7 +39641,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.39',
+            'version'     => '1.5.40',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39649,7 +39649,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.39',
+            'version'     => '1.5.40',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39657,7 +39657,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.39',
+            'version'     => '1.5.40',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -71561,7 +71561,9 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     html += field('<?php echo esc_js( __( 'County', 'societypress' ) ); ?>', d.county);
                     html += field('<?php echo esc_js( __( 'State', 'societypress' ) ); ?>', d.state);
                     html += field('<?php echo esc_js( __( 'Condition', 'societypress' ) ); ?>', d.item_condition ? d.item_condition.charAt(0).toUpperCase() + d.item_condition.slice(1) : '');
+                    <?php if ( sp_library_lends() ) : ?>
                     html += field('<?php echo esc_js( __( 'Status', 'societypress' ) ); ?>', d.available ? '<?php echo esc_js( __( 'Available', 'societypress' ) ); ?>' : '<?php echo esc_js( __( 'Checked Out', 'societypress' ) ); ?>');
+                    <?php endif; ?>
                     html += field('<?php echo esc_js( __( 'Acquisition', 'societypress' ) ); ?>', [d.acq_code, d.acq_date].filter(Boolean).join(' — '));
                     html += field('<?php echo esc_js( __( 'Donor', 'societypress' ) ); ?>', d.donor);
                     html += field('<?php echo esc_js( __( 'Value', 'societypress' ) ); ?>', d.item_value);
@@ -75886,16 +75888,44 @@ function sp_library_list_posted_value( string $kind ): string {
  *
  * @return array<string, array{label:string, sortable:bool}>
  */
+/**
+ * Does this library lend items out?
+ *
+ * WHY it is a question at all: genealogical and historical society libraries
+ *      are overwhelmingly reference-only — local history, rare material and
+ *      one-of-a-kind manuscripts do not leave the building. SocietyPress used
+ *      to assume the opposite, labelling every item "Available" and offering a
+ *      tick box to check things out, which for most societies describes a
+ *      service they do not run. Worse, the label flips to "Checked Out" the
+ *      moment an item is marked non-lendable, telling a researcher a book is
+ *      away on loan when in truth it never leaves the shelf.
+ *
+ * WHY it defaults to off: the common case should not need configuring. A
+ *      society that does lend turns it on once and everything comes back.
+ */
+function sp_library_lends(): bool {
+    return (bool) get_option( 'sp_library_lending', false );
+}
+
 function sp_library_catalog_column_defs(): array {
-    return [
+    $defs = [
         'call_number' => [ 'label' => __( 'Call #', 'societypress' ),  'sortable' => true ],
         'title'       => [ 'label' => __( 'Title', 'societypress' ),   'sortable' => true ],
         'author'      => [ 'label' => __( 'Author', 'societypress' ),  'sortable' => true ],
         'media_type'  => [ 'label' => __( 'Type', 'societypress' ),    'sortable' => true ],
         'subject'     => [ 'label' => __( 'Subject', 'societypress' ), 'sortable' => false ],
         'pub_year'    => [ 'label' => __( 'Year', 'societypress' ),    'sortable' => true ],
-        'available'   => [ 'label' => __( 'Status', 'societypress' ),  'sortable' => false ],
     ];
+
+    // A Status column reads "Available" or "Checked Out". Neither is true of a
+    // reference collection, so a library that does not lend is not offered the
+    // column at all — and a stored layout that still names it is filtered out
+    // by the isset() check every caller already makes.
+    if ( sp_library_lends() ) {
+        $defs['available'] = [ 'label' => __( 'Status', 'societypress' ), 'sortable' => false ];
+    }
+
+    return $defs;
 }
 
 /**
@@ -75911,7 +75941,10 @@ function sp_get_library_catalog_columns(): array {
     $defs   = sp_library_catalog_column_defs();
 
     if ( ! is_array( $stored ) ) {
-        return [ 'title', 'author', 'media_type', 'call_number', 'pub_year', 'available' ];
+        $fallback = [ 'title', 'author', 'media_type', 'call_number', 'pub_year', 'available' ];
+        return array_values( array_filter( $fallback, static function ( $k ) use ( $defs ) {
+            return isset( $defs[ $k ] );
+        } ) );
     }
 
     $out = [];
@@ -75977,6 +76010,11 @@ function sp_render_library_lists_page(): void {
         }
 
         update_option( 'sp_library_catalog_columns', $columns );
+
+        // Asked once for the whole library rather than on every item: whether
+        // anything here is lent out at all.
+        update_option( 'sp_library_lending', ! empty( $_POST['sp_library_lending'] ) ? 1 : 0 );
+
         delete_transient( 'sp_library_catalog_stats' );
 
         sp_audit( 'settings_updated', 'Library catalog lists and columns saved.', 'settings' );
@@ -76033,6 +76071,17 @@ function sp_render_library_lists_page(): void {
                      button submits the form from JS, and a button's name is only sent
                      when the button itself is clicked. */ ?>
             <input type="hidden" name="sp_library_lists_submit" value="1">
+
+            <h2><?php esc_html_e( 'Lending', 'societypress' ); ?></h2>
+            <p class="description sp-max-w-780">
+                <?php esc_html_e( 'Most society libraries are reference-only — material is consulted on the premises and never leaves. Leave this unticked and SocietyPress stops asking about checking items out, and stops labelling them "Available" or "Checked Out" for visitors, since neither word describes a reference collection.', 'societypress' ); ?>
+            </p>
+            <p>
+                <label>
+                    <input type="checkbox" name="sp_library_lending" value="1" <?php checked( sp_library_lends() ); ?>>
+                    <?php esc_html_e( 'This library lends items out', 'societypress' ); ?>
+                </label>
+            </p>
 
             <h2><?php esc_html_e( 'What a visitor sees in search results', 'societypress' ); ?></h2>
             <p class="description">
@@ -76366,10 +76415,13 @@ function sp_render_library_catalog_page(): void {
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--total"><?php echo number_format( $stats_total ); ?></div>
                 <div class="sp-catalog-stat-label"><?php esc_html_e( 'Total Items', 'societypress' ); ?></div>
             </div>
+            <?php // "Available" only means something where items can leave the building. ?>
+            <?php if ( sp_library_lends() ) : ?>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--available"><?php echo number_format( $stats_available ); ?></div>
                 <div class="sp-catalog-stat-label"><?php esc_html_e( 'Available', 'societypress' ); ?></div>
             </div>
+            <?php endif; ?>
             <div class="sp-catalog-stat-card">
                 <div class="sp-catalog-stat-number sp-catalog-stat-number--value"><?php echo esc_html( sp_format_currency( $stats_value ) ); ?></div>
                 <div class="sp-catalog-stat-label"><?php esc_html_e( 'Collection Value', 'societypress' ); ?></div>
@@ -76609,7 +76661,13 @@ function sp_render_library_item_edit_page(): void {
             'subject'             => sp_library_list_posted_value( 'subject' ) ?: null,
             'librarian_notes'     => sanitize_textarea_field( wp_unslash( $_POST['librarian_notes'] ?? '' ) ) ?: null,
             'item_condition'      => sanitize_text_field( wp_unslash( $_POST['item_condition'] ?? 'good' ) ),
-            'available'           => ! empty( $_POST['available'] ) ? 1 : 0,
+            // An unticked box and an absent field look identical in POST, so a
+            // non-lending library would zero this on every save. It only moves
+            // when the question was actually asked; otherwise the stored value
+            // stands, so switching lending back on finds it as it was left.
+            'available'           => sp_library_lends()
+                ? ( ! empty( $_POST['available'] ) ? 1 : 0 )
+                : ( $item_id ? (int) $wpdb->get_var( $wpdb->prepare( "SELECT available FROM {$prefix}library_items WHERE id = %d", $item_id ) ) : 0 ),
             'cover_url'           => esc_url_raw( wp_unslash( $_POST['cover_url'] ?? '' ) ) ?: null,
             // Store-only fields. Set independently from library metadata so a
             // for-sale item can carry marketing copy without polluting the
@@ -76899,20 +76957,25 @@ function sp_render_library_item_edit_page(): void {
                         </select>
                     </td>
                 </tr>
+                <?php
+                // WHY this row can vanish entirely: a reference-only library
+                //      never lends anything, so asking a cataloger about it on
+                //      every single item is a question with one answer. The
+                //      society says once, at Library > Catalog Options, whether
+                //      it lends at all; only then is it worth asking per item.
+                //
+                // WHY a new item starts unticked even in a lending library:
+                //      defaulting to "can be checked out" quietly declares the
+                //      whole collection lendable, and a cataloger adding a book
+                //      has no reason to notice. Existing items keep what they
+                //      have; only the blank form starts empty.
+                ?>
+                <?php if ( sp_library_lends() ) : ?>
                 <tr>
-                    <th scope="col"><?php esc_html_e( 'Available', 'societypress' ); ?></th>
-                    <?php
-                    // WHY a new item starts unticked: most genealogical and
-                    //      historical society libraries are reference-only —
-                    //      local history and rare material does not leave the
-                    //      building. Defaulting to "can be checked out" quietly
-                    //      declares the whole collection lendable, and a
-                    //      cataloger adding a book has no reason to notice.
-                    //      A lending library ticks the box; everyone else is
-                    //      right by default. Existing items keep what they have.
-                    ?>
+                    <th scope="col"><?php esc_html_e( 'Lending', 'societypress' ); ?></th>
                     <td><label><input type="checkbox" name="available" value="1" <?php checked( $item->available ?? 0 ); ?>> <?php esc_html_e( 'Item can be checked out', 'societypress' ); ?></label></td>
                 </tr>
+                <?php endif; ?>
                 <tr>
                     <th scope="col"><?php esc_html_e( 'Use Serials', 'societypress' ); ?></th>
                     <td><label><input type="checkbox" name="use_serials" value="1" <?php checked( $item->use_serials ?? 0 ); ?>> <?php esc_html_e( 'Track as serial/periodical', 'societypress' ); ?></label></td>

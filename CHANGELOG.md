@@ -20,6 +20,24 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.40] — 2026-09-08
+
+**A reference-only library is no longer asked about lending.** Society
+libraries are overwhelmingly reference-only — local history, rare material and
+one-of-a-kind manuscripts are consulted on the premises and never leave the
+building. SocietyPress assumed the opposite: it labelled every item
+"Available", asked a cataloger on each item whether it could be checked out,
+and — worst of all — flipped that label to "Checked Out" in red the moment an
+item was marked non-lendable, telling a researcher a book was away on loan
+when in truth it never leaves the shelf.
+
+Library → Catalog Options now asks the society once whether it lends anything
+at all. Left unticked, the per-item checkout box disappears, the Status column
+is withdrawn from the public catalog, the item detail panel stops reporting a
+loan status, and the admin "Available" tile goes with them. A lending library
+ticks the box and the whole set returns, with each item's stored setting
+exactly as it was left.
+
 ## [1.5.39] — 2026-09-08
 
 **Recording what an item is worth no longer puts it up for sale.** The Store

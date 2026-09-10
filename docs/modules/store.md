@@ -28,6 +28,18 @@ The storefront shows both sources merged together — buyers don't know (or care
 
 You'll also want a cart page. Drop `[sp_cart]` on a `/cart/` page; the cart page handles checkout (Stripe Element + PayPal Smart Buttons appear when the cart has items).
 
+## How buyers get around a long storefront
+
+Twenty products to a page, with numbered page links under the grid. A society selling its whole back catalogue gets a browsable storefront instead of one endless scroll.
+
+Once a list runs past 40 items, a **Show** control appears above the grid offering **20**, **50**, or **All**. Below that, the pager on its own is less to look at than a choice about page length, so the control stays hidden. **All** is there for buyers who would rather have everything in front of them and use the browser's own find. The choice rides in the address as `sp_store_show`, so a buyer can bookmark or share the view they picked.
+
+The category list stays beside the products as the buyer scrolls, so someone two screenfuls down can switch categories without scrolling back up. If your theme has a header pinned to the top of the window, the list parks below it — SocietyPress measures the header rather than guessing, and re-measures when the window is resized. A society with more categories than fit a screen gets a list that scrolls on its own.
+
+Changing category or page size always returns to page one — landing on page 4 of a category that only has one page reads as a bug.
+
+On a phone none of this applies: the layout stacks, and the categories become a row of pills above the grid.
+
 ## How shipping fees work
 
 Each product has a per-unit shipping fee. At checkout, line items multiply: `unit_price × qty + shipping_fee × qty`.
@@ -79,6 +91,10 @@ When an order is paid, stock decrements by the purchased quantity. When an order
 **Buyer says they paid but never got an order confirmation email.** **SocietyPress → Settings → Email → Send test email** to verify outbound mail. Buyer's email address is captured during checkout — check the order detail to confirm it's right.
 
 **A library item shows up in the store but shouldn't.** Open the library item, set Item Value to 0 (or blank). Only items with value > 0 appear in the storefront.
+
+**There's no Show 20 / 50 / All control.** It only appears once the list runs past 40 items. Below that everything fits in a page or two and the pager alone does the job. Filtering to a small category hides it too — the count that matters is the one being shown.
+
+**The category list slides under my site header.** SocietyPress measures a pinned header and parks the list below it, but only for a header it can recognize — a `header` element, `.site-header`, or `#masthead` — that is actually stuck to the top of the window. If your theme's header is none of those, set `--sp-store-sticky-top` in your theme's CSS to the height you want cleared, plus a little breathing room.
 
 ## Related guides
 

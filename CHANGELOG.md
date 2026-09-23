@@ -20,6 +20,24 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.43] — 2026-09-22
+
+**A donation the giver abandoned no longer reads as money on its way in.**
+When somebody opens the payment page and closes it without paying, the card
+company holds the attempt open for about a day and then expires it. Nothing in
+SocietyPress listened for that, and nothing ever asked, so the donation kept the
+"Pending" it was given the moment the page opened — permanently. A treasurer
+reading the donations list saw gifts arriving that were never coming, and no
+amount of waiting cleared them. Abandoned donations are now marked Expired when
+the card company says so.
+
+A nightly check also settles anything still pending after two days by asking the
+card company directly rather than waiting to be told. That catches the more
+expensive version of the same fault: a real gift that arrived while the
+notification link was misconfigured, which until now would have gone unrecorded
+and unreceipted. Nothing is ever marked paid without the card company
+confirming it against that specific donation.
+
 ## [1.5.42] — 2026-09-08
 
 **A stray note in the Store's table definition stopped filling the error log.**

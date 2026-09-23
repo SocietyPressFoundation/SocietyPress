@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.42
+ * Version:     1.5.43
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.42' );
+define( 'SOCIETYPRESS_VERSION', '1.5.43' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -114889,6 +114889,32 @@ function sp_donations_handle_stripe_webhook( WP_REST_Request $request ) {
                 (string) ( $obj['id'] ?? '' )
             );
         }
+    } elseif ( $type === 'checkout.session.expired' ) {
+        // A donor opened the payment page and never finished. Stripe expires
+        // the session after about a day and tells us here.
+        //
+        // WHY this branch has to exist: every other status change in this
+        // module happens when somebody comes back or when money moves. An
+        // abandoned checkout is the one outcome where neither ever happens,
+        // so without this the row keeps the 'pending' it was created with —
+        // permanently. Two of those sat on getsocietypress.org since August
+        // reading as $50 each on the way in, when nothing had been charged.
+        //
+        // WHY that matters more than it looks: the person reading the
+        // donations screen is a volunteer treasurer, and a list that shows
+        // money arriving that never arrives is worse than a list that shows
+        // nothing. Abandoned carts are normal; mislabelling them is not.
+        $donation_id = (int) ( $obj['metadata']['donation_id'] ?? 0 );
+        if ( $donation_id ) {
+            // Conditioned on 'pending' so a completed payment can never be
+            // walked backwards by a late or replayed expiry event.
+            $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$wpdb->prefix}sp_donations SET status = 'expired' WHERE id = %d AND status = 'pending'",
+                    $donation_id
+                )
+            );
+        }
     } elseif ( $type === 'invoice.paid' ) {
         // Recurring renewal — create a new donation row tied to the original sub
         $sub_id = $obj['subscription'] ?? '';
@@ -114935,6 +114961,130 @@ function sp_donations_handle_stripe_webhook( WP_REST_Request $request ) {
 
     return new WP_REST_Response( [ 'received' => true ], 200 );
 }
+
+
+// ============================================================================
+// DONATION RECONCILIATION
+//
+// WHY a sweep as well as a webhook: the webhook is the only thing that settles
+//      a donation, and it is delivered by somebody else's network to an
+//      endpoint that has to be configured correctly, subscribed to the right
+//      events, and reachable at the moment Stripe tries. Any one of those can
+//      be wrong for a week without a symptom, because a webhook that never
+//      arrives looks exactly like a donor who never paid: a row that stays
+//      'pending'. This asks Stripe directly instead of waiting to be told.
+//
+// WHY it can settle a payment and not only an expiry: the expensive failure
+//      here is not a phantom pending, it is a real gift that arrived while the
+//      webhook was misconfigured and was never recorded or receipted. A sweep
+//      that only ever cleans up abandoned carts would leave that one buried.
+//
+// WHY it routes through sp_donation_mark_paid_from_session(): that function
+//      carries the session-names-this-donation check and the receipt. A second
+//      path that settled payments its own way would be a second place for the
+//      rules to drift, and the rule it would drift away from is the one that
+//      stops a stranger's completed session finalizing somebody else's gift.
+// ============================================================================
+
+/**
+ * How long to leave a pending donation alone before asking Stripe about it.
+ *
+ * Stripe expires an abandoned Checkout session at roughly 24 hours. Waiting
+ * 48 means a donor who walks away mid-payment and comes back after lunch is
+ * never second-guessed by us while their session is still good.
+ */
+const SP_DONATION_RECONCILE_AFTER = 48 * HOUR_IN_SECONDS;
+
+/**
+ * Settle pending donations against Stripe.
+ */
+function sp_donations_reconcile(): void {
+    global $wpdb;
+
+    $settings = sp_settings();
+    if ( ! sp_stripe_is_configured( $settings ) ) {
+        return;
+    }
+
+    $key = sp_stripe_get_secret_key( $settings );
+    if ( ! $key ) {
+        return;
+    }
+
+    // A bounded batch. A site coming back from a long webhook outage should
+    // catch up over a few nights rather than open hundreds of connections to
+    // Stripe in one request and time out having finished none of them.
+    $cutoff = gmdate( 'Y-m-d H:i:s', time() - SP_DONATION_RECONCILE_AFTER );
+
+    $rows = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT id, stripe_session_id FROM {$wpdb->prefix}sp_donations
+             WHERE status = 'pending'
+               AND stripe_session_id <> ''
+               AND created_at < %s
+             ORDER BY id ASC
+             LIMIT 50",
+            $cutoff
+        )
+    );
+
+    foreach ( (array) $rows as $row ) {
+        if ( ! sp_stripe_session_id_is_valid( $row->stripe_session_id ) ) {
+            continue;
+        }
+
+        $response = wp_remote_get(
+            'https://api.stripe.com/v1/checkout/sessions/' . rawurlencode( $row->stripe_session_id ),
+            [
+                'timeout' => 20,
+                'headers' => [ 'Authorization' => 'Bearer ' . $key ],
+            ]
+        );
+
+        // A network failure is not evidence about a donation. Leave the row
+        // exactly as it is and let the next run ask again.
+        if ( is_wp_error( $response ) || (int) wp_remote_retrieve_response_code( $response ) !== 200 ) {
+            continue;
+        }
+
+        $session = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( ! is_array( $session ) ) {
+            continue;
+        }
+
+        $paid    = ( $session['payment_status'] ?? '' ) === 'paid';
+        $expired = ( $session['status'] ?? '' ) === 'expired';
+
+        if ( $paid ) {
+            // The same door the webhook uses, checks and receipt included.
+            sp_donation_mark_paid_from_session( (int) $row->id, $session );
+            continue;
+        }
+
+        if ( $expired ) {
+            $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$wpdb->prefix}sp_donations SET status = 'expired' WHERE id = %d AND status = 'pending'",
+                    (int) $row->id
+                )
+            );
+        }
+
+        // Anything else is still open at Stripe. Leave it pending; it is.
+    }
+}
+add_action( 'sp_donations_reconcile_cron', 'sp_donations_reconcile' );
+
+/**
+ * Nightly is enough. Nothing here is urgent — the money has already moved or
+ * already not moved by the time this runs.
+ */
+function sp_donations_schedule_reconcile(): void {
+    if ( ! wp_next_scheduled( 'sp_donations_reconcile_cron' ) ) {
+        wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'sp_donations_reconcile_cron' );
+    }
+}
+add_action( 'init', 'sp_donations_schedule_reconcile' );
 
 
 /**

@@ -55,3 +55,14 @@ Misc/
 Sample Data/
 scripts/deploy.local.sh
 scripts/build.local.sh
+
+# Brand, print and talk material — kept locally, deliberately out of the repo.
+# These are finished output, not source the project builds from: print masters
+# alone run to 44 MB, and git keeps every byte in every clone forever.
+/SocietyPress-Card/
+/SocietyPress-Logo/
+/SocietyPress-QR/
+/SocietyPress-Talks/
+/SocietyPress Try the demo.png
+/SocietyPressTry the demo 2.png
+/FORMS-GUIDE.docx

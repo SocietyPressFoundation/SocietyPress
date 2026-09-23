@@ -27,6 +27,23 @@ set -o pipefail
 
 HOST="skystra"
 DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
+
+# Two more sites on the primary host run the plugin, and until now nothing
+# deployed to either. Both drifted a month behind — the marketing site was
+# running 1.5.0 while the demo ran 1.5.42 — and nothing surfaced it, because
+# a site nobody deploys to also has nothing to compare itself against.
+#
+# WHY the marketing site runs the plugin at all: it is not a showcase copy.
+# getsocietypress.org takes donations through the plugin's donation module and
+# its theme calls plugin functions throughout, so an out-of-date plugin there
+# is out-of-date payment code on the site that collects the money.
+#
+# WHY ensdemo: it is the ENS-comparison demo a prospective society is pointed
+# at. A stale one quietly misrepresents the product to exactly the audience
+# the comparison exists to persuade.
+MARKETING_BASE="~/domains/getsocietypress.org/public_html/cms/wp-content"
+ENSDEMO_BASE="~/domains/getsocietypress.org/public_html/ensdemo/wp-content"
+
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Optional secondary deploy target — sourced from a gitignored local file.
@@ -146,6 +163,8 @@ deploy_theme_to() {
 # ----------------------------------------------------------------------------
 deploy_plugin_all_sites() {
     deploy_plugin_to "$DEMO_BASE" "demo.getsocietypress.org"
+    deploy_plugin_to "$MARKETING_BASE" "getsocietypress.org"
+    deploy_plugin_to "$ENSDEMO_BASE" "getsocietypress.org/ensdemo"
     if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
         deploy_plugin_to "$SECONDARY_BASE" "$SECONDARY_LABEL" "${SECONDARY_HOST:-$HOST}"
     fi

@@ -1404,6 +1404,18 @@ function gsp_receive_install_report( WP_REST_Request $request ) {
     // somebody poking at the endpoint.
     $parts = $url ? wp_parse_url( $url ) : [];
     if ( empty( $parts['host'] ) || ! in_array( $parts['scheme'] ?? '', [ 'http', 'https' ], true ) ) {
+        // A refused check-in is still somebody trying to reach us. Storing
+        // nothing made a misconfigured install look like no install at all.
+        gsp_installs_log(
+            'rejected',
+            [
+                'url'     => mb_substr( (string) $request->get_param( 'url' ), 0, 255 ),
+                'society' => mb_substr( sanitize_text_field( (string) $request->get_param( 'society' ) ), 0, 255 ),
+                'version' => mb_substr( sanitize_text_field( (string) $request->get_param( 'version' ) ), 0, 32 ),
+                'reason'  => 'url_invalid',
+            ]
+        );
+
         return new WP_REST_Response( [ 'ok' => false ], 400 );
     }
 
@@ -1411,6 +1423,7 @@ function gsp_receive_install_report( WP_REST_Request $request ) {
     // in weekly; anything faster is a loop or somebody testing.
     $throttle = 'gsp_install_seen_' . md5( $url );
     if ( get_transient( $throttle ) ) {
+        gsp_installs_log( 'throttled', [ 'url' => $url ] );
         return new WP_REST_Response( [ 'ok' => true ], 200 );
     }
     set_transient( $throttle, 1, HOUR_IN_SECONDS );
@@ -1431,6 +1444,8 @@ function gsp_receive_install_report( WP_REST_Request $request ) {
             $now
         )
     );
+
+    gsp_installs_log( 'accepted', [ 'url' => $url, 'society' => $society, 'version' => $version ] );
 
     return new WP_REST_Response( [ 'ok' => true ], 200 );
 }
@@ -1498,6 +1513,71 @@ function gsp_render_installs_page(): void {
             </p>
         <?php endif; ?>
 
+        <?php
+        // The funnel, in the order a society walks it. The register alone only
+        // ever shows the last step, which is why an empty one was impossible
+        // to read: nobody could tell whether it meant nobody came, or nobody
+        // got through.
+        $attempts = $wpdb->get_results( 'SELECT * FROM ' . gsp_attempts_table() . ' ORDER BY last_seen DESC LIMIT 200' );
+        $opened   = 0;
+        $passed   = 0;
+        $failed   = 0;
+
+        foreach ( (array) $attempts as $a ) {
+            if ( $a->event === 'opened' ) {
+                $opened++;
+            } elseif ( $a->event === 'requirements' ) {
+                if ( $a->result === 'passed' ) {
+                    $passed++;
+                } else {
+                    $failed++;
+                }
+            }
+        }
+        ?>
+
+        <h2>Installer attempts</h2>
+
+        <p>
+            <strong><?php echo (int) $opened; ?></strong> opened the installer,
+            <strong><?php echo (int) $passed; ?></strong> passed the requirements check,
+            <strong><?php echo (int) $failed; ?></strong> were turned away by it.
+        </p>
+
+        <p class="description">
+            A host that fails the requirements check never reaches WordPress, so it can
+            never appear in the register below. That gap is the point of this table.
+        </p>
+
+        <table class="widefat striped" style="margin-bottom:2em">
+            <thead>
+                <tr>
+                    <th>Host</th>
+                    <th>Step</th>
+                    <th>Result</th>
+                    <th>Last seen</th>
+                    <th>Attempts</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ( ! $attempts ) : ?>
+                    <tr><td colspan="5">No installer attempts recorded yet.</td></tr>
+                <?php else : ?>
+                    <?php foreach ( $attempts as $a ) : ?>
+                        <tr>
+                            <td><?php echo esc_html( $a->host ); ?></td>
+                            <td><?php echo esc_html( $a->event ); ?></td>
+                            <td><?php echo esc_html( $a->result ); ?></td>
+                            <td><?php echo esc_html( human_time_diff( strtotime( $a->last_seen ) ) ); ?> ago</td>
+                            <td><?php echo (int) $a->attempts; ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+
+        <h2>Installs that checked in</h2>
+
         <table class="widefat striped">
             <thead>
                 <tr>
@@ -1560,3 +1640,178 @@ function gsp_export_installs(): void {
     exit;
 }
 add_action( 'admin_post_gsp_export_installs', 'gsp_export_installs' );
+
+
+// ============================================================================
+// INSTALL ATTEMPTS — the step before the register
+//
+// WHY it exists: the register can only hear from an install that finished. A
+//      society whose host fails the installer's requirements gate never gets a
+//      WordPress, never gets a plugin, and never checks in — so on our side it
+//      is indistinguishable from somebody who downloaded the file and never
+//      opened it. Those two are the same silence and completely different
+//      problems. One means the funnel is empty; the other means it is leaking.
+//
+// WHY so little is sent: the register's three-facts rule applies here too. The
+//      installer reports that it ran, whether the gate passed, and the host it
+//      ran on. It does not report PHP versions, missing extensions or anything
+//      else describing somebody's server. Knowing that a host bounced is worth
+//      having; fingerprinting it is not worth what it costs in trust.
+// ============================================================================
+
+/**
+ * Table name for install attempts.
+ */
+function gsp_attempts_table(): string {
+    global $wpdb;
+
+    return $wpdb->prefix . 'gsp_install_attempts';
+}
+
+/**
+ * Create the attempts table.
+ *
+ * WHY host+event is the key: like the register, this answers "where does this
+ *      host stand now", not "what happened every time". The history lives in
+ *      the JSONL log, which is append-only and never truncated by an upsert.
+ */
+function gsp_create_attempts_table(): void {
+    global $wpdb;
+
+    $table   = gsp_attempts_table();
+    $collate = $wpdb->get_charset_collate();
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    dbDelta(
+        "CREATE TABLE {$table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            host VARCHAR(255) NOT NULL,
+            event VARCHAR(32) NOT NULL DEFAULT '',
+            result VARCHAR(16) NOT NULL DEFAULT '',
+            first_seen DATETIME NOT NULL,
+            last_seen DATETIME NOT NULL,
+            attempts BIGINT UNSIGNED NOT NULL DEFAULT 1,
+            PRIMARY KEY (id),
+            UNIQUE KEY host_event (host, event),
+            KEY result (result),
+            KEY last_seen (last_seen)
+        ) {$collate};"
+    );
+}
+add_action( 'after_switch_theme', 'gsp_create_attempts_table' );
+
+/**
+ * Where the durable register history lives.
+ *
+ * WHY outside the web root: the same reason the download log is there — it is
+ *      ours, not the public's, and a file under public_html is one bad rewrite
+ *      rule away from being a download.
+ */
+function gsp_installs_log_path(): string {
+    return dirname( ABSPATH, 2 ) . '/gsp-analytics/installs.jsonl';
+}
+
+/**
+ * Write one line of register history.
+ *
+ * WHY this exists at all: the server's own access logs keep about five days,
+ *      which is shorter than the plugin's weekly check-in interval. A register
+ *      whose evidence expires before its next report cannot be investigated
+ *      after the fact — the question "did anybody try last month" had no
+ *      answer anywhere. This file is the answer.
+ *
+ * WHY rejects are logged too: a check-in refused for a bad URL is a society
+ *      trying to reach us and failing. Storing nothing made a misconfigured
+ *      install look exactly like an install that does not exist.
+ */
+function gsp_installs_log( string $outcome, array $data ): void {
+    $path = gsp_installs_log_path();
+    $dir  = dirname( $path );
+
+    if ( ! is_dir( $dir ) ) {
+        @mkdir( $dir, 0755, true );
+    }
+
+    $line = wp_json_encode(
+        array_merge(
+            [
+                'time'    => gmdate( 'c' ),
+                'outcome' => $outcome,
+                'ip'      => isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '',
+                'ua'      => isset( $_SERVER['HTTP_USER_AGENT'] ) ? mb_substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 200 ) : '',
+            ],
+            $data
+        )
+    );
+
+    if ( $line ) {
+        @file_put_contents( $path, $line . "\n", FILE_APPEND | LOCK_EX );
+    }
+}
+
+/**
+ * Accept an install attempt beacon.
+ *
+ * WHY it is open like the register: same reasoning, and less is at stake here
+ *      — the endpoint writes one host and one of two words.
+ */
+function gsp_register_attempts_route(): void {
+    register_rest_route(
+        'societypress/v1',
+        '/installs/attempt',
+        [
+            'methods'             => 'POST',
+            'callback'            => 'gsp_receive_install_attempt',
+            'permission_callback' => '__return_true',
+        ]
+    );
+}
+add_action( 'rest_api_init', 'gsp_register_attempts_route' );
+
+/**
+ * Store one attempt.
+ */
+function gsp_receive_install_attempt( WP_REST_Request $request ) {
+    global $wpdb;
+
+    $host   = sanitize_text_field( (string) $request->get_param( 'host' ) );
+    $event  = sanitize_key( (string) $request->get_param( 'event' ) );
+    $result = sanitize_key( (string) $request->get_param( 'result' ) );
+
+    // Only the words this endpoint knows. Anything else is somebody poking at
+    // it, and a register full of invented event names is worse than empty.
+    $known_events  = [ 'opened', 'requirements' ];
+    $known_results = [ 'passed', 'failed', 'ok' ];
+
+    if ( $host === '' || ! in_array( $event, $known_events, true ) || ! in_array( $result, $known_results, true ) ) {
+        gsp_installs_log( 'attempt_rejected', [ 'host' => mb_substr( $host, 0, 255 ), 'event' => $event, 'result' => $result ] );
+        return new WP_REST_Response( [ 'ok' => false ], 400 );
+    }
+
+    $throttle = 'gsp_attempt_seen_' . md5( $host . '|' . $event );
+    if ( get_transient( $throttle ) ) {
+        gsp_installs_log( 'attempt_throttled', [ 'host' => $host, 'event' => $event, 'result' => $result ] );
+        return new WP_REST_Response( [ 'ok' => true ], 200 );
+    }
+    set_transient( $throttle, 1, 10 * MINUTE_IN_SECONDS );
+
+    $now = current_time( 'mysql' );
+
+    $wpdb->query(
+        $wpdb->prepare(
+            'INSERT INTO ' . gsp_attempts_table() . ' (host, event, result, first_seen, last_seen, attempts)
+             VALUES (%s, %s, %s, %s, %s, 1)
+             ON DUPLICATE KEY UPDATE result = VALUES(result), last_seen = VALUES(last_seen), attempts = attempts + 1',
+            mb_substr( $host, 0, 255 ),
+            $event,
+            $result,
+            $now,
+            $now
+        )
+    );
+
+    gsp_installs_log( 'attempt', [ 'host' => $host, 'event' => $event, 'result' => $result ] );
+
+    return new WP_REST_Response( [ 'ok' => true ], 200 );
+}

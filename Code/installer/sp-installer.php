@@ -20,6 +20,87 @@
  * @version    1.0.0
  */
 
+// ----------------------------------------------------------------------------
+// INSTALL ATTEMPT BEACON
+//
+// WHY it exists: everything downstream of this file reports itself — the
+// plugin checks in weekly once a society is running. Nothing reported the step
+// before it. A host that fails the requirements check below never reaches
+// WordPress, never installs the plugin and never checks in, so on the
+// project's side it is identical to somebody who downloaded this file and
+// never opened it. Those are the same silence and opposite problems: one says
+// nobody is coming, the other says they are coming and being turned away.
+//
+// WHY it sends two words and a hostname: the install register upstream sends
+// three facts and deliberately leaves out PHP versions and server details.
+// The same restraint applies here. Knowing that a host bounced is worth
+// having. Fingerprinting somebody's server to find out why is not worth what
+// it costs in trust, and the requirements screen already tells the person
+// running it exactly what failed.
+//
+// WHY failures are silent: this is our bookkeeping, not the society's errand.
+// A beacon that cannot reach us must never delay or break somebody's install.
+//
+// WHY PHP 5-compatible syntax: the version guard at the top of this file runs
+// on hosts too old for the rest of it, and that host is the single most
+// interesting one we could hear from. No type hints or PHP 7+ syntax here.
+// ----------------------------------------------------------------------------
+define( 'SP_INSTALLER_BEACON_URL', 'https://getsocietypress.org/wp-json/societypress/v1/installs/attempt' );
+
+function sp_installer_beacon( $event, $result ) {
+    $host = isset( $_SERVER['HTTP_HOST'] ) ? substr( (string) $_SERVER['HTTP_HOST'], 0, 255 ) : '';
+
+    // No host means no identity worth recording and probably no web request.
+    if ( $host === '' ) {
+        return;
+    }
+
+    $body = json_encode( array( 'host' => $host, 'event' => $event, 'result' => $result ) );
+    if ( ! $body ) {
+        return;
+    }
+
+    // WHY an explicit user agent: getsocietypress.org sits behind bot
+    // protection that answers unrecognised clients with a JavaScript
+    // challenge instead of the endpoint. A beacon that arrives as a bare
+    // curl default is exactly the shape that gets challenged, and it would
+    // fail silently — the worst possible outcome for a thing whose only job
+    // is to tell us what we cannot otherwise see. Naming ourselves also gives
+    // the site one clean string to allow.
+    $agent = 'SocietyPress-Installer/1.0; ' . $host;
+
+    if ( function_exists( 'curl_init' ) ) {
+        $ch = curl_init( SP_INSTALLER_BEACON_URL );
+        curl_setopt( $ch, CURLOPT_POST,           true );
+        curl_setopt( $ch, CURLOPT_POSTFIELDS,     $body );
+        curl_setopt( $ch, CURLOPT_HTTPHEADER,     array( 'Content-Type: application/json' ) );
+        curl_setopt( $ch, CURLOPT_USERAGENT,      $agent );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+        curl_setopt( $ch, CURLOPT_CONNECTTIMEOUT, 2 );
+        curl_setopt( $ch, CURLOPT_TIMEOUT,        3 );
+        @curl_exec( $ch );
+        curl_close( $ch );
+
+        return;
+    }
+
+    if ( ini_get( 'allow_url_fopen' ) ) {
+        $ctx = stream_context_create(
+            array(
+                'http' => array(
+                    'method'        => 'POST',
+                    'header'        => "Content-Type: application/json\r\nUser-Agent: " . $agent . "\r\n",
+                    'content'       => $body,
+                    'timeout'       => 3,
+                    'ignore_errors' => true,
+                ),
+            )
+        );
+        @file_get_contents( SP_INSTALLER_BEACON_URL, false, $ctx );
+    }
+}
+
+
 // ============================================================================
 // EARLY PHP VERSION GUARD
 // ============================================================================
@@ -39,7 +120,13 @@ if ( PHP_VERSION_ID < 80000 ) {
         . '<p>SocietyPress requires PHP 8.0 or newer. This server is running PHP '
         . htmlspecialchars( PHP_VERSION, ENT_QUOTES, 'UTF-8' ) . '.</p>'
         . '<p>Most cPanel hosts let you change the PHP version under the "MultiPHP Manager" or "PHP Selector" tool. After upgrading to PHP 8.0+, reload this page.</p>'
+        . '<p style="font-size:13px;color:#6B7280;margin-bottom:0">SocietyPress recorded that an install was attempted here and that this server did not meet the requirements &mdash; the address of this site, and nothing else. No details about your server were sent.</p>'
         . '</div>';
+
+    // The most interesting bounce there is: a host so old it cannot run the
+    // rest of this file. Nothing downstream will ever hear from it.
+    sp_installer_beacon( 'requirements', 'failed' );
+
     exit( 1 );
 }
 
@@ -78,7 +165,6 @@ define( 'SP_INSTALLER_WP_URL',     'https://wordpress.org/latest.zip' );
 define( 'SP_INSTALLER_BUNDLE_URL', 'https://getsocietypress.org/downloads/societypress-latest.zip' );
 define( 'SP_INSTALLER_GITHUB_REPO', 'SocietyPressFoundation/SocietyPress' );
 define( 'SP_INSTALLER_SALT_URL',    'https://api.wordpress.org/secret-key/1.1/salt/' );
-
 // Demo mode: if a config file exists outside the web root, load it.
 // WHY: On the demo site, DB credentials are pre-configured so visitors don't need
 // to know them. The config file lives outside public_html so it's never web-accessible.
@@ -138,6 +224,13 @@ if ( ! empty( $_SERVER['HTTPS'] ) && $_SERVER['HTTPS'] !== 'off' ) {
 // cookie never accompanies cross-site requests at all.
 @ini_set( 'session.cookie_samesite', 'Strict' );
 session_start();
+
+// One beacon per install session, not one per page view: the question is how
+// many societies opened this, not how many times they clicked Back.
+if ( empty( $_SESSION['sp_beacon_opened'] ) ) {
+    $_SESSION['sp_beacon_opened'] = true;
+    sp_installer_beacon( 'opened', 'ok' );
+}
 
 $step = $_GET['step'] ?? 'check';
 
@@ -251,6 +344,10 @@ function sp_installer_check_requirements(): void {
         'note'   => $space_ok ? '' : 'You may not have enough disk space. WordPress + SocietyPress need about 100 MB.',
     ];
 
+    // The verdict, and only the verdict. Which check failed stays on this
+    // screen, where the person who can act on it is already reading it.
+    sp_installer_beacon( 'requirements', $all_pass ? 'passed' : 'failed' );
+
     sp_installer_render_page( 'Server Requirements Check', function () use ( $checks, $all_pass ) {
         ?>
         <p style="margin-bottom: 24px; color: #6B7280;">
@@ -279,6 +376,13 @@ function sp_installer_check_requirements(): void {
                 </tr>
             <?php endforeach; ?>
         </table>
+
+        <p style="font-size: 13px; color: #6B7280; margin-bottom: 24px; padding-top: 8px; border-top: 1px solid #E5E7EB;">
+            SocietyPress recorded that an install was attempted at
+            <strong><?php echo htmlspecialchars( isset( $_SERVER['HTTP_HOST'] ) ? (string) $_SERVER['HTTP_HOST'] : '', ENT_QUOTES, 'UTF-8' ); ?></strong>
+            and whether this check passed. That is the whole of it &mdash; no details about
+            your server, your hosting or anyone using it were sent.
+        </p>
 
         <?php if ( $all_pass ) : ?>
             <p style="color: #16A34A; font-weight: 600; margin-bottom: 16px;">

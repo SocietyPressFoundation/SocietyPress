@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.43
+ * Version:     1.5.44
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.43' );
+define( 'SOCIETYPRESS_VERSION', '1.5.44' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2030,6 +2030,7 @@ function sp_create_tables(): void {
         title                 VARCHAR(500)        NULL,
         submit_label          VARCHAR(255)        NULL,
         status                VARCHAR(20)         NOT NULL DEFAULT 'published',
+        visibility            VARCHAR(20)         NOT NULL DEFAULT 'public',
         fields                LONGTEXT            NULL,
         email_subject         VARCHAR(500)        NULL,
         send_to_email         VARCHAR(255)        NULL,
@@ -127365,6 +127366,7 @@ function sp_render_form_edit_page(): void {
     $title        = $form ? (string) $form->title : '';
     $submit_label = $form ? (string) ( $form->submit_label ?? '' ) : '';
     $status       = $form ? $form->status : 'published';
+    $visibility   = $form ? ( $form->visibility ?? 'public' ) : 'public';
     $subject     = $form ? (string) $form->email_subject : '';
     $to_email    = $form ? (string) $form->send_to_email : '';
     $to_name     = $form ? (string) $form->send_to_name : '';
@@ -127494,6 +127496,14 @@ function sp_render_form_edit_page(): void {
                                 <option value="published" <?php selected( $status, 'published' ); ?>><?php esc_html_e( 'Published — live on the site', 'societypress' ); ?></option>
                                 <option value="draft" <?php selected( $status, 'draft' ); ?>><?php esc_html_e( 'Draft — hidden from visitors', 'societypress' ); ?></option>
                             </select>
+                        </p>
+                        <p>
+                            <label for="sp-form-visibility"><strong><?php esc_html_e( 'Who can answer', 'societypress' ); ?></strong></label><br>
+                            <select id="sp-form-visibility" name="visibility" style="width:100%; margin-top:6px;">
+                                <option value="public" <?php selected( $visibility, 'public' ); ?>><?php esc_html_e( 'Anyone who visits the page', 'societypress' ); ?></option>
+                                <option value="members" <?php selected( $visibility, 'members' ); ?>><?php esc_html_e( 'Members in good standing only', 'societypress' ); ?></option>
+                            </select>
+                            <span class="description"><?php esc_html_e( 'A members-only form asks visitors to sign in first. Use it for surveys where only your membership should have a say.', 'societypress' ); ?></span>
                         </p>
                         <?php if ( $form_id ) : ?>
                             <p class="description"><?php esc_html_e( 'To put this form on a page, edit the page and add the Form widget in the page builder, then pick this form.', 'societypress' ); ?></p>
@@ -127704,6 +127714,7 @@ function sp_forms_handle_save( int $form_id ): int {
         'title'                => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
         'submit_label'         => sanitize_text_field( wp_unslash( $_POST['submit_label'] ?? '' ) ),
         'status'               => ( 'draft' === ( $_POST['status'] ?? '' ) ) ? 'draft' : 'published',
+        'visibility'           => ( 'members' === ( $_POST['visibility'] ?? '' ) ) ? 'members' : 'public',
         'fields'               => wp_json_encode( $fields ),
         'email_subject'        => sanitize_text_field( wp_unslash( $_POST['email_subject'] ?? '' ) ),
         'send_to_email'        => sanitize_email( wp_unslash( $_POST['send_to_email'] ?? '' ) ),
@@ -127952,12 +127963,240 @@ function sp_render_form_submissions_page(): void {
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Submission deleted.', 'societypress' ); ?></p></div>
         <?php endif; ?>
 
+        <?php sp_forms_render_results( $form ); ?>
+
+        <h2><?php esc_html_e( 'Individual responses', 'societypress' ); ?></h2>
+
         <form method="post">
             <?php
             wp_nonce_field( 'bulk-form_submissions' );
             $table->display();
             ?>
         </form>
+    </div>
+    <?php
+}
+
+/**
+ * Tally every answer a form has received, question by question.
+ *
+ * WHY this exists: a form that records answers one at a time answers the
+ *      question "what did this person say". A society asking what its members
+ *      want more of is asking "what did everybody say", and reading two
+ *      hundred submissions one screen at a time is not an answer — it is a
+ *      pile. The difference between a form and a survey is entirely this
+ *      function.
+ *
+ * WHY the choices come from the form definition rather than the submissions:
+ *      an option nobody picked is a finding. Tallying only what was submitted
+ *      would silently drop it, and "nobody wanted the Saturday workshop" is
+ *      exactly the sort of thing a programme chair needs to see.
+ *
+ * WHY answers are tallied in PHP rather than by the database: a society
+ *      survey is tens to hundreds of responses, not millions. At that size
+ *      this is instant, it reads every submission the form has ever taken,
+ *      and it needs no migration and no second copy of the data.
+ *
+ * @param object $form
+ * @param array  $fields Field definitions from sp_forms_get_fields().
+ * @return array {
+ *     @type int   $responses Total submissions.
+ *     @type array $questions One entry per field, with counts or answers.
+ * }
+ */
+function sp_forms_results_summary( $form, array $fields ): array {
+    global $wpdb;
+
+    $rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT data FROM {$wpdb->prefix}sp_form_submissions WHERE form_id = %d ORDER BY created_at ASC",
+        (int) $form->id
+    ) );
+
+    $types     = sp_forms_field_types();
+    $questions = [];
+
+    foreach ( $fields as $f ) {
+        $type = $f['type'] ?? 'text';
+        $questions[ $f['label'] ] = [
+            'label'    => $f['label'],
+            'type'     => $type,
+            'choice'   => ! empty( $types[ $type ]['options'] ),
+            'counts'   => [],
+            'answers'  => [],
+            'answered' => 0,
+        ];
+
+        // Seed every offered choice at zero so the unpicked ones still show.
+        if ( ! empty( $types[ $type ]['options'] ) ) {
+            foreach ( (array) ( $f['options'] ?? [] ) as $opt ) {
+                $questions[ $f['label'] ]['counts'][ (string) $opt ] = 0;
+            }
+        }
+    }
+
+    $responses = 0;
+
+    foreach ( $rows as $json ) {
+        $data = json_decode( (string) $json, true );
+        if ( ! is_array( $data ) ) {
+            continue;
+        }
+        $responses++;
+
+        foreach ( $data as $label => $value ) {
+            // A question asked in an earlier version of the form still has
+            // answers worth counting, so it earns a row of its own rather
+            // than being dropped for no longer being on the form.
+            if ( ! isset( $questions[ $label ] ) ) {
+                $questions[ $label ] = [
+                    'label'    => $label,
+                    'type'     => 'text',
+                    'choice'   => false,
+                    'counts'   => [],
+                    'answers'  => [],
+                    'answered' => 0,
+                    'retired'  => true,
+                ];
+            }
+
+            $values = is_array( $value ) ? $value : [ $value ];
+            $any    = false;
+
+            foreach ( $values as $v ) {
+                $v = trim( (string) $v );
+                if ( '' === $v ) {
+                    continue;
+                }
+                $any = true;
+
+                if ( $questions[ $label ]['choice'] || ! empty( $questions[ $label ]['counts'] ) ) {
+                    if ( ! isset( $questions[ $label ]['counts'][ $v ] ) ) {
+                        $questions[ $label ]['counts'][ $v ] = 0;
+                    }
+                    $questions[ $label ]['counts'][ $v ]++;
+                } else {
+                    $questions[ $label ]['answers'][] = $v;
+                }
+            }
+
+            if ( $any ) {
+                $questions[ $label ]['answered']++;
+            }
+        }
+    }
+
+    return [
+        'responses' => $responses,
+        'questions' => array_values( $questions ),
+    ];
+}
+
+/**
+ * Show the tally above the list of individual submissions.
+ *
+ * WHY bars carry their number as text: a bar whose only information is its
+ *      length cannot be read by somebody using a screen reader, and cannot be
+ *      read accurately by anybody at all. The count and the percentage are
+ *      the answer; the bar is a convenience.
+ *
+ * @param object $form
+ */
+function sp_forms_render_results( $form ): void {
+    $fields  = sp_forms_get_fields( $form );
+    $summary = sp_forms_results_summary( $form, $fields );
+
+    if ( $summary['responses'] < 1 ) {
+        return;
+    }
+    ?>
+    <div class="sp-form-results" style="background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:4px 20px 20px; max-width:860px; margin:16px 0 24px;">
+        <h2 style="margin-bottom:4px;"><?php esc_html_e( 'Results', 'societypress' ); ?></h2>
+        <p style="color:#646970; margin-top:0;">
+            <?php
+            printf(
+                /* translators: %s: number of responses */
+                esc_html( _n( '%s response so far.', '%s responses so far.', (int) $summary['responses'], 'societypress' ) ),
+                '<strong>' . esc_html( number_format_i18n( $summary['responses'] ) ) . '</strong>'
+            );
+            ?>
+        </p>
+
+        <?php foreach ( $summary['questions'] as $q ) : ?>
+            <div style="margin:22px 0 0;">
+                <h3 style="margin:0 0 2px;">
+                    <?php echo esc_html( $q['label'] ); ?>
+                    <?php if ( ! empty( $q['retired'] ) ) : ?>
+                        <span style="font-weight:400; color:#646970; font-size:12px;">
+                            &nbsp;<?php esc_html_e( '— no longer on the form', 'societypress' ); ?>
+                        </span>
+                    <?php endif; ?>
+                </h3>
+                <p style="margin:0 0 8px; color:#646970; font-size:12px;">
+                    <?php
+                    printf(
+                        /* translators: 1: answers to this question, 2: total responses */
+                        esc_html__( 'Answered by %1$s of %2$s.', 'societypress' ),
+                        esc_html( number_format_i18n( $q['answered'] ) ),
+                        esc_html( number_format_i18n( $summary['responses'] ) )
+                    );
+                    ?>
+                </p>
+
+                <?php if ( $q['counts'] ) : ?>
+                    <?php
+                    // Order by popularity, because the answer to "what do they
+                    // want more of" is the top of this list.
+                    $counts = $q['counts'];
+                    arsort( $counts );
+                    $top = max( 1, (int) max( $counts ) );
+                    ?>
+                    <table class="widefat striped" style="max-width:760px;">
+                        <tbody>
+                            <?php foreach ( $counts as $choice => $n ) : ?>
+                                <?php $pct = $q['answered'] > 0 ? ( $n / $q['answered'] ) * 100 : 0; ?>
+                                <tr>
+                                    <td style="width:40%;"><?php echo esc_html( $choice ); ?></td>
+                                    <td style="width:45%;">
+                                        <div style="background:#f0f0f1; border-radius:3px; height:18px;">
+                                            <div style="background:#2271b1; height:18px; border-radius:3px; width:<?php echo esc_attr( round( ( $n / $top ) * 100, 1 ) ); ?>%;"></div>
+                                        </div>
+                                    </td>
+                                    <td style="width:15%; text-align:right; white-space:nowrap;">
+                                        <strong><?php echo esc_html( number_format_i18n( $n ) ); ?></strong>
+                                        <span style="color:#646970;">&nbsp;<?php echo esc_html( number_format_i18n( round( $pct ) ) ); ?>%</span>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+
+                <?php elseif ( $q['answers'] ) : ?>
+                    <?php
+                    // Written answers are the ones worth reading rather than
+                    // counting. Show the most recent handful; the full set is
+                    // in the table below and in the CSV.
+                    $recent = array_slice( array_reverse( $q['answers'] ), 0, 10 );
+                    $more   = count( $q['answers'] ) - count( $recent );
+                    ?>
+                    <ul style="margin:0; padding-left:18px;">
+                        <?php foreach ( $recent as $a ) : ?>
+                            <li style="margin-bottom:4px;"><?php echo esc_html( wp_trim_words( $a, 40, '…' ) ); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <?php if ( $more > 0 ) : ?>
+                        <p style="color:#646970; font-size:12px; margin:6px 0 0;">
+                            <?php
+                            printf(
+                                /* translators: %s: number of further answers */
+                                esc_html( _n( 'and %s more below.', 'and %s more below.', (int) $more, 'societypress' ) ),
+                                esc_html( number_format_i18n( $more ) )
+                            );
+                            ?>
+                        </p>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
     </div>
     <?php
 }
@@ -128175,6 +128414,32 @@ function sp_forms_render_form( $form ): string {
             ) . '</p>';
         }
         return '';
+    }
+
+    // Members-only forms. A survey asking what the membership thinks of the
+    // board is not a question for passing search traffic, and a society that
+    // cannot restrict who answers cannot trust the result.
+    //
+    // WHY active membership rather than merely having a record: this matches
+    // how member benefits are gated elsewhere in the plugin, so "members only"
+    // means one thing across the product rather than something subtly
+    // different per module.
+    //
+    // WHY visitors are told rather than shown nothing: silence reads as a
+    // broken page, and the person who most needs to see this is a member who
+    // simply is not signed in yet.
+    if ( 'members' === ( $form->visibility ?? 'public' ) && ! sp_user_is_active_member() ) {
+        if ( current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' ) ) {
+            return '<p class="sp-form-notice">' . esc_html(
+                sprintf( /* translators: %s: form name */ __( 'The form "%s" is for members only. Members in good standing see it here once signed in.', 'societypress' ), $form->name )
+            ) . '</p>';
+        }
+
+        return '<p class="sp-form-notice">'
+            . esc_html__( 'This form is for members. Please sign in to continue.', 'societypress' )
+            . ' <a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">'
+            . esc_html__( 'Sign in', 'societypress' )
+            . '</a></p>';
     }
 
     $fields = sp_forms_get_fields( $form );

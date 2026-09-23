@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.44] — 2026-09-23
+
+**Forms now show you what everybody said, not just what one person said.**
+A form has always recorded every answer, but reading them meant opening
+submissions one at a time. That answers "what did this person say" when the
+question a society is actually asking is "what does the membership want more
+of". The submissions screen now opens with a tally: every question, every
+choice, counts and percentages, with written answers listed underneath.
+Options nobody picked are shown at zero, because nobody choosing the Saturday
+workshop is a finding rather than an absence. Questions from an earlier
+version of the form keep their answers and are marked as retired.
+
+**A form can now be restricted to members in good standing.** Visitors are
+asked to sign in rather than shown an empty space, and the form itself is
+never sent to the page. Use it for surveys where only the membership should
+have a say.
+
 ## [1.5.43] — 2026-09-22
 
 **A donation the giver abandoned no longer reads as money on its way in.**

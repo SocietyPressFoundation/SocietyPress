@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.44
+ * Version:     1.5.45
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.44' );
+define( 'SOCIETYPRESS_VERSION', '1.5.45' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -127131,8 +127131,62 @@ function sp_forms_field_types(): array {
         'select'     => [ 'label' => __( 'Drop down menu', 'societypress' ),    'options' => true,  'multi' => false ],
         'radio'      => [ 'label' => __( 'Multiple choice (pick one)', 'societypress' ), 'options' => true, 'multi' => false ],
         'checkboxes' => [ 'label' => __( 'Checkboxes (pick many)', 'societypress' ),     'options' => true, 'multi' => true  ],
+        'scale'      => [ 'label' => __( 'Rating scale (agree/disagree)', 'societypress' ), 'options' => true,  'multi' => false ],
+        'rating'     => [ 'label' => __( 'Star rating (1 to 5)', 'societypress' ),  'options' => false, 'multi' => false ],
         'file'       => [ 'label' => __( 'File upload', 'societypress' ),        'options' => false, 'multi' => false ],
     ];
+}
+
+/**
+ * The default points on an agree/disagree scale.
+ *
+ * WHY a default rather than an empty box: a volunteer adding a rating scale
+ *      knows what they want to ask and not necessarily how such a scale is
+ *      normally worded. Five balanced points with a neutral middle is the
+ *      ordinary shape, and they can still replace every word of it.
+ *
+ * @return string[]
+ */
+function sp_forms_default_scale(): array {
+    return [
+        __( 'Strongly disagree', 'societypress' ),
+        __( 'Disagree', 'societypress' ),
+        __( 'Neutral', 'societypress' ),
+        __( 'Agree', 'societypress' ),
+        __( 'Strongly agree', 'societypress' ),
+    ];
+}
+
+/**
+ * The choices a field actually offers.
+ *
+ * WHY this exists rather than reading $field['options'] directly: a star
+ *      rating has fixed choices nobody typed in, and a scale left blank
+ *      falls back to the default wording. The renderer, the submission
+ *      validator and the results tally each need the same answer to "what
+ *      could somebody have picked here", and three copies of that logic is
+ *      three chances for a stored answer to be rejected as invalid or a
+ *      valid choice to go uncounted.
+ *
+ * @param array $field
+ * @return string[] Empty for fields that are not a choice of any kind.
+ */
+function sp_forms_field_options( array $field ): array {
+    $type = $field['type'] ?? 'text';
+
+    if ( 'rating' === $type ) {
+        return [ '1', '2', '3', '4', '5' ];
+    }
+
+    $options = array_values( array_filter( array_map( 'strval', (array) ( $field['options'] ?? [] ) ), static function ( $o ) {
+        return '' !== trim( $o );
+    } ) );
+
+    if ( 'scale' === $type && ! $options ) {
+        return sp_forms_default_scale();
+    }
+
+    return $options;
 }
 
 /**
@@ -128027,11 +128081,21 @@ function sp_forms_results_summary( $form, array $fields ): array {
         ];
 
         // Seed every offered choice at zero so the unpicked ones still show.
-        if ( ! empty( $types[ $type ]['options'] ) ) {
-            foreach ( (array) ( $f['options'] ?? [] ) as $opt ) {
+        // Asking the helper rather than reading options directly is what makes
+        // a star rating tally at all — nobody ever typed its choices in.
+        $seed = sp_forms_field_options( $f );
+        if ( $seed ) {
+            $questions[ $f['label'] ]['choice'] = true;
+            foreach ( $seed as $opt ) {
                 $questions[ $f['label'] ]['counts'][ (string) $opt ] = 0;
             }
         }
+
+        // An average only means something when the points are numbers. A
+        // scale worded "Disagree… Agree" has an order but no arithmetic, and
+        // reporting "3.4 Agree" would be inventing precision that the answers
+        // do not contain.
+        $questions[ $f['label'] ]['numeric'] = ( 'rating' === $type );
     }
 
     $responses = 0;
@@ -128082,6 +128146,29 @@ function sp_forms_results_summary( $form, array $fields ): array {
             if ( $any ) {
                 $questions[ $label ]['answered']++;
             }
+        }
+    }
+
+    // An average, where one is meaningful. Star ratings get it; worded scales
+    // deliberately do not.
+    foreach ( $questions as $label => $q ) {
+        $questions[ $label ]['average'] = null;
+
+        if ( empty( $q['numeric'] ) || ! $q['counts'] ) {
+            continue;
+        }
+
+        $sum = 0.0;
+        $n   = 0;
+        foreach ( $q['counts'] as $value => $count ) {
+            if ( is_numeric( $value ) ) {
+                $sum += (float) $value * (int) $count;
+                $n   += (int) $count;
+            }
+        }
+
+        if ( $n > 0 ) {
+            $questions[ $label ]['average'] = $sum / $n;
         }
     }
 
@@ -128140,6 +128227,16 @@ function sp_forms_render_results( $form ): void {
                         esc_html( number_format_i18n( $summary['responses'] ) )
                     );
                     ?>
+                    <?php if ( null !== ( $q['average'] ?? null ) ) : ?>
+                        &nbsp;&middot;&nbsp;
+                        <strong><?php
+                            printf(
+                                /* translators: %s: average score, e.g. 4.2 */
+                                esc_html__( 'Average %s out of 5', 'societypress' ),
+                                esc_html( number_format_i18n( round( $q['average'], 1 ), 1 ) )
+                            );
+                        ?></strong>
+                    <?php endif; ?>
                 </p>
 
                 <?php if ( $q['counts'] ) : ?>
@@ -128483,7 +128580,42 @@ function sp_forms_render_form( $form ): string {
                 $name = 'field_' . $f['key'];
                 ?>
                 <div class="sp-form-field sp-form-field--<?php echo esc_attr( $f['type'] ); ?>">
-                    <?php if ( 'checkboxes' === $f['type'] || 'radio' === $f['type'] ) : ?>
+                    <?php if ( 'scale' === $f['type'] || 'rating' === $f['type'] ) : ?>
+                        <?php
+                        // A scale and a star rating are both "pick exactly one
+                        // of an ordered set", which is a radio group. Built as
+                        // real radios rather than clickable glyphs so they work
+                        // with a keyboard, announce themselves to a screen
+                        // reader, and survive a browser with no JavaScript.
+                        $scale_options = sp_forms_field_options( $f );
+                        $is_stars      = ( 'rating' === $f['type'] );
+                        ?>
+                        <fieldset>
+                            <legend class="sp-form-label"><?php echo esc_html( $f['label'] ); ?><?php echo $star; // phpcs:ignore ?></legend>
+                            <div class="sp-form-scale<?php echo $is_stars ? ' sp-form-scale--stars' : ''; ?>">
+                                <?php foreach ( $scale_options as $oi => $opt ) :
+                                    $oid = $fid . '-' . $oi; ?>
+                                    <label class="sp-form-scale-point" for="<?php echo esc_attr( $oid ); ?>">
+                                        <input type="radio" id="<?php echo esc_attr( $oid ); ?>" name="<?php echo esc_attr( $name ); ?>" value="<?php echo esc_attr( $opt ); ?>"<?php echo $req; // phpcs:ignore ?>>
+                                        <span class="sp-form-scale-text">
+                                            <?php if ( $is_stars ) : ?>
+                                                <span aria-hidden="true">&#9733;</span>
+                                                <?php
+                                                printf(
+                                                    /* translators: %s: a number from 1 to 5 */
+                                                    esc_html__( '%s', 'societypress' ),
+                                                    esc_html( $opt )
+                                                );
+                                                ?>
+                                            <?php else : ?>
+                                                <?php echo esc_html( $opt ); ?>
+                                            <?php endif; ?>
+                                        </span>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                        </fieldset>
+                    <?php elseif ( 'checkboxes' === $f['type'] || 'radio' === $f['type'] ) : ?>
                         <fieldset>
                             <legend class="sp-form-label"><?php echo esc_html( $f['label'] ); ?><?php echo $star; // phpcs:ignore ?></legend>
                             <?php foreach ( $f['options'] as $oi => $opt ) :
@@ -128567,6 +128699,23 @@ function sp_forms_print_frontend_assets(): void {
         .sp-form-field legend { padding:0; }
         .sp-form-choice { display:block; font-weight:400; margin:.3em 0; }
         .sp-form-choice input { margin-right:.5em; }
+        /* Scale points sit in a row on a roomy screen and stack on a phone.
+           WHY they stack rather than shrink: the audience is older members on
+           small screens, and five labels squeezed onto one line is how a
+           rating scale becomes unanswerable. Targets stay finger-sized. */
+        .sp-form-scale { display:flex; flex-wrap:wrap; gap:.4em; margin:.4em 0; }
+        .sp-form-scale-point { flex:1 1 8em; display:flex; align-items:center; gap:.5em;
+            min-height:44px; padding:.5em .7em; border:1px solid #c3c4c7; border-radius:6px;
+            font-weight:400; cursor:pointer; background:#fff; }
+        .sp-form-scale-point:hover { border-color:#2271b1; }
+        .sp-form-scale-point input { margin:0; }
+        .sp-form-scale-point:focus-within { outline:2px solid #2271b1; outline-offset:2px; }
+        .sp-form-scale--stars .sp-form-scale-point { flex:0 1 5.5em; justify-content:center; }
+        .sp-form-scale-text { line-height:1.3; }
+        @media (max-width:480px) {
+            .sp-form-scale-point { flex:1 1 100%; }
+            .sp-form-scale--stars .sp-form-scale-point { flex:1 1 30%; }
+        }
         .sp-form-submit { padding:.7em 1.6em; font-size:1em; border:none; border-radius:6px; background:#2271b1; color:#fff; cursor:pointer; }
         .sp-form-submit:hover { background:#135e96; }
         .sp-form-submit[disabled] { opacity:.6; cursor:default; }
@@ -128709,6 +128858,22 @@ function sp_handle_form_submission(): void {
         }
 
         $value = sanitize_textarea_field( wp_unslash( is_array( $raw ) ? '' : $raw ) );
+
+        // Single-choice answers must be something the form actually offered.
+        //
+        // WHY this is worth enforcing: checkboxes were already filtered
+        // against their options, but a dropdown, a radio, a scale or a star
+        // rating took whatever arrived. On a contact form that is untidy; on
+        // a survey it is a corrupted result, because one crafted POST can
+        // invent a choice nobody was ever shown and it will be tallied
+        // alongside the real ones.
+        $choices = sp_forms_field_options( $f );
+        if ( $choices && in_array( $f['type'], [ 'select', 'radio', 'scale', 'rating' ], true ) ) {
+            if ( '' !== $value && ! in_array( $value, $choices, true ) ) {
+                /* translators: %s: field label */
+                wp_send_json_error( [ 'message' => sprintf( __( 'Please choose one of the given answers for "%s".', 'societypress' ), $label ) ] );
+            }
+        }
 
         // Type-specific validation.
         if ( 'email' === $f['type'] && '' !== $value && ! is_email( $value ) ) {

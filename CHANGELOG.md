@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.45] — 2026-09-23
+
+**Two new question types for asking how strongly people feel.** A star rating
+from one to five, and an agree/disagree scale that arrives already worded —
+Strongly disagree through Strongly agree — which you can rewrite entirely.
+Star ratings report an average alongside the breakdown. Worded scales
+deliberately do not: they have an order but no arithmetic, and "3.4 Agree"
+would be precision the answers never contained.
+
+Both are built from ordinary radio buttons, so they work with a keyboard,
+read correctly aloud, and still work if scripting is off. On a phone the
+points stack rather than shrink, with finger-sized targets, because five
+labels squeezed onto one line is how a rating scale becomes unanswerable.
+
+**Answers to a dropdown, multiple choice, scale or star question are now
+checked against the choices the form actually offered.** Checkbox answers
+were already filtered this way; the others took whatever was sent. On a
+contact form that was untidy. On a survey it meant a single crafted
+submission could invent an answer nobody was ever shown and have it counted
+alongside the real ones.
+
 ## [1.5.44] — 2026-09-23
 
 **Forms now show you what everybody said, not just what one person said.**

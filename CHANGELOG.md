@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.48] — 2026-09-28
+
+**The Join form lists your membership levels again, and joining works.** The
+form looked up levels using the wrong column name, so it showed none, and
+every attempt to join was turned away with "Invalid membership level
+selected."
+
 ## [1.5.47] — 2026-09-28
 
 **Surveys can email members an invitation, and remind the ones who haven't

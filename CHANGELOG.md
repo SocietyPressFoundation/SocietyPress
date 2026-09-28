@@ -20,6 +20,48 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.47] — 2026-09-28
+
+**Surveys can email members an invitation, and remind the ones who haven't
+answered.** A new Invitations tab sends each active member their own link.
+It lets them answer without signing in, which matters for members who never
+set a password, and still only once. Reminders go only to invited members who
+haven't answered. The emails go out in small batches in the background, so a
+large membership doesn't overwhelm shared hosting. Members who have opted out
+of society notices aren't emailed. The subject and message can be edited, and
+an anonymous survey's email says so.
+
+**Surveys can open and close on set days.** Choose an opening day and a last
+day to answer. Before it opens, the page says when to come back. After the
+last day, the survey closes itself.
+
+**Longer surveys can be split into pages.** Add a page break between
+questions, with an optional heading for the next page. Members see one page
+at a time with a progress bar, and can't move on until that page's required
+questions are answered. A page is skipped if none of its questions apply.
+
+**A question can be asked only when an earlier answer calls for it.** For
+example, "What kind of help could you give?" can appear only for members who
+answered Yes to "Would you consider volunteering?". Answers to questions that
+weren't shown aren't saved. If a rule stops making sense after questions are
+reworded or moved, it's removed when you save, and you're told.
+
+**New grid question.** Ask several statements on the same scale in one block,
+such as how satisfied members are with meetings, the newsletter and the
+website. On a phone, each statement becomes its own list of choices. Each
+statement is counted and downloaded as its own column.
+
+**Results can be broken down by any single-choice question.** For example,
+choose the age question to see how each age group answered everything else.
+There's also a printable summary for board reports, and a line showing how
+many invited members have answered.
+
+**Surveys can be duplicated and saved as templates.** Duplicate copies a
+survey's questions into a fresh draft. Save as Template keeps them to start
+from next year. Two ready-made templates are included: Seminar feedback and
+Membership survey. The survey screen also shows the shortcode for putting a
+survey on another page.
+
 ## [1.5.46] — 2026-09-28
 
 **Surveys have their own place in the menu, and running one takes no

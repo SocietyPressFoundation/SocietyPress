@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.46
+ * Version:     1.5.47
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.46' );
+define( 'SOCIETYPRESS_VERSION', '1.5.47' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2045,6 +2045,10 @@ function sp_create_tables(): void {
         intro                 TEXT                NULL,
         closed_message        TEXT                NULL,
         repeat_message        TEXT                NULL,
+        opens_on              DATE                NULL,
+        closes_on             DATE                NULL,
+        invite_subject        VARCHAR(500)        NULL,
+        invite_message        TEXT                NULL,
         submissions_count     INT UNSIGNED        NOT NULL DEFAULT 0,
         created_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at            DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -2111,6 +2115,35 @@ function sp_create_tables(): void {
         responded_on     DATE                NULL,
         PRIMARY KEY  (form_id,user_id),
         KEY user_id (user_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_survey_invites — Who was emailed a survey (Surveys module)
+    //
+    // WHY a table of its own: reminders go to members who were invited and
+    //      have not answered, which needs a record of who was invited. Like
+    //      sp_survey_respondents it is keyed by survey and member and holds
+    //      nothing about what anyone said.
+    //
+    // WHY no token column: the link in the email carries a signature worked
+    //      out from the survey, the member and the site's secret key (see
+    //      sp_survey_invite_token()). Nothing secret is stored, so a copy of
+    //      the database hands nobody a working link, and a reminder can carry
+    //      the same link as the first email.
+    //
+    // WHY queued: a society's whole membership is too many emails for one
+    //      page load on shared hosting. Pressing Send marks the rows, and a
+    //      background job sends them a batch at a time.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}survey_invites (
+        form_id          BIGINT(20) UNSIGNED NOT NULL,
+        user_id          BIGINT(20) UNSIGNED NOT NULL,
+        invited_on       DATE                NULL,
+        reminded_on      DATE                NULL,
+        queued           VARCHAR(10)         NOT NULL DEFAULT '',
+        PRIMARY KEY  (form_id,user_id),
+        KEY user_id (user_id),
+        KEY queued (queued)
     ) {$charset_collate};" );
 
 
@@ -39761,7 +39794,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.46',
+            'version'     => '1.5.47',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39769,7 +39802,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.46',
+            'version'     => '1.5.47',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39777,7 +39810,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.46',
+            'version'     => '1.5.47',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39785,7 +39818,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.46',
+            'version'     => '1.5.47',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39793,7 +39826,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.46',
+            'version'     => '1.5.47',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -127302,13 +127335,16 @@ function sp_forms_get_fields( $form ): array {
     if ( ! is_array( $decoded ) ) {
         return [];
     }
-    $types  = sp_forms_field_types();
+    // WHY the survey-only kinds are accepted for every row: the list is only
+    // what a stored field may be. Which kinds a volunteer is offered is up to
+    // each editor, and only the survey editor offers these.
+    $types  = array_merge( sp_forms_field_types(), sp_survey_extra_field_types() );
     $fields = [];
     foreach ( $decoded as $f ) {
         if ( ! is_array( $f ) || empty( $f['type'] ) || ! isset( $types[ $f['type'] ] ) ) {
             continue;
         }
-        $fields[] = [
+        $field = [
             'key'         => (string) ( $f['key'] ?? '' ),
             'type'        => (string) $f['type'],
             'label'       => (string) ( $f['label'] ?? '' ),
@@ -127316,6 +127352,16 @@ function sp_forms_get_fields( $form ): array {
             'options'     => array_values( array_filter( array_map( 'strval', (array) ( $f['options'] ?? [] ) ) ) ),
             'placeholder' => (string) ( $f['placeholder'] ?? '' ),
         ];
+        if ( 'matrix' === $field['type'] ) {
+            $field['columns'] = array_values( array_filter( array_map( 'strval', (array) ( $f['columns'] ?? [] ) ) ) );
+        }
+        if ( ! empty( $f['show_if']['label'] ) && isset( $f['show_if']['value'] ) ) {
+            $field['show_if'] = [
+                'label' => (string) $f['show_if']['label'],
+                'value' => (string) $f['show_if']['value'],
+            ];
+        }
+        $fields[] = $field;
     }
     return $fields;
 }
@@ -127356,6 +127402,10 @@ function sp_forms_get_all( bool $published_only = false, string $kind = 'form' )
     }
     if ( '' !== $kind ) {
         $where[] = $wpdb->prepare( 'kind = %s', $kind );
+    } else {
+        // A saved survey template is a starting point, not something a page
+        // can show, so "both kinds" never includes one.
+        $where[] = "kind <> 'survey_template'";
     }
     $sql_where = $where ? 'WHERE ' . implode( ' AND ', $where ) : '';
     return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}sp_forms {$sql_where} ORDER BY name ASC" );
@@ -127830,12 +127880,43 @@ function sp_forms_render_field_row( $index, array $field, array $field_types, bo
                 <?php esc_html_e( 'Required', 'societypress' ); ?>
             </label>
             <div class="sp-field-options-wrap">
-                <label style="display:block; font-weight:600; margin-bottom:2px;"><?php esc_html_e( 'Choices (one per line)', 'societypress' ); ?></label>
+                <label style="display:block; font-weight:600; margin-bottom:2px;">
+                    <span class="sp-field-options-label"><?php esc_html_e( 'Choices (one per line)', 'societypress' ); ?></span>
+                    <?php if ( $is_survey ) : ?>
+                        <span class="sp-field-rows-label" hidden><?php esc_html_e( 'Statements (one per line)', 'societypress' ); ?></span>
+                    <?php endif; ?>
+                </label>
                 <?php if ( $is_survey ) : ?>
                     <p class="description sp-field-scale-hint"><?php esc_html_e( 'For an agree/disagree scale, leave this empty to use Strongly disagree through Strongly agree.', 'societypress' ); ?></p>
                 <?php endif; ?>
                 <textarea name="<?php echo $base; ?>[options]" rows="3" placeholder="<?php esc_attr_e( "Option one\nOption two", 'societypress' ); ?>"><?php echo esc_textarea( $options ); ?></textarea>
             </div>
+            <?php if ( $is_survey ) :
+                $columns  = ! empty( $field['columns'] ) ? implode( "\n", (array) $field['columns'] ) : '';
+                $if_label = $field['show_if']['label'] ?? '';
+                $if_value = $field['show_if']['value'] ?? '';
+                ?>
+                <div class="sp-field-columns-wrap" hidden>
+                    <label style="display:block; font-weight:600; margin-bottom:2px;"><?php esc_html_e( 'Answer choices across the top (one per line)', 'societypress' ); ?></label>
+                    <p class="description"><?php esc_html_e( 'Leave empty to use Strongly disagree through Strongly agree.', 'societypress' ); ?></p>
+                    <textarea name="<?php echo $base; ?>[columns]" rows="3"><?php echo esc_textarea( $columns ); ?></textarea>
+                </div>
+                <div class="sp-field-condition">
+                    <label style="display:block; font-weight:600; margin-bottom:2px;"><?php esc_html_e( 'Ask this question', 'societypress' ); ?></label>
+                    <select class="sp-field-if-label" name="<?php echo $base; ?>[show_if_label]" aria-label="<?php esc_attr_e( 'Only if the answer to this question', 'societypress' ); ?>">
+                        <option value=""><?php esc_html_e( 'Always', 'societypress' ); ?></option>
+                        <?php if ( '' !== $if_label ) : ?>
+                            <option value="<?php echo esc_attr( $if_label ); ?>" selected><?php echo esc_html( $if_label ); ?></option>
+                        <?php endif; ?>
+                    </select>
+                    <span class="sp-field-if-is"<?php echo '' === $if_label ? ' hidden' : ''; ?>><?php esc_html_e( 'is', 'societypress' ); ?></span>
+                    <select class="sp-field-if-value" name="<?php echo $base; ?>[show_if_value]" aria-label="<?php esc_attr_e( 'is this answer', 'societypress' ); ?>"<?php echo '' === $if_label ? ' hidden' : ''; ?>>
+                        <?php if ( '' !== $if_label ) : ?>
+                            <option value="<?php echo esc_attr( $if_value ); ?>" selected><?php echo esc_html( $if_value ); ?></option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+            <?php endif; ?>
         </div>
         <input type="hidden" name="<?php echo $base; ?>[placeholder]" value="<?php echo esc_attr( $placeholder ); ?>">
     </div>
@@ -128322,8 +128403,8 @@ function sp_forms_results_summary( $form, array $fields ): array {
  *
  * @param object $form
  */
-function sp_forms_render_results( $form, bool $all_written = false ): void {
-    $fields  = sp_forms_get_fields( $form );
+function sp_forms_render_results( $form, bool $all_written = false, ?array $fields = null ): void {
+    $fields  = null === $fields ? sp_forms_get_fields( $form ) : $fields;
     $summary = sp_forms_results_summary( $form, $fields );
 
     if ( $summary['responses'] < 1 ) {
@@ -128643,6 +128724,7 @@ function sp_render_builder_widget_form( array $s ): void {
  */
 function sp_forms_render_form( $form ): string {
     $is_survey = sp_form_is_survey( $form );
+    $form      = sp_survey_apply_schedule( $form );
 
     // A closed survey keeps its page. WHY not take the page down: the link
     // has already gone out in a newsletter or an email, and a member who
@@ -128664,6 +128746,19 @@ function sp_forms_render_form( $form ): string {
         return '';
     }
 
+    if ( $is_survey && sp_survey_not_yet_open( $form ) ) {
+        sp_forms_print_frontend_assets();
+        return '<div class="sp-form-wrap"><p class="sp-form-notice">' . esc_html(
+            sprintf( /* translators: %s: date the survey opens */ __( 'This survey opens on %s. Please come back then.', 'societypress' ), sp_survey_format_date( (string) $form->opens_on ) )
+        ) . '</p></div>';
+    }
+
+    // A member who followed the link in their invitation email counts as
+    // that member for this survey, signed in or not.
+    $sp_invite     = $is_survey ? sanitize_text_field( wp_unslash( $_GET['sp_invite'] ?? '' ) ) : '';
+    $sp_respondent = $is_survey ? sp_survey_respondent_id( $form, $sp_invite ) : 0;
+    $sp_by_invite  = $sp_respondent && ! is_user_logged_in();
+
     // Members-only forms. A survey asking what the membership thinks of the
     // board is not a question for passing search traffic, and a society that
     // cannot restrict who answers cannot trust the result.
@@ -128676,7 +128771,7 @@ function sp_forms_render_form( $form ): string {
     // WHY visitors are told rather than shown nothing: silence reads as a
     // broken page, and the person who most needs to see this is a member who
     // simply is not signed in yet.
-    if ( 'members' === ( $form->visibility ?? 'public' ) && ! sp_user_is_active_member() ) {
+    if ( 'members' === ( $form->visibility ?? 'public' ) && ! sp_user_is_active_member() && ! $sp_by_invite ) {
         if ( current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' ) ) {
             return '<p class="sp-form-notice">' . esc_html(
                 sprintf( /* translators: %s: form name */ __( 'The form "%s" is for members only. Members in good standing see it here once signed in.', 'societypress' ), $form->name )
@@ -128701,7 +128796,7 @@ function sp_forms_render_form( $form ): string {
     // One answer per member. WHY say so up front rather than at Submit: a
     // member who has already answered and fills the whole thing in again
     // should not find out only when it is refused.
-    if ( $is_survey && sp_survey_already_answered( $form ) ) {
+    if ( $is_survey && sp_survey_already_answered( $form, $sp_respondent ) ) {
         sp_forms_print_frontend_assets();
         return '<div class="sp-form-wrap"><p class="sp-form-notice">' . esc_html( sp_survey_message( $form, 'repeat' ) ) . '</p></div>';
     }
@@ -128765,15 +128860,109 @@ function sp_forms_render_form( $form ): string {
             <div class="sp-form-hp" aria-hidden="true">
                 <label><?php esc_html_e( 'Leave this field empty', 'societypress' ); ?><input type="text" name="sp_website_url" tabindex="-1" autocomplete="off"></label>
             </div>
+            <?php if ( $sp_by_invite ) : ?>
+                <input type="hidden" name="sp_survey_invite" value="<?php echo esc_attr( $sp_invite ); ?>">
+            <?php endif; ?>
+
+            <?php
+            // A survey with page breaks is shown a page at a time. WHY every
+            // page is in the HTML from the start: with no JavaScript the
+            // whole survey still shows, one page under another, and still
+            // sends; the script only hides the pages not being answered.
+            $sp_pages = 1;
+            if ( $is_survey ) {
+                foreach ( $fields as $f ) {
+                    if ( 'page_break' === $f['type'] ) {
+                        $sp_pages++;
+                    }
+                }
+            }
+            $sp_page  = 1;
+            $sp_names = []; // Question wording => input name, for conditions.
+            if ( $sp_pages > 1 ) :
+                ?>
+                <div class="sp-survey-progress" data-sp-progress-text="<?php
+                    /* translators: 1: current page number, 2: number of pages. Keep the %1$s and %2$s. */
+                    echo esc_attr__( 'Page %1$s of %2$s', 'societypress' );
+                ?>">
+                    <div class="sp-survey-progress-bar"><span style="width:<?php echo esc_attr( round( 100 / $sp_pages, 1 ) ); ?>%"></span></div>
+                    <p class="sp-survey-progress-label"><?php
+                        /* translators: 1: current page number, 2: number of pages */
+                        printf( esc_html__( 'Page %1$s of %2$s', 'societypress' ), '1', esc_html( number_format_i18n( $sp_pages ) ) );
+                    ?></p>
+                </div>
+                <div class="sp-survey-page" data-sp-page="1">
+            <?php endif; ?>
 
             <?php foreach ( $fields as $i => $f ) :
+                if ( 'page_break' === $f['type'] ) {
+                    if ( $sp_pages > 1 ) {
+                        $sp_page++;
+                        echo '</div><div class="sp-survey-page" data-sp-page="' . (int) $sp_page . '">';
+                        if ( '' !== trim( $f['label'] ) ) {
+                            echo '<h3 class="sp-survey-page-title">' . esc_html( $f['label'] ) . '</h3>';
+                        }
+                    }
+                    continue;
+                }
                 $fid = $uid . '-' . $f['key'];
                 $req = $f['required'] ? ' required' : '';
                 $star = $f['required'] ? ' <span class="sp-form-required" aria-hidden="true">*</span>' : '';
                 $name = 'field_' . $f['key'];
+
+                // "Ask only if". The browser hides the question until the
+                // earlier answer matches; the server applies the same rule
+                // when answers arrive (sp_survey_condition_met()). A
+                // condition pointing at no earlier question can never be met,
+                // so the question is left out here just as it is there.
+                $sp_cond = '';
+                if ( $is_survey && ! empty( $f['show_if'] ) ) {
+                    if ( ! isset( $sp_names[ $f['show_if']['label'] ] ) ) {
+                        continue;
+                    }
+                    $sp_cond = ' data-sp-show-if="' . esc_attr( $sp_names[ $f['show_if']['label'] ] ) . '" data-sp-show-value="' . esc_attr( $f['show_if']['value'] ) . '"';
+                }
+                $sp_names[ $f['label'] ] = $name;
                 ?>
-                <div class="sp-form-field sp-form-field--<?php echo esc_attr( $f['type'] ); ?>">
-                    <?php if ( 'scale' === $f['type'] || 'rating' === $f['type'] ) : ?>
+                <div class="sp-form-field sp-form-field--<?php echo esc_attr( $f['type'] ); ?>"<?php echo $sp_cond; // phpcs:ignore -- escaped above ?>>
+                    <?php if ( 'matrix' === $f['type'] ) : ?>
+                        <?php
+                        // A grid is a table of radio buttons: one row per
+                        // statement, one column per point on the scale. On a
+                        // phone each row becomes its own stack of choices,
+                        // each carrying its own words (see the CSS).
+                        $sp_cols = sp_survey_matrix_columns( $f );
+                        ?>
+                        <fieldset>
+                            <legend class="sp-form-label"><?php echo esc_html( $f['label'] ); ?><?php echo $star; // phpcs:ignore ?></legend>
+                            <table class="sp-survey-grid-table">
+                                <thead>
+                                    <tr>
+                                        <td></td>
+                                        <?php foreach ( $sp_cols as $col ) : ?>
+                                            <th scope="col"><?php echo esc_html( $col ); ?></th>
+                                        <?php endforeach; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ( $f['options'] as $ri => $row ) : ?>
+                                        <tr>
+                                            <th scope="row"><?php echo esc_html( $row ); ?></th>
+                                            <?php foreach ( $sp_cols as $ci => $col ) :
+                                                $oid = $fid . '-' . $ri . '-' . $ci; ?>
+                                                <td>
+                                                    <label for="<?php echo esc_attr( $oid ); ?>">
+                                                        <input type="radio" id="<?php echo esc_attr( $oid ); ?>" name="<?php echo esc_attr( $name . '[' . $ri . ']' ); ?>" value="<?php echo esc_attr( $col ); ?>"<?php echo $req; // phpcs:ignore ?> aria-label="<?php echo esc_attr( $row . ': ' . $col ); ?>">
+                                                        <span class="sp-survey-grid-choice"><?php echo esc_html( $col ); ?></span>
+                                                    </label>
+                                                </td>
+                                            <?php endforeach; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </fieldset>
+                    <?php elseif ( 'scale' === $f['type'] || 'rating' === $f['type'] ) : ?>
                         <?php
                         // A scale and a star rating are both "pick exactly one
                         // of an ordered set", which is a radio group. Built as
@@ -128854,6 +129043,14 @@ function sp_forms_render_form( $form ): string {
                 </div>
             <?php endforeach; ?>
 
+            <?php if ( $sp_pages > 1 ) : ?>
+                </div>
+                <div class="sp-survey-nav" hidden>
+                    <button type="button" class="sp-survey-back"><?php esc_html_e( 'Back', 'societypress' ); ?></button>
+                    <button type="button" class="sp-survey-next sp-form-submit"><?php esc_html_e( 'Next', 'societypress' ); ?></button>
+                </div>
+            <?php endif; ?>
+
             <div class="sp-form-actions">
                 <?php $sp_submit_text = '' !== trim( (string) ( $form->submit_label ?? '' ) ) ? $form->submit_label : ( $is_survey ? __( 'Send my answers', 'societypress' ) : __( 'Submit', 'societypress' ) ); ?>
                 <button type="submit" class="sp-form-submit"><?php echo esc_html( $sp_submit_text ); ?></button>
@@ -128919,6 +129116,33 @@ function sp_forms_print_frontend_assets(): void {
         .sp-survey-intro { margin-bottom:1em; }
         .sp-survey-privacy { margin:0 0 1.25em; padding:.6em .9em; background:#f0f6fc; border-left:4px solid #2271b1; font-size:.95em; }
         .sp-form-hp { position:absolute; left:-5000px; }
+        .sp-form-field[hidden], .sp-survey-page[hidden], .sp-survey-nav[hidden], .sp-form-actions[hidden] { display:none; }
+        .sp-survey-progress { margin:0 0 1.25em; }
+        .sp-survey-progress-bar { height:8px; background:#e0e0e0; border-radius:4px; overflow:hidden; }
+        .sp-survey-progress-bar span { display:block; height:100%; background:#2271b1; transition:width .2s; }
+        .sp-survey-progress-label { margin:.35em 0 0; font-size:.9em; color:#50575e; }
+        .sp-survey-page-title { margin:0 0 .75em; }
+        .sp-survey-nav { display:flex; gap:.6em; margin-bottom:1em; }
+        .sp-survey-back { padding:.7em 1.6em; font-size:1em; border:1px solid #2271b1; border-radius:6px; background:#fff; color:#2271b1; cursor:pointer; }
+        .sp-survey-back[hidden] { display:none; }
+        /* A grid is a table on a wide screen. On a phone each statement becomes
+           its own block of full-width choices that carry their own words,
+           because a row of five unlabeled circles is unanswerable there. */
+        .sp-survey-grid-table { width:100%; border-collapse:collapse; margin:.4em 0; }
+        .sp-survey-grid-table th, .sp-survey-grid-table td { padding:.5em .4em; border-bottom:1px solid #e0e0e0; text-align:center; font-weight:400; }
+        .sp-survey-grid-table th[scope=row] { text-align:left; font-weight:600; }
+        .sp-survey-grid-table thead th { font-size:.9em; vertical-align:bottom; }
+        .sp-survey-grid-table label { display:flex; justify-content:center; align-items:center; min-height:44px; cursor:pointer; }
+        .sp-survey-grid-choice { position:absolute; left:-5000px; }
+        @media (max-width:600px) {
+            .sp-survey-grid-table thead { display:none; }
+            .sp-survey-grid-table, .sp-survey-grid-table tbody, .sp-survey-grid-table tr, .sp-survey-grid-table th, .sp-survey-grid-table td { display:block; width:100%; box-sizing:border-box; }
+            .sp-survey-grid-table tr { margin-bottom:1em; }
+            .sp-survey-grid-table th[scope=row] { border-bottom:none; }
+            .sp-survey-grid-table td { border:none; padding:.2em 0; }
+            .sp-survey-grid-table label { justify-content:flex-start; gap:.5em; padding:.5em .7em; border:1px solid #c3c4c7; border-radius:6px; }
+            .sp-survey-grid-choice { position:static; }
+        }
     </style>
     <script id="sp-forms-frontend-js">
     (function(){
@@ -128926,6 +129150,88 @@ function sp_forms_print_frontend_assets(): void {
         // Shown only when the AJAX reply carries no message of its own.
         var fallbackThanks = '<?php echo esc_js( __( 'Thank you!', 'societypress' ) ); ?>';
         var fallbackError  = '<?php echo esc_js( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>';
+        // "Ask only if": show a question when the earlier answer it depends on
+        // matches, and switch off its inputs while hidden so the browser
+        // neither checks them nor sends them. Worked through in page order,
+        // so a question that depends on a hidden question is hidden too.
+        function spChosen(form, name){
+            var out = [];
+            Array.prototype.forEach.call(form.querySelectorAll('[name="' + name + '"], [name="' + name + '[]"]'), function(el){
+                if ( el.disabled ) return;
+                if ( el.type === 'radio' || el.type === 'checkbox' ) { if ( el.checked ) out.push(el.value); }
+                else if ( el.value !== '' ) { out.push(el.value); }
+            });
+            return out;
+        }
+        function spApplyConditions(form){
+            Array.prototype.forEach.call(form.querySelectorAll('[data-sp-show-if]'), function(field){
+                var show = spChosen(form, field.getAttribute('data-sp-show-if')).indexOf(field.getAttribute('data-sp-show-value')) !== -1;
+                field.hidden = ! show;
+                Array.prototype.forEach.call(field.querySelectorAll('input, select, textarea'), function(el){ el.disabled = ! show; });
+            });
+        }
+
+        // One page at a time, for a survey with page breaks.
+        function spSetupPages(form){
+            var pages = Array.prototype.slice.call(form.querySelectorAll('.sp-survey-page'));
+            if ( pages.length < 2 ) return;
+            var wrap     = form.closest('.sp-form-wrap');
+            var nav      = form.querySelector('.sp-survey-nav');
+            var back     = form.querySelector('.sp-survey-back');
+            var next     = form.querySelector('.sp-survey-next');
+            var actions  = form.querySelector('.sp-form-actions');
+            var progress = wrap ? wrap.querySelector('.sp-survey-progress') : null;
+            var current  = 0;
+
+            // A page whose every question is hidden by a condition is passed
+            // over, so nobody is shown a blank page with only a Next button.
+            function hasQuestions(i){
+                return Array.prototype.some.call(pages[i].querySelectorAll('.sp-form-field'), function(f){ return ! f.hidden; });
+            }
+            function step(from, dir){
+                for ( var i = from + dir; i >= 0 && i < pages.length; i += dir ) { if ( hasQuestions(i) ) return i; }
+                return -1;
+            }
+            function show(i){
+                current = i;
+                pages.forEach(function(p, n){ p.hidden = ( n !== i ); });
+                var last = step(i, 1) === -1;
+                nav.hidden     = false;
+                back.hidden    = step(i, -1) === -1;
+                next.hidden    = last;
+                actions.hidden = ! last;
+                if ( progress ) {
+                    var bar = progress.querySelector('.sp-survey-progress-bar span');
+                    var txt = progress.querySelector('.sp-survey-progress-label');
+                    if ( bar ) bar.style.width = ( ( i + 1 ) / pages.length * 100 ) + '%';
+                    if ( txt ) txt.textContent = progress.getAttribute('data-sp-progress-text').replace('%1$s', i + 1).replace('%2$s', pages.length);
+                }
+            }
+            next.addEventListener('click', function(){
+                var fields = pages[current].querySelectorAll('input, select, textarea');
+                for ( var n = 0; n < fields.length; n++ ) {
+                    if ( ! fields[n].disabled && ! fields[n].checkValidity() ) { fields[n].reportValidity(); return; }
+                }
+                var to = step(current, 1);
+                if ( to !== -1 ) { show(to); ( wrap || form ).scrollIntoView({ behavior:'smooth', block:'start' }); }
+            });
+            back.addEventListener('click', function(){
+                var to = step(current, -1);
+                if ( to !== -1 ) show(to);
+            });
+            form.addEventListener('change', function(){ show(current); });
+            show(0);
+        }
+
+        function spInit(){
+            Array.prototype.forEach.call(document.querySelectorAll('form.sp-form[data-sp-form]'), function(form){
+                spApplyConditions(form);
+                form.addEventListener('change', function(){ spApplyConditions(form); });
+                spSetupPages(form);
+            });
+        }
+        if ( document.readyState === 'loading' ) document.addEventListener('DOMContentLoaded', spInit); else spInit();
+
         document.addEventListener('submit', function(e){
             var form = e.target;
             if ( ! form.matches || ! form.matches('form.sp-form[data-sp-form]') ) return;
@@ -129015,22 +129321,28 @@ function sp_handle_form_submission(): void {
         wp_send_json_error( [ 'message' => __( 'This form is not available.', 'societypress' ) ] );
     }
     $is_survey = sp_form_is_survey( $form );
+    $form      = sp_survey_apply_schedule( $form );
     if ( $is_survey && 'closed' === $form->status ) {
         wp_send_json_error( [ 'message' => sp_survey_message( $form, 'closed' ) ] );
     }
     if ( 'published' !== $form->status ) {
         wp_send_json_error( [ 'message' => __( 'This form is no longer available.', 'societypress' ) ] );
     }
+    if ( $is_survey && sp_survey_not_yet_open( $form ) ) {
+        wp_send_json_error( [ 'message' => __( 'This survey is not open yet.', 'societypress' ) ] );
+    }
+
+    $respondent = $is_survey ? sp_survey_respondent_id( $form, sanitize_text_field( wp_unslash( $_POST['sp_survey_invite'] ?? '' ) ) ) : 0;
 
     // Members-only, checked again here. WHY: the page only declines to SHOW
     // the form to a non-member. Anyone can still post to this address
     // directly, and a members-only survey that accepts outside answers is a
     // result nobody can trust.
-    if ( 'members' === ( $form->visibility ?? 'public' ) && ! sp_user_is_active_member() ) {
+    if ( 'members' === ( $form->visibility ?? 'public' ) && ! sp_user_is_active_member() && ! ( $respondent && ! is_user_logged_in() ) ) {
         wp_send_json_error( [ 'message' => __( 'This is for members in good standing. Please sign in and try again.', 'societypress' ) ] );
     }
 
-    if ( $is_survey && sp_survey_already_answered( $form ) ) {
+    if ( $is_survey && sp_survey_already_answered( $form, $respondent ) ) {
         wp_send_json_error( [ 'message' => sp_survey_message( $form, 'repeat' ) ] );
     }
 
@@ -129043,6 +129355,38 @@ function sp_handle_form_submission(): void {
     foreach ( $fields as $f ) {
         $name  = 'field_' . $f['key'];
         $label = $f['label'];
+
+        if ( 'page_break' === $f['type'] ) {
+            continue;
+        }
+
+        // A question whose condition is not met was never shown, so it is
+        // neither required nor stored — even if something was sent for it.
+        if ( $is_survey && ! sp_survey_condition_met( $f, $stored ) ) {
+            continue;
+        }
+
+        // A grid stores one answer per statement, each checked against the
+        // grid's own scale.
+        if ( 'matrix' === $f['type'] ) {
+            $raw_rows = isset( $_POST[ $name ] ) && is_array( $_POST[ $name ] ) ? wp_unslash( $_POST[ $name ] ) : [];
+            $cols     = sp_survey_matrix_columns( $f );
+            foreach ( $f['options'] as $ri => $row ) {
+                $v = sanitize_text_field( is_string( $raw_rows[ $ri ] ?? null ) ? $raw_rows[ $ri ] : '' );
+                if ( '' !== $v && ! in_array( $v, $cols, true ) ) {
+                    /* translators: %s: field label */
+                    wp_send_json_error( [ 'message' => sprintf( __( 'Please choose one of the given answers for "%s".', 'societypress' ), $row ) ] );
+                }
+                if ( '' === $v && $f['required'] ) {
+                    /* translators: %s: one statement in a grid question */
+                    wp_send_json_error( [ 'message' => sprintf( __( 'Please answer "%s".', 'societypress' ), $row ) ] );
+                }
+                if ( '' !== $v ) {
+                    $stored[ sp_survey_matrix_label( $label, $row ) ] = $v;
+                }
+            }
+            continue;
+        }
 
         if ( 'file' === $f['type'] ) {
             $result = sp_forms_handle_upload( $name );
@@ -129131,7 +129475,7 @@ function sp_handle_form_submission(): void {
     // Surveys store differently — anonymously when asked, one per member,
     // and with no notification email. See sp_survey_store_response().
     if ( $is_survey ) {
-        sp_survey_store_response( $form, $stored, $ip ); // Sends the JSON reply itself.
+        sp_survey_store_response( $form, $stored, $ip, $respondent ); // Sends the JSON reply itself.
     }
 
     global $wpdb;
@@ -129368,6 +129712,7 @@ function sp_privacy_erase_form_data( string $email_address, int $page = 1 ): arr
     $user = get_user_by( 'email', $email_address );
     if ( $user ) {
         $removed += (int) $wpdb->delete( $prefix . 'survey_respondents', [ 'user_id' => (int) $user->ID ], [ '%d' ] );
+        $removed += (int) $wpdb->delete( $prefix . 'survey_invites', [ 'user_id' => (int) $user->ID ], [ '%d' ] );
     }
 
     return [
@@ -129415,7 +129760,116 @@ function sp_privacy_erase_form_data( string $email_address, int $page = 1 ): arr
 function sp_survey_field_types(): array {
     $types = sp_forms_field_types();
     unset( $types['file'] );
-    return $types;
+    return array_merge( $types, sp_survey_extra_field_types() );
+}
+
+/**
+ * Question kinds only a survey offers.
+ *
+ * WHY a page break is a "question": it sits in the list between questions,
+ *      moves with the same arrows, and is saved in the same order. Keeping it
+ *      in the one list means the volunteer never has to line up two lists.
+ *
+ * WHY a grid is one question rather than several scale questions: a set of
+ *      "how much do you agree" statements is read and answered as one block,
+ *      and a volunteer rewording the scale should do it once, not per row.
+ *      Each statement is still stored and counted as its own answer, so the
+ *      results and the spreadsheet treat it like any other scale.
+ *
+ * @return array[] Same shape as sp_forms_field_types().
+ */
+function sp_survey_extra_field_types(): array {
+    return [
+        'matrix'     => [ 'label' => __( 'Grid (several statements, same scale)', 'societypress' ), 'options' => true, 'multi' => false ],
+        'page_break' => [ 'label' => __( '— Page break —', 'societypress' ), 'options' => false, 'multi' => false ],
+    ];
+}
+
+/**
+ * The questions a survey's answers are stored and counted under.
+ *
+ * WHY: a page break asks nothing, and a grid stores one answer per statement.
+ *      The results, the breakdown and the spreadsheet all need that flat
+ *      list, and working it out in one place keeps their columns identical.
+ *
+ * @param array[] $fields From sp_forms_get_fields().
+ * @return array[] Page breaks removed; each grid statement becomes a scale.
+ */
+function sp_survey_answer_fields( array $fields ): array {
+    $out = [];
+    foreach ( $fields as $f ) {
+        if ( 'page_break' === $f['type'] ) {
+            continue;
+        }
+        if ( 'matrix' === $f['type'] ) {
+            foreach ( $f['options'] as $row ) {
+                $out[] = [
+                    'key'         => $f['key'],
+                    'type'        => 'scale',
+                    'label'       => sp_survey_matrix_label( $f['label'], $row ),
+                    'required'    => $f['required'],
+                    'options'     => sp_survey_matrix_columns( $f ),
+                    'placeholder' => '',
+                ];
+            }
+            continue;
+        }
+        $out[] = $f;
+    }
+    return $out;
+}
+
+/**
+ * The label one grid statement's answer is stored under.
+ *
+ * @param string $question
+ * @param string $statement
+ * @return string
+ */
+function sp_survey_matrix_label( string $question, string $statement ): string {
+    /* translators: 1: grid question, 2: one statement in the grid */
+    return sprintf( __( '%1$s — %2$s', 'societypress' ), $question, $statement );
+}
+
+/**
+ * The answer choices across the top of a grid.
+ *
+ * @param array $field
+ * @return string[]
+ */
+function sp_survey_matrix_columns( array $field ): array {
+    $cols = array_values( array_filter( array_map( 'strval', (array) ( $field['columns'] ?? [] ) ), static function ( $c ) {
+        return '' !== trim( $c );
+    } ) );
+    return $cols ? $cols : sp_forms_default_scale();
+}
+
+/**
+ * Should this question be asked, given the answers so far?
+ *
+ * WHY "show only if" rather than "jump to question 7": a jump breaks
+ *      silently when questions are reordered or removed, and a volunteer
+ *      reading the list cannot tell which questions a jump skips. A
+ *      condition written on the question itself says exactly when it is
+ *      asked, and survives any reordering above it.
+ *
+ * WHY the condition names the earlier question by its wording: answers are
+ *      stored by wording already, and the question keys are renumbered on
+ *      every save.
+ *
+ * @param array $field
+ * @param array $answers Label => value(s) collected so far.
+ * @return bool
+ */
+function sp_survey_condition_met( array $field, array $answers ): bool {
+    if ( empty( $field['show_if'] ) ) {
+        return true;
+    }
+    $given = $answers[ $field['show_if']['label'] ] ?? null;
+    if ( null === $given ) {
+        return false;
+    }
+    return in_array( $field['show_if']['value'], (array) $given, true );
 }
 
 /**
@@ -129476,8 +129930,8 @@ function sp_survey_cookie_name( int $survey_id ): string {
  * @param object $form
  * @return bool
  */
-function sp_survey_already_answered( $form ): bool {
-    $uid = get_current_user_id();
+function sp_survey_already_answered( $form, int $uid = 0 ): bool {
+    $uid = $uid ? $uid : get_current_user_id();
     if ( $uid ) {
         global $wpdb;
         return (bool) $wpdb->get_var( $wpdb->prepare(
@@ -129487,6 +129941,134 @@ function sp_survey_already_answered( $form ): bool {
         ) );
     }
     return ! empty( $_COOKIE[ sp_survey_cookie_name( (int) $form->id ) ] );
+}
+
+/**
+ * The signature that makes an invitation link work for one member.
+ *
+ * WHY worked out rather than stored: see the notes on sp_survey_invites in
+ *      sp_create_tables(). The same member always gets the same link, so a
+ *      reminder and the first email both work, and nothing in the database
+ *      can be copied into a working link.
+ *
+ * @param int $survey_id
+ * @param int $user_id
+ * @return string
+ */
+function sp_survey_invite_token( int $survey_id, int $user_id ): string {
+    return substr( hash_hmac( 'sha256', 'sp_survey_invite|' . $survey_id . '|' . $user_id, wp_salt( 'auth' ) ), 0, 32 );
+}
+
+/**
+ * The survey link a member's invitation carries.
+ *
+ * @param object $form
+ * @param int    $user_id
+ * @return string Empty when the survey has no page.
+ */
+function sp_survey_invite_url( $form, int $user_id ): string {
+    $page = sp_survey_live_page( $form );
+    if ( ! $page ) {
+        return '';
+    }
+    return add_query_arg( 'sp_invite', $user_id . '.' . sp_survey_invite_token( (int) $form->id, $user_id ), get_permalink( $page ) );
+}
+
+/**
+ * The member an invitation link belongs to, if the link is genuine.
+ *
+ * WHY the link stands in for signing in, for this one survey: the members a
+ *      survey most needs to hear from are often the ones who never set a
+ *      password. The link was sent to the member's own address, and it lets
+ *      them answer this survey and nothing else.
+ *
+ * WHY only an active member's link works on a members-only survey: a link
+ *      sent last spring to someone who has since lapsed should not outrank
+ *      the rule that only members in good standing answer.
+ *
+ * @param object $form
+ * @param string $raw  "userid.signature" from the link or the posted form.
+ * @return int The member's account id, or 0.
+ */
+function sp_survey_invite_user( $form, string $raw ): int {
+    if ( ! preg_match( '/^(\d+)\.([a-f0-9]{32})$/', $raw, $m ) ) {
+        return 0;
+    }
+    $uid = (int) $m[1];
+    if ( ! $uid || ! hash_equals( sp_survey_invite_token( (int) $form->id, $uid ), $m[2] ) ) {
+        return 0;
+    }
+    global $wpdb;
+    $status = $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+        $uid
+    ) );
+    if ( 'members' === ( $form->visibility ?? 'public' ) && 'active' !== $status ) {
+        return 0;
+    }
+    return $uid;
+}
+
+/**
+ * Who is answering: the signed-in member, or the member whose invitation
+ * link was followed.
+ *
+ * WHY signing in wins: somebody signed in as themselves who opens a link
+ *      forwarded by their spouse is answering as themselves.
+ *
+ * @param object $form
+ * @param string $invite Raw invitation value, '' if none.
+ * @return int 0 for an anonymous visitor.
+ */
+function sp_survey_respondent_id( $form, string $invite ): int {
+    $uid = get_current_user_id();
+    if ( $uid ) {
+        return $uid;
+    }
+    return '' !== $invite ? sp_survey_invite_user( $form, $invite ) : 0;
+}
+
+/**
+ * Close a survey whose closing date has passed.
+ *
+ * WHY here rather than on a timer: WordPress's timer only runs when somebody
+ *      visits, and a survey is only ever looked at through the screens that
+ *      call this. Checking at the moment it is looked at means a late answer
+ *      can never slip in between the date passing and a timer firing.
+ *
+ * @param object|null $form
+ * @return object|null The same row, with status updated if it closed.
+ */
+function sp_survey_apply_schedule( $form ) {
+    if ( ! sp_form_is_survey( $form ) || 'published' !== $form->status || empty( $form->closes_on ) ) {
+        return $form;
+    }
+    if ( current_time( 'Y-m-d' ) > $form->closes_on ) {
+        global $wpdb;
+        $wpdb->update( $wpdb->prefix . 'sp_forms', [ 'status' => 'closed' ], [ 'id' => (int) $form->id ], [ '%s' ], [ '%d' ] );
+        $form->status = 'closed';
+    }
+    return $form;
+}
+
+/**
+ * Is a published survey still waiting for its opening day?
+ *
+ * @param object $form
+ * @return bool
+ */
+function sp_survey_not_yet_open( $form ): bool {
+    return ! empty( $form->opens_on ) && current_time( 'Y-m-d' ) < $form->opens_on;
+}
+
+/**
+ * A stored date in the site's date format.
+ *
+ * @param string $ymd
+ * @return string
+ */
+function sp_survey_format_date( string $ymd ): string {
+    return mysql2date( get_option( 'date_format' ), $ymd . ' 00:00:00' );
 }
 
 /**
@@ -129522,11 +130104,11 @@ function sp_survey_person_name( int $user_id ): string {
  * @param object $form
  * @param array  $stored Validated answers, label => value(s).
  * @param string $ip     Visitor address, used only for a non-anonymous survey.
+ * @param int    $uid    The member answering (signed in or by invitation), 0 for a visitor.
  */
-function sp_survey_store_response( $form, array $stored, string $ip ): void {
+function sp_survey_store_response( $form, array $stored, string $ip, int $uid ): void {
     global $wpdb;
     $prefix    = $wpdb->prefix . 'sp_';
-    $uid       = get_current_user_id();
     $anonymous = ! empty( $form->anonymous );
     $today     = current_time( 'Y-m-d' );
 
@@ -129749,6 +130331,20 @@ function sp_survey_ensure_page( $form ): int {
 function sp_survey_status( $form ): array {
     switch ( $form->status ) {
         case 'published':
+            if ( sp_survey_not_yet_open( $form ) ) {
+                return [
+                    /* translators: %s: date the survey opens */
+                    'label' => sprintf( __( 'Opens %s', 'societypress' ), sp_survey_format_date( (string) $form->opens_on ) ),
+                    'class' => 'sp-survey-status--draft',
+                ];
+            }
+            if ( ! empty( $form->closes_on ) ) {
+                return [
+                    /* translators: %s: last day the survey takes answers */
+                    'label' => sprintf( __( 'Open until %s', 'societypress' ), sp_survey_format_date( (string) $form->closes_on ) ),
+                    'class' => 'sp-survey-status--open',
+                ];
+            }
             return [ 'label' => __( 'Open', 'societypress' ), 'class' => 'sp-survey-status--open' ];
         case 'closed':
             return [ 'label' => __( 'Closed', 'societypress' ), 'class' => 'sp-survey-status--closed' ];
@@ -129794,6 +130390,9 @@ function sp_survey_admin_styles(): void {
         .sp-survey-respondents ul { columns:2; margin:10px 0 0; padding-left:18px; }
         .sp-survey-respondents li { break-inside:avoid; margin-bottom:4px; }
         .sp-survey-respondent-date { color:#646970; }
+        .sp-survey-breakdown { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+        .sp-survey-table-scroll { overflow-x:auto; margin-bottom:16px; }
+        .sp-survey-breakdown-table th, .sp-survey-breakdown-table td { white-space:nowrap; }
         .sp-field-row { border:1px solid #dcdcde; border-radius:4px; padding:12px 14px; margin-bottom:12px; background:#f6f7f7; }
         .sp-field-row-head { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
         .sp-field-row-head .sp-field-type { min-width:200px; }
@@ -129803,15 +130402,192 @@ function sp_survey_admin_styles(): void {
         .sp-field-options-wrap { flex:1 1 260px; }
         .sp-field-options-wrap textarea { width:100%; }
         .sp-field-required-wrap { flex:0 0 auto; padding-top:4px; }
+        .sp-field-row [hidden] { display:none; }
+        .sp-field-columns-wrap { flex:1 1 260px; }
+        .sp-field-columns-wrap textarea { width:100%; }
+        .sp-field-condition { flex:1 1 100%; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+        .sp-field-condition label { flex:0 0 auto; margin:0 !important; }
+        .sp-field-condition select { max-width:320px; }
+        .sp-field-row--break { background:#eef3f8; border-style:dashed; }
         @media (max-width:900px){ .sp-survey-grid { flex-direction:column; } .sp-survey-side { flex-basis:auto; width:100%; } .sp-survey-respondents ul { columns:1; } }
     </style>
     <?php
 }
 
 
+/**
+ * Copy a survey or template into a new row.
+ *
+ * WHY only the questions and wording are copied: a copy is a fresh survey.
+ *      It has no page yet, no answers, nobody has taken part, and nobody has
+ *      been invited, so its anonymity can still be chosen.
+ *
+ * @param object $source A survey or template row.
+ * @param string $kind   'survey' or 'survey_template'.
+ * @param string $name   Name for the copy.
+ * @return int The new row's id, 0 on failure.
+ */
+function sp_survey_copy( $source, string $kind, string $name ): int {
+    global $wpdb;
+    $ok = $wpdb->insert(
+        $wpdb->prefix . 'sp_forms',
+        [
+            'name'                 => $name,
+            'title'                => $name,
+            'kind'                 => $kind,
+            'status'               => 'draft',
+            'intro'                => (string) $source->intro,
+            'submit_label'         => (string) $source->submit_label,
+            'visibility'           => (string) $source->visibility,
+            'anonymous'            => (int) $source->anonymous,
+            'fields'               => (string) $source->fields,
+            'confirmation_message' => (string) $source->confirmation_message,
+            'closed_message'       => (string) $source->closed_message,
+            'repeat_message'       => (string) $source->repeat_message,
+            'invite_subject'       => (string) $source->invite_subject,
+            'invite_message'       => (string) $source->invite_message,
+        ],
+        [ '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' ]
+    );
+    return $ok ? (int) $wpdb->insert_id : 0;
+}
+
 // ----------------------------------------------------------------------------
 // ADMIN — Surveys list
 // ----------------------------------------------------------------------------
+
+/**
+ * Templates that come with SocietyPress.
+ *
+ * WHY in code rather than rows in the database: they follow the site's
+ *      language and improve when SocietyPress does, and a society can't
+ *      delete one by accident. A society that changes one saves its own copy
+ *      with Save as Template.
+ *
+ * @return array<string,array> slug => name, intro, anonymous, visibility, fields.
+ */
+function sp_survey_builtin_templates(): array {
+    $q = static function ( string $type, string $label, array $options = [], bool $required = false, array $extra = [] ): array {
+        return array_merge( [ 'type' => $type, 'label' => $label, 'required' => $required, 'options' => $options, 'placeholder' => '' ], $extra );
+    };
+    $attended = __( 'How did you attend?', 'societypress' );
+    $online   = __( 'Online', 'societypress' );
+
+    return [
+        'seminar' => [
+            'name'       => __( 'Seminar feedback', 'societypress' ),
+            'intro'      => __( 'Thank you for joining us. A few quick questions help us plan next year\'s seminar.', 'societypress' ),
+            'anonymous'  => 1,
+            'visibility' => 'public',
+            'fields'     => [
+                $q( 'rating', __( 'Overall, how would you rate the seminar?', 'societypress' ), [], true ),
+                $q( 'radio', $attended, [ __( 'In person', 'societypress' ), $online ], true ),
+                $q( 'rating', __( 'How well did the online connection work for you?', 'societypress' ), [], false, [ 'show_if' => [ 'label' => $attended, 'value' => $online ] ] ),
+                $q( 'matrix', __( 'How much do you agree?', 'societypress' ), [
+                    __( 'The speakers were well prepared', 'societypress' ),
+                    __( 'I learned something I will use in my research', 'societypress' ),
+                    __( 'The venue and schedule worked well', 'societypress' ),
+                    __( 'The registration fee was fair', 'societypress' ),
+                ] ),
+                $q( 'textarea', __( 'What did you like best?', 'societypress' ) ),
+                $q( 'textarea', __( 'What could we do better?', 'societypress' ) ),
+                $q( 'textarea', __( 'What topics or speakers would you like next time?', 'societypress' ) ),
+            ],
+        ],
+        'membership' => [
+            'name'       => __( 'Membership survey', 'societypress' ),
+            'intro'      => __( 'Help us understand who our members are and what you want from the society. It takes about five minutes.', 'societypress' ),
+            'anonymous'  => 1,
+            'visibility' => 'members',
+            'fields'     => [
+                $q( 'radio', __( 'Which age group are you in?', 'societypress' ), [ __( 'Under 40', 'societypress' ), '40–54', '55–64', '65–74', __( '75 or over', 'societypress' ), __( 'Prefer not to say', 'societypress' ) ] ),
+                $q( 'radio', __( 'How long have you been a member?', 'societypress' ), [ __( 'Less than a year', 'societypress' ), __( '1 to 5 years', 'societypress' ), __( '6 to 10 years', 'societypress' ), __( 'More than 10 years', 'societypress' ) ] ),
+                $q( 'radio', __( 'How experienced are you at family history research?', 'societypress' ), [ __( 'Just starting', 'societypress' ), __( 'Some experience', 'societypress' ), __( 'Experienced', 'societypress' ), __( 'Professional or accredited', 'societypress' ) ] ),
+                $q( 'page_break', __( 'What you use and what you want', 'societypress' ) ),
+                $q( 'checkboxes', __( 'Which of these do you use?', 'societypress' ), [ __( 'Meetings and programs', 'societypress' ), __( 'The library', 'societypress' ), __( 'The newsletter or journal', 'societypress' ), __( 'The website\'s records', 'societypress' ), __( 'Research help', 'societypress' ), __( 'Classes and workshops', 'societypress' ) ] ),
+                $q( 'select', __( 'How do you prefer to attend meetings?', 'societypress' ), [ __( 'In person', 'societypress' ), $online, __( 'Either', 'societypress' ), __( 'I don\'t attend meetings', 'societypress' ) ] ),
+                $q( 'matrix', __( 'How satisfied are you with…', 'societypress' ), [
+                    __( 'Meetings and programs', 'societypress' ),
+                    __( 'The newsletter or journal', 'societypress' ),
+                    __( 'The website', 'societypress' ),
+                    __( 'Value for your dues', 'societypress' ),
+                ], false, [ 'columns' => [ __( 'Very dissatisfied', 'societypress' ), __( 'Dissatisfied', 'societypress' ), __( 'Neutral', 'societypress' ), __( 'Satisfied', 'societypress' ), __( 'Very satisfied', 'societypress' ) ] ] ),
+                $q( 'page_break', __( 'Getting involved', 'societypress' ) ),
+                $q( 'radio', __( 'Would you consider volunteering?', 'societypress' ), [ __( 'Yes', 'societypress' ), __( 'Maybe', 'societypress' ), __( 'No', 'societypress' ) ] ),
+                $q( 'textarea', __( 'What kind of help could you give?', 'societypress' ), [], false, [ 'show_if' => [ 'label' => __( 'Would you consider volunteering?', 'societypress' ), 'value' => __( 'Yes', 'societypress' ) ] ] ),
+                $q( 'textarea', __( 'What one thing would make your membership more worthwhile?', 'societypress' ) ),
+            ],
+        ],
+    ];
+}
+
+/**
+ * Handle the Surveys list's Duplicate and template buttons. Redirects and
+ * exits, so it runs on admin_init before the screen prints.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-surveys' || 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || ! isset( $_POST['sp_survey_list_action'] ) ) {
+        return;
+    }
+    if ( ! sp_module_enabled( 'surveys' ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage surveys.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_survey_list' );
+
+    global $wpdb;
+    $action = sanitize_key( wp_unslash( $_POST['sp_survey_list_action'] ) );
+    $id     = absint( $_POST['source_id'] ?? 0 );
+    $source = $id ? sp_get_form( $id ) : null;
+    $new_id = 0;
+
+    if ( 'duplicate' === $action && sp_form_is_survey( $source ) ) {
+        /* translators: %s: name of the survey being copied */
+        $new_id = sp_survey_copy( $source, 'survey', sprintf( __( '%s (copy)', 'societypress' ), $source->name ) );
+    } elseif ( 'use_template' === $action && $source && 'survey_template' === $source->kind ) {
+        $new_id = sp_survey_copy( $source, 'survey', $source->name );
+    } elseif ( 'use_builtin' === $action ) {
+        $all  = sp_survey_builtin_templates();
+        $slug = sanitize_key( wp_unslash( $_POST['builtin'] ?? '' ) );
+        if ( isset( $all[ $slug ] ) ) {
+            $t      = $all[ $slug ];
+            $fields = [];
+            foreach ( $t['fields'] as $i => $f ) {
+                $fields[] = array_merge( [ 'key' => 'f' . ( $i + 1 ) ], $f );
+            }
+            $new_id = sp_survey_copy(
+                (object) [
+                    'intro'                => $t['intro'],
+                    'submit_label'         => '',
+                    'visibility'           => $t['visibility'],
+                    'anonymous'            => $t['anonymous'],
+                    'fields'               => wp_json_encode( $fields ),
+                    'confirmation_message' => '',
+                    'closed_message'       => '',
+                    'repeat_message'       => '',
+                    'invite_subject'       => '',
+                    'invite_message'       => '',
+                ],
+                'survey',
+                $t['name']
+            );
+        }
+    } elseif ( 'delete_template' === $action && $source && 'survey_template' === $source->kind ) {
+        $wpdb->delete( $wpdb->prefix . 'sp_forms', [ 'id' => $id ], [ '%d' ] );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-surveys&notice=template_deleted' ) );
+        exit;
+    }
+
+    if ( $new_id ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-survey-edit&survey_id=' . $new_id . '&notice=copied' ) );
+    } else {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-surveys' ) );
+    }
+    exit;
+} );
+
 
 /**
  * Render the Surveys list.
@@ -129841,6 +130617,7 @@ function sp_render_surveys_page(): void {
             }
             $wpdb->delete( $prefix . 'form_submissions', [ 'form_id' => $survey_id ], [ '%d' ] );
             $wpdb->delete( $prefix . 'survey_respondents', [ 'form_id' => $survey_id ], [ '%d' ] );
+            $wpdb->delete( $prefix . 'survey_invites', [ 'form_id' => $survey_id ], [ '%d' ] );
             $wpdb->delete( $prefix . 'forms', [ 'id' => $survey_id ], [ '%d' ] );
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Survey deleted.', 'societypress' ) . '</p></div>';
         }
@@ -129876,6 +130653,7 @@ function sp_render_surveys_page(): void {
                 </thead>
                 <tbody>
                     <?php foreach ( $surveys as $survey ) :
+                        $survey      = sp_survey_apply_schedule( $survey );
                         $edit_url    = admin_url( 'admin.php?page=sp-survey-edit&survey_id=' . (int) $survey->id );
                         $results_url = admin_url( 'admin.php?page=sp-survey-edit&tab=results&survey_id=' . (int) $survey->id );
                         $status      = sp_survey_status( $survey );
@@ -129891,6 +130669,13 @@ function sp_render_surveys_page(): void {
                                     <?php if ( $page ) : ?>
                                         <span class="view"><a href="<?php echo esc_url( get_permalink( $page ) ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'View', 'societypress' ); ?></a> | </span>
                                     <?php endif; ?>
+                                    <span class="copy">
+                                        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-surveys' ) ); ?>" class="sp-inline">
+                                            <?php wp_nonce_field( 'sp_survey_list' ); ?>
+                                            <input type="hidden" name="source_id" value="<?php echo (int) $survey->id; ?>">
+                                            <button type="submit" name="sp_survey_list_action" value="duplicate" class="button-link"><?php esc_html_e( 'Duplicate', 'societypress' ); ?></button> |
+                                        </form>
+                                    </span>
                                     <span class="trash">
                                         <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-surveys' ) ); ?>" class="sp-inline" data-sp-confirm="<?php echo esc_attr__( 'Delete this survey and every answer it has received? Its page goes to the Trash. This cannot be undone.', 'societypress' ); ?>">
                                             <?php wp_nonce_field( 'sp_delete_survey_' . (int) $survey->id ); ?>
@@ -129917,6 +130702,46 @@ function sp_render_surveys_page(): void {
                 </tbody>
             </table>
         <?php endif; ?>
+
+        <?php
+        $sp_templates = sp_forms_get_all( false, 'survey_template' );
+        if ( 'template_deleted' === sanitize_key( $_GET['notice'] ?? '' ) ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Template deleted.', 'societypress' ) . '</p></div>';
+        }
+        ?>
+        <div class="sp-survey-card" style="margin-top:24px; max-width:860px;">
+            <h2><?php esc_html_e( 'Start from a template', 'societypress' ); ?></h2>
+            <p class="description"><?php esc_html_e( 'Makes a new survey with the questions already written. Change anything you like before publishing.', 'societypress' ); ?></p>
+            <table class="widefat striped">
+                <tbody>
+                    <?php foreach ( sp_survey_builtin_templates() as $slug => $t ) : ?>
+                        <tr>
+                            <td><strong><?php echo esc_html( $t['name'] ); ?></strong><br><span class="sp-survey-note"><?php echo esc_html( $t['intro'] ); ?></span></td>
+                            <td style="width:180px; text-align:right;">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-surveys' ) ); ?>">
+                                    <?php wp_nonce_field( 'sp_survey_list' ); ?>
+                                    <input type="hidden" name="builtin" value="<?php echo esc_attr( $slug ); ?>">
+                                    <button type="submit" name="sp_survey_list_action" value="use_builtin" class="button"><?php esc_html_e( 'Use This Template', 'societypress' ); ?></button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php foreach ( $sp_templates as $t ) : ?>
+                        <tr>
+                            <td><strong><?php echo esc_html( $t->name ); ?></strong><br><span class="sp-survey-note"><?php esc_html_e( 'Saved by your society', 'societypress' ); ?></span></td>
+                            <td style="width:180px; text-align:right;">
+                                <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-surveys' ) ); ?>">
+                                    <?php wp_nonce_field( 'sp_survey_list' ); ?>
+                                    <input type="hidden" name="source_id" value="<?php echo (int) $t->id; ?>">
+                                    <button type="submit" name="sp_survey_list_action" value="use_template" class="button"><?php esc_html_e( 'Use This Template', 'societypress' ); ?></button>
+                                    <button type="submit" name="sp_survey_list_action" value="delete_template" class="button-link sp-text-danger" data-sp-confirm="<?php esc_attr_e( 'Delete this template? Surveys already made from it are not affected.', 'societypress' ); ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
     </div>
     <?php
 }
@@ -129950,19 +130775,29 @@ function sp_survey_handle_save( int $survey_id ): int {
             continue;
         }
         $flabel = sanitize_text_field( $rf['label'] ?? '' );
+
+        // A page break's wording is an optional heading for the next page.
+        // Two breaks in a row, or one at either end, would make a page with
+        // nothing on it, so those are dropped.
+        if ( 'page_break' === $ftype ) {
+            if ( $fields && 'page_break' !== end( $fields )['type'] ) {
+                $fields[] = [ 'key' => 'f' . ( ++$n ), 'type' => 'page_break', 'label' => $flabel, 'required' => false, 'options' => [], 'placeholder' => '' ];
+            }
+            continue;
+        }
+
         if ( '' === $flabel ) {
             continue;
         }
         $opts = [];
         if ( $types[ $ftype ]['options'] ) {
-            foreach ( preg_split( '/\r\n|\r|\n/', (string) ( $rf['options'] ?? '' ) ) as $line ) {
-                $line = sanitize_text_field( $line );
-                if ( '' !== $line ) {
-                    $opts[] = $line;
-                }
-            }
+            $opts = sp_survey_lines( (string) ( $rf['options'] ?? '' ) );
         }
-        $fields[] = [
+        // A grid with no statements asks nothing.
+        if ( 'matrix' === $ftype && ! $opts ) {
+            continue;
+        }
+        $field = [
             'key'         => 'f' . ( ++$n ),
             'type'        => $ftype,
             'label'       => $flabel,
@@ -129970,6 +130805,43 @@ function sp_survey_handle_save( int $survey_id ): int {
             'options'     => $opts,
             'placeholder' => '',
         ];
+        if ( 'matrix' === $ftype ) {
+            $field['columns'] = sp_survey_lines( (string) ( $rf['columns'] ?? '' ) );
+        }
+
+        // "Ask only if" must point at an earlier question with set answers,
+        // and at one of those answers. WHY checked here: a condition naming a
+        // question that was since reworded, moved below it, or removed can
+        // never be met, and the question would silently never be asked.
+        $if_label = sanitize_text_field( $rf['show_if_label'] ?? '' );
+        $if_value = sanitize_text_field( $rf['show_if_value'] ?? '' );
+        if ( '' !== $if_label ) {
+            foreach ( $fields as $earlier ) {
+                if ( $earlier['label'] === $if_label
+                    && in_array( $earlier['type'], [ 'radio', 'select', 'checkboxes', 'scale', 'rating' ], true )
+                    && in_array( $if_value, sp_forms_field_options( $earlier ), true ) ) {
+                    $field['show_if'] = [ 'label' => $if_label, 'value' => $if_value ];
+                    break;
+                }
+            }
+            if ( empty( $field['show_if'] ) ) {
+                $GLOBALS['sp_survey_save_warning'] = 'condition_dropped';
+            }
+        }
+        $fields[] = $field;
+    }
+    if ( $fields && 'page_break' === end( $fields )['type'] ) {
+        array_pop( $fields );
+    }
+
+    // Opening and closing days. WHY days rather than times: a volunteer says
+    // "open until the end of March", and a survey open until 23:59 on the
+    // day it closes is what they mean.
+    $opens_on  = sp_survey_clean_date( wp_unslash( $_POST['opens_on'] ?? '' ) );
+    $closes_on = sp_survey_clean_date( wp_unslash( $_POST['closes_on'] ?? '' ) );
+    if ( $opens_on && $closes_on && $closes_on < $opens_on ) {
+        $closes_on = null;
+        $GLOBALS['sp_survey_save_warning'] = 'bad_dates';
     }
 
     $title = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
@@ -129998,8 +130870,10 @@ function sp_survey_handle_save( int $survey_id ): int {
         'confirmation_message' => sanitize_text_field( wp_unslash( $_POST['confirmation_message'] ?? '' ) ),
         'closed_message'       => sanitize_text_field( wp_unslash( $_POST['closed_message'] ?? '' ) ),
         'repeat_message'       => sanitize_text_field( wp_unslash( $_POST['repeat_message'] ?? '' ) ),
+        'opens_on'             => $opens_on,
+        'closes_on'            => $closes_on,
     ];
-    $formats = [ '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s' ];
+    $formats = [ '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s' ];
 
     // A message left exactly as the default is saved empty, so it keeps
     // following the default (and the site's language) rather than freezing
@@ -130029,6 +130903,37 @@ function sp_survey_handle_save( int $survey_id ): int {
     $formats[]      = '%s';
     $wpdb->insert( $prefix . 'forms', $data, $formats );
     return (int) $wpdb->insert_id;
+}
+
+/**
+ * Non-empty, trimmed lines of a textarea.
+ *
+ * @param string $text
+ * @return string[]
+ */
+function sp_survey_lines( string $text ): array {
+    $out = [];
+    foreach ( preg_split( '/\r\n|\r|\n/', $text ) as $line ) {
+        $line = sanitize_text_field( $line );
+        if ( '' !== $line ) {
+            $out[] = $line;
+        }
+    }
+    return $out;
+}
+
+/**
+ * A posted date as Y-m-d, or null when blank or not a real date.
+ *
+ * @param mixed $raw
+ * @return string|null
+ */
+function sp_survey_clean_date( $raw ): ?string {
+    $raw = is_string( $raw ) ? trim( $raw ) : '';
+    if ( ! preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $raw, $m ) || ! checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
+        return null;
+    }
+    return $raw;
 }
 
 /**
@@ -130066,6 +130971,11 @@ add_action( 'admin_init', function () {
     $notice    = 'saved';
 
     if ( in_array( $action, [ 'publish', 'reopen' ], true ) ) {
+        // Reopening a survey whose closing day has passed would close it
+        // again on the next page view, so the old closing day is cleared.
+        if ( ! empty( $survey->closes_on ) && current_time( 'Y-m-d' ) > $survey->closes_on ) {
+            $wpdb->update( $wpdb->prefix . 'sp_forms', [ 'closes_on' => null ], [ 'id' => $survey_id ], [ '%s' ], [ '%d' ] );
+        }
         if ( ! sp_forms_get_fields( $survey ) ) {
             $notice = 'no_questions';
         } else {
@@ -130080,6 +130990,14 @@ add_action( 'admin_init', function () {
     } elseif ( 'close' === $action ) {
         $wpdb->update( $wpdb->prefix . 'sp_forms', [ 'status' => 'closed' ], [ 'id' => $survey_id ], [ '%s' ], [ '%d' ] );
         $notice = 'closed';
+    } elseif ( 'save_template' === $action ) {
+        sp_survey_copy( $survey, 'survey_template', $survey->name );
+        $notice = 'template_saved';
+    }
+
+    // A problem found while saving outranks the plain "saved".
+    if ( 'saved' === $notice && ! empty( $GLOBALS['sp_survey_save_warning'] ) ) {
+        $notice = $GLOBALS['sp_survey_save_warning'];
     }
 
     wp_safe_redirect( admin_url( 'admin.php?page=sp-survey-edit&survey_id=' . $survey_id . '&notice=' . $notice ) );
@@ -130098,11 +131016,12 @@ function sp_render_survey_edit_page(): void {
     }
 
     $survey_id = absint( $_GET['survey_id'] ?? 0 );
-    $survey    = $survey_id ? sp_get_form( $survey_id ) : null;
+    $survey    = $survey_id ? sp_survey_apply_schedule( sp_get_form( $survey_id ) ) : null;
     if ( $survey_id && ! sp_form_is_survey( $survey ) ) {
         wp_die( esc_html__( 'Survey not found.', 'societypress' ) );
     }
-    $tab = ( $survey && 'results' === ( $_GET['tab'] ?? '' ) ) ? 'results' : 'questions';
+    $tab = $survey ? sanitize_key( $_GET['tab'] ?? '' ) : '';
+    $tab = in_array( $tab, [ 'results', 'invite' ], true ) ? $tab : 'questions';
 
     $base_url = admin_url( 'admin.php?page=sp-survey-edit&survey_id=' . $survey_id );
     sp_survey_admin_styles();
@@ -130117,6 +131036,7 @@ function sp_render_survey_edit_page(): void {
         <?php if ( $survey ) : ?>
             <nav class="nav-tab-wrapper">
                 <a href="<?php echo esc_url( $base_url ); ?>" class="nav-tab<?php echo 'questions' === $tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Questions', 'societypress' ); ?></a>
+                <a href="<?php echo esc_url( $base_url . '&tab=invite' ); ?>" class="nav-tab<?php echo 'invite' === $tab ? ' nav-tab-active' : ''; ?>"><?php esc_html_e( 'Invitations', 'societypress' ); ?></a>
                 <a href="<?php echo esc_url( $base_url . '&tab=results' ); ?>" class="nav-tab<?php echo 'results' === $tab ? ' nav-tab-active' : ''; ?>">
                     <?php
                     /* translators: %s: number of responses */
@@ -130129,6 +131049,8 @@ function sp_render_survey_edit_page(): void {
         <?php
         if ( 'results' === $tab ) {
             sp_survey_render_results_tab( $survey );
+        } elseif ( 'invite' === $tab ) {
+            sp_survey_render_invite_tab( $survey );
         } else {
             sp_survey_render_questions_tab( $survey );
         }
@@ -130156,6 +131078,15 @@ function sp_survey_render_notice( $survey ): void {
         'closed'       => [ 'success', __( 'Your survey is closed. Its page stays up and tells visitors the survey has ended. Results are still here.', 'societypress' ) ],
         'no_questions' => [ 'error', __( 'Add at least one question before publishing.', 'societypress' ) ],
         'page_failed'  => [ 'error', __( 'The survey was saved, but its page could not be created. Please try Publish again.', 'societypress' ) ],
+        'copied'            => [ 'success', __( 'A new survey has been made from the copy. Check the questions and dates, then press Publish.', 'societypress' ) ],
+        'template_saved'    => [ 'success', __( 'Saved as a template. Next time, choose it under "Start from a template" on the Surveys screen.', 'societypress' ) ],
+        'condition_dropped' => [ 'warning', __( 'Survey saved, but an "Ask this question" rule was removed because the question it depended on is no longer above it or no longer offers that answer. Please check the questions.', 'societypress' ) ],
+        'bad_dates'         => [ 'warning', __( 'Survey saved, but the closing day was before the opening day, so the closing day was left blank.', 'societypress' ) ],
+        'invites_queued'    => [ 'success', __( 'Invitations are on their way. They go out in small batches over the next few minutes.', 'societypress' ) ],
+        'reminders_queued'  => [ 'success', __( 'Reminders are on their way. They go out in small batches over the next few minutes.', 'societypress' ) ],
+        'nobody_to_invite'  => [ 'warning', __( 'There was nobody to send to.', 'societypress' ) ],
+        'invite_text_saved' => [ 'success', __( 'Invitation wording saved.', 'societypress' ) ],
+        'not_open'          => [ 'error', __( 'Invitations and reminders can only be sent while the survey is published and has not closed.', 'societypress' ) ],
     ];
     if ( ! isset( $messages[ $notice ] ) ) {
         return;
@@ -130223,7 +131154,7 @@ function sp_survey_render_questions_tab( $survey ): void {
                     <?php endif; ?>
                     <p class="description"><?php esc_html_e( 'Type each question and choose the kind of answer. Use the arrows to change the order.', 'societypress' ); ?></p>
 
-                    <div id="sp-fields-list">
+                    <div id="sp-fields-list" data-default-scale="<?php echo esc_attr( wp_json_encode( sp_forms_default_scale() ) ); ?>" data-page-break-placeholder="<?php esc_attr_e( 'Heading for the next page (optional)', 'societypress' ); ?>">
                         <?php
                         foreach ( $fields as $i => $f ) {
                             sp_forms_render_field_row( $i, $f, $field_types, true );
@@ -130312,6 +131243,16 @@ function sp_survey_render_questions_tab( $survey ): void {
                     </p>
 
                     <p>
+                        <label for="sp-survey-opens"><strong><?php esc_html_e( 'Opens on', 'societypress' ); ?></strong></label><br>
+                        <input type="date" id="sp-survey-opens" name="opens_on" value="<?php echo esc_attr( $survey ? (string) $survey->opens_on : '' ); ?>" class="widefat">
+                    </p>
+                    <p>
+                        <label for="sp-survey-closes"><strong><?php esc_html_e( 'Last day to answer', 'societypress' ); ?></strong></label><br>
+                        <input type="date" id="sp-survey-closes" name="closes_on" value="<?php echo esc_attr( $survey ? (string) $survey->closes_on : '' ); ?>" class="widefat">
+                        <span class="sp-survey-note"><?php esc_html_e( 'Both optional. Leave them empty to open when you press Publish and close when you press Close.', 'societypress' ); ?></span>
+                    </p>
+
+                    <p>
                         <button type="submit" name="sp_survey_action" value="save" class="button button-large"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
                         <?php if ( 'draft' === $state ) : ?>
                             <button type="submit" name="sp_survey_action" value="publish" class="button button-primary button-large"><?php esc_html_e( 'Publish', 'societypress' ); ?></button>
@@ -130327,6 +131268,20 @@ function sp_survey_render_questions_tab( $survey ): void {
                         <?php endif; ?>
                     </p>
                 </div>
+
+                <?php if ( $survey ) : ?>
+                    <div class="sp-survey-card">
+                        <h2><?php esc_html_e( 'Reuse', 'societypress' ); ?></h2>
+                        <p>
+                            <button type="submit" name="sp_survey_action" value="save_template" class="button button-large"><?php esc_html_e( 'Save as Template', 'societypress' ); ?></button>
+                        </p>
+                        <p class="sp-survey-note"><?php esc_html_e( 'Keeps a copy of these questions to start next year\'s survey from. Answers are not copied.', 'societypress' ); ?></p>
+                        <p class="sp-survey-note">
+                            <?php esc_html_e( 'To show this survey on another page as well, paste this into that page:', 'societypress' ); ?><br>
+                            <code>[societypress_form id="<?php echo (int) $survey->id; ?>"]</code>
+                        </p>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </form>
@@ -130341,16 +131296,76 @@ function sp_survey_render_questions_tab( $survey ): void {
         var tpl    = document.getElementById('sp-field-row-template');
         var addBtn = document.getElementById('sp-add-field');
 
+        var defaultScale = JSON.parse( ( list && list.getAttribute('data-default-scale') ) || '[]' );
+        var choiceTypes  = [ 'radio', 'select', 'checkboxes', 'scale', 'rating' ];
+
         // Show the choices box only for answers that are a choice, and the
-        // "leave empty for the usual scale" hint only for a scale.
+        // "leave empty for the usual scale" hint only for a scale. A grid
+        // takes statements plus its own scale; a page break takes only an
+        // optional heading.
         function syncRow(row){
             var sel  = row.querySelector('.sp-field-type');
             var wrap = row.querySelector('.sp-field-options-wrap');
             var hint = row.querySelector('.sp-field-scale-hint');
+            var cols = row.querySelector('.sp-field-columns-wrap');
+            var req  = row.querySelector('.sp-field-required-wrap');
+            var cond = row.querySelector('.sp-field-condition');
+            var lbl  = row.querySelector('.sp-field-label-input');
             if ( ! sel ) return;
-            var t = sel.value;
-            if ( wrap ) wrap.hidden = ! ( t === 'select' || t === 'radio' || t === 'checkboxes' || t === 'scale' );
+            var t     = sel.value;
+            var isBrk = ( t === 'page_break' );
+            if ( wrap ) wrap.hidden = ! ( t === 'select' || t === 'radio' || t === 'checkboxes' || t === 'scale' || t === 'matrix' );
             if ( hint ) hint.hidden = ( t !== 'scale' );
+            if ( cols ) cols.hidden = ( t !== 'matrix' );
+            if ( req )  req.hidden  = isBrk;
+            if ( cond ) cond.hidden = isBrk;
+            row.querySelector('.sp-field-options-label').hidden = ( t === 'matrix' );
+            var rowsLbl = row.querySelector('.sp-field-rows-label');
+            if ( rowsLbl ) rowsLbl.hidden = ( t !== 'matrix' );
+            row.classList.toggle('sp-field-row--break', isBrk);
+            if ( lbl ) {
+                if ( ! lbl.hasAttribute('data-placeholder') ) lbl.setAttribute('data-placeholder', lbl.placeholder);
+                lbl.required    = ! isBrk;
+                lbl.placeholder = isBrk ? list.getAttribute('data-page-break-placeholder') : lbl.getAttribute('data-placeholder');
+            }
+        }
+
+        // The answers a question row offers, as the survey will offer them.
+        function rowChoices(row){
+            var t = row.querySelector('.sp-field-type').value;
+            if ( t === 'rating' ) return [ '1', '2', '3', '4', '5' ];
+            var ta    = row.querySelector('textarea[name$="[options]"]');
+            var lines = ( ta ? ta.value : '' ).split(/\r\n|\r|\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+            if ( t === 'scale' && ! lines.length ) return defaultScale;
+            return lines;
+        }
+
+        function fillSelect(select, values, current, first){
+            select.innerHTML = '';
+            if ( first ) select.appendChild(new Option(first, ''));
+            values.forEach(function(v){ select.appendChild(new Option(v, v, false, v === current)); });
+            if ( current && values.indexOf(current) === -1 ) select.value = '';
+        }
+
+        // "Ask this question … is …": only questions above this one, with set
+        // answers, can be chosen, and only answers that question offers.
+        function refreshConditions(){
+            var earlier = [];
+            Array.prototype.forEach.call(list.querySelectorAll('.sp-field-row'), function(row){
+                var ifLbl = row.querySelector('.sp-field-if-label');
+                var ifVal = row.querySelector('.sp-field-if-value');
+                var is    = row.querySelector('.sp-field-if-is');
+                if ( ifLbl && ifVal ) {
+                    var curLbl = ifLbl.value, curVal = ifVal.value;
+                    fillSelect(ifLbl, earlier.map(function(e){ return e.label; }), curLbl, ifLbl.options.length ? ifLbl.options[0].text : '');
+                    var match = earlier.filter(function(e){ return e.label === ifLbl.value; })[0];
+                    fillSelect(ifVal, match ? match.choices : [], curVal, '');
+                    ifVal.hidden = is.hidden = ! match;
+                }
+                var t   = row.querySelector('.sp-field-type').value;
+                var lab = row.querySelector('.sp-field-label-input').value.trim();
+                if ( lab && choiceTypes.indexOf(t) !== -1 ) earlier.push({ label: lab, choices: rowChoices(row) });
+            });
         }
 
         function wireRow(row){
@@ -130369,6 +131384,7 @@ function sp_survey_render_questions_tab( $survey ): void {
                     e.preventDefault();
                     if ( row.nextElementSibling ) row.parentNode.insertBefore(row.nextElementSibling, row);
                 }
+                refreshConditions();
             });
             syncRow(row);
         }
@@ -130390,6 +131406,13 @@ function sp_survey_render_questions_tab( $survey ): void {
             // A new survey starts with one empty question rather than an
             // empty box, so the first thing to do is obvious.
             if ( counter === 0 ) addBtn.click();
+
+            list.addEventListener('change', refreshConditions);
+            list.addEventListener('input', function(e){
+                if ( ! e.target.closest('.sp-field-condition') ) refreshConditions();
+            });
+            addBtn.addEventListener('click', refreshConditions);
+            refreshConditions();
         }
 
         var vis  = document.getElementById('sp-survey-visibility');
@@ -130457,6 +131480,18 @@ function sp_survey_render_results_tab( $survey ): void {
             <?php endif; ?>
         </p>
 
+        <?php
+        $sp_inv = sp_survey_invite_counts( (int) $survey->id );
+        if ( $sp_inv['invited'] > 0 ) :
+            ?>
+            <p class="sp-survey-stat">
+                <?php
+                /* translators: 1: invited members who answered, 2: members invited */
+                printf( esc_html__( '%1$s of the %2$s members invited by email have answered.', 'societypress' ), esc_html( number_format_i18n( $sp_inv['invited'] - $sp_inv['unanswered'] ) ), esc_html( number_format_i18n( $sp_inv['invited'] ) ) );
+                ?>
+            </p>
+        <?php endif; ?>
+
         <?php if ( ! empty( $survey->anonymous ) ) : ?>
             <p class="sp-survey-note"><?php esc_html_e( 'This survey is anonymous. You can see who took part, but not which answers were theirs.', 'societypress' ); ?></p>
         <?php endif; ?>
@@ -130494,8 +131529,665 @@ function sp_survey_render_results_tab( $survey ): void {
     <?php if ( $responses < 1 ) : ?>
         <p><?php esc_html_e( 'No answers yet. They will be added up here as they come in.', 'societypress' ); ?></p>
     <?php else : ?>
-        <?php sp_forms_render_results( $survey, true ); ?>
+        <?php
+        $answer_fields = sp_survey_answer_fields( sp_forms_get_fields( $survey ) );
+        $by            = sanitize_text_field( wp_unslash( $_GET['by'] ?? '' ) );
+        $by_choices    = sp_survey_breakdown_questions( $answer_fields );
+        $print_url     = wp_nonce_url( admin_url( 'admin.php?page=sp-survey-edit&sp_action=print&survey_id=' . (int) $survey->id . ( '' !== $by ? '&by=' . rawurlencode( $by ) : '' ) ), 'sp_print_survey_' . (int) $survey->id );
+        ?>
+        <div class="sp-survey-card">
+            <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="sp-survey-breakdown">
+                <input type="hidden" name="page" value="sp-survey-edit">
+                <input type="hidden" name="tab" value="results">
+                <input type="hidden" name="survey_id" value="<?php echo (int) $survey->id; ?>">
+                <?php if ( $by_choices ) : ?>
+                    <label for="sp-survey-by"><strong><?php esc_html_e( 'Break the answers down by', 'societypress' ); ?></strong></label>
+                    <select id="sp-survey-by" name="by">
+                        <option value=""><?php esc_html_e( '— Everyone together —', 'societypress' ); ?></option>
+                        <?php foreach ( $by_choices as $label ) : ?>
+                            <option value="<?php echo esc_attr( $label ); ?>" <?php selected( $by, $label ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button type="submit" class="button"><?php esc_html_e( 'Show', 'societypress' ); ?></button>
+                <?php endif; ?>
+                <a href="<?php echo esc_url( $print_url ); ?>" class="button" target="_blank" rel="noopener"><?php esc_html_e( 'Printable Summary', 'societypress' ); ?></a>
+            </form>
+            <?php if ( $by_choices ) : ?>
+                <p class="sp-survey-note"><?php esc_html_e( 'For example, choose an age question to see how each age group answered everything else.', 'societypress' ); ?></p>
+            <?php endif; ?>
+        </div>
+        <?php
+        if ( '' !== $by && in_array( $by, $by_choices, true ) ) {
+            sp_survey_render_breakdown( $survey, $answer_fields, $by );
+        } else {
+            sp_forms_render_results( $survey, true, $answer_fields );
+        }
+        ?>
     <?php endif; ?>
+    <?php
+}
+
+/**
+ * Questions the results can be broken down by: those with exactly one answer
+ * from a set list.
+ *
+ * WHY not checkbox questions: somebody who ticked three boxes would be
+ *      counted in three groups, and the groups would no longer add up to the
+ *      people who answered.
+ *
+ * @param array[] $fields From sp_survey_answer_fields().
+ * @return string[] Question wordings.
+ */
+function sp_survey_breakdown_questions( array $fields ): array {
+    $out = [];
+    foreach ( $fields as $f ) {
+        if ( in_array( $f['type'], [ 'radio', 'select', 'scale', 'rating' ], true ) && sp_forms_field_options( $f ) ) {
+            $out[] = $f['label'];
+        }
+    }
+    return $out;
+}
+
+/**
+ * Count every choice question's answers, split by the answer to one question.
+ *
+ * @param object  $form
+ * @param array[] $fields From sp_survey_answer_fields().
+ * @param string  $by     Wording of the question to split by.
+ * @return array{groups:array<string,int>,questions:array[]} groups is group => people in it;
+ *         each question: label, counts[choice][group], answered[group].
+ */
+function sp_survey_breakdown( $form, array $fields, string $by ): array {
+    global $wpdb;
+    $rows = $wpdb->get_col( $wpdb->prepare(
+        "SELECT data FROM {$wpdb->prefix}sp_form_submissions WHERE form_id = %d",
+        (int) $form->id
+    ) );
+
+    $groups    = [];
+    $questions = [];
+    foreach ( $fields as $f ) {
+        if ( $f['label'] === $by ) {
+            foreach ( sp_forms_field_options( $f ) as $opt ) {
+                $groups[ $opt ] = 0;
+            }
+            continue;
+        }
+        $choices = sp_forms_field_options( $f );
+        if ( ! $choices ) {
+            continue;
+        }
+        $questions[ $f['label'] ] = [ 'label' => $f['label'], 'choices' => $choices, 'counts' => [], 'answered' => [] ];
+    }
+
+    foreach ( $rows as $json ) {
+        $data  = json_decode( (string) $json, true );
+        $group = is_array( $data ) && isset( $data[ $by ] ) && is_string( $data[ $by ] ) ? $data[ $by ] : '';
+        if ( '' === $group || ! isset( $groups[ $group ] ) ) {
+            continue;
+        }
+        $groups[ $group ]++;
+        foreach ( $questions as $label => $q ) {
+            if ( ! isset( $data[ $label ] ) ) {
+                continue;
+            }
+            $any = false;
+            foreach ( (array) $data[ $label ] as $v ) {
+                $v = (string) $v;
+                if ( in_array( $v, $q['choices'], true ) ) {
+                    $questions[ $label ]['counts'][ $v ][ $group ] = ( $questions[ $label ]['counts'][ $v ][ $group ] ?? 0 ) + 1;
+                    $any = true;
+                }
+            }
+            if ( $any ) {
+                $questions[ $label ]['answered'][ $group ] = ( $questions[ $label ]['answered'][ $group ] ?? 0 ) + 1;
+            }
+        }
+    }
+
+    return [ 'groups' => $groups, 'questions' => array_values( $questions ) ];
+}
+
+/**
+ * Show the breakdown: one table per question, one column per group.
+ *
+ * WHY percentages down each column: the groups are different sizes, and
+ *      "12 of the over-75s" means nothing until you know there are 15 of them.
+ *
+ * @param object  $form
+ * @param array[] $fields
+ * @param string  $by
+ */
+function sp_survey_render_breakdown( $form, array $fields, string $by ): void {
+    $data   = sp_survey_breakdown( $form, $fields, $by );
+    $groups = $data['groups'];
+    ?>
+    <div class="sp-survey-card sp-survey-breakdown-results">
+        <h2>
+            <?php
+            /* translators: %s: the question the results are split by */
+            printf( esc_html__( 'Answers broken down by "%s"', 'societypress' ), esc_html( $by ) );
+            ?>
+        </h2>
+        <p class="sp-survey-note"><?php esc_html_e( 'Each column is the people who gave that answer. Percentages are of the people in that column who answered the question. People who skipped the breakdown question are not included.', 'societypress' ); ?></p>
+        <?php foreach ( $data['questions'] as $q ) : ?>
+            <h3><?php echo esc_html( $q['label'] ); ?></h3>
+            <div class="sp-survey-table-scroll">
+                <table class="widefat striped sp-survey-breakdown-table">
+                    <thead>
+                        <tr>
+                            <td></td>
+                            <?php foreach ( $groups as $g => $size ) : ?>
+                                <th scope="col"><?php echo esc_html( $g ); ?> <span class="sp-survey-note">(<?php echo esc_html( number_format_i18n( $size ) ); ?>)</span></th>
+                            <?php endforeach; ?>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $q['choices'] as $choice ) : ?>
+                            <tr>
+                                <th scope="row"><?php echo esc_html( $choice ); ?></th>
+                                <?php foreach ( $groups as $g => $size ) :
+                                    $n   = (int) ( $q['counts'][ $choice ][ $g ] ?? 0 );
+                                    $den = (int) ( $q['answered'][ $g ] ?? 0 );
+                                    ?>
+                                    <td>
+                                        <strong><?php echo esc_html( number_format_i18n( $n ) ); ?></strong>
+                                        <?php if ( $den > 0 ) : ?>
+                                            <span class="sp-survey-note"><?php echo esc_html( number_format_i18n( round( $n / $den * 100 ) ) ); ?>%</span>
+                                        <?php endif; ?>
+                                    </td>
+                                <?php endforeach; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endforeach; ?>
+        <?php if ( ! $data['questions'] ) : ?>
+            <p><?php esc_html_e( 'There are no other questions with set answers to break down.', 'societypress' ); ?></p>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/**
+ * A one-page printable summary for the board. Hooked on admin_init so it can
+ * print a bare page with none of the admin screen around it.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-survey-edit' || ( $_GET['sp_action'] ?? '' ) !== 'print' ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view survey results.', 'societypress' ) );
+    }
+    $survey_id = absint( $_GET['survey_id'] ?? 0 );
+    check_admin_referer( 'sp_print_survey_' . $survey_id );
+    $survey = sp_survey_apply_schedule( sp_get_form( $survey_id ) );
+    if ( ! sp_form_is_survey( $survey ) ) {
+        wp_die( esc_html__( 'Survey not found.', 'societypress' ) );
+    }
+
+    $fields = sp_survey_answer_fields( sp_forms_get_fields( $survey ) );
+    $by     = sanitize_text_field( wp_unslash( $_GET['by'] ?? '' ) );
+    $title  = '' !== trim( (string) $survey->title ) ? $survey->title : $survey->name;
+    $people = count( sp_survey_respondents( $survey_id ) );
+    $elig   = 'members' === $survey->visibility ? sp_survey_eligible_count() : 0;
+    $status = sp_survey_status( $survey );
+    ?>
+    <!DOCTYPE html>
+    <html <?php language_attributes(); ?>>
+    <head>
+        <meta charset="<?php bloginfo( 'charset' ); ?>">
+        <title><?php echo esc_html( $title ); ?></title>
+        <style>
+            body { font-family:-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color:#1d2327; background:#fff; margin:24px; font-size:14px; }
+            h1 { margin:0 0 4px; }
+            .sp-print-meta { color:#50575e; margin:0 0 16px; }
+            .sp-print-bar { margin:0 0 20px; }
+            .widefat { border-collapse:collapse; width:100%; }
+            .widefat td, .widefat th { border:1px solid #dcdcde; padding:6px 8px; text-align:left; }
+            .sp-form-results, .sp-survey-card { border:none !important; padding:0 !important; max-width:none !important; }
+            h3 { page-break-after:avoid; }
+            table { page-break-inside:avoid; }
+            @media print { .sp-print-bar { display:none; } body { margin:0; } }
+        </style>
+        <?php sp_survey_admin_styles(); ?>
+    </head>
+    <body>
+        <p class="sp-print-bar"><button type="button" onclick="window.print()"><?php esc_html_e( 'Print', 'societypress' ); ?></button></p>
+        <h1><?php echo esc_html( $title ); ?></h1>
+        <p class="sp-print-meta">
+            <?php echo esc_html( get_bloginfo( 'name' ) ); ?> &middot;
+            <?php echo esc_html( $status['label'] ); ?> &middot;
+            <?php
+            if ( $elig > 0 ) {
+                /* translators: 1: members who answered, 2: members in good standing */
+                printf( esc_html__( '%1$s of %2$s members answered', 'societypress' ), esc_html( number_format_i18n( $people ) ), esc_html( number_format_i18n( $elig ) ) );
+            } else {
+                /* translators: %s: number of responses */
+                printf( esc_html( _n( '%s response', '%s responses', (int) $survey->submissions_count, 'societypress' ) ), esc_html( number_format_i18n( (int) $survey->submissions_count ) ) );
+            }
+            ?>
+            &middot;
+            <?php
+            /* translators: %s: today's date */
+            printf( esc_html__( 'Printed %s', 'societypress' ), esc_html( wp_date( get_option( 'date_format' ) ) ) );
+            ?>
+        </p>
+        <?php
+        if ( '' !== $by && in_array( $by, sp_survey_breakdown_questions( $fields ), true ) ) {
+            sp_survey_render_breakdown( $survey, $fields, $by );
+        } else {
+            sp_forms_render_results( $survey, true, $fields );
+        }
+        ?>
+    </body>
+    </html>
+    <?php
+    exit;
+} );
+
+// ----------------------------------------------------------------------------
+// INVITATIONS — Email the survey to members, and remind those who haven't
+// answered
+//
+// WHY built in rather than "copy the link into an email": a volunteer who
+//      sends the link themselves can't tell who still needs reminding
+//      without looking through the Results list by hand. Here the reminder
+//      goes only to invited members who have not answered, worked out from
+//      the respondents record, which never says what anyone answered.
+// ----------------------------------------------------------------------------
+
+/**
+ * Default invitation wording.
+ *
+ * @return array{subject:string,message:string}
+ */
+function sp_survey_default_invite(): array {
+    return [
+        /* translators: {survey_title} is replaced with the survey's name. Keep it as written. */
+        'subject' => __( 'Please take our survey: {survey_title}', 'societypress' ),
+        /* translators: {first_name} and {survey_title} are replaced when the email is sent. Keep them as written. */
+        'message' => __( "Dear {first_name},\n\nWe would like to hear from you. Please take a few minutes to answer our survey, \"{survey_title}\". Your answers help the society plan for the year ahead.\n\nThank you!", 'societypress' ),
+    ];
+}
+
+/**
+ * The invitation subject or message for a survey, falling back to the default.
+ *
+ * @param object $form
+ * @param string $which 'subject' or 'message'.
+ * @return string
+ */
+function sp_survey_invite_text( $form, string $which ): string {
+    $saved = 'subject' === $which ? (string) ( $form->invite_subject ?? '' ) : (string) ( $form->invite_message ?? '' );
+    if ( '' !== trim( $saved ) ) {
+        return $saved;
+    }
+    return sp_survey_default_invite()[ $which ];
+}
+
+/**
+ * Members who may be emailed a survey: active, with a usable address, and
+ * not opted out of society notices.
+ *
+ * WHY the notices preference: a survey from the society is a notice, and a
+ *      member who has asked not to receive notices should not get one
+ *      because it is labelled a survey.
+ *
+ * @return object[] Each: user_id, first_name, preferred_name, email.
+ */
+function sp_survey_invitable_members(): array {
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.preferred_name, m.blast_email_opt_out, m.pref_email_notices, u.user_email AS email
+           FROM {$wpdb->prefix}sp_members m
+           JOIN {$wpdb->users} u ON u.ID = m.user_id
+          WHERE m.status = 'active' AND m.user_id > 0"
+    );
+    return array_values( array_filter( (array) $rows, static function ( $r ) {
+        return is_email( $r->email ) && sp_member_wants_email( $r, 'pref_email_notices' );
+    } ) );
+}
+
+/**
+ * Counts for the Invitations tab.
+ *
+ * @param int $survey_id
+ * @return array{invited:int,waiting:int,unanswered:int}
+ */
+function sp_survey_invite_counts( int $survey_id ): array {
+    global $wpdb;
+    $inv  = $wpdb->prefix . 'sp_survey_invites';
+    $resp = $wpdb->prefix . 'sp_survey_respondents';
+    return [
+        'invited'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$inv} WHERE form_id = %d AND invited_on IS NOT NULL", $survey_id ) ),
+        'waiting'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$inv} WHERE form_id = %d AND queued <> ''", $survey_id ) ),
+        'unanswered' => (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$inv} i
+              WHERE i.form_id = %d AND i.invited_on IS NOT NULL
+                AND NOT EXISTS ( SELECT 1 FROM {$resp} r WHERE r.form_id = i.form_id AND r.user_id = i.user_id )",
+            $survey_id
+        ) ),
+    ];
+}
+
+/**
+ * Is the survey in a state where invitations make sense?
+ *
+ * @param object $form
+ * @return bool
+ */
+function sp_survey_can_invite( $form ): bool {
+    return 'published' === $form->status && sp_survey_live_page( $form ) && ! sp_survey_not_yet_open( $form );
+}
+
+/**
+ * Queue invitations for every invitable member not yet invited or answered.
+ *
+ * @param object $form
+ * @return int How many were queued.
+ */
+function sp_survey_queue_invites( $form ): int {
+    global $wpdb;
+    $queued = 0;
+    foreach ( sp_survey_invitable_members() as $m ) {
+        if ( sp_survey_already_answered( $form, (int) $m->user_id ) ) {
+            continue;
+        }
+        $queued += (int) $wpdb->query( $wpdb->prepare(
+            "INSERT IGNORE INTO {$wpdb->prefix}sp_survey_invites (form_id, user_id, queued) VALUES (%d, %d, 'invite')",
+            (int) $form->id,
+            (int) $m->user_id
+        ) );
+    }
+    return $queued;
+}
+
+/**
+ * Queue a reminder for every invited member who has not answered.
+ *
+ * @param object $form
+ * @return int How many were queued.
+ */
+function sp_survey_queue_reminders( $form ): int {
+    global $wpdb;
+    return (int) $wpdb->query( $wpdb->prepare(
+        "UPDATE {$wpdb->prefix}sp_survey_invites i
+            SET i.queued = 'reminder'
+          WHERE i.form_id = %d AND i.queued = '' AND i.invited_on IS NOT NULL
+            AND NOT EXISTS ( SELECT 1 FROM {$wpdb->prefix}sp_survey_respondents r WHERE r.form_id = i.form_id AND r.user_id = i.user_id )",
+        (int) $form->id
+    ) );
+}
+
+/**
+ * Make sure the background sender is running.
+ */
+function sp_survey_schedule_mail(): void {
+    if ( ! wp_next_scheduled( 'sp_survey_mail_batch' ) ) {
+        wp_schedule_single_event( time(), 'sp_survey_mail_batch' );
+    }
+}
+
+add_action( 'sp_survey_mail_batch', 'sp_survey_send_mail_batch' );
+
+/**
+ * Send the next batch of queued invitations and reminders.
+ *
+ * WHY batches of 40, a minute apart: shared hosting counts emails per hour
+ *      and cuts off long page loads. A few hundred members go out in a few
+ *      minutes without tripping either.
+ *
+ * WHY each email is checked again at send time: somebody may answer, lapse
+ *      or opt out between the button press and their turn in the queue, and
+ *      the survey may have closed.
+ */
+function sp_survey_send_mail_batch(): void {
+    global $wpdb;
+    $inv  = $wpdb->prefix . 'sp_survey_invites';
+    $rows = $wpdb->get_results( "SELECT form_id, user_id, queued FROM {$inv} WHERE queued <> '' LIMIT 40" );
+    if ( ! $rows ) {
+        return;
+    }
+
+    $members = [];
+    foreach ( sp_survey_invitable_members() as $m ) {
+        $members[ (int) $m->user_id ] = $m;
+    }
+    $forms = [];
+    $today = current_time( 'Y-m-d' );
+
+    foreach ( $rows as $row ) {
+        $fid = (int) $row->form_id;
+        $uid = (int) $row->user_id;
+        if ( ! array_key_exists( $fid, $forms ) ) {
+            $f             = sp_survey_apply_schedule( sp_get_form( $fid ) );
+            $forms[ $fid ] = ( $f && sp_form_is_survey( $f ) && sp_module_enabled( 'surveys' ) && sp_survey_can_invite( $f ) ) ? $f : null;
+        }
+        $form     = $forms[ $fid ];
+        $reminder = 'reminder' === $row->queued;
+        $where    = [ 'form_id' => $fid, 'user_id' => $uid ];
+
+        if ( ! $form || ! isset( $members[ $uid ] ) || sp_survey_already_answered( $form, $uid ) ) {
+            // Not sent. A first invitation that never went out is removed,
+            // so the member counts as not invited and a later Send includes
+            // them; a reminder simply stays unsent.
+            if ( $reminder ) {
+                $wpdb->update( $inv, [ 'queued' => '' ], $where, [ '%s' ], [ '%d', '%d' ] );
+            } else {
+                $wpdb->delete( $inv, $where, [ '%d', '%d' ] );
+            }
+            continue;
+        }
+
+        sp_survey_send_invite_email( $form, $members[ $uid ], $reminder );
+
+        $wpdb->update(
+            $inv,
+            $reminder ? [ 'queued' => '', 'reminded_on' => $today ] : [ 'queued' => '', 'invited_on' => $today ],
+            $where,
+            [ '%s', '%s' ],
+            [ '%d', '%d' ]
+        );
+    }
+
+    if ( $wpdb->get_var( "SELECT 1 FROM {$inv} WHERE queued <> '' LIMIT 1" ) ) {
+        wp_schedule_single_event( time() + MINUTE_IN_SECONDS, 'sp_survey_mail_batch' );
+    }
+}
+
+/**
+ * Send one invitation or reminder.
+ *
+ * @param object $form
+ * @param object $member From sp_survey_invitable_members().
+ * @param bool   $reminder
+ */
+function sp_survey_send_invite_email( $form, $member, bool $reminder ): void {
+    $first = '' !== trim( (string) $member->preferred_name ) ? $member->preferred_name : $member->first_name;
+    $first = '' !== trim( (string) $first ) ? $first : __( 'Member', 'societypress' );
+    $title = '' !== trim( (string) $form->title ) ? $form->title : $form->name;
+    $swap  = [ '{first_name}' => $first, '{survey_title}' => $title ];
+
+    $subject = strtr( sp_survey_invite_text( $form, 'subject' ), $swap );
+    if ( $reminder ) {
+        /* translators: %s: the invitation's subject line */
+        $subject = sprintf( __( 'Reminder: %s', 'societypress' ), $subject );
+    }
+
+    $body = wpautop( esc_html( strtr( sp_survey_invite_text( $form, 'message' ), $swap ) ) );
+    $body .= '<p style="text-align:center;margin:28px 0;"><a href="' . esc_url( sp_survey_invite_url( $form, (int) $member->user_id ) ) . '" style="display:inline-block;padding:12px 24px;background:#2271b1;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">' . esc_html__( 'Take the survey', 'societypress' ) . '</a></p>';
+
+    $notes = [];
+    if ( ! empty( $form->closes_on ) ) {
+        /* translators: %s: last day the survey takes answers */
+        $notes[] = sprintf( __( 'The survey is open until %s.', 'societypress' ), sp_survey_format_date( (string) $form->closes_on ) );
+    }
+    if ( ! empty( $form->anonymous ) ) {
+        $notes[] = __( 'Your answers are anonymous. We keep a note that you took part, but not which answers were yours.', 'societypress' );
+    }
+    $notes[] = __( 'This button is your personal link. Please don\'t forward this email.', 'societypress' );
+    $body   .= '<p style="color:#50575e;font-size:13px;">' . implode( '<br>', array_map( 'esc_html', $notes ) ) . '</p>';
+
+    add_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+    wp_mail( $member->email, $subject, sp_build_email_html( $title, $body ) );
+    remove_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+}
+
+/**
+ * Handle the Invitations tab's buttons. Redirects and exits.
+ */
+add_action( 'admin_init', function () {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-survey-edit' || 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || ! isset( $_POST['sp_survey_invite_action'] ) ) {
+        return;
+    }
+    if ( ! sp_module_enabled( 'surveys' ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage surveys.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_survey_invite' );
+
+    global $wpdb;
+    $survey_id = absint( $_GET['survey_id'] ?? 0 );
+    $survey    = sp_survey_apply_schedule( sp_get_form( $survey_id ) );
+    if ( ! sp_form_is_survey( $survey ) ) {
+        wp_die( esc_html__( 'Survey not found.', 'societypress' ) );
+    }
+
+    // The wording is saved whichever button was pressed, so what goes out is
+    // what is on the screen. Wording left as the default is saved empty, so it
+    // follows the default and the site's language.
+    $defaults = sp_survey_default_invite();
+    $subject  = sanitize_text_field( wp_unslash( $_POST['invite_subject'] ?? '' ) );
+    $message  = sanitize_textarea_field( wp_unslash( $_POST['invite_message'] ?? '' ) );
+    $wpdb->update(
+        $wpdb->prefix . 'sp_forms',
+        [
+            'invite_subject' => $subject === $defaults['subject'] ? '' : $subject,
+            'invite_message' => $message === $defaults['message'] ? '' : $message,
+        ],
+        [ 'id' => $survey_id ],
+        [ '%s', '%s' ],
+        [ '%d' ]
+    );
+    $survey = sp_get_form( $survey_id );
+
+    $action = sanitize_key( wp_unslash( $_POST['sp_survey_invite_action'] ) );
+    $notice = 'invite_text_saved';
+    if ( in_array( $action, [ 'send_invites', 'send_reminders' ], true ) ) {
+        if ( ! sp_survey_can_invite( $survey ) ) {
+            $notice = 'not_open';
+        } else {
+            $n      = 'send_invites' === $action ? sp_survey_queue_invites( $survey ) : sp_survey_queue_reminders( $survey );
+            $notice = $n < 1 ? 'nobody_to_invite' : ( 'send_invites' === $action ? 'invites_queued' : 'reminders_queued' );
+            if ( $n > 0 ) {
+                sp_survey_schedule_mail();
+            }
+        }
+    }
+
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-survey-edit&tab=invite&survey_id=' . $survey_id . '&notice=' . $notice ) );
+    exit;
+} );
+
+/**
+ * The Invitations tab.
+ *
+ * @param object $survey
+ */
+function sp_survey_render_invite_tab( $survey ): void {
+    $survey_id = (int) $survey->id;
+    $counts    = sp_survey_invite_counts( $survey_id );
+    $members   = sp_survey_invitable_members();
+    $not_yet   = 0;
+    global $wpdb;
+    $invited_ids = array_flip( array_map( 'intval', (array) $wpdb->get_col( $wpdb->prepare(
+        "SELECT user_id FROM {$wpdb->prefix}sp_survey_invites WHERE form_id = %d",
+        $survey_id
+    ) ) ) );
+    foreach ( $members as $m ) {
+        if ( ! isset( $invited_ids[ (int) $m->user_id ] ) && ! sp_survey_already_answered( $survey, (int) $m->user_id ) ) {
+            $not_yet++;
+        }
+    }
+    $can = sp_survey_can_invite( $survey );
+    ?>
+    <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-survey-edit&tab=invite&survey_id=' . $survey_id ) ); ?>">
+        <?php wp_nonce_field( 'sp_survey_invite' ); ?>
+        <div class="sp-survey-grid">
+            <div class="sp-survey-main">
+                <div class="sp-survey-card">
+                    <h2><?php esc_html_e( 'Invitation email', 'societypress' ); ?></h2>
+                    <p class="description"><?php esc_html_e( 'Each member gets their own link. It lets them answer without signing in, and still only once. {first_name} and {survey_title} are filled in for each member.', 'societypress' ); ?></p>
+                    <table class="form-table" role="presentation">
+                        <tr>
+                            <th scope="row"><label for="sp-invite-subject"><?php esc_html_e( 'Subject', 'societypress' ); ?></label></th>
+                            <td><input type="text" id="sp-invite-subject" name="invite_subject" class="large-text" value="<?php echo esc_attr( sp_survey_invite_text( $survey, 'subject' ) ); ?>"></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="sp-invite-message"><?php esc_html_e( 'Message', 'societypress' ); ?></label></th>
+                            <td>
+                                <textarea id="sp-invite-message" name="invite_message" rows="8" class="large-text"><?php echo esc_textarea( sp_survey_invite_text( $survey, 'message' ) ); ?></textarea>
+                                <p class="description"><?php esc_html_e( 'A "Take the survey" button with the member\'s link is added below the message, along with the closing day and, for an anonymous survey, a note saying so. Reminders use the same wording with "Reminder:" before the subject.', 'societypress' ); ?></p>
+                            </td>
+                        </tr>
+                    </table>
+                    <p><button type="submit" name="sp_survey_invite_action" value="save" class="button"><?php esc_html_e( 'Save Wording', 'societypress' ); ?></button></p>
+                </div>
+            </div>
+            <div class="sp-survey-side">
+                <div class="sp-survey-card">
+                    <h2><?php esc_html_e( 'Send', 'societypress' ); ?></h2>
+                    <p class="sp-survey-stat">
+                        <?php
+                        /* translators: %s: number of members */
+                        printf( esc_html__( 'Invited so far: %s', 'societypress' ), '<strong>' . esc_html( number_format_i18n( $counts['invited'] ) ) . '</strong>' );
+                        ?>
+                    </p>
+                    <p class="sp-survey-stat">
+                        <?php
+                        /* translators: %s: number of members */
+                        printf( esc_html__( 'Invited but not answered: %s', 'societypress' ), '<strong>' . esc_html( number_format_i18n( $counts['unanswered'] ) ) . '</strong>' );
+                        ?>
+                    </p>
+                    <?php if ( $counts['waiting'] > 0 ) : ?>
+                        <p class="sp-survey-warning">
+                            <?php
+                            /* translators: %s: number of emails */
+                            printf( esc_html( _n( '%s email is waiting to go out.', '%s emails are waiting to go out.', $counts['waiting'], 'societypress' ) ), esc_html( number_format_i18n( $counts['waiting'] ) ) );
+                            ?>
+                        </p>
+                    <?php endif; ?>
+
+                    <?php if ( ! $can ) : ?>
+                        <p class="sp-survey-warning"><?php esc_html_e( 'Publish the survey (and wait for its opening day, if it has one) before sending invitations.', 'societypress' ); ?></p>
+                    <?php else : ?>
+                        <p>
+                            <button type="submit" name="sp_survey_invite_action" value="send_invites" class="button button-primary button-large"<?php disabled( $not_yet < 1 ); ?>
+                                data-sp-confirm="<?php echo esc_attr( sprintf( /* translators: %s: number of members */ __( 'Email the survey to %s members?', 'societypress' ), number_format_i18n( $not_yet ) ) ); ?>">
+                                <?php
+                                /* translators: %s: number of members */
+                                printf( esc_html__( 'Invite %s Members', 'societypress' ), esc_html( number_format_i18n( $not_yet ) ) );
+                                ?>
+                            </button>
+                            <button type="submit" name="sp_survey_invite_action" value="send_reminders" class="button button-large"<?php disabled( $counts['unanswered'] < 1 ); ?>
+                                data-sp-confirm="<?php echo esc_attr( sprintf( /* translators: %s: number of members */ __( 'Send a reminder to the %s invited members who have not answered?', 'societypress' ), number_format_i18n( $counts['unanswered'] ) ) ); ?>">
+                                <?php
+                                /* translators: %s: number of members */
+                                printf( esc_html__( 'Remind %s Who Haven\'t Answered', 'societypress' ), esc_html( number_format_i18n( $counts['unanswered'] ) ) );
+                                ?>
+                            </button>
+                        </p>
+                        <p class="sp-survey-note"><?php esc_html_e( 'Invitations go to active members who have not opted out of society notices and have not already been invited or answered. Pressing Invite again later reaches only members who joined since.', 'societypress' ); ?></p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </form>
     <?php
 }
 
@@ -130553,7 +132245,7 @@ add_action( 'admin_init', function () {
     // Current questions first, then any from an earlier wording that still
     // hold answers, so nothing anyone said is left out of the download.
     $labels = [];
-    foreach ( sp_forms_get_fields( $survey ) as $f ) {
+    foreach ( sp_survey_answer_fields( sp_forms_get_fields( $survey ) ) as $f ) {
         $labels[ $f['label'] ] = true;
     }
     foreach ( $rows as $row ) {

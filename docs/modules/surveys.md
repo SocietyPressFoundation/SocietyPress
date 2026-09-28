@@ -15,8 +15,29 @@ Ask your members questions and see everyone's answers added up. You write the qu
    - **Star rating (1 to 5)** also reports an average.
    - **Paragraph text** for written answers.
 
+   - **Grid** for several statements on the same scale ("How satisfied are you with…" meetings, the newsletter, the website). Type the statements one per line. The scale across the top is Strongly disagree through Strongly agree unless you type your own.
+   - **Page break** splits a long survey into pages. Type a heading for the next page if you like. Members see one page at a time with a progress bar.
+
    Tick **Required** if everyone must answer it. Use the arrows to change the order.
-4. Press **Publish**. The box on the right shows the link. Press **Copy** and paste it into your email or newsletter.
+
+   **Ask this question** can be left on **Always**, or set to ask only when an earlier answer matches. For example, ask "What kind of help could you give?" only when someone answered Yes to "Would you consider volunteering?".
+4. Optional: set **Opens on** and **Last day to answer**. Leave them empty to open when you press Publish and close when you press Close.
+5. Press **Publish**. The box on the right shows the link. Press **Copy** and paste it into your email or newsletter.
+
+## Starting from a template
+
+At the bottom of the Surveys screen, **Start from a template** offers a ready-made **Seminar feedback** survey and a **Membership survey** (age group, years in the society, what members use, and satisfaction). Either one makes a new draft you can change before publishing.
+
+To reuse your own survey next year, open it and press **Save as Template**, or choose **Duplicate** under its name on the Surveys screen. Only the questions and wording are copied, not the answers.
+
+## Emailing members
+
+The **Invitations** tab emails the survey for you.
+
+- **Invite** sends to every active member who hasn't opted out of society notices and hasn't already been invited or answered. Press it again later to reach only members who joined since.
+- **Remind** sends only to invited members who haven't answered yet.
+
+Each member gets their own link. It lets them answer without signing in, and still only once, so it also works for members who never set a password. Emails go out in small batches over a few minutes. Edit the subject and message on the same tab. {first_name} and {survey_title} are filled in for each member.
 
 ## Anonymous or named
 
@@ -44,6 +65,8 @@ Open the survey and choose the **Results** tab. You'll see:
 - every question with its answers counted, including choices nobody picked
 - every written answer
 - **Download answers as a spreadsheet** for your own analysis (anonymous surveys are shuffled, so row order says nothing about who answered first)
+- **Break the answers down by** any single-choice question, such as age group, to see how each group answered everything else
+- **Printable Summary** opens a clean page to print for the board
 
 ## Closing and reopening
 
@@ -58,6 +81,8 @@ You can change what members see in each case under **Wording**: the button text,
 **A member says the survey won't let them answer.** They probably aren't signed in, or their membership has lapsed. The survey page tells them which.
 
 **A member says it told them they'd already answered.** They have. Each member gets one answer.
+
+**A question never appears.** Check its **Ask this question** setting. It only shows when the earlier answer matches.
 
 **The survey's page is gone.** If someone deleted it from the Pages screen, open the survey and press **Put the Page Back**.
 

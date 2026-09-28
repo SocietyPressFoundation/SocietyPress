@@ -25,6 +25,7 @@ If you just installed SocietyPress and the site is empty:
 - **[Resources](resources.md)** — categorized directory of useful external links.
 - **[Governance](governance.md)** — committees, officers, meeting minutes, volunteer hours.
 - **[Voting](voting.md)** — ballots for board elections and bylaw amendments.
+- **[Surveys](surveys.md)** — ask members questions, one answer each, anonymous if you want. Answers added up for you.
 - **[Store](store.md)** — sell publications and merchandise. Stripe + PayPal checkout.
 - **[Donations](donations.md)** — campaigns, online giving, recurring donations, receipts.
 - **[Records](records.md)** — searchable databases for cemetery transcriptions, census data, etc.

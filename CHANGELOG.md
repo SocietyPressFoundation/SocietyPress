@@ -20,6 +20,52 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.46] — 2026-09-28
+
+**Surveys have their own place in the menu, and running one takes no
+knowledge of pages or the page builder.** Choose Add New Survey, type the
+questions, and press Publish. The survey makes its own page and gives you the
+link to copy into an email or newsletter. Close Survey stops new answers and
+leaves the page up to tell latecomers it has ended. Reopen brings it back at
+the same link. Results are on the survey's own Results tab: everyone's
+answers added up, how many members have answered out of how many could, a
+list of who has taken part, and a spreadsheet download.
+
+**Each member can answer once.** A signed-in member who has answered is
+told so instead of being shown the questions again. Two quick presses of
+the button can't record two answers.
+
+**Surveys can be anonymous, and are unless you say otherwise.** An anonymous
+survey records that a member took part, separately from what they said, and
+nothing connects the two. The answers keep no name, email, account or
+address, and are dated by day only. The list of who took part has no dates
+at all, so an answer can't be matched to a member by the day it arrived. The
+spreadsheet is shuffled for the same reason. Once anyone has answered, the
+Anonymous setting is locked, because members answered under that promise.
+Members see one line above the questions telling them which kind of survey
+it is. With Anonymous switched off, each member's name is shown with their
+answers.
+
+**Surveys are for members by default.** A survey can be opened to anyone
+with the link. The survey screen then says in plain words what that costs:
+with no sign-in to check, a browser marker stops casual repeat answers, but
+someone determined could answer twice.
+
+**Members-only forms and surveys are now checked when answers arrive, not
+only when the page is shown.** Before, a non-member who sent answers straight
+to the site, without using the page, had them accepted.
+
+**Members answering on the same network are no longer turned away.** The
+limit of ten submissions an hour was counted per internet address, so at a
+meeting on the library's wifi the eleventh member to answer was refused.
+Signed-in members are now counted individually.
+
+**An agree/disagree scale's wording can now be changed on the Forms screen.**
+The box for its choices was hidden for that one question type, so the default
+wording couldn't be replaced.
+
+**Spreadsheet downloads no longer log warnings on PHP 8.4.**
+
 ## [1.5.45] — 2026-09-23
 
 **Two new question types for asking how strongly people feel.** A star rating

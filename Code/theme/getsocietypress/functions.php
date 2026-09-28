@@ -1630,10 +1630,10 @@ function gsp_export_installs(): void {
     header( 'Content-Disposition: attachment; filename=societypress-installs-' . gmdate( 'Y-m-d' ) . '.csv' );
 
     $out = fopen( 'php://output', 'w' );
-    fputcsv( $out, [ 'Society', 'Website', 'Version', 'First seen', 'Last seen', 'Check-ins' ] );
+    fputcsv( $out, [ 'Society', 'Website', 'Version', 'First seen', 'Last seen', 'Check-ins' ], ',', '"', '\\' );
 
     foreach ( (array) $rows as $row ) {
-        fputcsv( $out, [ $row->society, $row->site_url, $row->version, $row->first_seen, $row->last_seen, $row->check_ins ] );
+        fputcsv( $out, [ $row->society, $row->site_url, $row->version, $row->first_seen, $row->last_seen, $row->check_ins ], ',', '"', '\\' );
     }
 
     fclose( $out );

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.48
+ * Version:     1.5.49
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.48' );
+define( 'SOCIETYPRESS_VERSION', '1.5.49' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3362,6 +3362,15 @@ function sp_register_file( string $url, int $attachment_id = 0 ): int {
         if ( $path && file_exists( $path ) ) {
             $size = (int) filesize( $path );
         }
+    } else {
+        // A pasted address with no attachment behind it is still usually a
+        // file in uploads. Without this its size and type stay blank forever,
+        // and the Files screen can neither sort it nor show its thumbnail.
+        $path = sp_file_local_path( $url );
+        if ( $path ) {
+            $size = (int) filesize( $path );
+            $mime = (string) ( wp_check_filetype( $path )['type'] ?: '' );
+        }
     }
 
     if ( $title === '' ) {
@@ -3382,6 +3391,76 @@ function sp_register_file( string $url, int $attachment_id = 0 ): int {
     );
 
     return (int) $wpdb->insert_id;
+}
+
+/**
+ * Where an uploads address lives on disk, or '' when it isn't a local upload.
+ *
+ * @param string $url The file's address.
+ * @return string Absolute path to an existing file, or ''.
+ */
+function sp_file_local_path( string $url ): string {
+    $uploads = wp_upload_dir( null, false );
+    $base    = (string) ( $uploads['baseurl'] ?? '' );
+
+    // http and https both reach the same file, and old rows were saved under
+    // whichever scheme the site had at the time.
+    $strip = static function ( string $u ): string {
+        return preg_replace( '#^https?://#i', '', $u );
+    };
+
+    $rel = $strip( strtok( $url, '?#' ) );
+    $pre = $strip( $base ) . '/';
+    if ( $base === '' || strpos( $rel, $pre ) !== 0 ) {
+        return '';
+    }
+
+    $path = $uploads['basedir'] . '/' . rawurldecode( substr( $rel, strlen( $pre ) ) );
+
+    // A ../ in a stored address must not reach outside uploads.
+    $real = realpath( $path );
+    if ( ! $real || strpos( $real, realpath( $uploads['basedir'] ) ) !== 0 || ! is_file( $real ) ) {
+        return '';
+    }
+
+    return $real;
+}
+
+/**
+ * Fill in size and type on file rows that were registered without them.
+ *
+ * WHY: until sp_register_file() learned to look on disk, every pasted address
+ *      was stored with no size and no type. Those rows sort to one end of
+ *      every size and type sort, and their images show a document icon.
+ */
+function sp_backfill_file_sizes(): void {
+    global $wpdb;
+
+    $table = $wpdb->prefix . 'sp_files';
+    $rows  = (array) $wpdb->get_results(
+        "SELECT id, url, attachment_id, mime_type FROM {$table}
+         WHERE file_size IS NULL OR mime_type IS NULL OR mime_type = ''"
+    );
+
+    foreach ( $rows as $row ) {
+        $path = $row->attachment_id ? (string) get_attached_file( (int) $row->attachment_id ) : '';
+        if ( ! $path || ! is_file( $path ) ) {
+            $path = sp_file_local_path( (string) $row->url );
+        }
+        if ( ! $path ) {
+            continue;
+        }
+
+        $data = [ 'file_size' => (int) filesize( $path ) ];
+        if ( ! $row->mime_type ) {
+            $type = wp_check_filetype( $path )['type'];
+            if ( $type ) {
+                $data['mime_type'] = $type;
+            }
+        }
+
+        $wpdb->update( $table, $data, [ 'id' => (int) $row->id ] );
+    }
 }
 
 /**
@@ -4703,6 +4782,13 @@ add_action( 'admin_init', function () {
         if ( ! get_option( 'sp_files_attachments_backfilled' ) ) {
             sp_backfill_attachment_files();
             update_option( 'sp_files_attachments_backfilled', 1 );
+        }
+
+        // Rows registered from a pasted address before registration looked on
+        // disk have no size or type. One pass fixes them; new rows get both.
+        if ( ! get_option( 'sp_files_sizes_backfilled' ) ) {
+            sp_backfill_file_sizes();
+            update_option( 'sp_files_sizes_backfilled', 1 );
         }
 
         // Album photos last, because the two passes above put them in Unfiled
@@ -39794,7 +39880,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.48',
+            'version'     => '1.5.49',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39802,7 +39888,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.48',
+            'version'     => '1.5.49',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39810,7 +39896,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.48',
+            'version'     => '1.5.49',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39818,7 +39904,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.48',
+            'version'     => '1.5.49',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39826,7 +39912,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.48',
+            'version'     => '1.5.49',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -103918,12 +104004,63 @@ function sp_render_files_page(): void {
     $showing_all = ! isset( $_GET['folder'] );
     $current     = (int) ( $_GET['folder'] ?? 0 );
 
-    $where = '';
+    $conds = [];
     if ( ! $showing_all ) {
-        $where = $current
-            ? $wpdb->prepare( 'WHERE fi.folder_id = %d', $current )
-            : 'WHERE fi.folder_id IS NULL';
+        $conds[] = $current
+            ? $wpdb->prepare( 'fi.folder_id = %d', $current )
+            : 'fi.folder_id IS NULL';
     }
+
+    // Search stays inside whatever is being looked at, so "zebra" in Unfiled
+    // answers "which zebras still need filing", not "where are all zebras".
+    $search = isset( $_GET['s'] ) ? trim( sanitize_text_field( wp_unslash( $_GET['s'] ) ) ) : '';
+    if ( $search !== '' ) {
+        $like    = '%' . $wpdb->esc_like( $search ) . '%';
+        $conds[] = $wpdb->prepare( '( fi.title LIKE %s OR fi.url LIKE %s )', $like, $like );
+    }
+
+    $where = $conds ? 'WHERE ' . implode( ' AND ', $conds ) : '';
+
+    // Sort and view are remembered per person, so moving between folders
+    // does not keep throwing somebody back to thumbnails sorted by name.
+    $user_id = get_current_user_id();
+    $sorts   = [
+        'name'      => __( 'Name A–Z', 'societypress' ),
+        'name_desc' => __( 'Name Z–A', 'societypress' ),
+        'newest'    => __( 'Newest first', 'societypress' ),
+        'oldest'    => __( 'Oldest first', 'societypress' ),
+        'type'      => __( 'Type A–Z', 'societypress' ),
+        'type_desc' => __( 'Type Z–A', 'societypress' ),
+        'size'      => __( 'Largest first', 'societypress' ),
+        'size_asc'  => __( 'Smallest first', 'societypress' ),
+    ];
+    $orderby = isset( $_GET['orderby'] ) ? sanitize_key( $_GET['orderby'] ) : (string) get_user_meta( $user_id, 'sp_files_orderby', true );
+    if ( ! isset( $sorts[ $orderby ] ) ) {
+        $orderby = 'name';
+    } elseif ( isset( $_GET['orderby'] ) ) {
+        update_user_meta( $user_id, 'sp_files_orderby', $orderby );
+    }
+
+    $view = isset( $_GET['view'] ) ? sanitize_key( $_GET['view'] ) : (string) get_user_meta( $user_id, 'sp_files_view', true );
+    if ( ! in_array( $view, [ 'grid', 'list' ], true ) ) {
+        $view = 'grid';
+    } elseif ( isset( $_GET['view'] ) ) {
+        update_user_meta( $user_id, 'sp_files_view', $view );
+    }
+
+    // The media library date is when the file was really uploaded; the row's
+    // own date is only when SocietyPress first noticed it.
+    $date_sql  = 'COALESCE( p.post_date, fi.created_at )';
+    $order_sql = [
+        'name'      => 'fi.title ASC, fi.id ASC',
+        'name_desc' => 'fi.title DESC, fi.id DESC',
+        'newest'    => "{$date_sql} DESC, fi.id DESC",
+        'oldest'    => "{$date_sql} ASC, fi.id ASC",
+        'type'      => 'fi.mime_type IS NULL, fi.mime_type ASC, fi.title ASC',
+        'type_desc' => 'fi.mime_type IS NULL, fi.mime_type DESC, fi.title ASC',
+        'size'      => 'fi.file_size IS NULL, fi.file_size DESC, fi.title ASC',
+        'size_asc'  => 'fi.file_size IS NULL, fi.file_size ASC, fi.title ASC',
+    ][ $orderby ];
 
     // A society that has been running for twenty years has thousands of files.
     // Drawing all of them costs a megabyte of markup and a scroll bar nobody
@@ -103937,12 +104074,13 @@ function sp_render_files_page(): void {
     );
 
     $files = (array) $wpdb->get_results( $wpdb->prepare(
-        "SELECT fi.*, COUNT(l.id) AS use_count
+        "SELECT fi.*, {$date_sql} AS added_at, COUNT(l.id) AS use_count
          FROM {$wpdb->prefix}sp_files fi
+         LEFT JOIN {$wpdb->posts} p ON p.ID = fi.attachment_id
          LEFT JOIN {$wpdb->prefix}sp_file_links l ON l.file_id = fi.id
          {$where}
          GROUP BY fi.id
-         ORDER BY fi.title ASC
+         ORDER BY {$order_sql}
          LIMIT %d OFFSET %d",
         $per_page,
         $offset
@@ -104002,6 +104140,48 @@ function sp_render_files_page(): void {
                 <div class="sp-files-toolbar">
                     <h2 class="sp-files-heading"><?php echo esc_html( $heading ); ?></h2>
 
+                <?php
+                $view_url = static function ( string $v ) use ( $showing_all, $current, $search ): string {
+                    return add_query_arg( array_filter( [
+                        'page'   => 'sp-files',
+                        'folder' => $showing_all ? null : $current,
+                        's'      => $search !== '' ? $search : null,
+                        'view'   => $v,
+                    ], static function ( $x ) { return null !== $x; } ), admin_url( 'admin.php' ) );
+                };
+                ?>
+                <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" class="sp-files-filterbar">
+                    <input type="hidden" name="page" value="sp-files">
+                    <?php if ( ! $showing_all ) : ?>
+                        <input type="hidden" name="folder" value="<?php echo esc_attr( $current ); ?>">
+                    <?php endif; ?>
+
+                    <label class="screen-reader-text" for="sp-files-search"><?php esc_html_e( 'Search files', 'societypress' ); ?></label>
+                    <input type="search" id="sp-files-search" name="s" value="<?php echo esc_attr( $search ); ?>"
+                           placeholder="<?php echo esc_attr( sprintf( /* translators: %s: folder name */ __( 'Search %s…', 'societypress' ), $heading ) ); ?>">
+                    <button type="submit" class="button"><?php esc_html_e( 'Search', 'societypress' ); ?></button>
+
+                    <label for="sp-files-orderby"><?php esc_html_e( 'Sort', 'societypress' ); ?></label>
+                    <select id="sp-files-orderby" name="orderby" onchange="this.form.submit()">
+                        <?php foreach ( $sorts as $key => $label ) : ?>
+                            <option value="<?php echo esc_attr( $key ); ?>"<?php selected( $orderby, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+
+                    <span class="sp-files-view" role="group" aria-label="<?php esc_attr_e( 'View', 'societypress' ); ?>">
+                        <a href="<?php echo esc_url( $view_url( 'grid' ) ); ?>" class="button<?php echo 'grid' === $view ? ' sp-view-current' : ''; ?>"<?php echo 'grid' === $view ? ' aria-current="true"' : ''; ?>>
+                            <span class="dashicons dashicons-grid-view" aria-hidden="true"></span><?php esc_html_e( 'Thumbnails', 'societypress' ); ?>
+                        </a>
+                        <a href="<?php echo esc_url( $view_url( 'list' ) ); ?>" class="button<?php echo 'list' === $view ? ' sp-view-current' : ''; ?>"<?php echo 'list' === $view ? ' aria-current="true"' : ''; ?>>
+                            <span class="dashicons dashicons-list-view" aria-hidden="true"></span><?php esc_html_e( 'List', 'societypress' ); ?>
+                        </a>
+                    </span>
+
+                    <?php if ( $search !== '' ) : ?>
+                        <a href="<?php echo esc_url( remove_query_arg( [ 's', 'paged' ] ) ); ?>"><?php esc_html_e( 'Clear search', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </form>
+
                     <div class="sp-files-actions">
                         <button type="button" class="button button-primary" id="sp-add-files">
                             <?php esc_html_e( 'Add files here', 'societypress' ); ?>
@@ -104031,18 +104211,56 @@ function sp_render_files_page(): void {
                     </div>
                 </div>
 
+
                 <p class="sp-files-selection" id="sp-files-selection" aria-live="polite"></p>
 
-                <?php if ( ! $files ) : ?>
+                <?php if ( ! $files && $search !== '' ) : ?>
+                    <div class="sp-files-empty">
+                        <p><?php echo esc_html( sprintf( /* translators: %s: search text */ __( 'No files here match “%s”.', 'societypress' ), $search ) ); ?></p>
+                    </div>
+                <?php elseif ( ! $files ) : ?>
                     <div class="sp-files-empty">
                         <p><?php esc_html_e( 'Nothing in here yet.', 'societypress' ); ?></p>
                         <p class="description"><?php esc_html_e( 'Use Add files here to put something in this folder, or drag files onto it from another folder.', 'societypress' ); ?></p>
                     </div>
                 <?php else : ?>
-                    <ul class="sp-file-grid" id="sp-file-grid">
+                    <?php if ( 'list' === $view ) : ?>
+                        <?php
+                        // Column headers work like Finder's: click to sort by
+                        // that column, click again to reverse. Size and Added
+                        // open biggest and newest first, as Finder does.
+                        $columns = [
+                            'name'  => [ __( 'Name', 'societypress' ),  'name',   'name_desc' ],
+                            'type'  => [ __( 'Type', 'societypress' ),  'type',   'type_desc' ],
+                            'size'  => [ __( 'Size', 'societypress' ),  'size',   'size_asc' ],
+                            'added' => [ __( 'Added', 'societypress' ), 'newest', 'oldest' ],
+                        ];
+                        $ascending = [ 'name', 'type', 'size_asc', 'oldest' ];
+                        ?>
+                        <div class="sp-file-list-head">
+                            <span></span><span></span>
+                            <?php foreach ( $columns as $col ) :
+                                [ $label, $first, $second ] = $col;
+                                $active = in_array( $orderby, [ $first, $second ], true );
+                                $next   = $orderby === $first ? $second : $first;
+                                ?>
+                                <a href="<?php echo esc_url( add_query_arg( 'orderby', $next, remove_query_arg( 'paged' ) ) ); ?>"
+                                   class="<?php echo $active ? 'sp-sort-current' : ''; ?>">
+                                    <?php echo esc_html( $label ); ?>
+                                    <?php if ( $active ) : ?>
+                                        <span class="dashicons dashicons-arrow-<?php echo in_array( $orderby, $ascending, true ) ? 'up' : 'down'; ?>-alt2" aria-hidden="true"></span>
+                                        <span class="screen-reader-text"><?php echo esc_html( $sorts[ $orderby ] ); ?></span>
+                                    <?php endif; ?>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                    <ul class="sp-file-grid<?php echo 'list' === $view ? ' sp-file-grid--list' : ''; ?>" id="sp-file-grid">
                         <?php foreach ( $files as $file ) :
                             $is_image = $file->mime_type && strpos( $file->mime_type, 'image/' ) === 0;
                             $uses     = (int) $file->use_count;
+                            $filename = rawurldecode( wp_basename( (string) wp_parse_url( $file->url, PHP_URL_PATH ) ) );
+                            $ext      = strtoupper( pathinfo( $filename, PATHINFO_EXTENSION ) );
                             ?>
                             <li class="sp-file-card" draggable="true" data-file-id="<?php echo esc_attr( (int) $file->id ); ?>" data-uses="<?php echo esc_attr( $uses ); ?>">
                                 <label class="sp-file-pick">
@@ -104060,6 +104278,7 @@ function sp_render_files_page(): void {
 
                                 <div class="sp-file-meta">
                                     <span class="sp-file-name" title="<?php echo esc_attr( $file->title ); ?>"><?php echo esc_html( $file->title ); ?></span>
+                                    <span class="sp-file-filename sp-list-only"><?php echo esc_html( $filename ); ?></span>
                                     <?php if ( $uses ) : ?>
                                         <button type="button" class="sp-file-uses" data-file-id="<?php echo esc_attr( (int) $file->id ); ?>">
                                             <?php
@@ -104074,6 +104293,10 @@ function sp_render_files_page(): void {
                                         <span class="sp-file-unused"><?php esc_html_e( 'Not used yet', 'societypress' ); ?></span>
                                     <?php endif; ?>
                                 </div>
+
+                                <span class="sp-file-col sp-list-only"><?php echo esc_html( $ext ?: '—' ); ?></span>
+                                <span class="sp-file-col sp-list-only"><?php echo esc_html( $file->file_size ? size_format( (int) $file->file_size, 1 ) : '—' ); ?></span>
+                                <span class="sp-file-col sp-list-only"><?php echo esc_html( mysql2date( get_option( 'date_format' ), $file->added_at ) ); ?></span>
                             </li>
                         <?php endforeach; ?>
                     </ul>
@@ -104083,7 +104306,7 @@ function sp_render_files_page(): void {
                     if ( $pages > 1 ) :
                         $base = add_query_arg(
                             array_filter(
-                                [ 'page' => 'sp-files', 'folder' => $showing_all ? null : $current ],
+                                [ 'page' => 'sp-files', 'folder' => $showing_all ? null : $current, 's' => $search !== '' ? $search : null ],
                                 static function ( $v ) { return null !== $v; }
                             ),
                             admin_url( 'admin.php' )
@@ -104166,7 +104389,7 @@ function sp_render_files_page_assets(): void {
 
     .sp-files-main         { min-width: 0; }
     .sp-files-toolbar      { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-    .sp-files-heading      { margin: 0; font-size: 18px; }
+    .sp-files-heading      { margin: 0; font-size: 18px; flex-basis: 100%; }
     .sp-files-actions      { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .sp-text-error-btn     { color: #b32d2e; }
     .sp-files-selection    { min-height: 20px; margin: 0 0 8px; font-style: italic; color: #50575e; }
@@ -104190,6 +104413,37 @@ function sp_render_files_page_assets(): void {
     .sp-file-uses          { background: none; border: 0; padding: 0; font-size: 11px; color: #2271b1; cursor: pointer; text-align: left; text-decoration: underline; }
     .sp-file-unused        { font-size: 11px; color: #8c8f94; }
 
+    .sp-files-filterbar    { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
+    .sp-files-filterbar input[type="search"] { min-width: 220px; }
+    .sp-files-view         { display: inline-flex; gap: 0; margin-left: 8px; }
+    .sp-files-view .button { display: inline-flex; align-items: center; gap: 4px; border-radius: 0; }
+    .sp-files-view .button:first-child { border-radius: 3px 0 0 3px; }
+    .sp-files-view .button:last-child  { border-radius: 0 3px 3px 0; margin-left: -1px; }
+    .sp-files-view .sp-view-current    { background: #0d1f3c; border-color: #0d1f3c; color: #fff; }
+    .sp-files-view .dashicons { font-size: 16px; width: 16px; height: 16px; }
+
+    /* List view is the same cards laid out as rows, so selecting, dragging
+       and "Used by" behave identically in both views. */
+    .sp-list-only          { display: none; }
+    .sp-file-grid--list .sp-list-only { display: block; }
+    .sp-file-list-head,
+    .sp-file-grid--list .sp-file-card { display: grid; grid-template-columns: 24px 44px minmax(0, 1fr) 70px 80px 120px; gap: 12px; align-items: center; }
+    .sp-file-list-head     { padding: 0 10px 4px; font-size: 12px; font-weight: 600; color: #50575e; }
+    .sp-file-list-head a   { color: #50575e; text-decoration: none; display: inline-flex; align-items: center; }
+    .sp-file-list-head a:hover, .sp-file-list-head .sp-sort-current { color: #0d1f3c; }
+    .sp-file-list-head .dashicons { font-size: 14px; width: 14px; height: 14px; }
+    #sp-move-to            { max-width: 180px; }
+    .sp-file-grid--list    { display: flex; flex-direction: column; gap: 0; }
+    .sp-file-grid--list .sp-file-card { border-radius: 0; margin-top: -1px; padding: 6px 10px; }
+    .sp-file-grid--list .sp-file-pick { position: static; padding: 0; }
+    .sp-file-grid--list .sp-file-thumb { height: 40px; }
+    .sp-file-grid--list .sp-file-thumb img { max-height: 40px; }
+    .sp-file-grid--list .sp-file-thumb .dashicons { font-size: 24px; width: 24px; height: 24px; }
+    .sp-file-grid--list .sp-file-meta { margin-top: 0; min-width: 0; }
+    .sp-file-grid--list .sp-file-name { font-size: 13px; font-weight: 600; }
+    .sp-file-filename      { font-size: 12px; color: #50575e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-file-col           { font-size: 12px; color: #50575e; }
+
     .sp-file-usage-panel   { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100050; }
     .sp-file-usage-inner   { position: relative; background: #fff; border-radius: 4px; padding: 24px; max-width: 480px; width: 90%; max-height: 80vh; overflow: auto; }
     .sp-file-usage-close   { position: absolute; top: 8px; right: 12px; background: none; border: 0; font-size: 24px; line-height: 1; cursor: pointer; color: #50575e; }
@@ -104198,6 +104452,10 @@ function sp_render_files_page_assets(): void {
 
     @media screen and (max-width: 782px) {
         .sp-files-layout { grid-template-columns: 1fr; }
+        .sp-file-list-head,
+        .sp-file-grid--list .sp-file-card { grid-template-columns: 24px 44px minmax(0, 1fr) 70px; }
+        .sp-file-list-head > :nth-child(n+5),
+        .sp-file-grid--list .sp-file-col:nth-last-child(-n+2) { display: none; }
     }
     </style>
 

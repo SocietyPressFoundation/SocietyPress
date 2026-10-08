@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.49] — 2026-10-07
+
+**Files can be searched, sorted, and shown as a list.** The Files screen has
+its own search box, which looks only in the folder you're viewing. A Sort menu
+orders files by name, date added, type, or size, either way round, and a
+Thumbnails / List switch shows each file's name, filename, type, size, and
+date. In the list, click a column heading to sort by it and click again to
+reverse, as in Finder. Your sort and view are remembered.
+
+**Every file has a size and type.** Files added by address rather than through
+the media library were stored without either, so they sorted to the end and
+images showed a document icon. They're filled in on update.
+
 ## [1.5.48] — 2026-09-28
 
 **The Join form lists your membership levels again, and joining works.** The

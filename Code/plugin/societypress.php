@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.49
+ * Version:     1.5.50
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.49' );
+define( 'SOCIETYPRESS_VERSION', '1.5.50' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2597,6 +2597,7 @@ function sp_create_tables(): void {
         list_sort    VARCHAR(20)         NOT NULL DEFAULT 'manual',
         sort_order   INT                 NOT NULL DEFAULT 0,
         active       TINYINT(1)          NOT NULL DEFAULT 1,
+        file_folder_id BIGINT(20) UNSIGNED NULL,
         created_at   DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         UNIQUE KEY slug (slug)
@@ -4218,6 +4219,126 @@ function sp_get_or_create_file_folder( string $name, ?int $parent_id = null ): i
 }
 
 /**
+ * The folder one document category's files are filed in, under Documents.
+ *
+ * WHY a folder per category: the category is already the society's decision
+ *      about which documents belong together — Board Minutes, Financial
+ *      Reports. Filing every document in one Documents folder threw that away
+ *      and left two hundred PDFs in a pile on the Files screen.
+ *
+ * WHY the id is stored on the category: same reason as albums — a category
+ *      can be renamed, and a name lookup would then start a second folder.
+ *
+ * @param int $cat_id sp_document_categories row id.
+ * @return int Folder id, or 0 if the category is gone.
+ */
+function sp_document_category_file_folder( int $cat_id ): int {
+    global $wpdb;
+
+    $cats = $wpdb->prefix . 'sp_document_categories';
+    $cat  = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id, name, file_folder_id FROM {$cats} WHERE id = %d",
+        $cat_id
+    ) );
+
+    if ( ! $cat || trim( (string) $cat->name ) === '' ) {
+        return 0;
+    }
+
+    $name    = trim( (string) $cat->name );
+    $folders = $wpdb->prefix . 'sp_file_folders';
+    $current = (int) $cat->file_folder_id;
+
+    if ( $current ) {
+        $existing = $wpdb->get_var( $wpdb->prepare( "SELECT name FROM {$folders} WHERE id = %d", $current ) );
+        if ( null !== $existing ) {
+            if ( (string) $existing !== $name ) {
+                $wpdb->update( $folders, [ 'name' => $name ], [ 'id' => $current ], [ '%s' ], [ '%d' ] );
+            }
+            return $current;
+        }
+    }
+
+    $parent = sp_get_or_create_file_folder( __( 'Documents', 'societypress' ) );
+    $folder = sp_get_or_create_file_folder( $name, $parent ?: null );
+    if ( ! $folder ) {
+        return 0;
+    }
+
+    $wpdb->update( $cats, [ 'file_folder_id' => $folder ], [ 'id' => $cat_id ], [ '%d' ], [ '%d' ] );
+
+    return $folder;
+}
+
+/**
+ * File one document's file into its category's folder.
+ *
+ * WHY only some files move: a file somebody dragged into a folder of their
+ *      own stays there, because their filing outranks ours. Ours is Unfiled,
+ *      the Documents folder itself, and the other categories' folders — so
+ *      changing a document's category carries its file along with it.
+ *
+ * @param int $doc_id sp_documents row id.
+ * @return bool Whether the file was moved.
+ */
+function sp_place_document_file( int $doc_id ): bool {
+    global $wpdb;
+
+    $file_id = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT file_id FROM {$wpdb->prefix}sp_file_links
+         WHERE object_type = 'document' AND object_id = %d AND field = 'file_url'",
+        $doc_id
+    ) );
+    if ( ! $file_id ) {
+        return false;
+    }
+
+    $cat_id = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT category_id FROM {$wpdb->prefix}sp_documents WHERE id = %d",
+        $doc_id
+    ) );
+
+    $parent = sp_get_or_create_file_folder( __( 'Documents', 'societypress' ) );
+    $target = $cat_id ? sp_document_category_file_folder( $cat_id ) : 0;
+    $target = $target ?: $parent;
+    if ( ! $target ) {
+        return false;
+    }
+
+    $current = $wpdb->get_var( $wpdb->prepare(
+        "SELECT folder_id FROM {$wpdb->prefix}sp_files WHERE id = %d",
+        $file_id
+    ) );
+
+    if ( null !== $current && (int) $current !== $target ) {
+        $ours = array_map( 'intval', (array) $wpdb->get_col(
+            "SELECT file_folder_id FROM {$wpdb->prefix}sp_document_categories WHERE file_folder_id IS NOT NULL"
+        ) );
+        $ours[] = $parent;
+        if ( ! in_array( (int) $current, $ours, true ) ) {
+            return false;
+        }
+    }
+
+    return (int) $current === $target ? false : sp_move_file_to_folder( $file_id, $target );
+}
+
+/**
+ * Move every document's file into its category folder, once.
+ *
+ * WHY: the first backfill filed all documents into one Documents folder.
+ *      This sorts them into the category folders the society already uses.
+ */
+function sp_backfill_document_folders(): void {
+    global $wpdb;
+
+    $ids = $wpdb->get_col( "SELECT id FROM {$wpdb->prefix}sp_documents" );
+    foreach ( $ids as $id ) {
+        sp_place_document_file( (int) $id );
+    }
+}
+
+/**
  * The folder one photo album's files are filed in.
  *
  * WHY a folder per album rather than one "Albums" folder: the album is
@@ -4789,6 +4910,13 @@ add_action( 'admin_init', function () {
         if ( ! get_option( 'sp_files_sizes_backfilled' ) ) {
             sp_backfill_file_sizes();
             update_option( 'sp_files_sizes_backfilled', 1 );
+        }
+
+        // Documents were all filed in one Documents folder. Sort them into a
+        // folder per category, the grouping the society already chose.
+        if ( ! get_option( 'sp_document_files_foldered' ) ) {
+            sp_backfill_document_folders();
+            update_option( 'sp_document_files_foldered', 1 );
         }
 
         // Album photos last, because the two passes above put them in Unfiled
@@ -39880,7 +40008,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.49',
+            'version'     => '1.5.50',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -39888,7 +40016,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.49',
+            'version'     => '1.5.50',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -39896,7 +40024,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.49',
+            'version'     => '1.5.50',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -39904,7 +40032,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.49',
+            'version'     => '1.5.50',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -39912,7 +40040,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.49',
+            'version'     => '1.5.50',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -103408,6 +103536,7 @@ add_action( 'admin_init', function () {
     }
 
     sp_link_file( (string) $data['file_url'], 'document', (int) $doc_id, 'file_url' );
+    sp_place_document_file( (int) $doc_id );
 
     wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_updated=1' ) );
     exit;
@@ -103855,6 +103984,13 @@ add_action( 'admin_init', function () {
 
     if ( $cat_id ) {
         $wpdb->update( $table, $data, [ 'id' => $cat_id ] );
+
+        // Renaming a category renames its folder on the Files screen. Only a
+        // category that already has one — a new empty folder per category
+        // would be clutter before there is anything to put in it.
+        if ( $wpdb->get_var( $wpdb->prepare( "SELECT file_folder_id FROM {$table} WHERE id = %d", $cat_id ) ) ) {
+            sp_document_category_file_folder( $cat_id );
+        }
     } else {
         $wpdb->insert( $table, $data );
     }
@@ -104014,9 +104150,18 @@ function sp_render_files_page(): void {
     // Search stays inside whatever is being looked at, so "zebra" in Unfiled
     // answers "which zebras still need filing", not "where are all zebras".
     $search = isset( $_GET['s'] ) ? trim( sanitize_text_field( wp_unslash( $_GET['s'] ) ) ) : '';
-    if ( $search !== '' ) {
-        $like    = '%' . $wpdb->esc_like( $search ) . '%';
-        $conds[] = $wpdb->prepare( '( fi.title LIKE %s OR fi.url LIKE %s )', $like, $like );
+    // Each word is matched on its own, because filenames join words with
+    // underscores and dates: "2026 minutes" has to find
+    // 2026_02_Feb_Member_Meeting_Minutes.pdf, which as one phrase it never would.
+    //
+    // WHY only the last two segments of the address: the filename plus the
+    // folder it sits in. That folder is sometimes meaningful — a document
+    // category like General_Meeting_Minutes — but the rest of the path is
+    // uploads/2026/08/, and matching that makes any year find every file
+    // uploaded that year.
+    foreach ( preg_split( '/\s+/', $search, -1, PREG_SPLIT_NO_EMPTY ) as $word ) {
+        $like    = '%' . $wpdb->esc_like( $word ) . '%';
+        $conds[] = $wpdb->prepare( "( fi.title LIKE %s OR SUBSTRING_INDEX( fi.url, '/', -2 ) LIKE %s )", $like, $like );
     }
 
     $where = $conds ? 'WHERE ' . implode( ' AND ', $conds ) : '';

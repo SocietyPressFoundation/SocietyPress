@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.50] — 2026-10-07
+
+**Documents are filed by category on the Files screen.** Each document category
+gets its own folder inside Documents (Board Meeting Minutes, Financial Reports
+and so on), and existing documents move into them. A file you've put in a
+folder yourself stays where you put it. Changing a document's category moves
+its file, and renaming a category renames its folder.
+
+**Searching Files matches each word separately.** "2026 minutes" finds
+2026_02_Feb_Member_Meeting_Minutes.pdf.
+
 ## [1.5.49] — 2026-10-07
 
 **Files can be searched, sorted, and shown as a list.** The Files screen has

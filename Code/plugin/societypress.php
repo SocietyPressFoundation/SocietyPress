@@ -104704,7 +104704,7 @@ function sp_render_files_page(): void {
         </div>
     </div>
     <?php
-    sp_render_files_page_assets();
+    sp_render_files_page_assets( $all_ids );
 }
 
 /**
@@ -104716,7 +104716,7 @@ function sp_render_files_page(): void {
  *      volunteer on an iPad or anyone whose hands do not do fine drag-and-drop
  *      is never stuck. Dragging is the fast path, not the only path.
  */
-function sp_render_files_page_assets(): void {
+function sp_render_files_page_assets( array $all_ids = [] ): void {
     $folder = isset( $_GET['folder'] ) ? (int) $_GET['folder'] : -1;
     ?>
     <style>

@@ -104543,7 +104543,12 @@ function sp_render_files_page(): void {
                 </div>
 
 
-                <p class="sp-files-selection" id="sp-files-selection" aria-live="polite"></p>
+                <div class="sp-files-selectbar">
+                    <?php if ( $files ) : ?>
+                        <label><input type="checkbox" id="sp-select-all"> <?php esc_html_e( 'Select all', 'societypress' ); ?></label>
+                    <?php endif; ?>
+                    <p class="sp-files-selection" id="sp-files-selection" aria-live="polite"></p>
+                </div>
 
                 <?php if ( ! $files && $search !== '' ) : ?>
                     <div class="sp-files-empty">
@@ -104599,13 +104604,15 @@ function sp_render_files_page(): void {
                                     <span class="screen-reader-text"><?php /* translators: %s: file title */ echo esc_html( sprintf( __( 'Select %s', 'societypress' ), $file->title ) ); ?></span>
                                 </label>
 
-                                <div class="sp-file-thumb">
+                                <?php /* Images open large in an overlay; anything else opens in a new tab, where the browser's own viewer shows it full size. */ ?>
+                                <a class="sp-file-thumb" href="<?php echo esc_url( $file->url ); ?>" target="_blank" rel="noopener" draggable="false"<?php echo $is_image ? ' data-image="1"' : ''; ?>>
+                                    <span class="screen-reader-text"><?php /* translators: %s: file title */ echo esc_html( sprintf( __( 'Open %s', 'societypress' ), $file->title ) ); ?></span>
                                     <?php if ( $is_image ) : ?>
-                                        <img src="<?php echo esc_url( $file->url ); ?>" alt="" loading="lazy">
+                                        <img src="<?php echo esc_url( $file->url ); ?>" alt="" loading="lazy" draggable="false">
                                     <?php else : ?>
                                         <span class="dashicons dashicons-media-document" aria-hidden="true"></span>
                                     <?php endif; ?>
-                                </div>
+                                </a>
 
                                 <div class="sp-file-meta">
                                     <span class="sp-file-name" title="<?php echo esc_attr( $file->title ); ?>"><?php echo esc_html( $file->title ); ?></span>
@@ -104677,6 +104684,11 @@ function sp_render_files_page(): void {
                 <h2><?php esc_html_e( 'What is using this file', 'societypress' ); ?></h2>
                 <div id="sp-file-usage-body"></div>
             </div>
+        </div>
+
+        <div class="sp-file-usage-panel sp-file-lightbox" id="sp-file-lightbox" hidden>
+            <button type="button" class="sp-file-usage-close" id="sp-file-lightbox-close" aria-label="<?php esc_attr_e( 'Close', 'societypress' ); ?>">&times;</button>
+            <img id="sp-file-lightbox-img" src="" alt="">
         </div>
     </div>
     <?php
@@ -104779,6 +104791,13 @@ function sp_render_files_page_assets(): void {
     .sp-file-usage-inner   { position: relative; background: #fff; border-radius: 4px; padding: 24px; max-width: 480px; width: 90%; max-height: 80vh; overflow: auto; }
     .sp-file-usage-close   { position: absolute; top: 8px; right: 12px; background: none; border: 0; font-size: 24px; line-height: 1; cursor: pointer; color: #50575e; }
     .sp-file-usage-inner h2 { margin-top: 0; }
+    a.sp-file-thumb        { cursor: zoom-in; }
+    .sp-files-selectbar    { display: flex; align-items: center; gap: 16px; margin: 0 0 8px; }
+    .sp-files-selectbar .sp-files-selection { margin: 0; }
+    a.sp-file-thumb:not([data-image]) { cursor: pointer; }
+    .sp-file-lightbox      { background: rgba(0,0,0,.85); }
+    .sp-file-lightbox img  { max-width: 92vw; max-height: 90vh; object-fit: contain; background: #fff; }
+    .sp-file-lightbox .sp-file-usage-close { color: #fff; font-size: 36px; top: 16px; right: 24px; }
     .sp-file-usage-inner ul { margin: 0; padding-left: 18px; }
 
     @media screen and (max-width: 782px) {
@@ -104858,11 +104877,27 @@ function sp_render_files_page_assets(): void {
                     card.classList.toggle('sp-file-selected', !!(box && box.checked));
                 });
             }
+            if (selectAll && grid) {
+                var total = grid.querySelectorAll('.sp-file-check').length;
+                selectAll.checked       = total > 0 && ids.length === total;
+                selectAll.indeterminate = ids.length > 0 && ids.length < total;
+            }
         }
+
+        var selectAll = document.getElementById('sp-select-all');
 
         if (grid) {
             grid.addEventListener('change', function (e) {
                 if (e.target.classList.contains('sp-file-check')) { refreshSelection(); }
+            });
+        }
+
+        if (selectAll && grid) {
+            selectAll.addEventListener('change', function () {
+                Array.prototype.forEach.call(grid.querySelectorAll('.sp-file-check'), function (box) {
+                    box.checked = selectAll.checked;
+                });
+                refreshSelection();
             });
         }
 
@@ -105142,6 +105177,33 @@ function sp_render_files_page_assets(): void {
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && panel && !panel.hidden) { panel.hidden = true; }
         });
+
+        /* ---------- image preview ---------- */
+
+        var lightbox    = document.getElementById('sp-file-lightbox');
+        var lightboxImg = document.getElementById('sp-file-lightbox-img');
+
+        function closeLightbox() {
+            lightbox.hidden = true;
+            lightboxImg.src = '';
+        }
+
+        if (lightbox) {
+            document.addEventListener('click', function (e) {
+                var link = e.target.closest('a.sp-file-thumb[data-image]');
+                if (!link || e.metaKey || e.ctrlKey || e.shiftKey) { return; }
+                e.preventDefault();
+                lightboxImg.src = link.href;
+                lightbox.hidden = false;
+                document.getElementById('sp-file-lightbox-close').focus();
+            });
+            lightbox.addEventListener('click', function (e) {
+                if (e.target !== lightboxImg) { closeLightbox(); }
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !lightbox.hidden) { closeLightbox(); }
+            });
+        }
 
         refreshSelection();
     })();

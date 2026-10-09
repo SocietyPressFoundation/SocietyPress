@@ -104728,19 +104728,19 @@ function sp_render_files_page_assets(): void {
     .sp-files-empty        { background: #fff; border: 1px solid #dcdcde; border-radius: 4px; padding: 40px; text-align: center; }
     .sp-files-pager        { margin-top: 16px; }
 
-    .sp-file-grid          { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+    .sp-file-grid          { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
     .sp-file-card          { position: relative; background: #fff; border: 1px solid #dcdcde; border-radius: 4px; padding: 10px; cursor: grab; }
     .sp-file-card:active   { cursor: grabbing; }
     .sp-file-card.sp-file-selected { border-color: #0d1f3c; box-shadow: 0 0 0 2px #0d1f3c inset; }
     .sp-file-card.sp-file-dragging { opacity: .45; }
 
     .sp-file-pick          { position: absolute; top: 8px; left: 8px; background: #fff; border-radius: 3px; padding: 2px; line-height: 0; }
-    .sp-file-thumb         { height: 110px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f6f7f7; border-radius: 3px; }
-    .sp-file-thumb img     { max-width: 100%; max-height: 110px; object-fit: contain; }
-    .sp-file-thumb .dashicons { font-size: 42px; width: 42px; height: 42px; color: #8c8f94; }
+    .sp-file-thumb         { height: 180px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f6f7f7; border-radius: 3px; }
+    .sp-file-thumb img     { max-width: 100%; max-height: 180px; object-fit: contain; }
+    .sp-file-thumb .dashicons { font-size: 64px; width: 64px; height: 64px; color: #8c8f94; }
 
     .sp-file-meta          { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
-    .sp-file-name          { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sp-file-name          { font-size: 14px; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
     .sp-file-uses          { background: none; border: 0; padding: 0; font-size: 11px; color: #2271b1; cursor: pointer; text-align: left; text-decoration: underline; }
     .sp-file-unused        { font-size: 11px; color: #8c8f94; }
 
@@ -104771,7 +104771,7 @@ function sp_render_files_page_assets(): void {
     .sp-file-grid--list .sp-file-thumb img { max-height: 40px; }
     .sp-file-grid--list .sp-file-thumb .dashicons { font-size: 24px; width: 24px; height: 24px; }
     .sp-file-grid--list .sp-file-meta { margin-top: 0; min-width: 0; }
-    .sp-file-grid--list .sp-file-name { font-size: 13px; font-weight: 600; }
+    .sp-file-grid--list .sp-file-name { display: block; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
     .sp-file-filename      { font-size: 12px; color: #50575e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sp-file-col           { font-size: 12px; color: #50575e; }
 

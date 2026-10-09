@@ -104417,6 +104417,13 @@ function sp_render_files_page(): void {
         $offset
     ) );
 
+    // Every id in this view, so "select all" can reach past the page being
+    // shown — clearing out a few hundred unfiled files one page at a time is
+    // the chore this exists to spare. Only fetched when there is more than one page.
+    $all_ids = $found > count( $files )
+        ? array_map( 'intval', $wpdb->get_col( "SELECT fi.id FROM {$wpdb->prefix}sp_files fi {$where}" ) )
+        : [];
+
     $unfiled = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$wpdb->prefix}sp_files WHERE folder_id IS NULL"
     );
@@ -104527,6 +104534,10 @@ function sp_render_files_page(): void {
                             <?php endforeach; ?>
                         </select>
 
+                        <button type="button" class="button" id="sp-download-files" disabled>
+                            <?php esc_html_e( 'Download', 'societypress' ); ?>
+                        </button>
+
                         <button type="button" class="button sp-text-error-btn" id="sp-delete-files" disabled>
                             <?php esc_html_e( 'Delete', 'societypress' ); ?>
                         </button>
@@ -104548,6 +104559,7 @@ function sp_render_files_page(): void {
                         <label><input type="checkbox" id="sp-select-all"> <?php esc_html_e( 'Select all', 'societypress' ); ?></label>
                     <?php endif; ?>
                     <p class="sp-files-selection" id="sp-files-selection" aria-live="polite"></p>
+                    <button type="button" class="button-link" id="sp-select-every" hidden></button>
                 </div>
 
                 <?php if ( ! $files && $search !== '' ) : ?>
@@ -104815,7 +104827,12 @@ function sp_render_files_page_assets(): void {
             ajax:   <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
             nonce:  <?php echo wp_json_encode( wp_create_nonce( 'sp_files_nonce' ) ); ?>,
             folder: <?php echo (int) $folder; ?>,
+            allIds: <?php echo wp_json_encode( array_map( 'strval', $all_ids ) ); ?>,
+            download: <?php echo wp_json_encode( admin_url( 'admin-post.php' ) ); ?>,
+            downloadNonce: <?php echo wp_json_encode( wp_create_nonce( 'sp_files_download' ) ); ?>,
             i18n: {
+                selectEvery: <?php /* translators: %s: number of files */ echo wp_json_encode( __( 'Select all %s files, not just this page', 'societypress' ) ); ?>,
+                clearSel:   <?php echo wp_json_encode( __( 'Clear selection', 'societypress' ) ); ?>,
                 selected:   <?php echo wp_json_encode( __( 'file selected', 'societypress' ) ); ?>,
                 selectedPl: <?php echo wp_json_encode( __( 'files selected', 'societypress' ) ); ?>,
                 nameFolder: <?php echo wp_json_encode( __( 'Folder name', 'societypress' ) ); ?>,
@@ -104853,8 +104870,13 @@ function sp_render_files_page_assets(): void {
         var moveTo = document.getElementById('sp-move-to');
         var note  = document.getElementById('sp-files-selection');
 
+        /* True once "select all N files" is clicked: the selection is then
+           every file in this view, including ones on other pages. */
+        var everything = false;
+
         function selectedIds() {
             if (!grid) { return []; }
+            if (everything) { return cfg.allIds.slice(); }
             return Array.prototype.slice
                 .call(grid.querySelectorAll('.sp-file-check:checked'))
                 .map(function (c) { return c.value; });
@@ -104866,6 +104888,7 @@ function sp_render_files_page_assets(): void {
             var ids = selectedIds();
             if (moveTo) { moveTo.disabled = ids.length === 0; }
             if (delBtn) { delBtn.disabled = ids.length === 0; }
+            if (dlBtn)  { dlBtn.disabled  = ids.length === 0; }
             if (note) {
                 note.textContent = ids.length
                     ? ids.length + ' ' + (ids.length === 1 ? cfg.i18n.selected : cfg.i18n.selectedPl)
@@ -104879,25 +104902,71 @@ function sp_render_files_page_assets(): void {
             }
             if (selectAll && grid) {
                 var total = grid.querySelectorAll('.sp-file-check').length;
-                selectAll.checked       = total > 0 && ids.length === total;
-                selectAll.indeterminate = ids.length > 0 && ids.length < total;
+                selectAll.checked       = total > 0 && (everything || ids.length === total);
+                selectAll.indeterminate = !everything && ids.length > 0 && ids.length < total;
+            }
+            if (selectEvery) {
+                selectEvery.hidden = !(selectAll && selectAll.checked && cfg.allIds.length);
+                selectEvery.textContent = everything
+                    ? cfg.i18n.clearSel
+                    : cfg.i18n.selectEvery.replace('%s', cfg.allIds.length);
             }
         }
 
-        var selectAll = document.getElementById('sp-select-all');
+        var selectAll   = document.getElementById('sp-select-all');
+        var selectEvery = document.getElementById('sp-select-every');
+        var dlBtn       = document.getElementById('sp-download-files');
+
+        function checkPage(on) {
+            Array.prototype.forEach.call(grid.querySelectorAll('.sp-file-check'), function (box) {
+                box.checked = on;
+            });
+        }
 
         if (grid) {
             grid.addEventListener('change', function (e) {
-                if (e.target.classList.contains('sp-file-check')) { refreshSelection(); }
+                if (e.target.classList.contains('sp-file-check')) {
+                    everything = false;
+                    refreshSelection();
+                }
             });
         }
 
         if (selectAll && grid) {
             selectAll.addEventListener('change', function () {
-                Array.prototype.forEach.call(grid.querySelectorAll('.sp-file-check'), function (box) {
-                    box.checked = selectAll.checked;
-                });
+                everything = false;
+                checkPage(selectAll.checked);
                 refreshSelection();
+            });
+        }
+
+        if (selectEvery && grid) {
+            selectEvery.addEventListener('click', function () {
+                everything = !everything;
+                if (!everything) { checkPage(false); }
+                refreshSelection();
+            });
+        }
+
+        /* A real form post, not fetch, so the browser handles the zip as an
+           ordinary download with its own progress bar. */
+        if (dlBtn) {
+            dlBtn.addEventListener('click', function () {
+                var ids = selectedIds();
+                if (!ids.length) { return; }
+                var form = document.createElement('form');
+                form.method = 'post';
+                form.action = cfg.download;
+                [['action', 'sp_files_download'], ['_wpnonce', cfg.downloadNonce], ['files', ids.join(',')]].forEach(function (f) {
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = f[0];
+                    input.value = f[1];
+                    form.appendChild(input);
+                });
+                document.body.appendChild(form);
+                form.submit();
+                form.remove();
             });
         }
 
@@ -105538,6 +105607,91 @@ add_action( 'wp_ajax_sp_files_delete_check', function () {
 } );
 
 /**
+ * Download the selected files as one zip.
+ *
+ * WHY stored, not compressed: nearly everything in here is already a JPEG or
+ *      a PDF, which do not shrink, and compressing a few hundred megabytes on
+ *      shared hosting is how a download runs into the time limit.
+ * WHY files on other servers are skipped: there is nothing local to put in
+ *      the zip, and fetching them would make this a proxy for any address in
+ *      the table.
+ */
+add_action( 'admin_post_sp_files_download', function () {
+    global $wpdb;
+    check_admin_referer( 'sp_files_download' );
+
+    if ( ! sp_user_can( 'content' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), 403 );
+    }
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        wp_die( esc_html__( 'This server cannot make zip files.', 'societypress' ) );
+    }
+
+    $ids = array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['files'] ?? '' ) ) ) );
+    if ( ! $ids ) {
+        wp_die( esc_html__( 'No files were selected.', 'societypress' ) );
+    }
+
+    @set_time_limit( 0 );
+
+    $uploads = wp_upload_dir();
+    $tmp     = wp_tempnam( 'sp-files.zip' );
+    $zip     = new ZipArchive();
+    if ( true !== $zip->open( $tmp, ZipArchive::OVERWRITE ) ) {
+        wp_die( esc_html__( 'The zip file could not be made.', 'societypress' ) );
+    }
+
+    $used = [];
+    foreach ( $ids as $id ) {
+        $file = $wpdb->get_row( $wpdb->prepare(
+            "SELECT url, attachment_id FROM {$wpdb->prefix}sp_files WHERE id = %d",
+            $id
+        ) );
+        if ( ! $file ) {
+            continue;
+        }
+
+        $path = $file->attachment_id ? get_attached_file( (int) $file->attachment_id ) : '';
+        if ( ! $path ) {
+            $path = sp_files_local_path( (string) $file->url, $uploads );
+        }
+        if ( ! $path || ! is_readable( $path ) ) {
+            continue;
+        }
+
+        // Two uploads called photo.jpg in different months must not overwrite
+        // each other inside the zip.
+        $name = basename( $path );
+        $n    = 1;
+        while ( isset( $used[ strtolower( $name ) ] ) ) {
+            $name = pathinfo( $path, PATHINFO_FILENAME ) . '-' . ( ++$n ) . '.' . pathinfo( $path, PATHINFO_EXTENSION );
+        }
+        $used[ strtolower( $name ) ] = true;
+
+        $zip->addFile( $path, $name );
+        $zip->setCompressionName( $name, ZipArchive::CM_STORE );
+    }
+
+    $zip->close();
+
+    if ( ! $used || ! file_exists( $tmp ) ) {
+        @unlink( $tmp );
+        wp_die( esc_html__( 'None of those files could be found on this server.', 'societypress' ) );
+    }
+
+    while ( ob_get_level() ) {
+        ob_end_clean();
+    }
+    nocache_headers();
+    header( 'Content-Type: application/zip' );
+    header( 'Content-Disposition: attachment; filename="files-' . gmdate( 'Y-m-d' ) . '.zip"' );
+    header( 'Content-Length: ' . filesize( $tmp ) );
+    readfile( $tmp );
+    @unlink( $tmp );
+    exit;
+} );
+
+/**
  * AJAX: delete files that nothing is using.
  *
  * WHY it re-checks usage: the confirmation dialog was answered by a person,
@@ -105553,6 +105707,9 @@ add_action( 'wp_ajax_sp_files_delete', function () {
     if ( ! $ids ) {
         wp_send_json_error( [ 'message' => __( 'No files were selected.', 'societypress' ) ] );
     }
+
+    // A select-all across pages can send a few hundred at once.
+    @set_time_limit( 0 );
 
     $uploads = wp_upload_dir();
     $deleted = 0;

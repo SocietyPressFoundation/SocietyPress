@@ -130568,7 +130568,38 @@ function sp_privacy_erase_form_data( string $email_address, int $page = 1 ): arr
 function sp_survey_field_types(): array {
     $types = sp_forms_field_types();
     unset( $types['file'] );
-    return array_merge( $types, sp_survey_extra_field_types() );
+    $types = array_merge( $types, sp_survey_extra_field_types() );
+
+    /*
+     * WHY survey wording, an order, and icons: the answer-type menu is the
+     *      first thing a volunteer touches. Five everyday kinds come first
+     *      with SurveyMonkey's familiar names; the rest sit under "More".
+     *      Only the labels change — the keys are what get saved.
+     */
+    $menu = [
+        'radio'      => [ __( 'Multiple choice', 'societypress' ),      'editor-ul',        true ],
+        'checkboxes' => [ __( 'Checkboxes', 'societypress' ),           'yes-alt',          true ],
+        'select'     => [ __( 'Dropdown', 'societypress' ),             'arrow-down-alt2',  true ],
+        'text'       => [ __( 'Single text box', 'societypress' ),      'minus',            true ],
+        'textarea'   => [ __( 'Comment box', 'societypress' ),          'editor-paragraph', true ],
+        'scale'      => [ __( 'Agree / disagree scale', 'societypress' ), 'leftright',      false ],
+        'rating'     => [ __( 'Star rating', 'societypress' ),          'star-filled',      false ],
+        'matrix'     => [ __( 'Grid of statements', 'societypress' ),   'grid-view',        false ],
+        'email'      => [ __( 'Email address', 'societypress' ),        'email',            false ],
+        'phone'      => [ __( 'Phone number', 'societypress' ),         'phone',            false ],
+        'number'     => [ __( 'Number', 'societypress' ),               'calculator',       false ],
+        'date'       => [ __( 'Date', 'societypress' ),                 'calendar-alt',     false ],
+        'page_break' => [ __( 'Page break', 'societypress' ),           'editor-insertmore', false ],
+    ];
+    $ordered = [];
+    foreach ( $menu as $slug => [ $label, $icon, $common ] ) {
+        if ( isset( $types[ $slug ] ) ) {
+            $ordered[ $slug ] = array_merge( $types[ $slug ], [ 'label' => $label, 'icon' => $icon, 'common' => $common ] );
+            unset( $types[ $slug ] );
+        }
+    }
+    // Anything added to the forms list later still shows up, under More.
+    return $ordered + $types;
 }
 
 /**
@@ -131180,8 +131211,13 @@ function sp_survey_admin_styles(): void {
         .sp-survey-status--open { color:#008a20; }
         .sp-survey-status--closed { color:#646970; }
         .sp-survey-status--draft { color:#996800; }
-        .sp-survey-empty { text-align:center; padding:48px 20px; }
-        .sp-survey-empty p { font-size:15px; }
+        .sp-survey-start { text-align:center; padding:28px 20px 32px; }
+        .sp-survey-start-title { font-size:28px; font-weight:600; line-height:1.3; margin:0 0 20px; color:#1d2327; }
+        .sp-survey-start-buttons { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; }
+        .sp-survey-start-buttons .button-hero { min-width:240px; background:#fff; }
+        .sp-survey-start-buttons .dashicons { vertical-align:middle; margin-right:4px; }
+        .sp-survey-templates { margin-top:24px; max-width:860px; }
+        .sp-survey-templates[hidden] { display:none; }
         .sp-survey-grid { display:flex; gap:20px; align-items:flex-start; margin-top:16px; }
         .sp-survey-main { flex:1 1 auto; min-width:0; }
         .sp-survey-side { flex:0 0 280px; }
@@ -131217,6 +131253,68 @@ function sp_survey_admin_styles(): void {
         .sp-field-condition label { flex:0 0 auto; margin:0 !important; }
         .sp-field-condition select { max-width:320px; }
         .sp-field-row--break { background:#eef3f8; border-style:dashed; }
+        .sp-survey-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:10px 14px; margin:16px 0; }
+        .sp-survey-bar .sp-survey-link { margin:0; }
+        .sp-survey-bar .sp-survey-link input { width:280px; }
+        .sp-survey-bar-actions { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+        .sp-survey-bar-actions .dashicons { font-size:16px; width:16px; height:16px; vertical-align:text-bottom; }
+        .sp-survey-settings { background:#fff; border:1px solid #c3c4c7; border-radius:4px; padding:4px 20px 16px; margin-bottom:16px; }
+        .sp-survey-settings[hidden] { display:none; }
+        .sp-survey-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:32px; }
+        .sp-survey-settings h3 { margin:16px 0 8px; }
+        .sp-survey-settings label { font-weight:600; }
+        .sp-survey-dates { display:flex; gap:16px; flex-wrap:wrap; }
+        .sp-survey-canvas { max-width:820px; margin:0 auto 24px; background:#fff; border:1px solid #c3c4c7; border-radius:6px; padding:32px 40px; }
+        .sp-survey-canvas .sp-survey-warning { margin:12px 0; }
+        .sp-survey-title-input, .sp-survey-intro-input { width:100%; border:1px solid transparent !important; box-shadow:none !important; background:transparent !important; padding:6px 8px !important; }
+        .sp-survey-title-input { font-size:26px !important; font-weight:600; line-height:1.3 !important; }
+        .sp-survey-intro-input { font-family:inherit; font-size:14px; margin-top:4px; resize:vertical; }
+        .sp-survey-title-input:hover, .sp-survey-title-input:focus, .sp-survey-intro-input:hover, .sp-survey-intro-input:focus { border-color:#c3c4c7 !important; }
+        #sp-fields-list { counter-reset:spq; margin-top:24px; }
+        .sp-survey-editor .sp-field-row { position:relative; background:#fff; border:1px solid transparent; border-radius:6px; padding:14px 16px 14px 56px; margin-bottom:8px; }
+        .sp-survey-editor .sp-field-row:not(.sp-field-row--break) { counter-increment:spq; }
+        .sp-survey-editor .sp-field-row:not(.sp-field-row--break)::before { content:"Q" counter(spq); position:absolute; left:16px; top:16px; font-weight:600; color:#646970; }
+        .sp-survey-editor .sp-field-row:not(.is-open) { cursor:pointer; }
+        .sp-survey-editor .sp-field-row:not(.is-open):hover { border-color:#c3c4c7; background:#f6f7f7; }
+        .sp-survey-editor .sp-field-row.is-open { border-color:#2271b1; box-shadow:0 1px 6px rgba(0,0,0,.1); }
+        .sp-survey-editor .sp-field-row:not(.is-open) > .sp-field-row-head, .sp-survey-editor .sp-field-row:not(.is-open) > .sp-field-row-body, .sp-survey-editor .sp-field-row.is-open > .sp-field-preview { display:none; }
+        .sp-survey-editor .sp-field-row--break { padding-left:16px; background:transparent; }
+        .sp-survey-editor .sp-field-row-head .sp-field-label-input { order:1; font-size:15px; }
+        .sp-survey-editor .sp-type-native { position:absolute !important; width:1px !important; height:1px; min-width:0 !important; opacity:0; pointer-events:none; }
+        .sp-type-picker { position:relative; order:2; }
+        .sp-type-btn.button { display:flex; align-items:center; gap:8px; min-width:230px; min-height:34px; background:#fff; border-color:#8c8f94; color:#1d2327; }
+        .sp-type-btn .sp-type-btn-label { flex:1 1 auto; text-align:left; }
+        .sp-type-menu { position:absolute; right:0; top:100%; z-index:50; margin-top:4px; min-width:260px; padding:6px 0; background:#fff; border:1px solid #c3c4c7; border-radius:4px; box-shadow:0 6px 20px rgba(0,0,0,.15); }
+        .sp-type-menu[hidden] { display:none; }
+        .sp-type-menu button { display:flex; align-items:center; gap:14px; width:100%; padding:10px 18px; border:0; background:none; text-align:left; font-size:14px; color:#1d2327; cursor:pointer; }
+        .sp-type-menu button:hover, .sp-type-menu button:focus { background:#f0f6fc; outline:none; }
+        .sp-type-menu .is-current { font-weight:600; }
+        .sp-type-menu .dashicons { color:#50575e; }
+        .sp-type-menu .sp-type-more { justify-content:center; color:#2271b1; border-top:1px solid #f0f0f1; margin-top:4px; }
+        .sp-survey-editor .sp-field-row-actions { order:3; }
+        .sp-field-row-foot { flex:1 1 100%; display:flex; align-items:center; gap:12px; }
+        .sp-field-row-foot .sp-field-done { margin-left:auto; }
+        .sp-field-row--break .sp-field-logic-toggle, .sp-field-condition.is-collapsed { display:none; }
+        .sp-field-preview-q { font-size:15px; font-weight:600; margin:0 0 8px; }
+        .sp-field-preview-q.is-untitled { color:#8c8f94; font-style:italic; font-weight:400; }
+        .sp-field-preview-q .sp-req { color:#d63638; }
+        .sp-field-preview-if { color:#646970; font-size:12px; margin:-4px 0 8px; }
+        .sp-field-preview ul { list-style:none; margin:0; padding:0; }
+        .sp-field-preview li { margin:4px 0; color:#3c434a; }
+        .sp-field-preview li::before { content:"○"; margin-right:8px; color:#8c8f94; }
+        .sp-field-preview ul.is-checks li::before { content:"☐"; }
+        .sp-field-preview ul.is-scale { display:flex; gap:6px; flex-wrap:wrap; }
+        .sp-field-preview ul.is-scale li { border:1px solid #c3c4c7; border-radius:14px; padding:2px 10px; }
+        .sp-field-preview ul.is-scale li::before { content:none; }
+        .sp-field-preview-statement { margin:0 0 4px; color:#3c434a; }
+        .sp-field-preview-box { border:1px solid #c3c4c7; border-radius:4px; height:30px; max-width:420px; background:#fff; box-sizing:border-box; }
+        .sp-field-preview-box.is-tall { height:72px; }
+        .sp-field-preview-box.is-select { height:auto; padding:4px 10px; color:#646970; max-width:280px; }
+        .sp-field-preview-stars { color:#dba617; font-size:20px; letter-spacing:4px; }
+        .sp-field-preview-break { text-align:center; color:#646970; border-top:2px dashed #c3c4c7; padding-top:8px; }
+        .sp-survey-add { text-align:center; margin-top:16px; }
+        .sp-survey-add .dashicons { vertical-align:middle; }
+        @media (max-width:782px){ .sp-survey-canvas { padding:20px 16px; } .sp-survey-settings-grid { grid-template-columns:1fr; gap:0; } .sp-survey-bar .sp-survey-link input { width:100%; } }
         @media (max-width:900px){ .sp-survey-grid { flex-direction:column; } .sp-survey-side { flex-basis:auto; width:100%; } .sp-survey-respondents ul { columns:1; } }
     </style>
     <?php
@@ -131437,26 +131535,32 @@ function sp_render_surveys_page(): void {
     sp_survey_admin_styles();
     ?>
     <div class="wrap">
-        <h1 class="wp-heading-inline"><?php esc_html_e( 'Surveys', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( $new_url ); ?>" class="page-title-action"><?php esc_html_e( 'Add New Survey', 'societypress' ); ?></a>
+        <h1 class="screen-reader-text"><?php esc_html_e( 'Surveys', 'societypress' ); ?></h1>
         <hr class="wp-header-end">
 
-        <p class="description"><?php esc_html_e( 'Ask your members questions and see everyone\'s answers added up. Write the questions, press Publish, and send members the link.', 'societypress' ); ?></p>
-
-        <?php if ( empty( $surveys ) ) : ?>
-            <div class="sp-survey-empty">
-                <p><?php esc_html_e( 'You haven\'t made any surveys yet.', 'societypress' ); ?></p>
-                <a href="<?php echo esc_url( $new_url ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Create Your First Survey', 'societypress' ); ?></a>
+        <?php
+        /*
+         * WHY two big buttons up top: starting a survey is what most people
+         *      come here to do. It used to be a small link beside the title,
+         *      with every template listed below the table. The templates now
+         *      open only when asked for.
+         */
+        ?>
+        <div class="sp-survey-start">
+            <p class="sp-survey-start-title"><?php esc_html_e( 'Ask your members a question', 'societypress' ); ?></p>
+            <div class="sp-survey-start-buttons">
+                <a href="<?php echo esc_url( $new_url ); ?>" class="button button-hero"><span class="dashicons dashicons-media-default" aria-hidden="true"></span> <?php esc_html_e( 'Start from scratch', 'societypress' ); ?></a>
+                <button type="button" class="button button-hero" id="sp-survey-templates-toggle" aria-expanded="false" aria-controls="sp-survey-templates"><span class="dashicons dashicons-screenoptions" aria-hidden="true"></span> <?php esc_html_e( 'Start with a template', 'societypress' ); ?></button>
             </div>
-        <?php else : ?>
+        </div>
+
+        <?php if ( ! empty( $surveys ) ) : ?>
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
                         <th scope="col"><?php esc_html_e( 'Survey', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
                         <th scope="col"><?php esc_html_e( 'Responses', 'societypress' ); ?></th>
-                        <th scope="col"><?php esc_html_e( 'Who can answer', 'societypress' ); ?></th>
-                        <th scope="col"><?php esc_html_e( 'Anonymous', 'societypress' ); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -131503,8 +131607,6 @@ function sp_render_surveys_page(): void {
                                     ?>
                                 <?php endif; ?>
                             </td>
-                            <td><?php echo $members ? esc_html__( 'Members only', 'societypress' ) : esc_html__( 'Anyone', 'societypress' ); ?></td>
-                            <td><?php echo ! empty( $survey->anonymous ) ? esc_html__( 'Yes', 'societypress' ) : esc_html__( 'No — names shown', 'societypress' ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -131517,8 +131619,9 @@ function sp_render_surveys_page(): void {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Template deleted.', 'societypress' ) . '</p></div>';
         }
         ?>
-        <div class="sp-survey-card" style="margin-top:24px; max-width:860px;">
-            <h2><?php esc_html_e( 'Start from a template', 'societypress' ); ?></h2>
+        <?php // Kept open after deleting a template, so the list it came from stays in view. ?>
+        <div class="sp-survey-card sp-survey-templates" id="sp-survey-templates"<?php echo 'template_deleted' === sanitize_key( $_GET['notice'] ?? '' ) ? '' : ' hidden'; ?>>
+            <h2><?php esc_html_e( 'Start with a template', 'societypress' ); ?></h2>
             <p class="description"><?php esc_html_e( 'Makes a new survey with the questions already written. Change anything you like before publishing.', 'societypress' ); ?></p>
             <table class="widefat striped">
                 <tbody>
@@ -131551,6 +131654,19 @@ function sp_render_surveys_page(): void {
             </table>
         </div>
     </div>
+    <script>
+    (function(){
+        var btn   = document.getElementById('sp-survey-templates-toggle');
+        var panel = document.getElementById('sp-survey-templates');
+        if ( ! btn || ! panel ) return;
+        btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+        btn.addEventListener('click', function(){
+            panel.hidden = ! panel.hidden;
+            btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+            if ( ! panel.hidden ) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    })();
+    </script>
     <?php
 }
 
@@ -131930,109 +132046,62 @@ function sp_survey_render_questions_tab( $survey ): void {
     $action_url  = admin_url( 'admin.php?page=sp-survey-edit' . ( $survey_id ? '&survey_id=' . $survey_id : '' ) );
     $state       = $survey ? $survey->status : 'draft';
     ?>
+    <?php
+    /*
+     * WHY the editor looks like the survey itself: volunteers compared the
+     *      old screen — every setting for every question open at once, plus
+     *      a sidebar and four message boxes — with SurveyMonkey and found it
+     *      confusing. Now the page shows the questions as members will see
+     *      them, opens one question at a time, and keeps everything a first
+     *      survey doesn't need behind Settings. The posted fields are the
+     *      same, so saving is unchanged.
+     */
+    ?>
     <form method="post" action="<?php echo esc_url( $action_url ); ?>" id="sp-survey-form">
         <?php wp_nonce_field( 'sp_save_survey' ); ?>
 
-        <div class="sp-survey-grid">
-            <div class="sp-survey-main">
+        <div class="sp-survey-bar">
+            <span class="sp-survey-status <?php echo esc_attr( $status['class'] ); ?>"><?php echo esc_html( $status['label'] ); ?></span>
+            <?php if ( $page && 'draft' !== $state ) : ?>
+                <span class="sp-survey-link">
+                    <input type="text" id="sp-survey-link-input" value="<?php echo esc_attr( get_permalink( $page ) ); ?>" readonly aria-label="<?php esc_attr_e( 'Link to send members', 'societypress' ); ?>">
+                    <button type="button" class="button" id="sp-survey-copy" data-copied="<?php esc_attr_e( 'Copied', 'societypress' ); ?>"><?php esc_html_e( 'Copy Link', 'societypress' ); ?></button>
+                </span>
+            <?php endif; ?>
+            <span class="sp-survey-bar-actions">
+                <button type="button" class="button" id="sp-survey-settings-toggle" aria-expanded="false" aria-controls="sp-survey-settings">
+                    <span class="dashicons dashicons-admin-generic" aria-hidden="true"></span>
+                    <?php esc_html_e( 'Settings', 'societypress' ); ?>
+                </button>
+                <?php if ( $page ) : ?>
+                    <a href="<?php echo esc_url( get_permalink( $page ) ); ?>" class="button" target="_blank" rel="noopener"><?php esc_html_e( 'Preview', 'societypress' ); ?></a>
+                <?php endif; ?>
+                <button type="submit" name="sp_survey_action" value="save" class="button"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
+                <?php if ( 'draft' === $state ) : ?>
+                    <button type="submit" name="sp_survey_action" value="publish" class="button button-primary"><?php esc_html_e( 'Publish', 'societypress' ); ?></button>
+                <?php elseif ( 'published' === $state && ! $page ) : ?>
+                    <?php // The page was removed from the Pages screen while the survey was open. ?>
+                    <button type="submit" name="sp_survey_action" value="close" class="button"><?php esc_html_e( 'Close Survey', 'societypress' ); ?></button>
+                    <button type="submit" name="sp_survey_action" value="reopen" class="button button-primary"><?php esc_html_e( 'Put the Page Back', 'societypress' ); ?></button>
+                <?php elseif ( 'published' === $state ) : ?>
+                    <button type="submit" name="sp_survey_action" value="close" class="button" data-sp-confirm="<?php esc_attr_e( 'Close this survey? Members will no longer be able to answer. You can reopen it later.', 'societypress' ); ?>"><?php esc_html_e( 'Close Survey', 'societypress' ); ?></button>
+                <?php else : ?>
+                    <button type="submit" name="sp_survey_action" value="reopen" class="button button-primary"><?php esc_html_e( 'Reopen Survey', 'societypress' ); ?></button>
+                <?php endif; ?>
+            </span>
+        </div>
+        <?php if ( 'published' === $state && ! $page ) : ?>
+            <p class="sp-survey-warning"><?php esc_html_e( 'This survey\'s page has been removed, so members can\'t reach it.', 'societypress' ); ?></p>
+        <?php endif; ?>
 
-                <div class="sp-survey-card">
-                    <table class="form-table" role="presentation">
-                        <tr>
-                            <th scope="row"><label for="sp-survey-title"><?php esc_html_e( 'Survey title', 'societypress' ); ?></label></th>
-                            <td>
-                                <input type="text" id="sp-survey-title" name="title" value="<?php echo esc_attr( $survey ? $survey->title : '' ); ?>" class="large-text" required>
-                                <p class="description"><?php esc_html_e( 'Members see this at the top of the survey (e.g. "2027 Membership Survey").', 'societypress' ); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="sp-survey-intro"><?php esc_html_e( 'Introduction', 'societypress' ); ?></label></th>
-                            <td>
-                                <textarea id="sp-survey-intro" name="intro" rows="4" class="large-text"><?php echo esc_textarea( $survey ? (string) $survey->intro : '' ); ?></textarea>
-                                <p class="description"><?php esc_html_e( 'Optional. A few words above the questions — why you are asking, and how long it takes.', 'societypress' ); ?></p>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-
-                <div class="sp-survey-card">
-                    <h2><?php esc_html_e( 'Questions', 'societypress' ); ?></h2>
-                    <?php if ( $has_answers ) : ?>
-                        <p class="sp-survey-warning"><?php esc_html_e( 'People have already answered. Rewording a question starts a fresh count for it; the earlier answers stay in the results under the old wording.', 'societypress' ); ?></p>
-                    <?php endif; ?>
-                    <p class="description"><?php esc_html_e( 'Type each question and choose the kind of answer. Use the arrows to change the order.', 'societypress' ); ?></p>
-
-                    <div id="sp-fields-list" data-default-scale="<?php echo esc_attr( wp_json_encode( sp_forms_default_scale() ) ); ?>" data-page-break-placeholder="<?php esc_attr_e( 'Heading for the next page (optional)', 'societypress' ); ?>">
-                        <?php
-                        foreach ( $fields as $i => $f ) {
-                            sp_forms_render_field_row( $i, $f, $field_types, true );
-                        }
-                        ?>
-                    </div>
-
-                    <p>
-                        <button type="button" class="button button-secondary" id="sp-add-field">
-                            <span class="dashicons dashicons-plus-alt2" aria-hidden="true"></span>
-                            <?php esc_html_e( 'Add Question', 'societypress' ); ?>
-                        </button>
-                    </p>
-                </div>
-
-                <div class="sp-survey-card">
-                    <h2><?php esc_html_e( 'Wording', 'societypress' ); ?></h2>
-                    <table class="form-table" role="presentation">
-                        <tr>
-                            <th scope="row"><label for="sp-survey-submit"><?php esc_html_e( 'Button text', 'societypress' ); ?></label></th>
-                            <td>
-                                <input type="text" id="sp-survey-submit" name="submit_label" value="<?php echo esc_attr( $survey ? (string) $survey->submit_label : '' ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Send my answers', 'societypress' ); ?>">
-                                <p class="description"><?php esc_html_e( 'The button members press when they are done. Leave blank for "Send my answers".', 'societypress' ); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="sp-survey-thanks"><?php esc_html_e( 'Thank-you message', 'societypress' ); ?></label></th>
-                            <td>
-                                <input type="text" id="sp-survey-thanks" name="confirmation_message" value="<?php echo esc_attr( $survey ? sp_survey_message( $survey, 'thanks' ) : $defaults['thanks'] ); ?>" class="large-text">
-                                <p class="description"><?php esc_html_e( 'Shown after a member sends their answers.', 'societypress' ); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="sp-survey-repeat"><?php esc_html_e( 'Already answered', 'societypress' ); ?></label></th>
-                            <td>
-                                <input type="text" id="sp-survey-repeat" name="repeat_message" value="<?php echo esc_attr( $survey ? sp_survey_message( $survey, 'repeat' ) : $defaults['repeat'] ); ?>" class="large-text">
-                                <p class="description"><?php esc_html_e( 'Shown instead of the questions to someone who has already answered.', 'societypress' ); ?></p>
-                            </td>
-                        </tr>
-                        <tr>
-                            <th scope="row"><label for="sp-survey-closed"><?php esc_html_e( 'After it closes', 'societypress' ); ?></label></th>
-                            <td>
-                                <input type="text" id="sp-survey-closed" name="closed_message" value="<?php echo esc_attr( $survey ? sp_survey_message( $survey, 'closed' ) : $defaults['closed'] ); ?>" class="large-text">
-                                <p class="description"><?php esc_html_e( 'Shown on the survey\'s page once you close it.', 'societypress' ); ?></p>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-
-            <div class="sp-survey-side">
-                <div class="sp-survey-card">
-                    <h2><?php esc_html_e( 'Publish', 'societypress' ); ?></h2>
-                    <p><strong><?php esc_html_e( 'Status:', 'societypress' ); ?></strong> <span class="sp-survey-status <?php echo esc_attr( $status['class'] ); ?>"><?php echo esc_html( $status['label'] ); ?></span></p>
-
-                    <?php if ( $page && 'draft' !== $state ) : ?>
-                        <label for="sp-survey-link-input"><strong><?php esc_html_e( 'Link to send members', 'societypress' ); ?></strong></label>
-                        <div class="sp-survey-link">
-                            <input type="text" id="sp-survey-link-input" value="<?php echo esc_attr( get_permalink( $page ) ); ?>" readonly>
-                            <button type="button" class="button" id="sp-survey-copy" data-copied="<?php esc_attr_e( 'Copied', 'societypress' ); ?>"><?php esc_html_e( 'Copy', 'societypress' ); ?></button>
-                        </div>
-                    <?php endif; ?>
-
-                    <p>
-                        <label for="sp-survey-visibility"><strong><?php esc_html_e( 'Who can answer', 'societypress' ); ?></strong></label><br>
-                        <select id="sp-survey-visibility" name="visibility" class="widefat">
-                            <option value="members" <?php selected( $visibility, 'members' ); ?>><?php esc_html_e( 'Members in good standing', 'societypress' ); ?></option>
-                            <option value="public" <?php selected( $visibility, 'public' ); ?>><?php esc_html_e( 'Anyone who has the link', 'societypress' ); ?></option>
-                        </select>
-                    </p>
+        <div class="sp-survey-settings" id="sp-survey-settings" hidden>
+            <div class="sp-survey-settings-grid">
+                <div>
+                    <h3><?php esc_html_e( 'Who can answer', 'societypress' ); ?></h3>
+                    <select id="sp-survey-visibility" name="visibility" class="widefat" aria-label="<?php esc_attr_e( 'Who can answer', 'societypress' ); ?>">
+                        <option value="members" <?php selected( $visibility, 'members' ); ?>><?php esc_html_e( 'Members in good standing', 'societypress' ); ?></option>
+                        <option value="public" <?php selected( $visibility, 'public' ); ?>><?php esc_html_e( 'Anyone who has the link', 'societypress' ); ?></option>
+                    </select>
                     <p class="sp-survey-warning" id="sp-survey-public-warning"<?php echo 'public' === $visibility ? '' : ' hidden'; ?>>
                         <?php esc_html_e( 'With anyone allowed to answer, there is no sign-in to check. The survey stops casual repeat answers from the same browser, but someone determined could answer twice. For a count you can trust, keep it to members.', 'societypress' ); ?>
                     </p>
@@ -132043,59 +132112,82 @@ function sp_survey_render_questions_tab( $survey ): void {
                             <strong><?php esc_html_e( 'Anonymous', 'societypress' ); ?></strong>
                         </label>
                         <?php if ( $has_answers ) : ?>
-                            <?php // A disabled box is not sent, so carry the current value for the record; the save ignores it either way. ?>
                             <br><span class="sp-survey-note"><?php esc_html_e( 'This can\'t be changed now that people have answered, because they answered under this promise.', 'societypress' ); ?></span>
                         <?php else : ?>
                             <br><span class="sp-survey-note"><?php esc_html_e( 'On: you see who took part, but not who said what. Off: each member\'s name is shown with their answers.', 'societypress' ); ?></span>
                         <?php endif; ?>
                     </p>
 
-                    <p>
-                        <label for="sp-survey-opens"><strong><?php esc_html_e( 'Opens on', 'societypress' ); ?></strong></label><br>
-                        <input type="date" id="sp-survey-opens" name="opens_on" value="<?php echo esc_attr( $survey ? (string) $survey->opens_on : '' ); ?>" class="widefat">
+                    <h3><?php esc_html_e( 'Dates', 'societypress' ); ?></h3>
+                    <p class="sp-survey-dates">
+                        <label><?php esc_html_e( 'Opens on', 'societypress' ); ?><br>
+                            <input type="date" id="sp-survey-opens" name="opens_on" value="<?php echo esc_attr( $survey ? (string) $survey->opens_on : '' ); ?>"></label>
+                        <label><?php esc_html_e( 'Last day to answer', 'societypress' ); ?><br>
+                            <input type="date" id="sp-survey-closes" name="closes_on" value="<?php echo esc_attr( $survey ? (string) $survey->closes_on : '' ); ?>"></label>
                     </p>
-                    <p>
-                        <label for="sp-survey-closes"><strong><?php esc_html_e( 'Last day to answer', 'societypress' ); ?></strong></label><br>
-                        <input type="date" id="sp-survey-closes" name="closes_on" value="<?php echo esc_attr( $survey ? (string) $survey->closes_on : '' ); ?>" class="widefat">
-                        <span class="sp-survey-note"><?php esc_html_e( 'Both optional. Leave them empty to open when you press Publish and close when you press Close.', 'societypress' ); ?></span>
-                    </p>
-
-                    <p>
-                        <button type="submit" name="sp_survey_action" value="save" class="button button-large"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
-                        <?php if ( 'draft' === $state ) : ?>
-                            <button type="submit" name="sp_survey_action" value="publish" class="button button-primary button-large"><?php esc_html_e( 'Publish', 'societypress' ); ?></button>
-                        <?php elseif ( 'published' === $state && ! $page ) : ?>
-                            <?php // The page was removed from the Pages screen while the survey was open. ?>
-                            <span class="sp-survey-warning"><?php esc_html_e( 'This survey\'s page has been removed, so members can\'t reach it.', 'societypress' ); ?></span>
-                            <button type="submit" name="sp_survey_action" value="reopen" class="button button-primary button-large"><?php esc_html_e( 'Put the Page Back', 'societypress' ); ?></button>
-                            <button type="submit" name="sp_survey_action" value="close" class="button button-large"><?php esc_html_e( 'Close Survey', 'societypress' ); ?></button>
-                        <?php elseif ( 'published' === $state ) : ?>
-                            <button type="submit" name="sp_survey_action" value="close" class="button button-large" data-sp-confirm="<?php esc_attr_e( 'Close this survey? Members will no longer be able to answer. You can reopen it later.', 'societypress' ); ?>"><?php esc_html_e( 'Close Survey', 'societypress' ); ?></button>
-                        <?php else : ?>
-                            <button type="submit" name="sp_survey_action" value="reopen" class="button button-primary button-large"><?php esc_html_e( 'Reopen Survey', 'societypress' ); ?></button>
-                        <?php endif; ?>
-                    </p>
+                    <span class="sp-survey-note"><?php esc_html_e( 'Both optional. Leave them empty to open when you press Publish and close when you press Close.', 'societypress' ); ?></span>
                 </div>
-
-                <?php if ( $survey ) : ?>
-                    <div class="sp-survey-card">
-                        <h2><?php esc_html_e( 'Reuse', 'societypress' ); ?></h2>
+                <div>
+                    <h3><?php esc_html_e( 'Wording', 'societypress' ); ?></h3>
+                    <p>
+                        <label for="sp-survey-submit"><?php esc_html_e( 'Button text', 'societypress' ); ?></label>
+                        <input type="text" id="sp-survey-submit" name="submit_label" value="<?php echo esc_attr( $survey ? (string) $survey->submit_label : '' ); ?>" class="widefat" placeholder="<?php esc_attr_e( 'Send my answers', 'societypress' ); ?>">
+                    </p>
+                    <p>
+                        <label for="sp-survey-thanks"><?php esc_html_e( 'Thank-you message', 'societypress' ); ?></label>
+                        <input type="text" id="sp-survey-thanks" name="confirmation_message" value="<?php echo esc_attr( $survey ? sp_survey_message( $survey, 'thanks' ) : $defaults['thanks'] ); ?>" class="widefat">
+                    </p>
+                    <p>
+                        <label for="sp-survey-repeat"><?php esc_html_e( 'Shown to someone who already answered', 'societypress' ); ?></label>
+                        <input type="text" id="sp-survey-repeat" name="repeat_message" value="<?php echo esc_attr( $survey ? sp_survey_message( $survey, 'repeat' ) : $defaults['repeat'] ); ?>" class="widefat">
+                    </p>
+                    <p>
+                        <label for="sp-survey-closed"><?php esc_html_e( 'Shown after it closes', 'societypress' ); ?></label>
+                        <input type="text" id="sp-survey-closed" name="closed_message" value="<?php echo esc_attr( $survey ? sp_survey_message( $survey, 'closed' ) : $defaults['closed'] ); ?>" class="widefat">
+                    </p>
+                    <?php if ( $survey ) : ?>
+                        <h3><?php esc_html_e( 'Reuse', 'societypress' ); ?></h3>
                         <p>
-                            <button type="submit" name="sp_survey_action" value="save_template" class="button button-large"><?php esc_html_e( 'Save as Template', 'societypress' ); ?></button>
+                            <button type="submit" name="sp_survey_action" value="save_template" class="button"><?php esc_html_e( 'Save as Template', 'societypress' ); ?></button>
+                            <br><span class="sp-survey-note"><?php esc_html_e( 'Keeps a copy of these questions to start next year\'s survey from. Answers are not copied.', 'societypress' ); ?></span>
                         </p>
-                        <p class="sp-survey-note"><?php esc_html_e( 'Keeps a copy of these questions to start next year\'s survey from. Answers are not copied.', 'societypress' ); ?></p>
                         <p class="sp-survey-note">
                             <?php esc_html_e( 'To show this survey on another page as well, paste this into that page:', 'societypress' ); ?><br>
                             <code>[societypress_form id="<?php echo (int) $survey->id; ?>"]</code>
                         </p>
-                    </div>
-                <?php endif; ?>
+                    <?php endif; ?>
+                </div>
             </div>
+        </div>
+
+        <div class="sp-survey-canvas">
+            <input type="text" id="sp-survey-title" name="title" value="<?php echo esc_attr( $survey ? $survey->title : '' ); ?>" class="sp-survey-title-input" placeholder="<?php esc_attr_e( 'Survey title', 'societypress' ); ?>" aria-label="<?php esc_attr_e( 'Survey title', 'societypress' ); ?>" required>
+            <textarea id="sp-survey-intro" name="intro" rows="2" class="sp-survey-intro-input" placeholder="<?php esc_attr_e( 'Add an introduction (optional) — why you are asking, and how long it takes.', 'societypress' ); ?>" aria-label="<?php esc_attr_e( 'Introduction', 'societypress' ); ?>"><?php echo esc_textarea( $survey ? (string) $survey->intro : '' ); ?></textarea>
+
+            <?php if ( $has_answers ) : ?>
+                <p class="sp-survey-warning"><?php esc_html_e( 'People have already answered. Rewording a question starts a fresh count for it; the earlier answers stay in the results under the old wording.', 'societypress' ); ?></p>
+            <?php endif; ?>
+
+            <div id="sp-fields-list" data-default-scale="<?php echo esc_attr( wp_json_encode( sp_forms_default_scale() ) ); ?>" data-page-break-placeholder="<?php esc_attr_e( 'Heading for the next page (optional)', 'societypress' ); ?>">
+                <?php
+                foreach ( $fields as $i => $f ) {
+                    sp_forms_render_field_row( $i, $f, $field_types, true );
+                }
+                ?>
+            </div>
+
+            <p class="sp-survey-add">
+                <button type="button" class="button button-hero" id="sp-add-field">
+                    <span class="dashicons dashicons-plus-alt2" aria-hidden="true"></span>
+                    <?php esc_html_e( 'Add Question', 'societypress' ); ?>
+                </button>
+            </p>
         </div>
     </form>
 
     <template id="sp-field-row-template">
-        <?php sp_forms_render_field_row( '__INDEX__', [], $field_types, true ); ?>
+        <?php // A new question starts as multiple choice, the most common kind. ?>
+        <?php sp_forms_render_field_row( '__INDEX__', [ 'type' => 'radio' ], $field_types, true ); ?>
     </template>
 
     <script>
@@ -132227,6 +132319,235 @@ function sp_survey_render_questions_tab( $survey ): void {
         var warn = document.getElementById('sp-survey-public-warning');
         if ( vis && warn ) {
             vis.addEventListener('change', function(){ warn.hidden = ( vis.value !== 'public' ); });
+        }
+
+        // One question open at a time. The rest show as members will see
+        // them; clicking one opens it for editing.
+        var form = document.getElementById('sp-survey-form');
+        var txt  = <?php echo wp_json_encode( [
+            'untitled' => __( 'Untitled question', 'societypress' ),
+            'done'     => __( 'Done', 'societypress' ),
+            'logic'    => __( 'Only ask this question if…', 'societypress' ),
+            'askedIf'  => __( 'Only asked if "%1$s" is "%2$s"', 'societypress' ),
+            'newPage'  => __( 'New page', 'societypress' ),
+            'more'     => __( 'View more', 'societypress' ),
+            'fewer'    => __( 'View fewer', 'societypress' ),
+        ] ); ?>;
+        var types = <?php echo wp_json_encode( $field_types ); ?>;
+
+        function el(tag, cls, text){
+            var n = document.createElement(tag);
+            if ( cls ) n.className = cls;
+            if ( text !== undefined ) n.textContent = text;
+            return n;
+        }
+
+        function choiceList(values, cls){
+            var ul = el('ul', cls);
+            values.forEach(function(v){ ul.appendChild(el('li', '', v)); });
+            return ul;
+        }
+
+        function renderPreview(row){
+            var box = row.querySelector('.sp-field-preview');
+            if ( ! box ) return;
+            box.innerHTML = '';
+            var t   = row.querySelector('.sp-field-type').value;
+            var lab = row.querySelector('.sp-field-label-input').value.trim();
+            if ( t === 'page_break' ) {
+                box.appendChild(el('div', 'sp-field-preview-break', lab ? txt.newPage + ': ' + lab : txt.newPage));
+                return;
+            }
+            var q = el('p', 'sp-field-preview-q' + ( lab ? '' : ' is-untitled' ), lab || txt.untitled);
+            var req = row.querySelector('input[name$="[required]"]');
+            if ( req && req.checked ) q.appendChild(el('span', 'sp-req', ' *'));
+            box.appendChild(q);
+            var ifLbl = row.querySelector('.sp-field-if-label');
+            var ifVal = row.querySelector('.sp-field-if-value');
+            if ( ifLbl && ifLbl.value && ifVal && ifVal.value ) {
+                box.appendChild(el('p', 'sp-field-preview-if', txt.askedIf.replace('%1$s', ifLbl.value).replace('%2$s', ifVal.value)));
+            }
+            var choices = rowChoices(row);
+            if ( t === 'radio' ) box.appendChild(choiceList(choices, ''));
+            else if ( t === 'checkboxes' ) box.appendChild(choiceList(choices, 'is-checks'));
+            else if ( t === 'select' ) box.appendChild(el('div', 'sp-field-preview-box is-select', ( choices[0] || '' ) + ' ▾'));
+            else if ( t === 'scale' ) box.appendChild(choiceList(choices, 'is-scale'));
+            else if ( t === 'rating' ) box.appendChild(el('div', 'sp-field-preview-stars', '☆☆☆☆☆'));
+            else if ( t === 'matrix' ) {
+                var ta   = row.querySelector('textarea[name$="[columns]"]');
+                var cols = ( ta ? ta.value : '' ).split(/\r\n|\r|\n/).map(function(l){ return l.trim(); }).filter(Boolean);
+                choices.forEach(function(s){ box.appendChild(el('p', 'sp-field-preview-statement', s)); });
+                box.appendChild(choiceList(cols.length ? cols : defaultScale, 'is-scale'));
+            }
+            else box.appendChild(el('div', 'sp-field-preview-box' + ( t === 'textarea' ? ' is-tall' : '' )));
+        }
+
+        function closeRow(row){
+            renderPreview(row);
+            row.classList.remove('is-open');
+        }
+
+        function openRow(row){
+            Array.prototype.forEach.call(list.querySelectorAll('.sp-field-row.is-open'), function(r){
+                if ( r !== row ) closeRow(r);
+            });
+            row.classList.add('is-open');
+        }
+
+        function icon(name){
+            var i = el('span', 'dashicons dashicons-' + ( name || 'editor-help' ));
+            i.setAttribute('aria-hidden', 'true');
+            return i;
+        }
+
+        function closeMenus(except){
+            Array.prototype.forEach.call(list.querySelectorAll('.sp-type-menu'), function(m){
+                if ( m !== except ) { m.hidden = true; m.previousElementSibling.setAttribute('aria-expanded', 'false'); }
+            });
+        }
+
+        // The answer-type menu: the everyday kinds with icons, the rest
+        // behind "View more". The real <select> stays in the form, hidden,
+        // so saving is unchanged.
+        function buildTypePicker(row){
+            var sel = row.querySelector('.sp-field-type');
+            if ( ! sel ) return;
+            sel.classList.add('sp-type-native');
+            sel.tabIndex = -1;
+            var wrap = el('span', 'sp-type-picker');
+            var btn  = el('button', 'button sp-type-btn');
+            btn.type = 'button';
+            btn.setAttribute('aria-haspopup', 'true');
+            btn.setAttribute('aria-expanded', 'false');
+            var menu = el('div', 'sp-type-menu');
+            menu.hidden = true;
+            wrap.appendChild(btn);
+            wrap.appendChild(menu);
+            sel.parentNode.insertBefore(wrap, sel.nextSibling);
+
+            function paintButton(){
+                var meta = types[sel.value] || {};
+                btn.innerHTML = '';
+                btn.appendChild(icon(meta.icon));
+                btn.appendChild(el('span', 'sp-type-btn-label', meta.label || sel.value));
+                btn.appendChild(icon('arrow-down-alt2'));
+            }
+
+            function paintMenu(showAll){
+                menu.innerHTML = '';
+                Object.keys(types).forEach(function(slug){
+                    var meta = types[slug];
+                    if ( ! showAll && ! meta.common && slug !== sel.value ) return;
+                    var item = el('button', 'sp-type-item' + ( slug === sel.value ? ' is-current' : '' ));
+                    item.type = 'button';
+                    item.appendChild(icon(meta.icon));
+                    item.appendChild(el('span', '', meta.label));
+                    item.addEventListener('click', function(){
+                        sel.value = slug;
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                        paintButton();
+                        menu.hidden = true;
+                        btn.setAttribute('aria-expanded', 'false');
+                        btn.focus();
+                    });
+                    menu.appendChild(item);
+                });
+                var more = el('button', 'sp-type-more', showAll ? txt.fewer : txt.more);
+                more.type = 'button';
+                more.addEventListener('click', function(e){
+                    e.stopPropagation();
+                    paintMenu(! showAll);
+                });
+                menu.appendChild(more);
+            }
+
+            btn.addEventListener('click', function(e){
+                e.stopPropagation();
+                var opening = menu.hidden;
+                closeMenus(menu);
+                if ( opening ) paintMenu(false);
+                menu.hidden = ! opening;
+                btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+                if ( opening ) menu.querySelector('button').focus();
+            });
+            menu.addEventListener('keydown', function(e){
+                if ( e.key === 'Escape' ) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.focus(); }
+            });
+            paintButton();
+        }
+
+        if ( list ) document.addEventListener('click', function(e){
+            if ( ! e.target.closest('.sp-type-picker') ) closeMenus(null);
+        });
+
+        function enhanceRow(row){
+            if ( row.querySelector('.sp-field-preview') ) return;
+            row.insertBefore(el('div', 'sp-field-preview'), row.firstChild);
+            buildTypePicker(row);
+
+            var cond = row.querySelector('.sp-field-condition');
+            var foot = el('div', 'sp-field-row-foot');
+            if ( cond ) {
+                var ifLbl = cond.querySelector('.sp-field-if-label');
+                if ( ! ( ifLbl && ifLbl.value ) ) cond.classList.add('is-collapsed');
+                var logic = el('button', 'button-link sp-field-logic-toggle', txt.logic);
+                logic.type = 'button';
+                logic.hidden = ! cond.classList.contains('is-collapsed');
+                logic.addEventListener('click', function(){
+                    cond.classList.remove('is-collapsed');
+                    logic.hidden = true;
+                });
+                foot.appendChild(logic);
+            }
+            var done = el('button', 'button button-primary sp-field-done', txt.done);
+            done.type = 'button';
+            done.addEventListener('click', function(e){
+                e.stopPropagation();
+                var lbl = row.querySelector('.sp-field-label-input');
+                if ( lbl && ! lbl.reportValidity() ) return;
+                closeRow(row);
+            });
+            foot.appendChild(done);
+            row.querySelector('.sp-field-row-body').appendChild(foot);
+
+            row.addEventListener('click', function(){
+                if ( ! row.classList.contains('is-open') ) openRow(row);
+            });
+            renderPreview(row);
+        }
+
+        if ( list && addBtn ) {
+            Array.prototype.forEach.call(list.querySelectorAll('.sp-field-row'), function(row){
+                enhanceRow(row);
+                // A question still to be written starts open.
+                if ( ! row.querySelector('.sp-field-label-input').value.trim() && ! list.querySelector('.sp-field-row.is-open') ) openRow(row);
+            });
+            addBtn.addEventListener('click', function(){
+                var row = list.lastElementChild;
+                if ( ! row ) return;
+                enhanceRow(row);
+                openRow(row);
+                var lbl = row.querySelector('.sp-field-label-input');
+                if ( lbl ) lbl.focus();
+            });
+        }
+
+        // A question left without its wording stops the save; open it so
+        // the browser can point at the empty box.
+        if ( form ) {
+            form.addEventListener('invalid', function(e){
+                var row = e.target.closest && e.target.closest('.sp-field-row');
+                if ( row && ! row.classList.contains('is-open') ) openRow(row);
+            }, true);
+        }
+
+        var setBtn   = document.getElementById('sp-survey-settings-toggle');
+        var setPanel = document.getElementById('sp-survey-settings');
+        if ( setBtn && setPanel ) {
+            setBtn.addEventListener('click', function(){
+                setPanel.hidden = ! setPanel.hidden;
+                setBtn.setAttribute('aria-expanded', setPanel.hidden ? 'false' : 'true');
+            });
         }
 
         var copy = document.getElementById('sp-survey-copy');

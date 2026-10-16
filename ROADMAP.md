@@ -115,6 +115,8 @@ region — 501(c)(3) status is not required, and the payout account may be a
 personal one. What the 501(c)(3) does gate is the claim that a sponsorship
 is tax-deductible, which the profile must not make until the Foundation
 exists.
+Still pending on 2026-10-15 with every dashboard step complete; asked
+GitHub Support why in ticket **#4864889**.
 **On approval:** add `github: SocietyPressFoundation` to
 `.github/FUNDING.yml` beside the existing `custom:` line. Adding it before
 approval means the Sponsor button silently fails to render.

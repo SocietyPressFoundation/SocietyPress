@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.50
+ * Version:     1.5.51
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.50' );
+define( 'SOCIETYPRESS_VERSION', '1.5.51' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -10337,6 +10337,57 @@ function sp_user_has_member_record( $user_id ) {
 
 
 // ============================================================================
+// SEASONAL ADDRESS — month/day values
+// ============================================================================
+//
+// WHY: seasonal_from and seasonal_to hold "MM-DD" — an ENS export says when a
+//      season starts and ends to the day ("November 1 to April 15"), and the
+//      importer keeps it. The forms only ask for a month. Comparing a bare
+//      month against "11-01" matched nothing, so the dropdowns showed "—" for
+//      every imported snowbird, and saving the form then erased the dates.
+
+/**
+ * The month part of a stored seasonal value ("11-01" or "11" → "11").
+ */
+function sp_seasonal_month( $stored ): string {
+    return preg_match( '/^(0[1-9]|1[0-2])/', (string) $stored, $m ) ? $m[1] : '';
+}
+
+/**
+ * The value to store for a seasonal month posted by a form.
+ *
+ * Keeps the stored day when the month is unchanged, so a member saving an
+ * unrelated field does not lose "04-15" to "04". A changed month is stored
+ * alone, because the old day belonged to a different date.
+ *
+ * @param string $field   'seasonal_from' or 'seasonal_to'.
+ * @param int    $user_id Whose record is being saved; 0 for a new member.
+ * @return string|null Null when no month was chosen.
+ */
+function sp_seasonal_from_post( string $field, int $user_id ): ?string {
+    if ( ! in_array( $field, [ 'seasonal_from', 'seasonal_to' ], true ) ) {
+        return null;
+    }
+    $month = sp_seasonal_month( sanitize_text_field( wp_unslash( $_POST[ $field ] ?? '' ) ) );
+    if ( '' === $month ) {
+        return null;
+    }
+    if ( $user_id > 0 ) {
+        global $wpdb;
+        // $field is from the allowlist above, so it is safe as a column name.
+        $stored = (string) $wpdb->get_var( $wpdb->prepare(
+            "SELECT {$field} FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+            $user_id
+        ) );
+        if ( sp_seasonal_month( $stored ) === $month ) {
+            return $stored;
+        }
+    }
+    return $month;
+}
+
+
+// ============================================================================
 // EMAIL OBFUSCATION — Hide email addresses from scrapers on the frontend
 // ============================================================================
 //
@@ -11342,7 +11393,7 @@ function sp_handle_account_forms() {
             'city' => sanitize_text_field( wp_unslash( $_POST['city'] ?? '' ) ), 'state' => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ),
             'postal_code' => sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) ), 'country' => sanitize_text_field( wp_unslash( $_POST['country'] ?? '' ) ),
             'seasonal' => ! empty( $_POST['seasonal'] ) ? 1 : 0,
-            'seasonal_from' => sanitize_text_field( wp_unslash( $_POST['seasonal_from'] ?? '' ) ), 'seasonal_to' => sanitize_text_field( wp_unslash( $_POST['seasonal_to'] ?? '' ) ),
+            'seasonal_from' => sp_seasonal_from_post( 'seasonal_from', (int) $user->ID ), 'seasonal_to' => sp_seasonal_from_post( 'seasonal_to', (int) $user->ID ),
             'seasonal_address_1' => sanitize_text_field( wp_unslash( $_POST['seasonal_address_1'] ?? '' ) ), 'seasonal_city' => sanitize_text_field( wp_unslash( $_POST['seasonal_city'] ?? '' ) ),
             'seasonal_state' => sanitize_text_field( wp_unslash( $_POST['seasonal_state'] ?? '' ) ), 'seasonal_postal_code' => sanitize_text_field( wp_unslash( $_POST['seasonal_postal_code'] ?? '' ) ),
             'seasonal_country' => sanitize_text_field( wp_unslash( $_POST['seasonal_country'] ?? '' ) ),
@@ -12358,8 +12409,8 @@ add_action( 'wp_ajax_sp_save_account', function() {
             'postal_code' => sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) ),
             'country'   => sanitize_text_field( wp_unslash( $_POST['country'] ?? '' ) ),
             'seasonal'  => ! empty( $_POST['seasonal'] ) ? 1 : 0,
-            'seasonal_from' => sanitize_text_field( wp_unslash( $_POST['seasonal_from'] ?? '' ) ),
-            'seasonal_to'   => sanitize_text_field( wp_unslash( $_POST['seasonal_to'] ?? '' ) ),
+            'seasonal_from' => sp_seasonal_from_post( 'seasonal_from', (int) $user->ID ),
+            'seasonal_to'   => sp_seasonal_from_post( 'seasonal_to', (int) $user->ID ),
             'seasonal_address_1'    => sanitize_text_field( wp_unslash( $_POST['seasonal_address_1'] ?? '' ) ),
             'seasonal_city'         => sanitize_text_field( wp_unslash( $_POST['seasonal_city'] ?? '' ) ),
             'seasonal_state'        => sanitize_text_field( wp_unslash( $_POST['seasonal_state'] ?? '' ) ),
@@ -25013,8 +25064,8 @@ add_action( 'admin_init', function () {
 
     // Seasonal address fields
     $seasonal               = isset( $_POST['seasonal'] ) ? 1 : 0;
-    $seasonal_from          = sanitize_text_field( wp_unslash( $_POST['seasonal_from'] ?? '' ) );
-    $seasonal_to            = sanitize_text_field( wp_unslash( $_POST['seasonal_to'] ?? '' ) );
+    $seasonal_from          = sp_seasonal_from_post( 'seasonal_from', absint( $_POST['user_id'] ?? 0 ) );
+    $seasonal_to            = sp_seasonal_from_post( 'seasonal_to', absint( $_POST['user_id'] ?? 0 ) );
     $seasonal_address_1     = sanitize_text_field( wp_unslash( $_POST['seasonal_address_1'] ?? '' ) );
     $seasonal_city          = sanitize_text_field( wp_unslash( $_POST['seasonal_city'] ?? '' ) );
     $seasonal_state         = sanitize_text_field( wp_unslash( $_POST['seasonal_state'] ?? '' ) );
@@ -25221,12 +25272,23 @@ add_action( 'admin_init', function () {
             // Update the admin's WP user profile with whatever name/email
             // they entered in the form (they might want their society email
             // displayed instead of their personal one)
-            wp_update_user( [
+            $self_update = [
                 'ID'           => $self_id,
                 'first_name'   => $first_name,
                 'last_name'    => $last_name,
                 'display_name' => $first_name . ' ' . $last_name,
-            ] );
+            ];
+            // WHY the email goes onto the account: members have no email column
+            // of their own, so an address typed here and not saved is simply
+            // lost. It is also the address the import matches the admin's row
+            // against — an install made with webmaster@ would otherwise import
+            // its own administrator a second time. Only taken when no other
+            // account already holds it, so this can never collide two users.
+            $owner = $email ? email_exists( $email ) : false;
+            if ( $email && is_email( $email ) && ( ! $owner || (int) $owner === $self_id ) ) {
+                $self_update['user_email'] = $email;
+            }
+            wp_update_user( $self_update );
             $user_id = $self_id;
 
         // Normal flow — check if a WP user with this email already exists
@@ -27022,7 +27084,7 @@ function sp_render_member_edit_page(): void {
                                         printf(
                                             '<option value="%s" %s>%s</option>',
                                             esc_attr( $num ),
-                                            selected( $member->seasonal_from ?? '', $num, false ),
+                                            selected( sp_seasonal_month( $member->seasonal_from ?? '' ), $num, false ),
                                             esc_html( $name )
                                         );
                                     }
@@ -27039,7 +27101,7 @@ function sp_render_member_edit_page(): void {
                                         printf(
                                             '<option value="%s" %s>%s</option>',
                                             esc_attr( $num ),
-                                            selected( $member->seasonal_to ?? '', $num, false ),
+                                            selected( sp_seasonal_month( $member->seasonal_to ?? '' ), $num, false ),
                                             esc_html( $name )
                                         );
                                     }
@@ -27839,6 +27901,10 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         'linked'         => 0,
         'skipped'        => 0,
         'errors'         => [],
+        // What the import did on the admin's behalf that went as intended —
+        // kept apart from errors so the results screen doesn't show a
+        // successful link in the same red as a row that failed.
+        'notes'          => [],
         'tiers_created'  => [],
         // Plan names matched onto a tier that already existed under another
         // word, as CSV name => existing tier name. Reported so the match is
@@ -28226,6 +28292,38 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
     };
 
     // ================================================================
+    // Confirmed self-links onto an existing member record.
+    //
+    // WHY: The import screen has the admin add themselves as a member before
+    //      importing, so by the time their own row arrives they already have
+    //      a member record — one the file has never been imported over, so it
+    //      carries no ENS Record ID to match on, and its email may not be the
+    //      one in the file. When the admin confirmed on the preview that a row
+    //      is them, that row fills in their record instead of creating a
+    //      second one. Only accounts confirmed on the preview qualify, and
+    //      only while their record has no ENS Record ID: the first import
+    //      sets one, and from then on the ordinary re-import match takes over,
+    //      which is also what keeps this from firing twice across batches.
+    // ================================================================
+    $self_claims = [];
+    if ( is_array( $link_user_ids ) && $link_user_ids ) {
+        $ph = implode( ',', array_fill( 0, count( $link_user_ids ), '%d' ) );
+        $claim_rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT m.user_id, m.first_name, m.last_name, u.user_email
+             FROM {$prefix}members m
+             JOIN {$wpdb->users} u ON u.ID = m.user_id
+             WHERE m.user_id IN ($ph) AND ( m.ens_record_id IS NULL OR m.ens_record_id = 0 )",
+            array_map( 'intval', $link_user_ids )
+        ) );
+        foreach ( $claim_rows as $cr ) {
+            $self_claims[ (int) $cr->user_id ] = [
+                'email' => strtolower( (string) $cr->user_email ),
+                'name'  => strtolower( preg_replace( '/\s+/', ' ', trim( $cr->first_name . ' ' . $cr->last_name ) ) ),
+            ];
+        }
+    }
+
+    // ================================================================
     // Skip rows to reach the requested offset.
     // WHY: Each AJAX batch call re-opens the file from the top.
     //      We read past the header above, and now skip $offset data
@@ -28326,6 +28424,20 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             $update_user_id = (int) $existing_by_ens[ $csv_ens_id ];
         }
 
+        // Is this the row the admin confirmed as themselves? (See $self_claims.)
+        $self_link_uid = null;
+        $row_linked    = false; // Counted under "linked", so not under "imported" too.
+        if ( null === $update_user_id && $self_claims ) {
+            $row_name = strtolower( preg_replace( '/\s+/', ' ', trim( $first_name . ' ' . $last_name ) ) );
+            foreach ( $self_claims as $claim_uid => $claim ) {
+                if ( ( $email !== '' && strtolower( $email ) === $claim['email'] ) || ( $row_name !== '' && $row_name === $claim['name'] ) ) {
+                    $self_link_uid = $claim_uid;
+                    unset( $self_claims[ $claim_uid ] ); // One row per record.
+                    break;
+                }
+            }
+        }
+
         // Skip only if this email + name combination already exists — and only
         // when we're NOT updating this row by ENS ID (an ENS match is a sync,
         // not a skip).
@@ -28334,7 +28446,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         //      and the first name is identical or one contains the other,
         //      it's a true duplicate. Otherwise it's a family member who
         //      happens to share an inbox.
-        if ( null === $update_user_id && ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
+        if ( null === $update_user_id && null === $self_link_uid && ! empty( $email ) && isset( $existing_members[ strtolower( $email ) ] ) ) {
             if ( $is_name_similar( $first_name, $last_name, $existing_members[ strtolower( $email ) ] ) ) {
                 $results['skipped']++;
                 /* translators: 1: row number, 2: first name, 3: last name */
@@ -28488,6 +28600,14 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             // ENS-matched re-import: reuse the member's existing account. No
             // new WordPress user is minted, and login/email stay as they are.
             $user_id = $update_user_id;
+        } elseif ( null !== $self_link_uid ) {
+            // Confirmed as the admin's own record: no new account, and the
+            // admin's login, email and password stay exactly as they are.
+            $user_id = $self_link_uid;
+            $results['linked']++;
+            $row_linked = true;
+            /* translators: 1: row number, 2: first name, 3: last name */
+            $results['notes'][] = sprintf( __( 'Row %1$d: Added %2$s %3$s\'s details to your existing member record.', 'societypress' ), $row_num, $first_name, $last_name );
         } elseif ( ! empty( $email ) ) {
             $existing_user = get_user_by( 'email', $email );
             if ( $existing_user ) {
@@ -28547,8 +28667,9 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                     // linked here: they are already activated.
                     $user_id = $existing_user->ID;
                     $results['linked']++;
+                    $row_linked = true;
                     /* translators: 1: row number, 2: first name, 3: last name, 4: existing account email */
-                    $results['errors'][] = sprintf( __( 'Row %1$d: Linked %2$s %3$s to the existing account (%4$s) — password left unchanged.', 'societypress' ), $row_num, $first_name, $last_name, $existing_user->user_email );
+                    $results['notes'][] = sprintf( __( 'Row %1$d: Linked %2$s %3$s to the existing account (%4$s) — password left unchanged.', 'societypress' ), $row_num, $first_name, $last_name, $existing_user->user_email );
                 } else {
                     // Different person sharing the same email (spouse, parent, etc.).
                     // Create a new WP user with a +suffix alias so WordPress
@@ -28833,7 +28954,17 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
 
         // Encrypt sensitive contact fields before writing to DB
         sp_member_encrypt_fields( $member_data );
-        $inserted = $wpdb->insert( $prefix . 'members', $member_data );
+        if ( null !== $self_link_uid ) {
+            // The admin's own record already exists, so this is an update —
+            // but unlike a re-import it is the first time the file's history
+            // reaches them, so it carries on to payments and notes below.
+            // Blank cells don't erase what the admin entered themselves.
+            unset( $member_data['user_id'] );
+            $self_data = array_filter( $member_data, fn( $v ) => null !== $v && '' !== $v );
+            $inserted  = false !== $wpdb->update( $prefix . 'members', $self_data, [ 'user_id' => $self_link_uid ] );
+        } else {
+            $inserted = $wpdb->insert( $prefix . 'members', $member_data );
+        }
         if ( ! $inserted ) {
             // WHY: $wpdb->last_error can leak schema details (table names,
             // constraint names, column values from the failed query). Log the
@@ -28968,7 +29099,9 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             }
         }
 
-        $results['imported']++;
+        if ( ! $row_linked ) {
+            $results['imported']++;
+        }
     }
 
     fclose( $handle );
@@ -29115,6 +29248,7 @@ function sp_import_find_existing_account_collisions( string $file_path, array $f
     // the first display name seen for it.
     $by_email = [];
     $by_login = [];
+    $by_name  = []; // lowercase "first last" => name as written in the file
     $guard = 0;
     while ( ( $row = fgetcsv( $handle ) ) !== false ) {
         if ( ++$guard > 100000 ) {
@@ -29124,6 +29258,10 @@ function sp_import_find_existing_account_collisions( string $file_path, array $f
             ( $first_idx !== null && isset( $row[ $first_idx ] ) ? $row[ $first_idx ] : '' ) . ' ' .
             ( $last_idx  !== null && isset( $row[ $last_idx  ] ) ? $row[ $last_idx  ] : '' )
         );
+        $name_key = strtolower( preg_replace( '/\s+/', ' ', $name ) );
+        if ( $name_key !== '' && ! isset( $by_name[ $name_key ] ) ) {
+            $by_name[ $name_key ] = $name;
+        }
         if ( $email_idx !== null && ! empty( $row[ $email_idx ] ) ) {
             $e = strtolower( sanitize_email( $row[ $email_idx ] ) );
             if ( $e !== '' && ! isset( $by_email[ $e ] ) ) {
@@ -29174,6 +29312,31 @@ function sp_import_find_existing_account_collisions( string $file_path, array $f
             }
         }
     }
+    // The importing admin, when they added themselves as a member before
+    // importing (the import screen asks them to) and the file has not been
+    // imported over that record yet. WHY this needs its own check: the member
+    // exclusion below exists so a re-import doesn't re-ask about everyone on
+    // file, but applied to the admin it removes the one person this prompt
+    // was written for — and the admin's ENS row then imports as a second
+    // copy of them. Matching by name as well as email matters because the
+    // address on the WordPress account is often webmaster@ or a personal
+    // one, not the address the society has on file.
+    $me      = (int) get_current_user_id();
+    $me_open = false;
+    $me_row  = $me ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT first_name, last_name, ens_record_id FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+        $me
+    ) ) : null;
+    if ( $me_row && empty( $me_row->ens_record_id ) ) {
+        $me_open = true;
+        if ( ! isset( $found[ $me ] ) ) {
+            $me_key = strtolower( preg_replace( '/\s+/', ' ', trim( $me_row->first_name . ' ' . $me_row->last_name ) ) );
+            if ( $me_key !== '' && isset( $by_name[ $me_key ] ) ) {
+                $found[ $me ] = [ 'match_on' => 'name', 'csv_name' => $by_name[ $me_key ] ];
+            }
+        }
+    }
+
     if ( ! $found ) {
         return [];
     }
@@ -29194,10 +29357,9 @@ function sp_import_find_existing_account_collisions( string $file_path, array $f
         $member_ids[ (int) $mid ] = true;
     }
 
-    $me = (int) get_current_user_id();
     $collisions = [];
     foreach ( $found as $uid => $info ) {
-        if ( isset( $member_ids[ (int) $uid ] ) ) {
+        if ( isset( $member_ids[ (int) $uid ] ) && ! ( $uid === $me && $me_open ) ) {
             continue;
         }
         $u = get_user_by( 'id', $uid );
@@ -29873,6 +30035,22 @@ function sp_render_import_page(): void {
         /* Scrollable error list shown inside the overlay after import completes.
            WHY: Capped at 120px height with overflow-y so a large number of
            per-row errors doesn't push the Done button off-screen. */
+        /* Notes on what the import did as intended — tiers made or matched,
+           accounts linked. Neutral, because nothing here needs fixing. */
+        .sp-import-progress-notes {
+            margin: 16px auto 0;
+            max-width: 500px;
+            max-height: 160px;
+            overflow-y: auto;
+            text-align: left;
+            font-size: 13px;
+            color: #50575e;
+        }
+        .sp-import-progress-notes > div + div,
+        .sp-import-progress-errors > div + div {
+            margin-top: 10px;
+        }
+
         .sp-import-progress-errors {
             margin-top: 16px;
             max-height: 120px;
@@ -29895,7 +30073,7 @@ function sp_render_import_page(): void {
         // account, which is needed for My Account, directory, and other member features.
         // Without this, the admin is invisible in their own system.
         if ( ! sp_user_has_member_record( get_current_user_id() ) ) :
-            $add_self_url = admin_url( 'admin.php?page=sp-member-edit&link_to_self=1' );
+            $add_self_url = admin_url( 'admin.php?page=sp-member-edit&self=1' );
         ?>
             <div class="notice notice-warning sp-import-notice-warning">
                 <h3 class="sp-import-notice-heading"><?php esc_html_e( 'Add yourself first', 'societypress' ); ?></h3>
@@ -30334,6 +30512,7 @@ function sp_render_import_page(): void {
                 <p class="sp-import-overlay-message" id="sp-import-overlay-message" role="alert" aria-live="assertive">
                     <?php esc_html_e( 'Please do not close or refresh this page.', 'societypress' ); ?>
                 </p>
+                <div class="sp-import-progress-notes" id="sp-import-progress-notes"></div>
                 <div class="sp-import-progress-errors" id="sp-import-progress-errors"></div>
             </div>
         </div>
@@ -30527,12 +30706,13 @@ function sp_render_import_page(): void {
                 var titleEl     = document.getElementById('sp-import-overlay-title');
                 var messageEl   = document.getElementById('sp-import-overlay-message');
                 var errorsEl    = document.getElementById('sp-import-progress-errors');
+                var notesEl     = document.getElementById('sp-import-progress-notes');
                 var spinnerEl   = document.getElementById('sp-import-spinner');
                 overlay.style.display = 'flex';
                 if (submitBtn) submitBtn.disabled = true;
 
                 // Running totals across all batches
-                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], tiers_created: [], tiers_matched: {}, orgs_unmatched: 0, orgs_unmatched_types: [] };
+                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], notes: [], tiers_created: [], tiers_matched: {}, orgs_unmatched: 0, orgs_unmatched_types: [] };
                 var updateExistingEl = document.getElementById('sp-import-update-existing');
                 var updateExisting = updateExistingEl ? (updateExistingEl.checked ? 1 : 0) : 1;
                 var replaceNewerEl = document.getElementById('sp-import-replace-newer');
@@ -30578,6 +30758,7 @@ function sp_render_import_page(): void {
                             totals.linked   += d.linked || 0;
                             totals.skipped  += d.skipped || 0;
                             if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
+                            if (d.notes && d.notes.length) totals.notes = totals.notes.concat(d.notes);
                             if (d.tiers_created && d.tiers_created.length) {
                                 d.tiers_created.forEach(function (t) {
                                     if (totals.tiers_created.indexOf(t) === -1) totals.tiers_created.push(t);
@@ -30621,6 +30802,7 @@ function sp_render_import_page(): void {
                     // Both the organization notice and the error list write into
                     // errorsEl, so clear it once here rather than inside either.
                     errorsEl.innerHTML = '';
+                    notesEl.innerHTML = '';
 
                     // What the import did to the society's tier list. Creating a
                     // tier is normal and expected; folding one name onto another
@@ -30628,25 +30810,30 @@ function sp_render_import_page(): void {
                     // both get said out loud rather than discovered in Settings.
                     if (totals.tiers_created.length > 0) {
                         var createdNote = document.createElement('div');
-                        createdNote.style.marginTop = '14px';
                         createdNote.textContent =
                             <?php echo wp_json_encode( __( 'New membership tiers created:', 'societypress' ) . ' ' ); ?>
                             + totals.tiers_created.join(', ') + '. '
                             + <?php echo wp_json_encode( __( 'They were created without a price — set dues amounts under Settings.', 'societypress' ) ); ?>;
-                        errorsEl.appendChild(createdNote);
+                        notesEl.appendChild(createdNote);
                     }
 
                     var matchedKeys = Object.keys(totals.tiers_matched);
                     if (matchedKeys.length > 0) {
                         var matchedNote = document.createElement('div');
-                        matchedNote.style.marginTop = '14px';
                         matchedNote.textContent =
                             <?php echo wp_json_encode( __( 'Matched onto tiers you already had:', 'societypress' ) . ' ' ); ?>
                             + matchedKeys.map(function (k) { return k + ' \u2192 ' + totals.tiers_matched[k]; }).join(', ')
                             + '. '
                             + <?php echo wp_json_encode( __( 'If any of those should have stayed separate, create the tier and move those members across.', 'societypress' ) ); ?>;
-                        errorsEl.appendChild(matchedNote);
+                        notesEl.appendChild(matchedNote);
                     }
+
+                    // textContent: notes carry names from the uploaded CSV.
+                    totals.notes.forEach(function (n) {
+                        var noteRow = document.createElement('div');
+                        noteRow.textContent = n;
+                        notesEl.appendChild(noteRow);
+                    });
 
                     // Organization names we declined to import. Not an error —
                     // for ordinary individuals this is the correct outcome — but
@@ -30655,7 +30842,6 @@ function sp_render_import_page(): void {
                     // later that the library is filed under its librarian.
                     if (totals.orgs_unmatched > 0) {
                         var orgNote = document.createElement('div');
-                        orgNote.style.marginTop = '14px';
                         // WHY textContent: the type values come straight from the
                         // uploaded CSV, so they are never treated as HTML.
                         orgNote.textContent =
@@ -40008,7 +40194,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.50',
+            'version'     => '1.5.51',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40016,7 +40202,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.50',
+            'version'     => '1.5.51',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40024,7 +40210,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.50',
+            'version'     => '1.5.51',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40032,7 +40218,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.50',
+            'version'     => '1.5.51',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40040,7 +40226,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.50',
+            'version'     => '1.5.51',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

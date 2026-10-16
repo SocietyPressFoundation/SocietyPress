@@ -916,8 +916,10 @@ $sp_section_locked = function ( $section ) {
                                         '07' => __( 'July', 'societypress' ),      '08' => __( 'August', 'societypress' ),    '09' => __( 'September', 'societypress' ),
                                         '10' => __( 'October', 'societypress' ),   '11' => __( 'November', 'societypress' ),  '12' => __( 'December', 'societypress' ),
                                     ];
+                                    // WHY (string): PHP stores the keys '10'–'12' as integers,
+                                    // so a strict compare never selected October–December.
                                     foreach ( $months as $num => $name ) {
-                                        $selected = ( sp_m( $member, 'seasonal_from' ) === $num ) ? ' selected' : '';
+                                        $selected = ( sp_seasonal_month( sp_m( $member, 'seasonal_from' ) ) === (string) $num ) ? ' selected' : '';
                                         echo '<option value="' . $num . '"' . $selected . '>' . esc_html( $name ) . '</option>';
                                     }
                                     ?>
@@ -929,7 +931,7 @@ $sp_section_locked = function ( $section ) {
                                     <option value="">&mdash;</option>
                                     <?php
                                     foreach ( $months as $num => $name ) {
-                                        $selected = ( sp_m( $member, 'seasonal_to' ) === $num ) ? ' selected' : '';
+                                        $selected = ( sp_seasonal_month( sp_m( $member, 'seasonal_to' ) ) === (string) $num ) ? ' selected' : '';
                                         echo '<option value="' . $num . '"' . $selected . '>' . esc_html( $name ) . '</option>';
                                     }
                                     ?>

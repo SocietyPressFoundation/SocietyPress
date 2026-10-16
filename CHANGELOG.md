@@ -20,6 +20,31 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.51] — 2026-10-16
+
+**Importing no longer adds you twice.** The Import screen asks you to add
+yourself as a member first, and then imported your row from the file as a
+second copy of you — every time your WordPress account's email differed from
+the one in the file. The import now asks whether that row is you, matching by
+email or by name, and adds your member number, join date, plan and payment
+history to the record you already have. Your sign-in is left alone.
+
+**"Add Yourself as a Member" on the Import screen works.** The button opened
+the ordinary Add Member form, which made a separate account and left the
+Import screen still asking.
+
+**The email you enter when adding yourself is kept.** It was thrown away, so
+your account kept whatever address it was set up with.
+
+**Seasonal addresses keep their dates.** An imported snowbird's months showed
+as blank on their record and in My Account, and saving either one erased
+them. The months now show, and the exact day from your old system is kept
+unless you change the month. October to December had never shown as selected
+in My Account at all.
+
+**The import summary shows notes in grey and problems in red.** Plans created
+or matched and accounts linked are not errors, and no longer look like them.
+
 ## [1.5.50] — 2026-10-07
 
 **Documents are filed by category on the Files screen.** Each document category

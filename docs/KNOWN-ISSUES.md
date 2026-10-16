@@ -209,3 +209,59 @@ Verified on the walkthrough fixture against a clean install: a file naming
 Joint matched onto Joint/Family, Life onto Lifetime, Institutional created,
 since no built-in equivalent exists — with members correctly distributed
 13 / 6 / 1 / 2.
+
+---
+
+## ENS import: the importing webmaster arrives as a second member
+
+**Status:** fixed in 1.5.51. Found 2026-10-16 while re-running
+[the migration walkthrough](ENS-MIGRATION-WALKTHROUGH.md) for its screenshots.
+Kept here because three separate faults lined up to cause it, and the fix
+depends on all three staying fixed.
+**Severity:** was high — it happened on the first import of nearly every
+society, to the one person certain to be in the file.
+
+### The symptom
+
+After an import, the member list held two copies of the administrator: the
+record they made before importing, and a second one created from their ENS
+row, with its own WordPress account.
+
+### Why it happened
+
+1. **The Import screen insists the admin add themselves first** — and its
+   button sent `link_to_self=1`, while the member form only reads `self=1`.
+   The form therefore made an ordinary new account instead of a member record
+   on the admin's own, and the Import screen went on asking.
+2. **Even done the working way, the typed email was dropped.** The self-add
+   save updated the admin's name but never their email, although its own
+   comment says it should. Members have no email column, so the address was
+   simply lost, and the admin's account kept `webmaster@` or whatever it was
+   installed with.
+3. **The "is this you?" confirmation skipped existing members** — on purpose,
+   so a re-import doesn't re-ask about everyone. But step 1 had just made the
+   admin an existing member, so the one person the prompt was written for was
+   the one person it never asked about. With no email match either, the
+   admin's row imported as somebody new.
+
+### How it was fixed
+
+- The Import screen's button uses `self=1`.
+- The self-add save stores the email when no other account holds it.
+- The confirmation includes the current admin while their member record has
+  no ENS Record ID — that is, before the file has ever been imported over
+  them — and matches them by name as well as email.
+- A row confirmed as the admin updates their existing record (blank cells
+  never erase what they entered) and still records its payments and notes.
+  The first import sets the ENS Record ID, after which the ordinary re-import
+  match takes over and the prompt no longer appears.
+
+### Found alongside it
+
+Imported seasonal dates are stored as `MM-DD`; the member form and My Account
+offered only `MM`, so neither showed an imported snowbird's months, and saving
+either erased them. `sp_seasonal_month()` reads the month out for display and
+`sp_seasonal_from_post()` keeps the stored day unless the month changes. My
+Account also compared months strictly against array keys PHP had turned into
+integers, so October through December never showed as selected there for
+anybody.

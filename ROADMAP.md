@@ -164,7 +164,8 @@ societies confidence in long-term sustainability.
 **Scope:** Incorporation as a Texas nonprofit, IRS Form 1023 or 1023-EZ
 filing, bylaws, board composition, fiscal sponsor arrangement if
 appropriate.
-**Blockers:** Legal and tax advice; time.
+**Blockers:** On hold until the founding board is chosen. The people come
+first; the paperwork follows them.
 
 ---
 

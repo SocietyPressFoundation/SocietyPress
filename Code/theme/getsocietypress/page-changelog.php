@@ -15,19 +15,10 @@ defined( 'ABSPATH' ) || exit;
 
 get_header();
 
-$gsp_changelog_path = ABSPATH . '../sp-docs-source/CHANGELOG.md';
-$gsp_changelog_html = get_transient( 'gsp_changelog_html_v2' );
-
-if ( false === $gsp_changelog_html ) {
-    if ( is_readable( $gsp_changelog_path ) ) {
-        $raw = file_get_contents( $gsp_changelog_path );
-        // Strip the document-level H1 ("# Changelog") since the page hero shows it.
-        $raw = preg_replace( '/^# .+?\n+/', '', $raw, 1 );
-        $gsp_changelog_html = gsp_render_simple_markdown( $raw, 0 );
-    } else {
-        $gsp_changelog_html = '<p><em>The changelog is temporarily unavailable. The full release history is on <a href="https://github.com/SocietyPressFoundation/SocietyPress/blob/main/CHANGELOG.md">GitHub</a>.</em></p>';
-    }
-    set_transient( 'gsp_changelog_html_v2', $gsp_changelog_html, HOUR_IN_SECONDS );
+// Strip the document-level H1 ("# Changelog") since the page hero shows it.
+$gsp_changelog_html = gsp_markdown_file_html( ABSPATH . '../sp-docs-source/CHANGELOG.md', 0, true );
+if ( null === $gsp_changelog_html ) {
+    $gsp_changelog_html = '<p><em>The changelog is temporarily unavailable. The full release history is on <a href="https://github.com/SocietyPressFoundation/SocietyPress/blob/main/CHANGELOG.md">GitHub</a>.</em></p>';
 }
 ?>
 

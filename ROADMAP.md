@@ -19,6 +19,22 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
+### ENS migration walkthrough — published
+
+Shipped 2026-10-16 at
+[getsocietypress.org/docs/ens-migration-walkthrough/](https://getsocietypress.org/docs/ens-migration-walkthrough/).
+One complete ENS import of an invented 22-member society, run on a clean
+1.5.51 install, with screenshots of every step. The member file is rebuilt by
+`scripts/generate-ens-walkthrough-fixture.py`, so anybody can repeat the run
+and check the numbers. Re-running it turned up four defects, fixed in 1.5.51:
+the importing webmaster was added twice, the Import screen's "Add Yourself"
+button didn't link to the webmaster's account, the email entered there was
+discarded, and editing an imported snowbird erased their seasonal dates.
+
+The docs pages it runs on now render tables, images, and wrapped list items,
+and link documents to one another. The migration guide's field-by-field
+reference and six module guides had been showing their tables as raw pipes.
+
 ### SocietyPress 1.5.0 — the first finished release
 
 Released 2026-08-28 as [v1.5.0](https://github.com/SocietyPressFoundation/SocietyPress/releases/tag/v1.5.0).
@@ -139,30 +155,6 @@ gap.
 **Scope:** A 5-minute screencast with voiceover, published to YouTube
 and embedded on the homepage and docs landing.
 **Blockers:** A clean demo environment and time to record.
-
-### ENS Migration demo walkthrough
-
-**Motivation:** The single most effective sales tool for an ENS society
-is a "watch us migrate one" demonstration. Having a live example with
-realistic ENS-format data proves the migration works.
-**Scope:** Perform and document a fresh migration from ENS-format CSVs,
-and publish the walkthrough as a docs page.
-**Status:** Written 2026-08-29 as `docs/ENS-MIGRATION-WALKTHROUGH.md`,
-linked from the migration guide. The migration was run end to end on a
-throwaway WordPress install rather than on the public demo, which
-dissolves the blocker this entry used to carry — the Kindred dataset was
-never at risk and stays where it is. The fixture that drives it lives in
-`Sample Data/ENS Migration Demo/members-export.csv` (22 members, 87
-columns, entirely invented) and is gitignored along with the rest of
-`Sample Data/`, so it must be regenerated rather than cloned.
-
-The run surfaced two importer defects, both now in
-[`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md): institutional members
-lose their organization name unless Membership Type is the exact word
-"Organization", and the importer creates membership tiers that duplicate
-the five built-in ones.
-**Remaining:** screenshots, and publishing the page to the docs site at
-getsocietypress.org/docs/.
 
 ### Incorporate the SocietyPress Foundation as a 501(c)(3)
 

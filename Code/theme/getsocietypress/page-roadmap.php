@@ -15,20 +15,11 @@ defined( 'ABSPATH' ) || exit;
 
 get_header();
 
-$gsp_roadmap_path = ABSPATH . '../sp-docs-source/ROADMAP.md';
-$gsp_roadmap_html = get_transient( 'gsp_roadmap_html_v2' );
-
-if ( false === $gsp_roadmap_html ) {
-    if ( is_readable( $gsp_roadmap_path ) ) {
-        $raw = file_get_contents( $gsp_roadmap_path );
-        // Strip the document-level H1 ("# SocietyPress Roadmap") since the
-        // page hero shows it.
-        $raw = preg_replace( '/^# .+?\n+/', '', $raw, 1 );
-        $gsp_roadmap_html = gsp_render_simple_markdown( $raw, 0 );
-    } else {
-        $gsp_roadmap_html = '<p><em>The roadmap is temporarily unavailable. The current state is on <a href="https://github.com/SocietyPressFoundation/SocietyPress/blob/main/ROADMAP.md">GitHub</a>.</em></p>';
-    }
-    set_transient( 'gsp_roadmap_html_v2', $gsp_roadmap_html, HOUR_IN_SECONDS );
+// Strip the document-level H1 ("# SocietyPress Roadmap") since the page
+// hero shows it.
+$gsp_roadmap_html = gsp_markdown_file_html( ABSPATH . '../sp-docs-source/ROADMAP.md', 0, true );
+if ( null === $gsp_roadmap_html ) {
+    $gsp_roadmap_html = '<p><em>The roadmap is temporarily unavailable. The current state is on <a href="https://github.com/SocietyPressFoundation/SocietyPress/blob/main/ROADMAP.md">GitHub</a>.</em></p>';
 }
 ?>
 

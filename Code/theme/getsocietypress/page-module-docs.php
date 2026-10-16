@@ -52,16 +52,9 @@ get_header();
 <section class="md-section">
     <div class="container">
         <?php if ( $has_file ) :
-            $cache_key = 'gsp_module_doc_' . md5( $requested . '|' . filemtime( $file_path ) );
-            $rendered  = get_transient( $cache_key );
-            if ( false === $rendered ) {
-                $md = file_get_contents( $file_path );
-                // Strip the first H1 since the page hero already shows it
-                $md = preg_replace( '/^# .+?\n+/', '', $md, 1 );
-                // Heading offset 1 — H1 in markdown becomes H2 in the rendered page
-                $rendered = gsp_render_simple_markdown( $md, 1 );
-                set_transient( $cache_key, $rendered, HOUR_IN_SECONDS );
-            }
+            // Strip the first H1 (the hero shows it); offset 1 so the doc's
+            // own headings sit under the page's H1.
+            $rendered = (string) gsp_markdown_file_html( $file_path, 1, true );
             echo '<article class="md-article">' . wp_kses_post( $rendered ) . '</article>';
 
         else :

@@ -381,6 +381,11 @@ get_header();
                     Download SocietyPress
                 </a>
             </div>
+            <p class="ens-cta__more">
+                Want to see one first?
+                <a href="<?php echo esc_url( home_url( '/docs/ens-migration-walkthrough/' ) ); ?>">Follow a complete migration, screen by screen</a>
+                &mdash; 22 members, every awkward case, and the real numbers.
+            </p>
         </div>
     </div>
 </section>

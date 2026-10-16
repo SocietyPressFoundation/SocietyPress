@@ -4,7 +4,7 @@ Theme URI: https://getsocietypress.org
 Author: SocietyPress Contributors
 Author URI: https://getsocietypress.org
 Description: The official theme for getsocietypress.org — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 1.1.19
+Version: 1.1.20
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -4597,6 +4597,17 @@ body.bbpress .page-content .container {
     flex-wrap: wrap;
 }
 
+.ens-cta p.ens-cta__more {
+    margin: var(--spacing-xl) auto 0;
+    font-size: var(--font-size-base);
+}
+
+.ens-cta__more a {
+    color: var(--color-nav-text);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
 @media (max-width: 1024px) {
     .ens-why__grid,
     .ens-migrates__grid { grid-template-columns: 1fr; }
@@ -6214,6 +6225,14 @@ select:focus-visible,
     margin-top: var(--spacing-xl);
 }
 
+/* A "---" in the Markdown already draws a rule; the heading after it
+   shouldn't draw a second one. */
+.guide-page__content hr + h2 {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0;
+}
+
 .guide-page__content h3 {
     margin-top: var(--spacing-xl);
     margin-bottom: var(--spacing-sm);
@@ -6269,6 +6288,9 @@ select:focus-visible,
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
     font-size: 0.9em;
     color: var(--color-primary);
+    /* A long URL in inline code would otherwise push the page sideways on
+       a phone. Code blocks keep their own horizontal scroll (pre below). */
+    overflow-wrap: anywhere;
 }
 
 .guide-page__content pre {
@@ -6300,6 +6322,63 @@ select:focus-visible,
 
 .guide-page__content strong {
     color: var(--color-primary);
+}
+
+/* Tables and figures from gsp_render_simple_markdown(), shared by the guide
+   pages and the module docs. The table scrolls inside its own box so a wide
+   reference table never pushes the page sideways on a phone. */
+.md-table {
+    margin: var(--spacing-lg) 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+}
+
+.md-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+}
+
+.md-table th,
+.md-table td {
+    padding: var(--spacing-sm) var(--spacing-md);
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.md-table th {
+    background: var(--color-surface);
+    color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
+    white-space: nowrap;
+}
+
+.md-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.md-figure {
+    margin: var(--spacing-xl) 0;
+}
+
+.md-figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.md-figure figcaption {
+    margin-top: var(--spacing-sm);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
 }
 
 .guide-page__footer {
@@ -6792,6 +6871,7 @@ select:focus-visible,
     border-radius: 3px;
     font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
     font-size: 0.92em;
+    overflow-wrap: anywhere;
 }
 .md-article pre {
     background: #1f2937;

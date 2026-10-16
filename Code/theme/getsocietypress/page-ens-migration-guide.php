@@ -30,23 +30,13 @@ get_header();
  * The directory is intentionally not called "docs/" — WordPress owns
  * the /docs/ URL (it's the Documentation hub page), and a real server
  * directory at that path would shadow the WP route and produce a 403.
- * Cached in a transient for 1 hour so we're not hitting the filesystem
- * on every page load.
+ * Cached by gsp_markdown_file_html() until the file or the renderer changes.
  */
-$gsp_guide_path = ABSPATH . '../sp-docs-source/ENS-MIGRATION-GUIDE.md';
-$gsp_guide_html = get_transient( 'gsp_ens_guide_html' );
-
-if ( false === $gsp_guide_html ) {
-    if ( is_readable( $gsp_guide_path ) ) {
-        $raw = file_get_contents( $gsp_guide_path );
-        // Offset 1: the page hero already carries the <h1>, so the
-        // markdown's own top-level "# Title" becomes <h2> and the rest
-        // shifts down accordingly.
-        $gsp_guide_html = gsp_render_simple_markdown( $raw, 1 );
-    } else {
-        $gsp_guide_html = '<p><em>The migration guide file is temporarily unavailable. Please try again, or email <a href="mailto:migrations@getsocietypress.org">migrations@getsocietypress.org</a> for a copy.</em></p>';
-    }
-    set_transient( 'gsp_ens_guide_html', $gsp_guide_html, HOUR_IN_SECONDS );
+// Offset 1: the page hero already carries the <h1>, so the markdown's own
+// top-level "# Title" becomes <h2> and the rest shifts down accordingly.
+$gsp_guide_html = gsp_markdown_file_html( ABSPATH . '../sp-docs-source/ENS-MIGRATION-GUIDE.md', 1 );
+if ( null === $gsp_guide_html ) {
+    $gsp_guide_html = '<p><em>The migration guide file is temporarily unavailable. Please try again, or email <a href="mailto:migrations@getsocietypress.org">migrations@getsocietypress.org</a> for a copy.</em></p>';
 }
 ?>
 
@@ -82,6 +72,7 @@ if ( false === $gsp_guide_html ) {
         <div class="guide-page__footer">
             <p>
                 <strong>See also:</strong>
+                <a href="<?php echo esc_url( home_url( '/docs/ens-migration-walkthrough/' ) ); ?>">A migration, start to finish</a> &middot;
                 <a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">ENS migration overview</a> &middot;
                 <a href="<?php echo esc_url( home_url( '/docs/' ) ); ?>">Documentation hub</a> &middot;
                 <a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>">Migration help</a>

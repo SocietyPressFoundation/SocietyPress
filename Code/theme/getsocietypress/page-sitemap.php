@@ -52,6 +52,7 @@ $gsp_sitemap = array(
             array( '/faq/', 'Frequently Asked Questions', null ),
             array( '/ens-migration/', 'Moving from ENS', 'Migration guide for EasyNetSites societies.' ),
             array( '/docs/ens-migration-guide/', 'ENS Migration — Full Guide', 'Step-by-step walkthrough.' ),
+            array( '/docs/ens-migration-walkthrough/', 'ENS Migration — Start to Finish', 'One complete import, screen by screen.' ),
             array( '/docs/troubleshooting/', 'Troubleshooting', 'The ten issues society admins hit most, with fixes.' ),
         ),
     ),

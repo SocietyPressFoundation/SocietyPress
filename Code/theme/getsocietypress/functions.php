@@ -1116,8 +1116,9 @@ if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
      * Render a Markdown string to HTML.
      *
      * Supported: ATX headers, horizontal rule, ordered/unordered lists,
-     * blockquotes, fenced code blocks, paragraphs. Inline: bold, italic,
-     * code, links, bare URLs in angle brackets.
+     * blockquotes, fenced code blocks, pipe tables, images on a line of
+     * their own, paragraphs. Inline: bold, italic, code, links, bare URLs
+     * in angle brackets.
      *
      * @param string $md             The Markdown source.
      * @param int    $heading_offset Shift heading levels down by this many.
@@ -1141,11 +1142,27 @@ if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
             $out[] = '<p>' . gsp_md_inline( implode( ' ', $para_buffer ) ) . '</p>';
             $para_buffer = array();
         };
-        $close_list = function () use ( &$in_list, &$out ) {
+        $li_text    = null; // The list item being collected, unformatted.
+        $flush_li   = function () use ( &$li_text, &$out ) {
+            if ( null === $li_text ) return;
+            $out[]   = '<li>' . gsp_md_inline( $li_text ) . '</li>';
+            $li_text = null;
+        };
+        $close_list = function () use ( &$in_list, &$out, $flush_li ) {
+            $flush_li();
             if ( $in_list ) { $out[] = '</' . $in_list . '>'; $in_list = null; }
         };
         $close_blockquote = function () use ( &$in_blockquote, &$out ) {
             if ( $in_blockquote ) { $out[] = '</blockquote>'; $in_blockquote = false; }
+        };
+
+        // WHY tables: the migration guide's field-by-field reference is a
+        // table, and before this it reached the site as paragraphs of pipes.
+        $table_buffer = array();
+        $flush_table  = function () use ( &$table_buffer, &$out ) {
+            if ( empty( $table_buffer ) ) return;
+            $out[] = gsp_md_table( $table_buffer );
+            $table_buffer = array();
         };
 
         foreach ( $lines as $raw ) {
@@ -1165,7 +1182,20 @@ if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
             }
             if ( $in_code ) { $code_buffer[] = $raw; continue; }
 
+            if ( preg_match( '/^\s*\|/', $line ) ) {
+                $flush_para(); $close_list(); $close_blockquote();
+                $table_buffer[] = $line;
+                continue;
+            }
+            $flush_table();
+
             if ( '' === trim( $line ) ) { $flush_para(); $close_list(); $close_blockquote(); continue; }
+
+            if ( preg_match( '/^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)\s*$/', $line, $m ) ) {
+                $flush_para(); $close_list(); $close_blockquote();
+                $out[] = gsp_md_figure( $m[1], $m[2], isset( $m[3] ) ? $m[3] : '' );
+                continue;
+            }
 
             if ( preg_match( '/^-{3,}\s*$/', $line ) ) {
                 $flush_para(); $close_list(); $close_blockquote();
@@ -1180,6 +1210,15 @@ if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
                 continue;
             }
 
+            // An indented line inside a list continues the item above it —
+            // how every wrapped bullet in the docs is written. The item is
+            // formatted only once complete, so bold or a link that runs
+            // across the wrap still closes.
+            if ( $in_list && null !== $li_text && preg_match( '/^\s{2,}(\S.*)$/', $line, $m ) ) {
+                $li_text .= ' ' . $m[1];
+                continue;
+            }
+
             if ( preg_match( '/^>\s?(.*)$/', $line, $m ) ) {
                 $flush_para(); $close_list();
                 if ( ! $in_blockquote ) { $out[] = '<blockquote>'; $in_blockquote = true; }
@@ -1189,24 +1228,193 @@ if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
 
             if ( preg_match( '/^\d+\.\s+(.+)$/', $line, $m ) ) {
                 $flush_para(); $close_blockquote();
+                $flush_li();
                 if ( 'ol' !== $in_list ) { $close_list(); $out[] = '<ol>'; $in_list = 'ol'; }
-                $out[] = '<li>' . gsp_md_inline( $m[1] ) . '</li>';
+                $li_text = $m[1];
                 continue;
             }
 
             if ( preg_match( '/^-\s+(.+)$/', $line, $m ) ) {
                 $flush_para(); $close_blockquote();
+                $flush_li();
                 if ( 'ul' !== $in_list ) { $close_list(); $out[] = '<ul>'; $in_list = 'ul'; }
-                $out[] = '<li>' . gsp_md_inline( $m[1] ) . '</li>';
+                $li_text = $m[1];
+                continue;
+            }
+
+            // Unindented text straight after an item still belongs to it,
+            // as Markdown has it ("lazy" continuation).
+            if ( $in_list && null !== $li_text ) {
+                $li_text .= ' ' . trim( $line );
                 continue;
             }
 
             $para_buffer[] = $line;
         }
 
-        $flush_para(); $close_list(); $close_blockquote();
+        $flush_table(); $flush_para(); $close_list(); $close_blockquote();
         if ( $in_code ) $out[] = '<pre><code>' . esc_html( implode( "\n", $code_buffer ) ) . '</code></pre>';
         return implode( "\n", $out );
+    }
+}
+
+if ( ! function_exists( 'gsp_md_table' ) ) {
+    /**
+     * Render a run of pipe-table lines. The second line is the header
+     * separator (|---|---|); without one, every line is a body row.
+     *
+     * Wrapped in a scrolling div because a five-column reference table
+     * cannot fit a phone, and the page itself must never scroll sideways.
+     */
+    function gsp_md_table( array $lines ) {
+        $rows = array();
+        foreach ( $lines as $l ) {
+            $l      = trim( $l );
+            $l      = preg_replace( '/^\||\|$/', '', $l );
+            $rows[] = array_map( 'trim', explode( '|', $l ) );
+        }
+        $has_head = isset( $rows[1] ) && count( array_filter( $rows[1], function ( $c ) {
+            return ! preg_match( '/^:?-{2,}:?$/', $c );
+        } ) ) === 0;
+
+        $html = '<div class="md-table"><table>';
+        if ( $has_head ) {
+            $html .= '<thead><tr>';
+            foreach ( $rows[0] as $c ) {
+                $html .= '<th scope="col">' . gsp_md_inline( $c ) . '</th>';
+            }
+            $html .= '</tr></thead>';
+            $rows = array_slice( $rows, 2 );
+        }
+        $html .= '<tbody>';
+        foreach ( $rows as $r ) {
+            $html .= '<tr>';
+            foreach ( $r as $c ) {
+                $html .= '<td>' . gsp_md_inline( $c ) . '</td>';
+            }
+            $html .= '</tr>';
+        }
+        return $html . '</tbody></table></div>';
+    }
+}
+
+if ( ! function_exists( 'gsp_md_figure' ) ) {
+    /**
+     * Render ![alt](src "caption") as a figure.
+     *
+     * WHY the path rewrite: the docs are written so their images also show
+     * on GitHub, which means paths like
+     * ../Code/theme/getsocietypress/images/walkthrough/01-upload.webp.
+     * Everything up to the theme folder is dropped and the theme's own URL
+     * put in its place, so one Markdown file works in both places.
+     */
+    function gsp_md_figure( $alt, $src, $caption = '' ) {
+        $width = $height = 0;
+        if ( ! preg_match( '/^(https?:)?\/\//', $src ) ) {
+            $rel = preg_replace( '#^.*?getsocietypress/#', '', $src );
+            $rel = ltrim( preg_replace( '#\.\./#', '', $rel ), '/' );
+            $file = get_template_directory() . '/' . $rel;
+            if ( is_readable( $file ) ) {
+                $size = getimagesize( $file );
+                if ( $size ) {
+                    list( $width, $height ) = $size;
+                }
+                // Version by file time so a replaced screenshot is fetched
+                // fresh instead of served from a visitor's cache.
+                $rel = add_query_arg( 'v', filemtime( $file ), $rel );
+            }
+            $src = get_template_directory_uri() . '/' . $rel;
+        }
+
+        $img = '<img src="' . esc_url( $src ) . '" alt="' . esc_attr( $alt ) . '" loading="lazy" decoding="async"'
+             . ( $width ? ' width="' . (int) $width . '" height="' . (int) $height . '"' : '' ) . '>';
+        $cap = '' !== $caption ? '<figcaption>' . gsp_md_inline( $caption ) . '</figcaption>' : '';
+        return '<figure class="md-figure">' . $img . $cap . '</figure>';
+    }
+}
+
+if ( ! defined( 'GSP_MARKDOWN_RENDERER' ) ) {
+    // Bump when the renderer's output changes, so cached pages re-render.
+    define( 'GSP_MARKDOWN_RENDERER', '2' );
+}
+
+if ( ! function_exists( 'gsp_markdown_file_html' ) ) {
+    /**
+     * Render a Markdown file, cached until the file or the renderer changes.
+     *
+     * WHY the key includes the file's modified time and the renderer
+     * version: a fixed key served the old page for up to an hour after
+     * every deploy, so a corrected doc looked uncorrected. A new file or
+     * a new renderer now simply misses the cache.
+     *
+     * @param string $path           Absolute path to the Markdown file.
+     * @param int    $heading_offset See gsp_render_simple_markdown().
+     * @param bool   $strip_h1       Drop the file's first "# Title" line,
+     *                               for pages whose hero already shows it.
+     * @return string|null HTML, or null if the file can't be read.
+     */
+    function gsp_markdown_file_html( $path, $heading_offset = 0, $strip_h1 = false ) {
+        if ( ! is_readable( $path ) ) {
+            return null;
+        }
+        $key  = 'gsp_md_' . md5( $path . '|' . filemtime( $path ) . '|' . $heading_offset . '|' . (int) $strip_h1 . '|' . GSP_MARKDOWN_RENDERER );
+        $html = get_transient( $key );
+        if ( false === $html ) {
+            $raw = file_get_contents( $path );
+            if ( $strip_h1 ) {
+                $raw = preg_replace( '/^# .+?\n+/', '', $raw, 1 );
+            }
+            $html = gsp_render_simple_markdown( $raw, $heading_offset );
+            set_transient( $key, $html, DAY_IN_SECONDS );
+        }
+        return $html;
+    }
+}
+
+if ( ! function_exists( 'gsp_md_link_url' ) ) {
+    /**
+     * Where a relative link in a Markdown doc should go on this site.
+     *
+     * WHY: the docs link to each other by filename ("members.md",
+     * "ENS-MIGRATION-GUIDE.md") so they work on GitHub. Prefixed with the
+     * site address as they were, every one of those was a 404. Docs the site
+     * publishes go to their page; anything else goes to the file on GitHub.
+     */
+    function gsp_md_link_url( $url ) {
+        $anchor = '';
+        if ( false !== strpos( $url, '#' ) ) {
+            list( $url, $frag ) = explode( '#', $url, 2 );
+            $anchor = '#' . $frag;
+        }
+        if ( ! preg_match( '/\.md$/i', $url ) ) {
+            return home_url( '/' ) . ltrim( $url, '/' ) . $anchor;
+        }
+
+        $name  = basename( $url );
+        $pages = array(
+            'ENS-MIGRATION-GUIDE.md'       => '/docs/ens-migration-guide/',
+            'ENS-MIGRATION-WALKTHROUGH.md' => '/docs/ens-migration-walkthrough/',
+            'CHANGELOG.md'                 => '/changelog/',
+            'ROADMAP.md'                   => '/roadmap/',
+        );
+        if ( isset( $pages[ $name ] ) ) {
+            return home_url( $pages[ $name ] ) . $anchor;
+        }
+
+        $slug = strtolower( preg_replace( '/\.md$/i', '', $name ) );
+        if ( preg_match( '/^[a-z0-9_-]+$/', $slug ) && file_exists( ABSPATH . '../sp-docs-source/modules/' . $slug . '.md' ) ) {
+            return add_query_arg( 'guide', $slug, home_url( '/docs/modules/' ) ) . $anchor;
+        }
+
+        // Files the site doesn't publish, by where they live in the repo.
+        $repo = array(
+            'KNOWN-ISSUES.md'    => 'docs/KNOWN-ISSUES.md',
+            'CHANGELOG-1.x.md'   => 'CHANGELOG-1.x.md',
+            'CHANGELOG-pre1.md'  => 'CHANGELOG-pre1.md',
+            'CONTRIBUTING.md'    => 'CONTRIBUTING.md',
+        );
+        $path = isset( $repo[ $name ] ) ? $repo[ $name ] : ltrim( str_replace( '../', '', $url ), '/' );
+        return 'https://github.com/SocietyPressFoundation/SocietyPress/blob/main/' . $path . $anchor;
     }
 }
 
@@ -1225,7 +1433,7 @@ if ( ! function_exists( 'gsp_md_inline' ) ) {
             function ( $m ) {
                 $url = $m[2];
                 if ( ! preg_match( '/^(https?:|mailto:|#|\/)/', $url ) ) {
-                    $url = home_url( '/' ) . ltrim( $url, '/' );
+                    $url = gsp_md_link_url( $url );
                 }
                 return '<a href="' . esc_url( $url ) . '">' . $m[1] . '</a>';
             },
@@ -1815,3 +2023,35 @@ function gsp_receive_install_attempt( WP_REST_Request $request ) {
 
     return new WP_REST_Response( [ 'ok' => true ], 200 );
 }
+
+
+/**
+ * Create the ENS migration walkthrough page under Docs, once.
+ *
+ * WHY here rather than by hand: the template is matched by slug, so the page
+ * must exist for /docs/ens-migration-walkthrough/ to resolve, and a page that
+ * only appears after somebody remembers to make it in wp-admin is a deploy
+ * step waiting to be missed. Runs on the first request after deploy; the
+ * option (autoloaded, so checking it costs no query) stops it running again,
+ * and means a page deliberately removed stays gone.
+ */
+function gsp_ensure_walkthrough_page() {
+    if ( get_option( 'gsp_walkthrough_page_created' ) ) {
+        return;
+    }
+    $parent = get_page_by_path( 'docs' );
+    if ( ! $parent ) {
+        return; // Try again once the Docs page exists.
+    }
+    if ( ! get_page_by_path( 'docs/ens-migration-walkthrough' ) ) {
+        wp_insert_post( array(
+            'post_type'   => 'page',
+            'post_status' => 'publish',
+            'post_title'  => 'A Migration, Start to Finish',
+            'post_name'   => 'ens-migration-walkthrough',
+            'post_parent' => $parent->ID,
+        ) );
+    }
+    update_option( 'gsp_walkthrough_page_created', 1, true );
+}
+add_action( 'init', 'gsp_ensure_walkthrough_page' );

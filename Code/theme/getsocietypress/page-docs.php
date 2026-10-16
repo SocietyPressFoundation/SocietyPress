@@ -123,6 +123,7 @@ get_header();
                 </ul>
                 <ul class="docs-card__links">
                     <li><a href="<?php echo esc_url( home_url( '/docs/ens-migration/' ) ); ?>">CSV Import from ENS</a></li>
+                    <li><a href="<?php echo esc_url( home_url( '/docs/ens-migration-walkthrough/' ) ); ?>">A migration, start to finish</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/docs/faq/' ) ); ?>">Role templates &amp; access areas (FAQ)</a></li>
                 </ul>
             </div>

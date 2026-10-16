@@ -300,6 +300,12 @@ case "${1:-plugin}" in
         else
             echo "  OK: ENS migration guide deployed."
         fi
+        if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-WALKTHROUGH.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-WALKTHROUGH.md"; then
+            echo "  FAILED: ENS-MIGRATION-WALKTHROUGH.md scp did not complete."
+            OVERALL_STATUS=1
+        else
+            echo "  OK: ENS migration walkthrough deployed."
+        fi
         if ! scp "$LOCAL_BASE/docs/modules/"*.md "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/modules/"; then
             echo "  FAILED: module-docs scp did not complete."
             OVERALL_STATUS=1

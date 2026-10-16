@@ -99,22 +99,6 @@ Dormant so that "not moving" is not mistaken for "not started" — both of
 these were mistaken for unstarted work on 2026-08-29, which is why the
 section exists.
 
-### Softaculous one-click install
-
-**Motivation:** Most of the target audience hosts on cPanel providers
-where Softaculous is the default installer. A one-click install cuts
-the path from "heard about SocietyPress" to "running on my site" from
-an afternoon to three minutes.
-**Scope:** Build the Softaculous package per their submission spec
-(`info.xml`, screenshots, bundle ZIP layout), validate it with
-`scripts/build-softaculous.sh` end-to-end, and submit through the
-partner program.
-**Status:** Submitted 2026-08-29. The package was rebuilt against
-Softaculous's real file format in 1.5.1 and had its eight screenshots and
-its wordmark added before submission. Softaculous acknowledged with
-support ticket **#992945**; no human reply yet. Nothing further to do
-until they respond.
-
 ### GitHub Sponsors / Open Collective
 
 **Motivation:** Recurring sponsorship smooths income volatility and
@@ -145,6 +129,20 @@ that what is missing from SocietyPress is written down honestly rather
 than remembered by one person.
 
 Everything else that was on this roadmap has shipped.
+
+### Softaculous one-click install
+
+**Motivation:** Most of the target audience hosts on cPanel providers
+where Softaculous is the default installer. A one-click install cuts
+the path from "heard about SocietyPress" to "running on my site" from
+an afternoon to three minutes.
+**Scope:** Build the Softaculous package per their submission spec
+(`info.xml`, screenshots, bundle ZIP layout), validate it with
+`scripts/build-softaculous.sh` end-to-end, and submit through the
+partner program.
+**Status:** Tabled 2026-10-15. Softaculous answered ticket #992945 wanting
+to list SocietyPress as a WordPress plugin rather than as its own platform.
+That framing is not settled, so the submission is on hold until it is.
 
 ### 5-minute Getting Started screencast
 

@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.52] — 2026-10-16
+
+**Files are easier to recognize and to work with in bulk.** The Files screen's
+cards are larger, with bigger thumbnails and titles that wrap instead of being
+cut off. Clicking an image's thumbnail opens it full size; other files open in
+a new tab. A Select all checkbox ticks every file on the page and can extend to
+every file in the view, not just the 100 shown. Move, Delete and the new
+Download button act on the whole selection, and Download saves it as one zip.
+
+**The Files screen's buttons work again.** A script error stopped every button
+and checkbox on the Files screen from responding. Fixed.
+
 ## [1.5.51] — 2026-10-16
 
 **Importing no longer adds you twice.** The Import screen asks you to add

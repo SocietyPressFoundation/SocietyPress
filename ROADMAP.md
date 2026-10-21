@@ -91,6 +91,107 @@ For everything that shipped before 1.5.0, see
 
 ---
 
+## Next up
+
+Work that is wanted and unblocked, by priority. Collected 2026-10-21 from
+every SocietyPress working session since 1.5.0 and checked against the code,
+so that nothing lives only in a conversation. When a session leaves something
+unfinished, it goes here or in [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md)
+before the session ends.
+
+### High
+
+#### Survey editor redesign
+
+**Motivation:** The survey editor works but asks a volunteer to think in
+form-builder terms. A question-by-question editor, the shape people know
+from SurveyMonkey, is what a non-technical officer expects.
+**Scope:** Finish, test and release the redesign on the
+`wip/survey-editor-redesign` branch (one commit, 2026-10-15, marked untested
+and not for release; 468 lines added, 147 removed in the plugin).
+**Blockers:** None.
+
+#### Handle admin form saves before the page renders
+
+**Motivation:** About thirty admin screens save their forms inside the
+function that draws the screen, after output has begun. 1.5.x holds the
+response open so the redirect after a save still works, but that is a floor
+under the symptom, not the fix.
+**Scope:** Move each screen's POST handling to `admin_init` or
+`load-{$page_hook}`, one screen group at a time with a test after each. The
+diagnosis and the rule against widening the buffer are in
+[`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md). Also still owed: one person
+saving a real form and confirming the debug log stays clean.
+**Blockers:** None.
+
+### Medium
+
+#### Join form: volunteering, print by mail, how they heard about us
+
+**Motivation:** Three questions on nearly every society's paper application
+are missing from the online one, so a society moving online loses them.
+**Scope:** An optional "Willing to volunteer?" checkbox that reveals a skills
+box (writes the existing `volunteer` and `skills` columns); "I'd like the
+printed journal by mail" (writes the existing `receive_print` column); and
+"How did you hear about us?" with an Other box, kept in member meta. Built
+once on a pre-1.5 branch in PR #5 and never merged; rebuild it on the current
+join form rather than merging that.
+**Blockers:** None.
+
+#### AI assistant and problem reports
+
+**Motivation:** Officers answer the same questions by email — when the next
+meeting is, whether the library has anything on a county, what membership
+costs — and volunteers ask the same how-do-I questions of whoever set the
+site up.
+**Scope:** An optional module, built once on a pre-1.5 branch in PR #7 and
+never merged; rebuild it on current code from that design:
+- A public assistant that answers from the site's own search results, never
+  from memory, and says "contact the society" rather than guess. The member
+  directory is excluded entirely; retrieval goes through
+  `sp_do_unified_search()` so a visitor can never surface members-only content.
+- "Ask SocietyPress" for volunteers: how-to answers based on the modules
+  that are on and the screens that person can actually open.
+- "Report a Problem": files a fault from the page it happened on with the
+  technical details captured automatically and no IP address, into a queue
+  under Settings, with an optional button to send it to GitHub that never
+  includes the reporter's name or email.
+- The society supplies its own Anthropic key, stored encrypted or set in
+  `wp-config.php`; per-person and per-day caps; every exchange logged with
+  its cost; both features covered by the privacy export and erase tools.
+**Blockers:** None. The Anthropic round trip, the GitHub push and the upgrade
+path were never run against a live site on the old branch; they are part of
+the rebuild.
+
+#### Notes between admins
+
+**Motivation:** Volunteers run a society in shifts and rarely meet. There is
+nowhere in the admin to leave "waiting on the treasurer to confirm the
+refund" or "don't send the newsletter until Friday" for whoever signs in
+next, so it happens by email and gets lost.
+**Scope:** A simple notes board in the admin, visible only to staff: post a
+note, see who wrote it and when, mark it resolved or delete it. The newest
+open notes show on the dashboard. Never on the public site, gated behind an
+admin capability, and deliberately not a ticketing system. First written up
+in PR #6.
+**Blockers:** None.
+
+#### iPad kiosk
+
+**Motivation:** At a seminar door or a library desk, a society needs to sign
+people in, take walk-in registrations and collect dues on a tablet, often
+with poor Wi-Fi.
+**Scope:** A native iPadOS app for event registration and check-in, library
+visitor sign-in, and join or renew with card-present payment through a Stripe
+reader; offline for everything except the payment itself. The design spec is
+in draft PR #12 (`docs/KIOSK-SPEC.md`), including the open questions it
+deliberately leaves to be decided.
+**Blockers:** The spec's open questions — attended or unattended use, idle
+timeout, receipts and printing, App Store distribution, identity check on
+renewal.
+
+---
+
 ## Submitted — waiting on someone else
 
 Work that is finished on this side and sitting in another organization's
@@ -130,7 +231,8 @@ abandoned and nothing here is scheduled — it is parked in one place so
 that what is missing from SocietyPress is written down honestly rather
 than remembered by one person.
 
-Everything else that was on this roadmap has shipped.
+Everything else that was on this roadmap has shipped or is listed under
+Next up.
 
 ### Softaculous one-click install
 

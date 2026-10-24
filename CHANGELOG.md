@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.53] — 2026-10-23
+
+**The catalog can be sorted and filtered by when an item was acquired.** The
+Library Catalog list has a new Date Acquired column. Click its heading to see
+the newest additions first, and use the new year dropdown to show only what
+came in during a given year. Items with no acquisition date go to the bottom.
+The column that already showed how an item came in (donation, purchase, and so
+on) is now labeled How Acquired, so the two aren't confused.
+
+**Subject, Media Type and Location tick boxes are one per value again.** On the
+Add Item and Edit Item screens, an item filed under several subjects was
+offered as one long choice with the subjects joined by vertical bars. Each
+value now gets its own tick box, matching the list on Catalog Options.
+
 ## [1.5.52] — 2026-10-16
 
 **Files are easier to recognize and to work with in bulk.** The Files screen's

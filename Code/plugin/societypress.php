@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.52
+ * Version:     1.5.53
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.52' );
+define( 'SOCIETYPRESS_VERSION', '1.5.53' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40194,7 +40194,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.52',
+            'version'     => '1.5.53',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40202,7 +40202,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.52',
+            'version'     => '1.5.53',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40210,7 +40210,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.52',
+            'version'     => '1.5.53',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40218,7 +40218,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.52',
+            'version'     => '1.5.53',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40226,7 +40226,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.52',
+            'version'     => '1.5.53',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -76308,20 +76308,20 @@ function sp_library_list_choices( string $kind, string $current = '' ): array {
 
     // Values in use that nobody has added to the list yet. Cached because the
     // item form is opened one record at a time and this scans the whole table.
-    $cache_key = 'sp_library_inuse_' . $kind;
+    // WHY split: an item with three subjects stores them as one joined string,
+    //      so taking the column's distinct values offered every combination
+    //      ever saved as a tick box of its own. The key changed with the fix
+    //      so an hour-old cache of joined strings is not served after upgrade.
+    $cache_key = 'sp_library_inuse_v2_' . $kind;
     $in_use    = get_transient( $cache_key );
 
     if ( ! is_array( $in_use ) ) {
-        $column = $kinds[ $kind ]['column'];
-        $in_use = $wpdb->get_col(
-            "SELECT DISTINCT `{$column}` FROM {$wpdb->prefix}sp_library_items
-             WHERE `{$column}` IS NOT NULL AND `{$column}` <> '' LIMIT 500"
-        );
-        set_transient( $cache_key, is_array( $in_use ) ? $in_use : [], HOUR_IN_SECONDS );
+        $in_use = array_keys( sp_library_value_counts( $kinds[ $kind ]['column'], $kind ) );
+        set_transient( $cache_key, $in_use, HOUR_IN_SECONDS );
     }
 
     if ( $current !== '' ) {
-        $in_use[] = $current;
+        $in_use = array_merge( $in_use, sp_library_split_values( $current, $kind ) );
     }
 
     return sp_clean_library_list( array_merge( $values, (array) $in_use ) );
@@ -76351,7 +76351,7 @@ function sp_library_list_add( string $kind, string $value ): void {
     $lists[ $kind ]   = sp_clean_library_list( $lists[ $kind ] );
 
     update_option( 'sp_library_lists', $lists );
-    delete_transient( 'sp_library_inuse_' . $kind );
+    delete_transient( 'sp_library_inuse_v2_' . $kind );
 }
 
 /**
@@ -76776,7 +76776,7 @@ function sp_render_library_lists_page(): void {
         update_option( 'sp_library_lists', $lists );
 
         foreach ( array_keys( $kinds ) as $kind ) {
-            delete_transient( 'sp_library_inuse_' . $kind );
+            delete_transient( 'sp_library_inuse_v2_' . $kind );
         }
 
         // Columns arrive in the order the arrows left them in; only the ticked
@@ -76973,6 +76973,30 @@ function sp_render_library_lists_page(): void {
 
 
 /**
+ * An item's acquisition date as far as it is known: "1987", "Mar 1987", or
+ * "Mar 4, 1987". A dash when there is no year at all.
+ */
+function sp_library_acq_date_label( object $item ): string {
+    $y = (int) ( $item->acq_year ?? 0 );
+    $m = (int) ( $item->acq_month ?? 0 );
+    $d = (int) ( $item->acq_day ?? 0 );
+    if ( $y < 1 ) {
+        return '—';
+    }
+    if ( $m < 1 || $m > 12 ) {
+        return (string) $y;
+    }
+    // A fixed date, not mktime(): years before 1901 overflow some platforms.
+    $month = date_i18n( 'M', gmmktime( 0, 0, 0, $m, 1, 2000 ) );
+    if ( $d < 1 || $d > 31 ) {
+        /* translators: 1: short month name, 2: year */
+        return sprintf( __( '%1$s %2$d', 'societypress' ), $month, $y );
+    }
+    /* translators: 1: short month name, 2: day, 3: year */
+    return sprintf( __( '%1$s %2$d, %3$d', 'societypress' ), $month, $d, $y );
+}
+
+/**
  * Render: Library Catalog Admin Page
  *
  * WHY: WP_List_Table-style list showing all library items with search,
@@ -76998,12 +77022,15 @@ function sp_render_library_catalog_page(): void {
     $media_filter = isset( $_GET['media_type'] ) ? sanitize_text_field( wp_unslash( $_GET['media_type'] ) ) : '';
     $shelf_filter = isset( $_GET['shelf'] ) ? sanitize_text_field( wp_unslash( $_GET['shelf'] ) ) : '';
     $acq_filter   = isset( $_GET['acq_code'] ) ? sanitize_text_field( wp_unslash( $_GET['acq_code'] ) ) : '';
+    $year_filter  = absint( $_GET['acq_year'] ?? 0 );
 
     // Get distinct values for filter dropdowns
     $media_types     = array_keys( sp_library_value_counts( 'media_type', 'media_type' ) );
     sort( $media_types );
     $shelf_locations = $wpdb->get_col( "SELECT DISTINCT shelf_location FROM {$prefix}library_items WHERE shelf_location IS NOT NULL AND shelf_location != '' ORDER BY shelf_location ASC" );
     $acq_codes       = $wpdb->get_col( "SELECT DISTINCT acq_code FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' ORDER BY acq_code ASC" );
+    // Newest first: "what came in this year" is the question a librarian asks.
+    $acq_years       = $wpdb->get_col( "SELECT DISTINCT acq_year FROM {$prefix}library_items WHERE acq_year > 0 ORDER BY acq_year DESC" );
 
     // Build WHERE clause
     $where = [ '1=1' ];
@@ -77027,14 +77054,25 @@ function sp_render_library_catalog_page(): void {
     if ( $acq_filter ) {
         $where[] = $wpdb->prepare( 'li.acq_code = %s', $acq_filter );
     }
+    if ( $year_filter ) {
+        $where[] = $wpdb->prepare( 'li.acq_year = %d', $year_filter );
+    }
     $where_sql = implode( ' AND ', $where );
 
     // Sorting
-    $allowed_orderby = [ 'title', 'author', 'media_type', 'shelf_location', 'call_number', 'pub_year', 'acq_code' ];
+    $allowed_orderby = [ 'title', 'author', 'media_type', 'shelf_location', 'call_number', 'pub_year', 'acq_code', 'acq_date' ];
     $orderby = isset( $_GET['orderby'] ) && in_array( $_GET['orderby'], $allowed_orderby, true )
              ? 'li.' . $_GET['orderby']
              : 'li.title';
     $order = isset( $_GET['order'] ) && strtoupper( $_GET['order'] ) === 'DESC' ? 'DESC' : 'ASC';
+    $order_sql = "{$orderby} {$order}";
+    if ( $orderby === 'li.acq_date' ) {
+        // WHY three columns: the acquisition date is stored as year, month and
+        //      day so a donation remembered only as "1987" can still be entered.
+        //      Undated items sink to the bottom in both directions, so sorting
+        //      newest-first shows the newest additions rather than blanks.
+        $order_sql = "( li.acq_year IS NULL OR li.acq_year = 0 ) ASC, li.acq_year {$order}, li.acq_month {$order}, li.acq_day {$order}";
+    }
 
     // Read per-page from settings (same setting the directory uses)
     $settings = sp_settings();
@@ -77048,7 +77086,7 @@ function sp_render_library_catalog_page(): void {
         "SELECT li.*
          FROM {$prefix}library_items li
          WHERE {$where_sql}
-         ORDER BY {$orderby} {$order}
+         ORDER BY {$order_sql}
          LIMIT %d OFFSET %d",
         $per_page,
         $offset
@@ -77176,6 +77214,7 @@ function sp_render_library_catalog_page(): void {
         if ( $media_filter ) $export_args['media_type']  = $media_filter;
         if ( $shelf_filter ) $export_args['shelf']       = $shelf_filter;
         if ( $acq_filter )   $export_args['acq_code']    = $acq_filter;
+        if ( $year_filter )  $export_args['acq_year']    = $year_filter;
         $export_url = wp_nonce_url( add_query_arg( $export_args, admin_url( 'admin-ajax.php' ) ), 'sp_export_library' );
         ?>
         <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
@@ -77311,8 +77350,18 @@ function sp_render_library_catalog_page(): void {
                 </select>
             </div>
             <?php endif; ?>
+            <?php if ( $acq_years ) : ?>
+            <div>
+                <select name="acq_year" aria-label="<?php esc_attr_e( 'Year acquired', 'societypress' ); ?>">
+                    <option value=""><?php esc_html_e( 'Any Year Acquired', 'societypress' ); ?></option>
+                    <?php foreach ( $acq_years as $ay ) : ?>
+                        <option value="<?php echo (int) $ay; ?>" <?php selected( $year_filter, (int) $ay ); ?>><?php echo (int) $ay; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <input type="submit" class="button" value="<?php echo esc_attr__( 'Filter', 'societypress' ); ?>">
-            <?php if ( $search || $media_filter || $shelf_filter || $acq_filter ) : ?>
+            <?php if ( $search || $media_filter || $shelf_filter || $acq_filter || $year_filter ) : ?>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="button"><?php esc_html_e( 'Clear', 'societypress' ); ?></a>
             <?php endif; ?>
         </form>
@@ -77328,12 +77377,13 @@ function sp_render_library_catalog_page(): void {
                     <th scope="col"><?php echo $sort_link( 'call_number', __( 'Call #', 'societypress' ) ); ?></th>
                     <th scope="col"><?php echo $sort_link( 'shelf_location', __( 'Location', 'societypress' ) ); ?></th>
                     <th scope="col"><?php echo $sort_link( 'pub_year', __( 'Year', 'societypress' ) ); ?></th>
-                    <th scope="col"><?php echo $sort_link( 'acq_code', __( 'Acquired', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'acq_code', __( 'How Acquired', 'societypress' ) ); ?></th>
+                    <th scope="col"><?php echo $sort_link( 'acq_date', __( 'Date Acquired', 'societypress' ) ); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="7"><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
+                    <tr><td colspan="8"><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $item ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library-item-edit&item_id=' . $item->id );
@@ -77353,6 +77403,7 @@ function sp_render_library_catalog_page(): void {
                             <td><?php echo esc_html( $item->shelf_location ?: '—' ); ?></td>
                             <td><?php echo esc_html( $item->pub_year ?: '—' ); ?></td>
                             <td><?php echo esc_html( $item->acq_code ?: '—' ); ?></td>
+                            <td><?php echo esc_html( sp_library_acq_date_label( $item ) ); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
@@ -90276,6 +90327,10 @@ function sp_ajax_export_library(): void {
     $acq_filter = isset( $_GET['acq_code'] ) ? sanitize_text_field( wp_unslash( $_GET['acq_code'] ) ) : '';
     if ( $acq_filter ) {
         $where[] = $wpdb->prepare( 'li.acq_code = %s', $acq_filter );
+    }
+    $year_filter = absint( $_GET['acq_year'] ?? 0 );
+    if ( $year_filter ) {
+        $where[] = $wpdb->prepare( 'li.acq_year = %d', $year_filter );
     }
     $where_sql = implode( ' AND ', $where );
 

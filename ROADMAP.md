@@ -139,6 +139,17 @@ saving a real form and confirming the debug log stays clean.
 
 ### Medium
 
+#### Send a test email
+
+**Motivation:** "Is my site's email working?" is the first question behind
+most "nobody got the reminder" problems, and seven guides once sent readers to
+a Send test email button that doesn't exist. Today the only test is asking for
+a password reset.
+**Scope:** A button on a settings screen that sends a test message to the
+person clicking it and reports whether WordPress accepted it, with the same
+"from" name members' emails use.
+**Blockers:** None.
+
 #### Join form: volunteering, print by mail, how they heard about us
 
 **Motivation:** Three questions on nearly every society's paper application

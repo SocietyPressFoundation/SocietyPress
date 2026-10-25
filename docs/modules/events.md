@@ -5,67 +5,63 @@ Calendar, registration, recurring events, and speaker management. The most-used 
 ## What you can do
 
 - Publish a calendar of upcoming events with descriptions, locations, dates, times, and images.
-- Take registrations online with optional fees (Stripe + PayPal).
-- Run recurring events (weekly, monthly, every-other-Tuesday) without manually creating each occurrence.
-- Manage speakers separately so the same speaker can be tagged on multiple events.
-- Send reminder emails before an event.
-- Show registered attendees to members or keep the list private.
-- Pull external events into your calendar via iCal feeds.
-- Publish your calendar as an iCal feed so members can subscribe in Google Calendar / Apple Calendar.
+- Take registrations online, with separate member and non-member prices and card payment through Stripe.
+- Ask each attendee a question when they register — a meal choice, say — where each answer can change the price and have its own limit.
+- Repeat an event weekly or monthly without creating each one by hand.
+- Keep speakers in one list, so the same speaker can be added to many events.
+- Email attendees a reminder before an event, and a confirmation when they register.
+- Pull other organizations' events into your calendar from their iCal feeds.
+- Publish your calendar as an iCal feed members can subscribe to in Google Calendar or Apple Calendar.
 
 ## How to add your first event
 
-**SocietyPress → Events → Add New.** Title, description, date, time, location. Save.
+**SocietyPress → Events → Add Event.** Title, description, date, time, location. Save.
 
-If you want online registration, scroll down and tick "Enable registration." Set member price and non-member price (use 0.00 for free events). Set a registration limit if you have a venue capacity.
+If you want online registration, tick **Enable registration**. Set the member price and the non-member price (0.00 for a free event), and a registration limit if the room only holds so many.
 
-If you want a confirmation email to go out, the system handles it automatically once Settings → Email is configured.
+A confirmation email goes out to everyone who registers. Its subject line is under **SocietyPress → Settings → Events**.
 
 ## How to make an event recurring
 
-On the event edit page, look for the **Recurrence** section.
+On the event edit page, find **Recurring Event** and pick from **Recurrence**:
 
-- **Daily** — every N days.
-- **Weekly** — every N weeks on specific days (e.g., every other Tuesday).
-- **Monthly by date** — the 15th of every month.
-- **Monthly by day** — the 2nd Tuesday of every month.
+- **Every week on the same day**
+- **Every month on the same weekday** — the second Tuesday, the last Friday
+- **Every month on the same date** — the 15th
 
-Pick an end date (or a maximum number of occurrences). Save. SocietyPress generates each occurrence as its own event row, so you can edit any single occurrence independently if (say) one month's meeting moves to a different room.
+Set **Repeat Until**, or leave it blank for twelve months. Save. SocietyPress creates each occurrence as its own event, so you can change one without touching the rest — when one month's meeting moves to a different room, edit just that one.
 
-To detach an occurrence from its series — for example, the December meeting is at a restaurant instead of the usual library — open that occurrence and click "Detach from series." It becomes a standalone event you can edit without affecting the rest of the series.
+To take an occurrence out of its series completely — the December meeting is at a restaurant instead of the library — open it and click **Detach from Series**. It becomes a standalone event. This can't be undone.
 
 ## How to manage speakers
 
-**SocietyPress → Events → Speakers.** Add a speaker once with their bio, photo, and contact info. Then on any event edit page, pick them from the Speaker dropdown. The event display pulls in their bio and photo automatically.
+**SocietyPress → Events → Speakers.** Add a speaker once with their bio, photo, and contact info. Then on any event's edit page, add them to the event and pick their role: Speaker, Instructor, Moderator or Panelist. The event page shows their bio and photo.
 
-A single event can list multiple speakers (panel discussions, workshops with co-presenters). Just add them all on the event edit page.
+An event can have several speakers — a panel, or a workshop with co-presenters.
 
-## How to subscribe a feed
+## How to subscribe to other calendars
 
-**SocietyPress → Events → External Calendars** lets you add iCal URLs from elsewhere — a partner society's calendar, a county genealogy library's events, etc. SocietyPress polls them on a schedule and merges their events into your calendar with a small "via [source]" label.
+**SocietyPress → Events → External Calendars** takes iCal addresses from elsewhere — a partner society's calendar, the county library's events. SocietyPress checks them on a schedule and adds their events to your calendar. Each feed shows when it last synced and the last error, if any; **Sync now** checks immediately. To edit one imported event on its own, open it and click **Detach from Feed**.
 
-To publish your own iCal feed for members to subscribe to, the URL is `https://yoursite.org/?ical=1` (configurable). Members add this URL to their Google Calendar / Apple Calendar app's "Subscribe to a calendar" feature and it auto-syncs.
+Your own calendar is published as a feed too. Your public events pages have a **Subscribe** menu that opens it in a calendar app or gives the address to copy into Google Calendar; a signed-in member gets their own address that includes members-only events. Subscribed calendars stay up to date on their own. The feed can be switched off under **SocietyPress → Settings → Events**.
 
 ## How to put the calendar on a page
 
-Two paths:
+Use the page builder: drop the **Events Calendar** widget on a page for a month grid, or **Upcoming Events** for a list.
 
-- **Page builder.** Drop the "Event Calendar" or "Upcoming Events" widget. The Calendar widget shows a grid (month view); the Upcoming widget shows a list. Both are filterable by category.
-- **Shortcode.** `[sp_calendar]` for the grid, `[sp_upcoming_events]` for the list. Both accept attributes to limit the count, filter by category, etc.
-
-Most societies put Upcoming Events on the homepage and a full Calendar on a dedicated /events/ page.
+Most societies put Upcoming Events on the homepage and a full calendar on a dedicated events page.
 
 ## If something looks wrong
 
-**The recurrence isn't showing up.** Save the event, then refresh the events list. Recurrence generation runs at save time but isn't always instant — give it a few seconds and reload.
+**The occurrences aren't showing up.** Save the event, then reload the events list. They're created when you save.
 
-**Stripe registration says "not configured."** Drop your Stripe credentials in **SocietyPress → Settings → Payments** first. Test mode + sandbox keys work; switch to live mode when ready.
+**Registration says Stripe isn't set up.** Add your Stripe keys under **SocietyPress → Settings → Events → Online Payments**. Test mode with Stripe's test keys works for trying it out; switch to live keys when you're ready.
 
-**A member registered but didn't get a confirmation email.** **SocietyPress → Settings → Email → Send test email** to verify outbound mail works. If the test fails, your host probably blocks WordPress's default mail — switch to SMTP under the same Settings page.
+**A member registered but didn't get a confirmation email.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test. If that never arrives, your host is probably blocking WordPress's mail; see [Email Setup](email-setup.md).
 
-**An external iCal feed isn't pulling in.** **SocietyPress → Events → External Calendars** shows the last sync time and any errors. Click "Sync now" to force a refresh. If the URL has changed at the source, edit it. Some calendars require authentication (rare for genealogical societies) and SocietyPress doesn't currently support those.
+**An external iCal feed isn't coming in.** **SocietyPress → Events → External Calendars** shows when each feed last synced and its last error. Click **Sync now** to try again. If the address has changed at the source, edit it. Feeds that need a password aren't supported.
 
-**Recurring events are flooding the list.** The default cap is 100 occurrences per series. If a "weekly forever" series is generating too many, set an explicit end date (e.g., "December 2026") instead of leaving it open-ended.
+**A weekly series runs too far ahead.** Set **Repeat Until** to the date it should stop. Left blank, a series runs twelve months.
 
 ## Related guides
 

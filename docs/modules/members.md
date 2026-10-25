@@ -6,15 +6,15 @@ The roster. Every other module — events, donations, voting, library checkouts 
 
 - Keep a roster with contact info, household relationships, dues status, and renewal dates.
 - Import members from a CSV (recognized ENS format included — no manual mapping needed).
-- Tier members into different membership levels (Individual, Joint, Lifetime, Honorary, Subscription).
-- Auto-send renewal reminders before and after a member lapses.
+- Put members on membership plans. Five come ready-made — Individual, Joint/Family, Student, Lifetime, Honorary — and you can add your own.
+- Email renewal reminders automatically before a membership expires.
 - Show a public member directory with privacy controls (each member chooses what's visible).
 - Track surnames each member is researching for the public Surname Research database.
 - Export everyone's data as CSV for backup or to move elsewhere.
 
 ## How to add your first member
 
-**SocietyPress → Members → Add New.** Fill in name, email, phone, address. Pick a tier. Set a join date. Save. That's it.
+**SocietyPress → Members → Add Member.** Fill in name, email, phone, address. Pick a tier. Set a join date. Save. That's it.
 
 For a birthday, use **Date of Birth** if you know the year. If the member would rather not give their age, leave it empty and pick just the month and day underneath — they'll still get the "Birthdays this month" email. Members can set either one themselves in My Account.
 
@@ -34,24 +34,24 @@ After import, **always** open three or four random members and verify their data
 
 ## How to send a renewal reminder
 
-Renewal reminders run automatically. Out of the box, members get an email 30 days before expiration, 7 days before, and 30 days after (if they haven't renewed yet). Tweak the schedule under **SocietyPress → Settings → Membership → Renewal Reminders**.
+Renewal reminders run automatically. Out of the box, each member gets an email 30 days, 15 days and 7 days before their membership expires — once each. Turn any of them off, and change the subject line, under **SocietyPress → Settings → Membership → Renewal Reminders**. An optional "your membership has expired" email can be switched on in the same place.
 
-To send an ad-hoc reminder to a specific member, open their member record and click "Send Renewal Reminder." This uses the same email template as the automatic schedule but sends it on demand.
+There's no button to send one member a reminder on demand. To nudge someone, email them, or use **Blast Email** with the "Renewal due" audience to reach everyone expiring in the next 30 days.
 
 ## How to set up a member directory page
 
 Two paths:
 
-- **Page builder.** Create a page, drop the "Member Directory" widget on it. Configure visibility (logged-in only, public, etc.), columns shown, and search behavior. Save. Done.
-- **Shortcode.** `[sp_directory]` on any page or post. Same widget, no page-builder required.
+- **The Directory page.** The setup wizard creates a page called Directory that shows the full membership directory. It's members-only by design: visitors who aren't signed in don't see it, and it's left out of the menu for them.
+- **Page builder.** Create a page and drop the **Member Directory** widget on it. Tick **Require login to view** to keep it to members, and set how many results show per page.
 
-By default, only members who've opted in to directory listing appear. Each member toggles directory visibility (and per-field privacy: name, address, phone, email, photo) on their own profile.
+Every active member is listed by default. A member leaves the directory by unticking **Show name** — on their record under **Preferences → Directory Visibility**, or themselves in My Account — and the same place has separate choices for address, phone, email, website and photo. **SocietyPress → Settings → Directory** decides which of those columns the directory shows at all, whatever members choose.
 
 ## How to handle a household
 
-Two members in one household = two member records linked by a `household_id`. Each has their own login (or one shares with the household — your call). Dues can be billed once per household at a "Joint" tier price, or independently at the "Individual" rate.
+Two members in one household = two member records with the same **Household ID**. Each has their own sign-in. Dues can be paid once at a Joint/Family price, or each at the Individual rate.
 
-To link existing members into a household, open one of the member records → "Household" tab → "Add to household." Either create a new household or pick an existing one.
+To link existing members, open each record and give them the same number in **Household ID**, in the Membership section. To add a second person while you're creating a member, tick **Joint Membership (couple/household)** and fill in their name.
 
 ## If something looks wrong
 
@@ -61,11 +61,11 @@ To link existing members into a household, open one of the member records → "H
 
 **A member says they can't log in.** Have them click "Forgot password" on the login page. Their password (if they had one in ENS or another system) didn't transfer — passwords are hashed and we never see them. They set a fresh password the first time they sign in. This is a feature, not a bug.
 
-**Renewal reminders aren't going out.** Two things to check: (1) the cron is running — visit **SocietyPress → Settings → Email** and click "Send test email" to verify your site can send mail at all; (2) the member actually has an email address on file. The renewal cron skips members without email.
+**Renewal reminders aren't going out.** Three things to check: (1) the reminders are switched on under **Settings → Membership → Renewal Reminders**; (2) your site can send email at all — the quickest test is "Lost your password?" on the sign-in page with your own address; if that email never arrives, see [Email Setup](email-setup.md); (3) the member actually has an email address on file. Each reminder goes to each member only once.
 
-**The member directory shows everyone.** That's the default until members opt in or out. To make it members-only, edit the directory page/widget and set "Visibility" to "Members only." To make individual members private, open their record and untick "Show in directory."
+**The member directory shows everyone.** That's the default: every active member is listed. The Directory page the wizard made is already members-only; on a page-builder directory, tick **Require login to view**. To take one member out, open their record and untick **Show name** under **Preferences → Directory Visibility**.
 
-**A member died.** Open their record, set status to "Deceased." This keeps the historical record intact (event registrations, donations) but removes them from active rosters, the directory, and renewal reminders. You can also tick "Family will continue membership" to convert their membership to the surviving spouse.
+**A member died.** Open their record, set status to "Deceased." This keeps the historical record intact (event registrations, donations) but removes them from active rosters, the directory, and renewal reminders. If a spouse is carrying on, their own record stays as it is — check their plan and expiration date.
 
 ## Related guides
 

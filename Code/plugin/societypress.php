@@ -54963,7 +54963,7 @@ function sp_render_event_edit_page(): void {
                         </p>
                         <button type="button" class="button" id="sp-detach-from-series"
                                 data-event-id="<?php echo esc_attr( $event->id ); ?>">
-                            Detach from Series
+                            <?php esc_html_e( 'Detach from Series', 'societypress' ); ?>
                         </button>
                         <p class="description sp-event-edit-detach-note">
                             Detaching makes this a standalone event. It won't be affected by future regeneration.

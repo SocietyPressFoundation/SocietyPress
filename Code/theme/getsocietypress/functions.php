@@ -1206,7 +1206,9 @@ if ( ! function_exists( 'gsp_render_simple_markdown' ) ) {
             if ( preg_match( '/^(#{1,6})\s+(.+)$/', $line, $m ) ) {
                 $flush_para(); $close_list(); $close_blockquote();
                 $level = min( 6, strlen( $m[1] ) + $heading_offset );
-                $out[] = '<h' . $level . '>' . gsp_md_inline( $m[2] ) . '</h' . $level . '>';
+                // The id matches the anchor GitHub gives the same heading, so
+                // a doc's "see below" links work on the site as well.
+                $out[] = '<h' . $level . ' id="' . esc_attr( sanitize_title( wp_strip_all_tags( gsp_md_inline( $m[2] ) ) ) ) . '">' . gsp_md_inline( $m[2] ) . '</h' . $level . '>';
                 continue;
             }
 
@@ -1335,7 +1337,7 @@ if ( ! function_exists( 'gsp_md_figure' ) ) {
 
 if ( ! defined( 'GSP_MARKDOWN_RENDERER' ) ) {
     // Bump when the renderer's output changes, so cached pages re-render.
-    define( 'GSP_MARKDOWN_RENDERER', '2' );
+    define( 'GSP_MARKDOWN_RENDERER', '3' );
 }
 
 if ( ! function_exists( 'gsp_markdown_file_html' ) ) {

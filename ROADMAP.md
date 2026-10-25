@@ -101,6 +101,29 @@ before the session ends.
 
 ### High
 
+#### Members → Export downloads nothing
+
+**Motivation:** Clicking **Download CSV** on the Export screen just reloads the
+page. The handler that built the file was lost in a rewrite after March 2026;
+the screen, its filters and its column list survived. A treasurer or secretary
+trying to pull a member list gets nothing.
+**Scope:** Restore the download, driven by the current screen's filters and
+`sp_get_export_columns()`, with decrypted contact fields. Found 2026-10-25.
+**Blockers:** None.
+
+#### Check every module guide against the software
+
+**Motivation:** The guides under `docs/modules/` describe some things that
+don't exist. Checking the Members guide on 2026-10-25 turned up a "Create
+WordPress account" checkbox, a "Family will continue membership" option and a
+"Show in directory" option that aren't in the plugin, alongside import choices
+that never existed (fixed that day in the Members and ENS guides). A volunteer
+following a guide to a button that isn't there stops trusting the guide.
+**Scope:** Read each module guide beside the screens it describes, and correct
+it to what the software does. Where a guide describes something worth having,
+put it on this roadmap rather than leaving it in the guide.
+**Blockers:** None.
+
 #### Survey editor redesign
 
 **Motivation:** The survey editor works but asks a volunteer to think in

@@ -40,7 +40,7 @@ These fields map one-to-one and arrive in SocietyPress exactly as they were in E
 - Name (prefix, first, preferred, middle, maiden, last, suffix)
 - Membership status (active / inactive / lapsed)
 - Join date
-- Birth date (we combine ENS's separate year/month/day fields into one date)
+- Birth date (ENS's separate year, month and day become one date; a birthday given without a year is kept as just the month and day)
 - Primary address (street, city, state, postal code, country)
 - Phone (primary and cell)
 - Email
@@ -50,28 +50,33 @@ These fields map one-to-one and arrive in SocietyPress exactly as they were in E
 - Email preferences (general / events / newsletter)
 - Member directory visibility (whether your name, address, phone, email, photo show in the public directory)
 - Administrative notes (imported as the first note on the member record)
-- ENS Member Record ID (kept as your member number so cross-reference still works)
+- Membership Number (kept as the member's number, so "Member #284" in old newsletters still means the same person)
+- ENS Member Record ID (kept behind the scenes so a second import recognizes everyone instead of duplicating them)
 
 ### Migrates with some translation
 
 - **Country** — ENS stores free-form country names ("United States", "USA", "U.S.A."); SocietyPress normalizes these to standard two-letter codes ("US"). The importer handles the common variants.
-- **Member Active** — ENS uses Yes/No; SocietyPress uses active/inactive/lapsed. The import maps Yes → active, No → inactive. If you want some "No" rows treated as "lapsed" (for renewal nudging), you can update those after import.
-- **Joint members** — ENS treats spouses as a single record with "Joint" fields. SocietyPress can either keep them combined or split them into two linked household members. You choose during the import.
+- **Member Active** — ENS uses Yes/No; SocietyPress uses active, lapsed and inactive. The import maps Yes → active and No → lapsed. A member marked Deceased comes in as inactive, with Deceased set.
+- **Couples** — ENS exports each spouse as their own row, and the two rows share a **Membership Tie ID**. SocietyPress keeps each person as their own member and links the pair into one household by that ID. Where a couple shares one email address, the second person's sign-in becomes a variant of it (`name+sp2@…`) that most mail services deliver to the same inbox.
+- **Institutions** — a library or museum member arrives as an organization, named from the File Name column, when its Membership Type says so ("Organization", "Institutional", "Corporate" and similar). The import results tell you about any it couldn't tell apart.
 
-### Doesn't migrate (and why)
+### Needs a step of its own
 
-These fields exist in ENS but have no equivalent in SocietyPress, so they'll be skipped or stored as a note:
+Nearly every column in an ENS member export has a home in SocietyPress — the
+[full column reference](#every-ens-column-and-where-it-lands) below says where
+each one goes. Two things need more than the import:
 
-- **File Name, Contact, Login, Login Count, Last Login Date** — ENS's internal bookkeeping fields. SocietyPress generates its own equivalents.
-- **Image Filename** — ENS stores member photos by filename only; the actual files are in a separate folder. We can pull these across as a separate step if you have the photo files on hand. (Skip for now if you don't.)
-- **Toll Free Phone, International Phone, Preferred Phone, Fax, Business Phone, Alt. International Phone, Alt. Preferred Phone, Alt. Email** — extra phone/email slots. Most societies have used only one or two of these, so the importer keeps the primary phone/email and writes the rest into the member's notes.
-- **Quarterly, Volunteering?, Joint Member** — Yes/No flags. Volunteering preference can be re-collected via the Volunteers module after migration.
-- **Your Skills, Your Interests, Your Education** — free-form text fields. The importer combines these into a single "About this member" note.
-- **Surname Inquiry** — ENS's surname-research feature. SocietyPress has a dedicated Surname Research Database (with Soundex and Metaphone phonetic search) under Members → Surname Research. Each member's surname inquiries can be re-entered there, or imported via CSV if you have a clean export.
-- **Last Updated By, Last Updated Date** — audit metadata. SocietyPress starts a fresh audit history at import time.
-- **Deceased** — if a record is marked deceased in ENS, the importer marks the SocietyPress member as inactive and adds a "Deceased per ENS export" note.
-
-If you have data in fields the importer would skip and you want it preserved, **let us know before you import** — we can usually add a one-time mapping for your society's specific situation.
+- **Member photos.** ENS exports only each photo's file name (the Image
+  Filename column); the pictures themselves are separate files. Upload them to
+  `wp-content/uploads/sp-profile-photos/` on your new site — cPanel's File
+  Manager or FTP — keeping their names exactly as ENS had them, odd punctuation
+  and all. Then import your member file again. Re-importing updates the same
+  members rather than adding them twice, and attaches every photo it can now
+  find. The results screen tells you how many photos named in the file weren't
+  found, with examples. You can do this the same day or weeks later.
+- **Passwords.** They never transfer — ENS keeps them scrambled, as it should.
+  The first time a member signs in to the new site, SocietyPress explains the
+  change and emails them a link to choose a new password.
 
 ---
 
@@ -134,54 +139,43 @@ Take five minutes to do this even if you're eager to import members. The setup w
 
 ## Decisions you'll make during the import
 
-Before clicking the import button, six decisions worth making with intent rather than at the prompt. None are irreversible — the importer's "Recent Imports → Undo this import" will roll any of these back — but it's faster to think them through in advance than to re-do work.
+A few decisions worth making with intent rather than at the prompt. None is
+irreversible — see [Backing out](#backing-out) — but it's faster to think them
+through in advance than to redo work.
 
-### 1. Joint members: combine or split
+### 1. Lapsed members: bring them or leave them
 
-ENS treats spouses as a single record with extra "Joint" name/email/phone fields. SocietyPress can either keep them combined (one member with both names listed) or split them into two linked household members (each with their own login and renewal track).
+ENS marks lapsed members Active = No, and they come in as **lapsed**. Bringing
+them is usually the right call: it keeps their history, and lets you reach out
+one last time through Blast Email with a "we noticed you lapsed" note.
 
-- **Combine** is simpler. Membership renewal is one transaction, the directory shows one entry. Best for societies where one spouse handles all society interaction.
-- **Split** is more accurate. Each spouse can have their own email, log in independently, RSVP to events separately, and accumulate their own volunteer hours. Best when both spouses are active.
+If you'd rather not, either delete the No rows from the CSV in a spreadsheet
+before importing, or import everyone and then delete them on **Members** —
+filter by status Lapsed, tick them, and choose **Delete** from Bulk actions.
 
-You pick this on the import preview screen. Pick split if in doubt — combining later is harder than splitting later.
+### 2. Member numbers
 
-### 2. Lapsed members: bring them or leave them
+The ENS **Membership Number** becomes each member's number, so references in
+old records ("Member #284") still work. SocietyPress doesn't number members on
+its own, so if you clear that column before importing, your members will have
+no number at all. Leave it unless you have a reason.
 
-ENS marks members as Active = No when they lapse. By default, the importer brings them in as inactive SocietyPress members. You can also:
+The ENS **Member Record ID** is separate. It's how a second import recognizes
+the people it already brought in, so keep that column in the file every time.
 
-- **Filter the CSV** before import — open it in a spreadsheet, sort by Active, delete the No rows.
-- **Bulk-archive** after import — import everyone, then use Members → All Members → filter Inactive → bulk action → "Archive."
+### 3. Privacy
 
-Importing them and archiving is usually the right call. It preserves history (years they paid dues, events they attended) and lets you reach out one last time with a "we noticed you lapsed" email through the Blast Email module.
+ENS stores each member's directory choices — whether their name, address,
+phone, email and photo show — and the import brings those across person by
+person. **Check them before going public.** Some societies have run for years
+with loose ENS defaults, every member's home phone number visible to anyone.
 
-### 3. Member numbers: keep or generate fresh
+The migration is a good moment to tighten up. Under **Settings → Directory**
+you can switch off a column, such as phone or email, for the whole directory,
+whatever each member chose. Members can change their own choices later in My
+Account.
 
-ENS assigns each member a "Member Record ID." The importer keeps that as your member's primary number so cross-references in old records (newsletters citing "Member #284") still work.
-
-If you'd rather start clean — say, your Member Record IDs are not actually visible to anyone and you'd rather they be sequential 1, 2, 3 — clear the column from the CSV before importing and SocietyPress generates fresh numbers.
-
-Default: keep ENS IDs. Don't override unless you have a specific reason.
-
-### 4. Legacy fields: capture as notes or drop
-
-Several ENS fields don't have a direct SocietyPress equivalent (Toll-Free Phone, Alt. International Phone, Quarterly, Your Skills, Your Interests, Your Education, etc.). The importer's default is to combine the populated ones into a single "About this member" note on each member's record.
-
-- **Default (combine into notes)** preserves the data and keeps it searchable.
-- **Drop** these fields from the CSV before import if the data is mostly empty or out-of-date and you don't want noise on every member record.
-
-If a particular legacy field IS used heavily by your society and you want it as a real searchable field rather than buried in a note, tell us before you import — adding a one-time custom mapping for a specific society is a quick fix.
-
-### 5. Privacy defaults
-
-ENS stores per-field directory visibility (whether name, address, phone, email, photo show in the public directory). The importer brings those settings across. **Verify before going public**.
-
-A few societies have run with overly-loose ENS defaults for years without realizing — every member's home phone number visible to anyone. The migration is a good moment to default-tighten:
-
-- Open **SocietyPress → Settings → Privacy** before the import.
-- Set defaults to "members-only" or "private" for fields that shouldn't be visible to non-members.
-- Existing members can opt back to public visibility on their profile if they choose.
-
-### 6. Cutover timing: parallel run or hard switch
+### 4. Cutover timing: parallel run or hard switch
 
 Two options once the import is verified:
 
@@ -194,22 +188,34 @@ Most societies pick parallel run. Hard switch only makes sense if you have a cle
 
 ## Step 4 — Import your members
 
+[A migration, start to finish](ENS-MIGRATION-WALKTHROUGH.md) follows this step
+screen by screen with a sample society, if you'd like to see it before you do it.
+
 1. In the SocietyPress admin sidebar, go to **Members → Import**.
-2. Click **Choose file** and select the ENS CSV you exported in Step 1.
-3. SocietyPress will read the column headers, recognize the ENS format, and show you a preview:
-   - How many rows it found
-   - The first three rows mapped to SocietyPress fields
-   - Any warnings (missing required fields, duplicate emails, etc.)
-4. Review the preview carefully. If something looks wrong (a name in the wrong column, addresses cut off), fix the CSV in your spreadsheet, save it, and re-upload.
-5. Choose your **joint member behavior**:
-   - **Combine** — keep ENS's joint-member rows as a single SocietyPress member with both names. Simpler.
-   - **Split** — create two linked household members. More accurate but creates more records to manage.
-6. Click **Import**.
-7. Watch the progress bar. For a society with 200 members, the import takes about 30 seconds. For 2,000 members, about five minutes.
-8. When it finishes, you'll see a summary:
-   - How many members were imported
-   - How many were skipped (and why — usually duplicate emails)
-   - A link to download an "import log" CSV listing every action
+2. The first time, SocietyPress asks you to **add yourself as a member**. Do it,
+   and use the email address your society has on file for you in ENS — it's how
+   the import will recognize your own row.
+3. Click **Choose File**, pick the ENS CSV you exported in Step 1, and click
+   **Upload & Preview**.
+4. Check the field mapping. Every ENS column should already be matched to where
+   it belongs, with a sample value from your first member beside it so you can
+   see the names are in the name boxes. The first five rows are shown underneath.
+   If something looks wrong, fix the CSV in your spreadsheet and upload it again.
+5. Leave **Update members already in the system from this file** ticked. It's
+   what makes a second import safe.
+6. Click **Run Import**.
+7. SocietyPress shows you any row that matches an account already on the site.
+   On a new site that's you; **Same person** is already chosen, so leave it and
+   click **Continue import**. Your row then fills in the member record you made
+   in step 2 instead of creating a second you.
+8. Watch the progress bar. For a society with 200 members, the import takes
+   about 30 seconds; for 2,000, about five minutes.
+9. When it finishes, the summary shows:
+   - how many members were imported, updated, linked (you) and skipped
+   - which membership plans it created, and which names it matched onto plans
+     you already had — set prices on any it created
+   - any institutions it couldn't confirm, and any photos it couldn't find
+   - a line for each row it had trouble with, and why
 
 ---
 
@@ -222,15 +228,15 @@ This is the most important step. Don't skip it.
    - Name, address, phone, email — correct?
    - Membership status — correct?
    - Join date — correct?
-   - Notes — anything from ENS that the importer noted as "no direct field"?
+   - Their household, plan and member number — correct?
 3. Open your **own** member record and check it carefully. You're more likely to notice errors on data you know intimately.
 4. Search for a member you remember by name. Does the search find them?
 5. Visit the public-facing **Member Directory** page. Are the right members showing? Are privacy preferences honored?
 
 If anything is wrong, you have three options:
-- **Fix the CSV** and re-import (the importer can either skip duplicates or update existing members — you choose)
-- **Fix individual records** by hand in the SocietyPress admin
-- **Roll back** by going to **Members → Import** → **Recent Imports** → **Undo this import**
+- **Fix the CSV** and import it again. Members it already brought in are updated, not duplicated.
+- **Fix individual records** by hand in the SocietyPress admin.
+- **Start the members over** — see [Backing out](#backing-out).
 
 ---
 
@@ -395,7 +401,7 @@ Nobody is opted into anything by being migrated.
 
 | ENS column | Becomes |
 |---|---|
-| Birth Year, Birth Month, Birth Day | Date of birth |
+| Birth Year, Birth Month, Birth Day | Date of birth — or just the month and day, when the year is blank or "0000" |
 | Gender | Gender |
 | Your Skills, Your Interests, Your Education | Skills, interests, education |
 | Volunteering? | Willing to volunteer |
@@ -441,20 +447,21 @@ blank out every field the file happens not to carry.
 
 ## Backing out
 
-Three levels, smallest first. Use the smallest one that covers what went wrong.
+Four levels, smallest first. Use the smallest one that covers what went wrong.
 
-### Undo the import
+### Import again
 
-**Members → Import → Recent imports → Undo this import.**
+Most mistakes in an import are mistakes in the file. Fix the spreadsheet and
+import it again: every member is matched by their ENS Member Record ID and
+updated in place, so nothing is duplicated and nobody is lost. You can do this
+as many times as you need.
 
-Every import is recorded as a batch, and undoing one removes exactly the members
-that import created. It does not touch members who were already there, and it
-does not touch anything you have edited by hand since.
+### Clear the members and start again
 
-Undo covers the members and their payment records. It does not roll back the
-settings you changed on the way in, and it does not un-send email — which is why
-the guide tells you to leave email switched off until you have looked at the
-result.
+**Members → Delete All Others** removes every member except you and the site's
+other administrators, so you can import a clean copy. It asks you to confirm,
+and it can't be undone, so take a backup first (below) if there's anything on
+the site you'd want back.
 
 ### Restore the site
 

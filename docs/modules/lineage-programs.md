@@ -4,54 +4,52 @@ Recognition programs for members who can document descent from historically sign
 
 ## What you can do
 
-- Define any number of programs (most societies offer one or two — this module supports as many as you want).
-- Take applications online — applicant fills the form, uploads proofs, narrates the lineage.
-- Charge an optional application fee via Stripe checkout.
-- Review applications in an admin queue with status workflow (draft → submitted → in_review → info_requested → approved/rejected).
-- Auto-generate certificate numbers (FORMAT: PROGRAM-YEAR-NNNN) on approval.
-- Show approved members on a public roster (members opt in/out of public listing).
-- Send status-change emails — applicants get notified when work moves forward.
-- Generate printable certificates from a template (members print to PDF themselves — no PDF library required).
+- Offer any number of programs.
+- Take applications online — the applicant signs in, describes the ancestor and the line of descent, and uploads proof documents.
+- Charge an optional application fee through Stripe.
+- Review applications in an admin queue: Submitted → In Review → Info Requested → Approved or Rejected.
+- Give each approved application a certificate number automatically.
+- Show approved members on a public roster, if they agreed to be listed.
+- Email applicants when their application moves forward.
+- Let members print their own certificate from a print-ready page.
 
 ## How to set up your first program
 
-**SocietyPress → Lineage Programs → Add Program.**
+**SocietyPress → Lineage Programs**, then fill in the form on the left:
 
-- **Name** — "First Families of Sample County County" or whatever you call it.
-- **Slug** — URL-friendly identifier, auto-generated. Don't change it once you have applications.
-- **Description** — public-facing summary shown on the program page.
-- **Requirements** — what documentation must the applicant provide? Markdown supported.
-- **Cutoff Year** — e.g., 1850. Applicant's ancestor must have been in the area by this year.
-- **Geographic Scope** — e.g., "Sample County, Texas." Leave blank if not geographic.
-- **Application Fee** — set to 0 for no fee. If > 0, applicant pays via Stripe before the application enters review.
-- **Badge Label** — short label shown on approved members' profiles (e.g., "First Families").
-- **Badge Color** — pick a hex color (the certificate uses it as the border).
-- **Active** — controls visibility.
-- **Accepting Applications** — separate toggle so you can pause new applications without deactivating the program.
-- **Public Roster** — show approved members on a public roster page.
+- **Name** — "First Families of Sample County" or whatever you call it.
+- **URL Name** — filled in from the name if left blank. It also starts every certificate number, so don't change it once you've approved anyone.
+- **Description** — a short summary, shown to applicants on the application form.
+- **Requirements** — the documentation you need from applicants, also shown on the form.
+- **Cutoff Year** — e.g. 1850; the ancestor must have been in the area by this year. Reviewers see whether each application meets it.
+- **Geographic Scope** — e.g. "Sample County, Texas". Leave blank if not geographic.
+- **Application Fee** — 0 for no fee.
+- **Badge Label** — a short label shown with members' approved applications (e.g. "First Families").
+- **Badge Color** — use a dark color; it carries white text. It's also the certificate's border and the program's heading on the roster.
+- **Options** — **Active**, **Accepting new applications** (pause applications without hiding the program), and **Show approved members on a public roster**.
+- **Sort Order** — lower numbers list first.
 
-Save. The program is live.
+Click **Add Program**.
 
 ## How members apply
 
-You'll need an Apply page on your public site. Drop the "Lineage Application Form" widget (or `[sp_lineage_apply]` shortcode) on it.
+Make an Apply page with the **Lineage Application Form** widget, or `[sp_lineage_apply]`. Applicants must sign in.
 
-The form walks the applicant through:
+The form asks for:
 
-1. Pick a program (if you have multiple).
+1. The program. Under the list, **About [program]** opens its description, requirements, cutoff year and area.
 2. Their relationship to the ancestor ("great-great-grandfather").
-3. Ancestor's name (first, middle, last, maiden).
-4. Birth/death dates and places. Free-text dates accepted ("abt 1820" is fine).
-5. Year the ancestor arrived in / settled in the area.
-6. Evidence of arrival/residence (free text).
-7. Lineage narrative — chain of descent from ancestor to applicant.
-8. Sources cited.
-9. File uploads — birth/marriage/death certificates, census pages, will excerpts. Multiple files per application.
-10. Public-listing opt-in.
+3. The ancestor's name — first, middle, last, maiden.
+4. Birth and death dates and places. Any format is fine ("abt 1820").
+5. The year the ancestor arrived in or settled in the area, and the evidence for it.
+6. The lineage narrative — the chain of descent from the ancestor to them.
+7. Sources cited.
+8. A proof document with a label ("1850 census page"). One document per save; they add more by editing the application.
+9. Whether to list their approved ancestor publicly on the program roster.
 
-Two buttons at the bottom: **Save Draft** (comes back later to finish) and **Submit for Review** (starts the formal review).
+**Save Draft** keeps it to finish later. **Submit for Review** sends it in.
 
-If the program has an application fee, "Submit for Review" routes through Stripe Checkout. Once paid, the application moves to `submitted` status and staff get a notification.
+If the program has a fee, **Submit for Review** goes on to Stripe Checkout, and the application is marked paid when Stripe confirms. If Stripe isn't set up, the application is still submitted and marked as payment due, so you can collect the fee another way.
 
 ## How to review an application
 
@@ -59,21 +57,24 @@ If the program has an application fee, "Submit for Review" routes through Stripe
 
 The review page shows applicant info, ancestor detail (with a green checkmark if the arrival year meets the cutoff, red X otherwise), narrative, sources, attached proofs (clickable to open in a new tab).
 
-The right sidebar is the decision form:
+Under **Review Decision**:
 
 - **Status** — drop down through the workflow.
 - **Notes for applicant** — visible to them, sent in the status-change email.
-- **Internal notes** — staff-only, never visible to the applicant.
+- **Internal notes (staff only)** — never shown to the applicant.
+- **List on the public roster once approved** — starts as the applicant chose; change it if they ask.
 
-When you flip status to **Approved**, SocietyPress auto-generates a certificate number (e.g., `FIRST-FA-2026-0042`) and the approval-email goes out automatically with the number included.
+Click **Save Review**.
+
+When you set the status to **Approved** and save, SocietyPress gives the application a certificate number — the first eight letters of the program's URL Name, the year, and a running number, such as `FIRST-FA-2026-0042` — and the approval email goes out with the number in it.
 
 When you flip to **Rejected** or **Info Requested**, the email goes out with your notes for the applicant.
 
 ## How members see their applications
 
-Members see their own applications via the `[sp_lineage_my_applications apply_url="/apply/"]` shortcode (matching widget exists). The list shows status, ancestor name, certificate number when approved, and reviewer notes for `info_requested` / `rejected` cases.
+Members see their own applications on a page with the **My Lineage Applications** widget, or `[sp_lineage_my_applications apply_url="/apply/"]`. The list shows each application's status, ancestor, certificate number once approved, and your notes when you've asked for more information or not approved it. Members can withdraw an application they no longer want reviewed.
 
-The `apply_url` attribute points at your public Apply page so members can edit drafts and `info_requested` applications by clicking "Edit."
+The `apply_url` setting points at your Apply page, so members can click **Edit** on a draft, or on an application you've asked for more information about.
 
 For each approved application, the member sees a **View / Print Certificate** link that opens the certificate page (`/?sp_certificate=NNNN`). The page is print-styled — landscape letter, generous borders, the program's badge color, applicant name in italic, ancestor in bold. Members hit File → Print → Save as PDF (or print on heavy paper for a real certificate).
 
@@ -103,11 +104,11 @@ If you want to ship physical printed certificates instead of letting members pri
 
 **Stripe redirect lands on a "payment_error" page.** Open Stripe's dashboard → Developers → Logs and look at the most recent failed Checkout Session. The error message tells you what's wrong (most common: an old test-mode key that expired).
 
-**The roster shows the wrong people.** The roster shows applications where status = approved AND public_listing = 1 AND the program's "Public Roster" toggle is on. If a member opted out, they don't appear. To force them on, edit their application and tick "List my approved ancestor publicly."
+**The roster shows the wrong people.** The roster lists approved applications whose applicant ticked "List my approved ancestor publicly", for programs with **Show approved members on a public roster** on. The member makes that choice on the application. If they ask to be added or removed later, open the application and change **List on the public roster once approved**, then **Save Review**.
 
-**Certificate number is missing.** Certificate numbers generate on the *first* approval. If you approved an application before the auto-generation logic was in place, edit the application and re-save with status=approved — the auto-gen runs again.
+**Certificate number is missing.** Open the application and click **Save Review** with the status still Approved; a number is given to any approved application that lacks one.
 
-**A program needs to be deleted.** Programs with applications can't be deleted (they'd orphan the applications). Mark inactive instead. If you really need to remove a program with no applications, the admin Programs list has a Delete row action.
+**A program needs to be deleted.** Programs with applications can't be deleted (they'd orphan the applications). Mark inactive instead. A program with no applications can be deleted from the Programs list.
 
 ## Related guides
 

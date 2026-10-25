@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.59] — 2026-10-25
+
+**Applicants see what a lineage program asks for.** Each program's description
+and requirements were saved but shown nowhere. The application form now has an
+"About" section for each program with its description, requirements, cutoff
+year and area.
+
+**Staff can change a lineage roster listing.** Whether an approved ancestor
+appears on the public roster was the applicant's choice and couldn't be changed
+after approval. The review screen now has the same checkbox, so you can honor
+a member who later asks to be added or removed.
+
+**Deletion requests reach visitors' Research Help questions.** Someone who
+asked a question without an account couldn't be found by Export or Erase
+Personal Data. Both now find questions by the email address they were asked
+under.
+
+---
+
 ## [1.5.58] — 2026-10-25
 
 **Members can reach ballots.** The Voting page type wasn't offered in the page

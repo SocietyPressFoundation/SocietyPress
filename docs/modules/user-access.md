@@ -1,83 +1,83 @@
 # User Access & Roles
 
-The mechanism for letting different volunteers do different jobs without giving everyone the keys to everything. The treasurer manages donations without seeing voting ballots; the librarian runs the catalog without touching the donor list; the membership chair handles the roster without owning the website.
+Let different volunteers do different jobs without giving everyone the keys to everything. The treasurer manages donations without seeing ballots; the librarian runs the catalog without touching the donor list; the membership chair handles the roster without owning the website.
 
-This is one of the most-asked-about features at conferences and one of the easiest to set up. If your society has more than one volunteer touching the website, you want this configured.
+If more than one volunteer works in your site's admin, set this up.
 
-## How it works in two paragraphs
+## How it works
 
-SocietyPress defines **10 access areas** — Members, Events, Library, Finances, Communications, Records, Governance, Content, Settings, Reports. Each volunteer gets some combination of those areas. They see only the SocietyPress menus that match. A volunteer with just "Events" sees the Events admin pages and nothing else; the rest of the SocietyPress sidebar is invisible.
+SocietyPress has **10 access areas**. Each volunteer gets some combination of them, and sees only the screens those areas cover. A volunteer with just Events sees the Events screens and nothing else.
 
-Setting access one checkbox at a time would be tedious, so SocietyPress ships **8 role templates** — Webmaster, Membership Manager, Treasurer, Event Coordinator, Librarian, Communications Director, Records Manager, Content Editor. Pick a template and the right access areas are pre-checked. Adjust as needed. WordPress administrators (anyone with `manage_options`) always have full access — these templates layer on top.
+To save ticking boxes one at a time, there are **8 role templates** — Webmaster, Membership Manager, Treasurer, Event Coordinator, Librarian, Communications Director, Records Manager and Content Editor. Pick one and its areas are ticked for you; adjust from there.
 
-## How to grant access to a volunteer
+WordPress administrators always have full access, and only administrators can give access to others.
 
-**SocietyPress → User Access → Add User Access** (or open an existing volunteer's row in the User Access list).
+## How to give a volunteer access
 
-1. Pick the WordPress user. They need an account already; create one via the standard **Users → Add New** if not.
-2. Pick a **role template** as a starting point (Treasurer, Librarian, etc.). The matching access areas check themselves.
-3. Adjust by hand. Tick or untick individual access areas if the template doesn't quite fit.
-4. Save.
+**Settings → Who Can Do What.**
 
-The volunteer logs in. The SocietyPress sidebar shows only the areas they have access to. They never see admin pages they aren't authorized for.
+1. Under **Grant Access to a User**, search for the person by name or email and pick them. Members already have an account; for someone who isn't a member, create one first under **Users → Add New** with the Subscriber role.
+2. Choose a **Role Template**, or leave it on **Custom**.
+3. Tick or untick **Access Areas** until it fits.
+4. For **Content & Pages**, **Which pages?** can narrow them to only the pages you tick — useful for a committee chair who looks after their committee's pages.
+5. Click **Save Access**.
 
-## The 10 access areas, in plain English
+Next time they sign in, the sidebar shows only what they can use.
 
-| Area | What they can do |
+## The 10 access areas
+
+| Area | What it covers |
 |---|---|
-| **Members** | View and manage all members, run imports/exports, manage groups and membership tiers. |
-| **Events** | Create and manage events, categories, speakers, registrations, the calendar. |
-| **Library** | Manage the library catalog, run imports, configure enrichment. |
-| **Finances** | Donations, campaigns, store orders, financial reports. |
-| **Communications** | Blast email, newsletters, the email log, email templates. |
-| **Records** | Genealogical record collections, record imports, search configuration. |
-| **Governance** | Officer positions, committees, volunteer opportunities, hours tracking. |
-| **Content** | Pages, media library, resources, documents, gallery, the page builder. |
-| **Settings** | All plugin settings, the design system, modules, user access management. |
-| **Reports** | Membership reports, event statistics, financial summaries, the Insights page. |
+| **Members** | View and manage members, import and export, groups and membership plans. |
+| **Events** | Events, categories, speakers, registrations and the calendar. |
+| **Library** | The library catalog, imports and enrichment. |
+| **Finances** | Donations, campaigns, store orders and financial reports. |
+| **Communications** | Email to members, newsletters, the sent-email log and email templates. |
+| **Genealogical Records** | Record collections, record imports and search. |
+| **Leadership & Volunteers** | Officers, committees, meetings, ballots, volunteer opportunities and hours. |
+| **Content & Pages** | Pages, the media library, resource links, documents, photos and the page builder. |
+| **Settings & Design** | SocietyPress settings, colors and fonts, and features. |
+| **Reports** | Membership reports, event statistics, financial summaries and Insights. |
 
-## The 8 role templates, with what they're for
+## The 8 role templates
 
-- **Webmaster** — full access to everything. Equivalent to a site administrator without granting WordPress's `manage_options` capability.
-- **Membership Manager** — Members + Reports. Runs the roster, imports new members, sees membership reports for the board.
-- **Treasurer** — Finances + Reports. Records cash and check donations, reconciles Stripe and PayPal, runs the donor reports for board meetings. Doesn't see the membership roster.
-- **Event Coordinator** — Events. Creates events, manages registrations and speakers. Doesn't see donations or the member directory.
-- **Librarian** — Library. Manages the catalog, runs imports. Doesn't touch events or members.
-- **Communications Director** — Communications. Sends blast emails, manages newsletter archive, edits email templates. Doesn't see the donor list (member emails for blast emails come through the system without exposing the donor records).
-- **Records Manager** — Records. Manages genealogical record collections and imports. Specialized role for societies with active records publishing.
-- **Content Editor** — Content. Manages pages, resources, documents, gallery, media. Closest WordPress equivalent: Editor.
+- **Webmaster** — every area. Still not an administrator: they can't give others access.
+- **Membership Manager** — Members and Reports.
+- **Treasurer** — Finances and Reports. Doesn't see the member roster.
+- **Event Coordinator** — Events.
+- **Librarian** — Library.
+- **Communications Director** — Communications.
+- **Records Manager** — Genealogical Records.
+- **Content Editor** — Content & Pages.
 
-## How to revoke or change access
+## How to change or remove access
 
-Same page (**SocietyPress → User Access**), edit the row, change the template or untick areas, save. To fully revoke: click the row's **Revoke** action. This removes the SocietyPress access areas; the underlying WordPress user account still exists with whatever WordPress role you set there.
+On **Settings → Who Can Do What**, find them under **Users with SocietyPress Access**. **Edit** to change their areas; **Revoke** removes all their SocietyPress access. Their account stays, with whatever WordPress role it had.
 
-If you delete the WordPress user account itself (Users → Delete), their SocietyPress access goes with them — but so does any content they authored. Consider revoking SocietyPress access and changing them to a "Subscriber" WordPress role instead.
+Deleting the account itself (**Users → All Users**) removes their access too, but also asks what to do with anything they wrote. Revoking is usually what you want.
 
 ## Common patterns
 
-**Solo webmaster.** You have one person doing everything. Skip user access entirely; their WordPress administrator account already has full SocietyPress access.
+**Solo webmaster.** One person does everything as a WordPress administrator. Nothing to set up.
 
-**Webmaster + treasurer.** Two volunteers. Webmaster is a WordPress administrator. Treasurer gets a WordPress Subscriber account and the Treasurer role template.
+**Webmaster and treasurer.** The webmaster is an administrator; the treasurer gets the Treasurer template.
 
-**Full board with delegated roles.** President is webmaster (admin). Membership chair gets Membership Manager. Treasurer gets Treasurer. Event chair gets Event Coordinator. Newsletter editor gets Communications Director. Each one sees only their lane.
+**A full board.** The webmaster is an administrator. The membership chair gets Membership Manager, the treasurer Treasurer, the program chair Event Coordinator, the newsletter editor Communications Director. Each sees only their own screens.
 
-**Researcher access without admin.** Want a member to help curate the records collection without giving them broader admin? Give them the Records Manager template. They'll see only **SocietyPress → Records** and nothing else.
+**Committee chairs.** Chairs get their **My Committee** screen automatically — see [Governance](governance.md). Give them Content & Pages limited to their committee's pages if they should edit those too.
 
 ## If something looks wrong
 
-**A volunteer can log in but doesn't see SocietyPress in the sidebar.** Their WordPress account exists but they have no SocietyPress access areas assigned. Open **SocietyPress → User Access → Add User Access**, pick their WordPress user, pick a role template, save. The sidebar appears on their next page load.
+**A volunteer signs in but sees no SocietyPress menus.** They have no access areas yet. Grant them access as above.
 
-**The Insights menu doesn't show for the treasurer.** The treasurer needs the **Reports** access area, which the Treasurer template includes by default. Verify by opening their User Access record. If Reports isn't ticked, tick it and save.
+**Insights doesn't show for the treasurer.** Insights needs the Reports area. Open their access and check Reports is ticked.
 
-**A volunteer reports they can see member phone numbers and you didn't expect that.** The Members access area exposes member records in full — that's what it's for. If you want a volunteer who can run member imports but not see private fields, that's not currently a configurable distinction. The two paths are: (1) trust the volunteer with full Members access, or (2) take the Members access away and have the webmaster handle imports.
+**A volunteer can see member phone numbers.** The Members area shows member records in full; there's no way yet to give someone member access without the private fields.
 
-**WordPress role keeps reverting after I change it.** You're probably editing the wrong field. SocietyPress access areas live under **SocietyPress → User Access**, not under **Users → All Users → Edit**. The two are separate systems that layer on each other.
-
-**A WordPress administrator can't be restricted.** Correct. WordPress administrators (`manage_options`) always have full SocietyPress access; that's by design. To restrict an account, change it to a non-administrator WordPress role first (Subscriber is the most restrictive), then assign SocietyPress access areas.
+**An administrator can't be restricted.** That's by design. To restrict someone, change their WordPress role from Administrator to Subscriber under **Users → All Users**, then give them access areas here.
 
 ## Related guides
 
-- [Members](members.md) — what someone with the Members access area can do
-- [Insights](insights.md) — gated by the Reports access area
-- [Setup Wizard](setup-wizard.md) — how to seed the first admin during install
-- [FAQ: role templates and access areas](https://getsocietypress.org/docs/faq/) — short version on the marketing site
+- [Members](members.md) — what the Members area covers
+- [Insights](insights.md) — needs the Reports area
+- [Governance](governance.md) — committee chairs' access

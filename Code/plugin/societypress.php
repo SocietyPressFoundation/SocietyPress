@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.58
+ * Version:     1.5.59
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.58' );
+define( 'SOCIETYPRESS_VERSION', '1.5.59' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40571,7 +40571,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.58',
+            'version'     => '1.5.59',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40579,7 +40579,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.58',
+            'version'     => '1.5.59',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40587,7 +40587,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.58',
+            'version'     => '1.5.59',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40595,7 +40595,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.58',
+            'version'     => '1.5.59',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40603,7 +40603,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.58',
+            'version'     => '1.5.59',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90361,12 +90361,16 @@ function sp_privacy_export_help_data( string $email_address, int $page = 1 ): ar
     $prefix = $wpdb->prefix . 'sp_';
     $export_items = [];
 
-    $user = get_user_by( 'email', $email_address );
-    if ( ! $user ) return [ 'data' => $export_items, 'done' => true ];
+    // WHY by email as well as account: anyone can ask a question without
+    // signing in, so a visitor's questions carry only the address they typed.
+    // Looking up the WordPress account alone found nothing for them.
+    $user    = get_user_by( 'email', $email_address );
+    $user_id = $user ? (int) $user->ID : 0;
 
     // Questions asked
     $requests = $wpdb->get_results( $wpdb->prepare(
-        "SELECT * FROM {$prefix}help_requests WHERE user_id = %d", $user->ID
+        "SELECT * FROM {$prefix}help_requests WHERE ( user_id = %d AND user_id > 0 ) OR requester_email = %s",
+        $user_id, $email_address
     ) );
     foreach ( $requests as $req ) {
         $export_items[] = [
@@ -90382,10 +90386,10 @@ function sp_privacy_export_help_data( string $email_address, int $page = 1 ): ar
         ];
     }
 
-    // Responses given
-    $responses = $wpdb->get_results( $wpdb->prepare(
-        "SELECT * FROM {$prefix}help_responses WHERE user_id = %d", $user->ID
-    ) );
+    // Responses given — answering needs an account, so there is no email path.
+    $responses = $user_id ? $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$prefix}help_responses WHERE user_id = %d", $user_id
+    ) ) : [];
     foreach ( $responses as $resp ) {
         $export_items[] = [
             'group_id'    => 'sp-help-responses',
@@ -90431,21 +90435,28 @@ function sp_privacy_erase_help_data( string $email_address, int $page = 1 ): arr
     $prefix = $wpdb->prefix . 'sp_';
     $items_removed = 0;
 
-    $user = get_user_by( 'email', $email_address );
-    if ( ! $user ) return [ 'items_removed' => 0, 'items_retained' => 0, 'messages' => [], 'done' => true ];
+    // Same email-or-account match as the exporter: a visitor who asked
+    // without signing in has no account to look up.
+    $user    = get_user_by( 'email', $email_address );
+    $user_id = $user ? (int) $user->ID : 0;
 
     // Delete responses first (FK integrity)
-    $request_ids = $wpdb->get_col( $wpdb->prepare(
-        "SELECT id FROM {$prefix}help_requests WHERE user_id = %d", $user->ID
-    ) );
+    $request_ids = array_map( 'intval', $wpdb->get_col( $wpdb->prepare(
+        "SELECT id FROM {$prefix}help_requests WHERE ( user_id = %d AND user_id > 0 ) OR requester_email = %s",
+        $user_id, $email_address
+    ) ) );
     if ( ! empty( $request_ids ) ) {
         $placeholders = implode( ',', array_fill( 0, count( $request_ids ), '%d' ) );
         $wpdb->query( $wpdb->prepare(
             "DELETE FROM {$prefix}help_responses WHERE request_id IN ({$placeholders})", ...$request_ids
         ) );
+        $items_removed += (int) $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$prefix}help_requests WHERE id IN ({$placeholders})", ...$request_ids
+        ) );
     }
-    $items_removed += (int) $wpdb->delete( $prefix . 'help_requests', [ 'user_id' => $user->ID ] );
-    $items_removed += (int) $wpdb->delete( $prefix . 'help_responses', [ 'user_id' => $user->ID ] );
+    if ( $user_id ) {
+        $items_removed += (int) $wpdb->delete( $prefix . 'help_responses', [ 'user_id' => $user_id ] );
+    }
 
     return [
         'items_removed'  => $items_removed,
@@ -112564,6 +112575,9 @@ add_action( 'admin_init', function () {
             'internal_note'    => wp_kses_post( wp_unslash( $_POST['internal_note'] ?? '' ) ),
             'reviewer_user_id' => get_current_user_id(),
         ];
+        if ( ! empty( $_POST['sp_has_public_listing'] ) ) {
+            $data['public_listing'] = empty( $_POST['public_listing'] ) ? 0 : 1;
+        }
 
         // Decision timestamps + certificate number
         $decided_states = [ 'approved', 'rejected' ];
@@ -112736,7 +112750,7 @@ function sp_render_lineage_programs_page(): void {
                         <tr>
                             <th scope="col"><label for="lp_name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
                             <td><input type="text" id="lp_name" name="name" value="<?php echo esc_attr( $editing->name ?? '' ); ?>" class="regular-text" required>
-                                <p class="description"><?php esc_html_e( 'e.g. "First Families of Sample County County"', 'societypress' ); ?></p></td>
+                                <p class="description"><?php esc_html_e( 'e.g. "First Families of Sample County"', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
                             <th scope="col"><label for="lp_slug"><?php esc_html_e( 'URL Name', 'societypress' ); ?></label></th>
@@ -112746,12 +112760,12 @@ function sp_render_lineage_programs_page(): void {
                         <tr>
                             <th scope="col"><label for="lp_desc"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
                             <td><textarea id="lp_desc" name="description" rows="3" class="large-text"><?php echo esc_textarea( $editing->description ?? '' ); ?></textarea>
-                                <p class="description"><?php esc_html_e( 'Public-facing summary shown on the program page.', 'societypress' ); ?></p></td>
+                                <p class="description"><?php esc_html_e( 'A short summary shown to applicants on the application form.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
                             <th scope="col"><label for="lp_req"><?php esc_html_e( 'Requirements', 'societypress' ); ?></label></th>
                             <td><textarea id="lp_req" name="requirements" rows="6" class="large-text"><?php echo esc_textarea( $editing->requirements ?? '' ); ?></textarea>
-                                <p class="description"><?php esc_html_e( 'What documentation must the applicant provide? Markdown is supported.', 'societypress' ); ?></p></td>
+                                <p class="description"><?php esc_html_e( 'What documentation must the applicant provide? Shown to applicants on the application form.', 'societypress' ); ?></p></td>
                         </tr>
                         <tr>
                             <th scope="col"><label for="lp_cutoff"><?php esc_html_e( 'Cutoff Year', 'societypress' ); ?></label></th>
@@ -113248,6 +113262,18 @@ function sp_render_lineage_application_edit_page(): void {
                             <p>
                                 <label><strong><?php esc_html_e( 'Internal notes (staff only)', 'societypress' ); ?></strong></label>
                                 <textarea name="internal_note" rows="3" class="sp-full-width"><?php echo esc_textarea( $app->internal_note ?? '' ); ?></textarea>
+                            </p>
+
+                            <?php
+                            // WHY here: the applicant makes this choice on the form,
+                            // but can't edit an application once it's approved. When
+                            // they later ask to be added to or taken off the roster,
+                            // staff need somewhere to honor that.
+                            ?>
+                            <p>
+                                <input type="hidden" name="sp_has_public_listing" value="1">
+                                <label><input type="checkbox" name="public_listing" value="1" <?php checked( (int) ( $app->public_listing ?? 1 ), 1 ); ?>>
+                                    <?php esc_html_e( 'List on the public roster once approved', 'societypress' ); ?></label>
                             </p>
 
                             <?php submit_button( __( 'Save Review', 'societypress' ), 'primary', 'submit', false ); ?>
@@ -113843,6 +113869,9 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
             .sp-lineage-apply .notice-success { background: #e8f5e9; border-left: 4px solid #166534; color: #1f4d2c; }
             .sp-lineage-apply .notice-error { background: #fde8e8; border-left: 4px solid #b91c1c; color: #7d1414; }
             .sp-lineage-apply .sp-la-listing-p { margin-top: 18px; }
+            .sp-lineage-apply .sp-la-program-info { margin: 10px 0 0; padding: 10px 14px; border: 1px solid #ddd; border-radius: 4px; }
+            .sp-lineage-apply .sp-la-program-info summary { cursor: pointer; font-weight: 600; }
+            .sp-lineage-apply .sp-la-program-info h4 { margin: 12px 0 4px; }
         </style>
 
         <?php if ( $msg === 'submitted' ) : ?>
@@ -113880,6 +113909,44 @@ add_shortcode( 'sp_lineage_apply', function ( $atts ) {
                     </option>
                 <?php endforeach; ?>
             </select>
+
+            <?php
+            // WHY: each program's description and requirements were saved on the
+            // admin screen but shown nowhere, so an applicant had to guess what
+            // proof the society wanted. One collapsible block per program keeps
+            // the form short for a society with several.
+            foreach ( $programs as $p ) :
+                $p_facts = [];
+                if ( ! empty( $p->cutoff_year ) ) {
+                    /* translators: %d: year the ancestor must have arrived by */
+                    $p_facts[] = sprintf( __( 'Ancestor in the area by %d', 'societypress' ), (int) $p->cutoff_year );
+                }
+                if ( ! empty( $p->geographic_scope ) ) {
+                    $p_facts[] = $p->geographic_scope;
+                }
+                if ( empty( $p->description ) && empty( $p->requirements ) && empty( $p_facts ) ) {
+                    continue;
+                }
+                ?>
+                <details class="sp-la-program-info">
+                    <summary>
+                        <?php
+                        /* translators: %s: program name */
+                        echo esc_html( sprintf( __( 'About %s', 'societypress' ), $p->name ) );
+                        ?>
+                    </summary>
+                    <?php if ( $p_facts ) : ?>
+                        <p class="help"><?php echo esc_html( implode( ' · ', $p_facts ) ); ?></p>
+                    <?php endif; ?>
+                    <?php if ( ! empty( $p->description ) ) : ?>
+                        <?php echo wp_kses_post( wpautop( $p->description ) ); ?>
+                    <?php endif; ?>
+                    <?php if ( ! empty( $p->requirements ) ) : ?>
+                        <h4><?php esc_html_e( 'What you will need', 'societypress' ); ?></h4>
+                        <?php echo wp_kses_post( wpautop( $p->requirements ) ); ?>
+                    <?php endif; ?>
+                </details>
+            <?php endforeach; ?>
 
             <h3 class="sp-mt-24"><?php esc_html_e( 'Your Ancestor', 'societypress' ); ?></h3>
 

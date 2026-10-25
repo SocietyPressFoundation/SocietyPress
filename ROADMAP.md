@@ -163,6 +163,18 @@ honoring each meeting's visibility, and offered by the Meetings screen's
 "make the page for me" banner.
 **Blockers:** None.
 
+#### Privacy export and erase: research cases, store orders, ballots
+
+**Motivation:** WordPress's Export and Erase Personal Data tools cover most of
+what SocietyPress holds, but not paid research cases (requester name, email
+and case details), store orders (customer name, email and address) or ballot
+votes (which record the voter). A society answering a deletion request has to
+find those by hand.
+**Scope:** Exporters and erasers for the three, following the donations
+pattern: keep what the books need (order totals, case fees, vote counts),
+remove what identifies the person.
+**Blockers:** None.
+
 #### Send a test email
 
 **Motivation:** "Is my site's email working?" is the first question behind
@@ -219,7 +231,9 @@ are missing from the online one, so a society moving online loses them.
 **Scope:** An optional "Willing to volunteer?" checkbox that reveals a skills
 box (writes the existing `volunteer` and `skills` columns); "I'd like the
 printed journal by mail" (writes the existing `receive_print` column); and
-"How did you hear about us?" with an Other box, kept in member meta. Built
+"How did you hear about us?" with an Other box, kept in member meta. Also an optional "I agree to the privacy policy" checkbox, linked to the
+page set under Settings → Privacy, with the date of agreement kept on the
+member record. Built
 once on a pre-1.5 branch in PR #5 and never merged; rebuild it on the current
 join form rather than merging that.
 **Blockers:** None.

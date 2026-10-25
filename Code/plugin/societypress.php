@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.59
+ * Version:     1.5.60
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.59' );
+define( 'SOCIETYPRESS_VERSION', '1.5.60' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5864,6 +5864,42 @@ function sp_member_encrypt_fields( array &$data ): void {
 }
 
 /**
+ * Does a stored value look like SocietyPress ciphertext?
+ *
+ * WHY: a value that won't decrypt is either plaintext (restored from a
+ *      backup, or written before encryption existed) or ciphertext made with
+ *      another site's key. Only the first should be encrypted. Wrapping the
+ *      second in a new layer would bury the original for good — even if the
+ *      society later copies the old keys back into wp-config.php.
+ *      Ciphertext is strict base64 at least a nonce plus a MAC long; phone
+ *      numbers and street addresses never are.
+ */
+function sp_value_looks_encrypted( string $value ): bool {
+    $decoded = base64_decode( $value, true );
+    return false !== $decoded
+        && strlen( $decoded ) >= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES + SODIUM_CRYPTO_SECRETBOX_MACBYTES;
+}
+
+/**
+ * Note that a member row holds plaintext in an encrypted column.
+ *
+ * WHY: the encryption pass ran once, at activation. Rows that arrive
+ *      afterwards from a restored backup (which stores these fields
+ *      readable, so it can move between hosts) stayed unencrypted forever.
+ *      Reading one sets a flag; the next admin page load encrypts them.
+ */
+function sp_flag_plaintext_contact( string $value ): void {
+    static $flagged = false;
+    if ( $flagged || sp_value_looks_encrypted( $value ) ) {
+        return;
+    }
+    $flagged = true;
+    if ( ! get_option( 'sp_contacts_need_encrypt' ) ) {
+        update_option( 'sp_contacts_need_encrypt', 1, false );
+    }
+}
+
+/**
  * Decrypt sensitive fields on a member row after DB read.
  *
  * WHY: Called after $wpdb->get_row() / get_results() when reading from sp_members.
@@ -5889,6 +5925,8 @@ function sp_member_decrypt_row( $row ) {
                 // plaintext from before migration. Leave it as-is.
                 if ( $decrypted !== false ) {
                     $row->$field = $decrypted;
+                } else {
+                    sp_flag_plaintext_contact( (string) $row->$field );
                 }
             }
         }
@@ -5898,6 +5936,8 @@ function sp_member_decrypt_row( $row ) {
                 $decrypted = sp_decrypt( $row[ $field ] );
                 if ( $decrypted !== false ) {
                     $row[ $field ] = $decrypted;
+                } else {
+                    sp_flag_plaintext_contact( (string) $row[ $field ] );
                 }
             }
         }
@@ -5920,6 +5960,16 @@ function sp_member_decrypt_rows( array $rows ): array {
     }
     return $rows;
 }
+
+// Re-run the encryption pass when plaintext has turned up since it last ran.
+add_action( 'admin_init', function () {
+    if ( ! get_option( 'sp_contacts_need_encrypt' ) ) {
+        return;
+    }
+    delete_option( 'sp_contacts_need_encrypt' );
+    delete_option( 'sp_contacts_encrypted' );
+    sp_maybe_migrate_encrypt_contacts();
+} );
 
 /**
  * One-time migration: encrypt existing plaintext contact data.
@@ -5976,6 +6026,12 @@ function sp_maybe_migrate_encrypt_contacts(): void {
                 $test = sp_decrypt( $val );
                 if ( $test !== false && $test !== $val ) {
                     // Already encrypted — skip this field
+                    continue;
+                }
+
+                // Ciphertext from another site's key: leave it exactly as it
+                // is, so copying that site's keys back can still recover it.
+                if ( sp_value_looks_encrypted( (string) $val ) ) {
                     continue;
                 }
 
@@ -22688,24 +22744,41 @@ function sp_insights_stats_members( array $window ): array {
     }
 
     $access_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $access ) );
-    if ( ! $access_exists ) {
-        return [ 'label' => $label, 'value' => 0, 'value_kind' => 'count', 'sparkline' => $zeroes ];
-    }
 
     // WHY one query, not 13: previously this fired 1 total + 12 per-bucket
     //  COUNT(DISTINCT)s. Pull every (user_id, timestamp) hit in the window
     //  once and compute the distinct-active counts in PHP. Distinct counting
     //  can't be summed across buckets — a member active in two buckets counts
     //  once in the total but once in each bucket — so PHP sets handle both.
-    $rows = $wpdb->get_results( $wpdb->prepare(
-        "SELECT a.user_id AS uid, UNIX_TIMESTAMP(a.created_at) AS ts
-           FROM {$access} a
-     INNER JOIN {$members} m ON a.user_id = m.user_id
-          WHERE a.user_id IS NOT NULL
-            AND a.created_at BETWEEN %s AND %s",
-        $window['start'] . ' 00:00:00',
-        $window['end']   . ' 23:59:59'
-    ), ARRAY_A );
+    $range_start = $window['start'] . ' 00:00:00';
+    $range_end   = $window['end']   . ' 23:59:59';
+    $rows        = [];
+    if ( $access_exists ) {
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT a.user_id AS uid, UNIX_TIMESTAMP(a.created_at) AS ts
+               FROM {$access} a
+         INNER JOIN {$members} m ON a.user_id = m.user_id
+              WHERE a.user_id IS NOT NULL
+                AND a.created_at BETWEEN %s AND %s",
+            $range_start, $range_end
+        ), ARRAY_A );
+    }
+
+    // Sign-ins too. WHY: page-view logging is optional and off until a society
+    // turns it on, so on most sites the access log is empty and this card read
+    // zero however busy the site was. Sign-ins are always in the audit log, so
+    // a member who signed in during the window counts as active either way.
+    $rows = array_merge( $rows, $wpdb->get_results( $wpdb->prepare(
+        // object_id, not user_id: the sign-in is logged before WordPress has
+        // set the current user, so the person signing in is the object.
+        "SELECT l.object_id AS uid, UNIX_TIMESTAMP(l.created_at) AS ts
+           FROM {$wpdb->prefix}sp_audit_log l
+     INNER JOIN {$members} m ON l.object_id = m.user_id
+          WHERE l.action = 'user_login'
+            AND l.object_type = 'user'
+            AND l.created_at BETWEEN %s AND %s",
+        $range_start, $range_end
+    ), ARRAY_A ) );
 
     $edges        = sp_insights_bucket_edges( $window );
     $total_users  = [];
@@ -23190,7 +23263,7 @@ function sp_render_insights_page(): void {
         </div>
 
         <?php if ( ! $rendered_any ) : ?>
-            <div class="sp-insights-empty"><?php esc_html_e( 'No modules are enabled. Enable some modules in Settings → Modules to start seeing insights here.', 'societypress' ); ?></div>
+            <div class="sp-insights-empty"><?php esc_html_e( 'No features are turned on. Turn some on under Settings → Features to start seeing numbers here.', 'societypress' ); ?></div>
         <?php endif; ?>
     </div>
     <?php
@@ -33379,11 +33452,14 @@ add_action( 'admin_init', function () {
         'log_url_access',
         __( 'Log Page Views', 'societypress' ),
         function () use ( $sp_logging ) {
-            $val = $sp_logging['log_url_access'] ?? 1;
+            // WHY 0, not 1: the logger treats an unsaved setting as off, so a
+            // box shown ticked on a fresh site promised logging that wasn't
+            // happening. The box now shows what is actually true.
+            $val = $sp_logging['log_url_access'] ?? 0;
             ?>
             <label>
                 <input type="checkbox" name="societypress_settings[log_url_access]" value="1" <?php checked( $val, 1 ); ?>>
-                <?php esc_html_e( 'Record which pages are visited. Viewable under Reports → Access Log.', 'societypress' ); ?>
+                <?php esc_html_e( 'Record which pages are visited. Viewable under Settings → Sign-In History.', 'societypress' ); ?>
             </label>
             <?php
         },
@@ -40139,7 +40215,7 @@ function sp_render_settings_export_page(): void {
         <h1><?php esc_html_e( 'Export & Backup', 'societypress' ); ?></h1>
 
         <p class="description sp-mt-12">
-            <?php esc_html_e( 'One-click backup of every SocietyPress table on this site. Members, events, donations, library, store, committees, ballots, photos, documents, and settings are packaged into a single ZIP. Encrypted member fields are decrypted to plaintext so the export is portable.', 'societypress' ); ?>
+            <?php esc_html_e( 'One-click copy of every SocietyPress table on this site — members, events, donations, library, store, committees, ballots, photo and document records — in a single ZIP, with encrypted member fields made readable so the copy works on any host. Use it to keep your data or hand it to someone else. For a backup you can move a whole site with, use Scheduled Backups below.', 'societypress' ); ?>
         </p>
 
         <table class="form-table">
@@ -40154,7 +40230,7 @@ function sp_render_settings_export_page(): void {
             <tr>
                 <th scope="col"><?php esc_html_e( 'Does NOT include', 'societypress' ); ?></th>
                 <td>
-                    <?php esc_html_e( 'Site-wide content like pages, and uploaded files such as newsletter PDFs, photos, and document attachments. To back up uploaded files, contact your hosting provider — they are too large to include in this export.', 'societypress' ); ?>
+                    <?php esc_html_e( 'Sign-in accounts, SocietyPress settings, pages, and uploaded files such as newsletter PDFs, photos and document attachments. Scheduled Backups below include accounts and settings, and can include uploaded files.', 'societypress' ); ?>
                 </td>
             </tr>
         </table>
@@ -40571,7 +40647,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.59',
+            'version'     => '1.5.60',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40579,7 +40655,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.59',
+            'version'     => '1.5.60',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40587,7 +40663,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.59',
+            'version'     => '1.5.60',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40595,7 +40671,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.59',
+            'version'     => '1.5.60',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40603,7 +40679,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.59',
+            'version'     => '1.5.60',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -84993,6 +85069,20 @@ function sp_expire_lapsed_members(): void {
     $prefix = $wpdb->prefix . 'sp_';
     $today  = date( 'Y-m-d', current_time( 'timestamp' ) );
 
+    // Renewal Grace Period (Settings → Membership). WHY: with an annual
+    // membership year everyone's dues fall due on the same day, and most
+    // societies give members a couple of months to pay before treating them
+    // as lapsed. The setting was saved but never read, so members lost
+    // access the day after the year turned. Rolling memberships fall due one
+    // at a time and have no grace period, as the setting itself says.
+    $settings = sp_settings();
+    if ( ( $settings['membership_period_type'] ?? 'annual' ) === 'annual' ) {
+        $grace = max( 0, min( 11, (int) ( $settings['grace_period_months'] ?? 2 ) ) );
+        if ( $grace > 0 ) {
+            $today = date( 'Y-m-d', strtotime( "-{$grace} months", current_time( 'timestamp' ) ) );
+        }
+    }
+
     $wpdb->query( $wpdb->prepare(
         "UPDATE {$prefix}members
          SET status = 'expired', updated_at = %s
@@ -85074,14 +85164,9 @@ function sp_process_expired_notices(): void {
             'sent_at'       => current_time( 'mysql' ),
         ] );
 
-        // Auto-update member status to expired
-        $wpdb->update(
-            $prefix . 'members',
-            [ 'status' => 'expired', 'updated_at' => current_time( 'mysql' ) ],
-            [ 'user_id' => $member->user_id ],
-            [ '%s', '%s' ],
-            [ '%d' ]
-        );
+        // No status change here. WHY: sp_expire_lapsed_members() does that
+        // on the same daily run and honors the Renewal Grace Period; flipping
+        // the status here expired members on day one regardless of it.
     }
 }
 
@@ -91401,11 +91486,12 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
     $readme .= "WHAT'S INCLUDED\n---------------\n";
     $readme .= "societypress.sql  Full SQL dump of every SocietyPress table.\n";
     $readme .= "                  Members, events, donations, library, store, orders,\n";
-    $readme .= "                  committees, ballots, photos, documents, settings.\n";
+    $readme .= "                  committees, ballots, photo and document records.\n";
     $readme .= "                  Encrypted fields are decrypted to plaintext.\n\n";
     $readme .= "WHAT'S *NOT* INCLUDED\n---------------------\n";
-    $readme .= "- WordPress core tables (wp_users, wp_options, wp_posts).\n";
-    $readme .= "  Use Tools > Export in WordPress for those.\n";
+    $readme .= "- WordPress core tables (wp_users, wp_options, wp_posts): members'\n";
+    $readme .= "  sign-in accounts, SocietyPress settings and pages. A Scheduled\n";
+    $readme .= "  Backup (Settings > Export & Backup) includes accounts and settings.\n";
     $readme .= "- Uploaded files: newsletter PDFs, photos, document attachments.\n";
     $readme .= "  These live in wp-content/uploads/ and are too large for a single\n";
     $readme .= "  PHP request. Copy that directory separately via FTP or cPanel.\n\n";

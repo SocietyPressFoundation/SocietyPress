@@ -175,6 +175,19 @@ pattern: keep what the books need (order totals, case fees, vote counts),
 remove what identifies the person.
 **Blockers:** None.
 
+#### Restore from a backup
+
+**Motivation:** Scheduled backups capture everything a society needs —
+SocietyPress data, sign-in accounts, settings and uploaded files — but getting
+it back means phpMyAdmin, matching table prefixes and copying wp-config keys by
+hand. The one-click Site Export leaves out sign-in accounts entirely. A
+volunteer facing a dead host needs a button.
+**Scope:** "Restore a backup" on Settings → Export & Backup for a fresh
+install: upload a backup ZIP, check it, load the tables (rewriting the table
+prefix), settings and uploaded files, and re-encrypt member fields under the
+new site's key, so a backup moves between hosts without the old wp-config.
+**Blockers:** None.
+
 #### Send a test email
 
 **Motivation:** "Is my site's email working?" is the first question behind

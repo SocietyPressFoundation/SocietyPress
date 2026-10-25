@@ -20,6 +20,33 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.60] — 2026-10-25
+
+**The Renewal Grace Period works.** The setting under Settings → Membership was
+saved but never used, so on an annual membership year every unpaid member
+became Expired — and lost members-only access — the day after the year turned.
+Members now stay Active for the grace period you set (two months unless you
+changed it). Rolling memberships are unchanged.
+
+**"Active members" on How We're Doing counts sign-ins.** It only counted logged
+page views, which are off unless you turn them on, so on most sites it showed
+zero. Members who signed in during the window now count. The Log Page Views box
+under Settings → Privacy also now shows its real state on a new site; it showed
+ticked while page views weren't being logged.
+
+**Restored member data is encrypted again.** Phone numbers and addresses loaded
+from a Site Export (which stores them readable) stayed unencrypted, because the
+encryption pass only ever ran once. SocietyPress now notices them and encrypts
+them. Values encrypted by another site's key are left untouched, so copying
+that site's keys across still recovers them.
+
+**The Site Export says what it leaves out.** The Export & Backup screen and the
+README in the ZIP claimed settings were included, and didn't mention that
+members' sign-in accounts aren't. Both now say so, and point to Scheduled
+Backups, which include them.
+
+---
+
 ## [1.5.59] — 2026-10-25
 
 **Applicants see what a lineage program asks for.** Each program's description

@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.56] — 2026-10-25
+
+**Members → Export downloads again.** Clicking Download CSV just reloaded the
+page; the part that built the file had been lost in an earlier rewrite. It now
+downloads the members matching your filters, with the columns you ticked, and
+the number on the screen is always the number of rows in the file. Accented
+names open correctly in Excel, a name typed as a spreadsheet formula can't run
+when the file is opened, and each export is recorded in the activity log.
+
 ## [1.5.55] — 2026-10-25
 
 **Birthdays without a year are kept.** A member can give their birthday but

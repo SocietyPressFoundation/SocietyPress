@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.55
+ * Version:     1.5.56
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.55' );
+define( 'SOCIETYPRESS_VERSION', '1.5.56' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -31335,6 +31335,135 @@ function sp_get_export_columns(): array {
 
 
 /**
+ * WHERE clause for the Export screen's filters, shared by the live count and
+ * the download.
+ *
+ * WHY one function: the count on the screen is a promise about what the file
+ * will hold. Two copies of the same filtering drift apart, and then the screen
+ * says 247 and the spreadsheet has 250.
+ *
+ * @param array $f Raw filter values: status, tier, join_from, join_to,
+ *                 exp_from, exp_to.
+ * @return array{0: string, 1: array} SQL (against alias m) and its values.
+ */
+function sp_export_filter_sql( array $f ): array {
+    $where  = [];
+    $values = [];
+    $date   = fn( $v ) => preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $v ) ? (string) $v : '';
+
+    $status = sanitize_key( wp_unslash( (string) ( $f['status'] ?? '' ) ) );
+    if ( '' !== $status && 'all' !== $status ) {
+        $where[]  = 'm.status = %s';
+        $values[] = $status;
+    }
+    $tier_id = absint( $f['tier'] ?? 0 );
+    if ( $tier_id > 0 ) {
+        $where[]  = 'm.tier_id = %d';
+        $values[] = $tier_id;
+    }
+    foreach ( [ 'join_from' => 'm.join_date >= %s', 'join_to' => 'm.join_date <= %s',
+                'exp_from' => 'm.expiration_date >= %s', 'exp_to' => 'm.expiration_date <= %s' ] as $key => $clause ) {
+        $v = $date( wp_unslash( $f[ $key ] ?? '' ) );
+        if ( '' !== $v ) {
+            $where[]  = $clause;
+            $values[] = $v;
+        }
+    }
+
+    return [ $where ? 'WHERE ' . implode( ' AND ', $where ) : '', $values ];
+}
+
+/**
+ * Members → Export: stream the CSV when Download CSV is clicked.
+ *
+ * WHY admin_init: the file goes out as the whole response, so the headers
+ * have to be sent before WordPress starts drawing the admin page. This
+ * handler was lost in a rewrite after March 2026 and the button did nothing
+ * until 1.5.56 — the screen, its filters and its column list survived
+ * without it.
+ */
+add_action( 'admin_init', function () {
+    if ( 'download' !== ( $_POST['sp_export_action'] ?? '' ) ) {
+        return;
+    }
+    check_admin_referer( 'sp_export_members' );
+    if ( ! current_user_can( 'sp_manage_members' ) ) {
+        wp_die( esc_html__( 'You do not have permission to export members.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    [ $where_sql, $values ] = sp_export_filter_sql( [
+        'status'    => $_POST['sp_export_status'] ?? '',
+        'tier'      => $_POST['sp_export_tier'] ?? 0,
+        'join_from' => $_POST['sp_export_join_from'] ?? '',
+        'join_to'   => $_POST['sp_export_join_to'] ?? '',
+        'exp_from'  => $_POST['sp_export_exp_from'] ?? '',
+        'exp_to'    => $_POST['sp_export_exp_to'] ?? '',
+    ] );
+
+    // Email lives on wp_users and the plan name on the tiers table; both are
+    // joined so the file is one flat sheet a treasurer can use as it is.
+    $sql = "SELECT m.*, u.user_email AS email, t.name AS tier_name
+            FROM {$prefix}members m
+            LEFT JOIN {$wpdb->users} u ON u.ID = m.user_id
+            LEFT JOIN {$prefix}membership_tiers t ON t.id = m.tier_id
+            {$where_sql}
+            ORDER BY m.last_name ASC, m.first_name ASC";
+    $members = $wpdb->get_results( $values ? $wpdb->prepare( $sql, $values ) : $sql );
+    // Contact fields are encrypted at rest; a spreadsheet of ciphertext is no use.
+    $members = sp_member_decrypt_rows( $members );
+
+    $columns  = sp_get_export_columns();
+    $selected = array_values( array_filter(
+        array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['sp_export_fields'] ?? [] ) ),
+        fn( $k ) => isset( $columns[ $k ] )
+    ) );
+    if ( ! $selected ) {
+        $selected = array_keys( $columns ); // Nothing ticked means everything.
+    }
+
+    // Custom fields are read from member_meta in one query, not one per member.
+    $meta_by_user = [];
+    if ( $members && array_filter( $selected, fn( $k ) => str_starts_with( $k, 'meta:' ) ) ) {
+        $ids = array_map( fn( $m ) => (int) $m->user_id, $members );
+        $ph  = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        foreach ( $wpdb->get_results( $wpdb->prepare(
+            "SELECT user_id, meta_key, meta_value FROM {$prefix}member_meta WHERE user_id IN ({$ph})", $ids
+        ) ) as $row ) {
+            $meta_by_user[ (int) $row->user_id ][ $row->meta_key ] = $row->meta_value;
+        }
+    }
+
+    sp_audit( 'members_exported', sprintf( 'Exported %d members to CSV', count( $members ) ), 'member' );
+
+    while ( ob_get_level() ) {
+        ob_end_clean();
+    }
+    nocache_headers();
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="members-export-' . current_time( 'Y-m-d' ) . '.csv"' );
+
+    $out = fopen( 'php://output', 'w' );
+    // Byte-order mark, so Excel reads Müller and García correctly.
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, array_map( fn( $k ) => $columns[ $k ]['label'], $selected ), ',', '"', '\\' );
+    foreach ( $members as $m ) {
+        $m->_meta = $meta_by_user[ (int) $m->user_id ] ?? [];
+        $line = [];
+        foreach ( $selected as $k ) {
+            // A name typed on the public Join form as "=..." would otherwise
+            // run as a formula on the volunteer's computer.
+            $line[] = sp_survey_csv_cell( (string) call_user_func( $columns[ $k ]['value'], $m ) );
+        }
+        fputcsv( $out, $line, ',', '"', '\\' );
+    }
+    fclose( $out );
+    exit;
+} );
+
+/**
  * AJAX handler: return a filtered member count so the export page can
  * update the "X members match your filters" number in real time.
  *
@@ -31353,49 +31482,16 @@ add_action( 'wp_ajax_sp_export_count', function () {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $where  = [];
-    $values = [];
+    [ $where_sql, $values ] = sp_export_filter_sql( [
+        'status'    => $_POST['status'] ?? '',
+        'tier'      => $_POST['tier'] ?? 0,
+        'join_from' => $_POST['join_from'] ?? '',
+        'join_to'   => $_POST['join_to'] ?? '',
+        'exp_from'  => $_POST['exp_from'] ?? '',
+        'exp_to'    => $_POST['exp_to'] ?? '',
+    ] );
 
-    $status = sanitize_text_field( wp_unslash( $_POST['status'] ?? '' ) );
-    if ( ! empty( $status ) && $status !== 'all' ) {
-        $where[]  = 'status = %s';
-        $values[] = $status;
-    }
-
-    $tier_id = absint( $_POST['tier'] ?? 0 );
-    if ( $tier_id > 0 ) {
-        $where[]  = 'tier_id = %d';
-        $values[] = $tier_id;
-    }
-
-    $join_from = sanitize_text_field( wp_unslash( $_POST['join_from'] ?? '' ) );
-    $join_to   = sanitize_text_field( wp_unslash( $_POST['join_to'] ?? '' ) );
-    if ( ! empty( $join_from ) ) {
-        $where[]  = 'join_date >= %s';
-        $values[] = $join_from;
-    }
-    if ( ! empty( $join_to ) ) {
-        $where[]  = 'join_date <= %s';
-        $values[] = $join_to;
-    }
-
-    $exp_from = sanitize_text_field( wp_unslash( $_POST['exp_from'] ?? '' ) );
-    $exp_to   = sanitize_text_field( wp_unslash( $_POST['exp_to'] ?? '' ) );
-    if ( ! empty( $exp_from ) ) {
-        $where[]  = 'expiration_date >= %s';
-        $values[] = $exp_from;
-    }
-    if ( ! empty( $exp_to ) ) {
-        $where[]  = 'expiration_date <= %s';
-        $values[] = $exp_to;
-    }
-
-    $where_sql = '';
-    if ( ! empty( $where ) ) {
-        $where_sql = 'WHERE ' . implode( ' AND ', $where );
-    }
-
-    $sql = "SELECT COUNT(*) FROM {$prefix}members {$where_sql}";
+    $sql = "SELECT COUNT(*) FROM {$prefix}members m {$where_sql}";
     if ( ! empty( $values ) ) {
         $sql = $wpdb->prepare( $sql, $values );
     }
@@ -40400,7 +40496,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.55',
+            'version'     => '1.5.56',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40408,7 +40504,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.55',
+            'version'     => '1.5.56',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40416,7 +40512,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.55',
+            'version'     => '1.5.56',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40424,7 +40520,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.55',
+            'version'     => '1.5.56',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40432,7 +40528,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.55',
+            'version'     => '1.5.56',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

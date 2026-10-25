@@ -101,16 +101,6 @@ before the session ends.
 
 ### High
 
-#### Members → Export downloads nothing
-
-**Motivation:** Clicking **Download CSV** on the Export screen just reloads the
-page. The handler that built the file was lost in a rewrite after March 2026;
-the screen, its filters and its column list survived. A treasurer or secretary
-trying to pull a member list gets nothing.
-**Scope:** Restore the download, driven by the current screen's filters and
-`sp_get_export_columns()`, with decrypted contact fields. Found 2026-10-25.
-**Blockers:** None.
-
 #### Check every module guide against the software
 
 **Motivation:** The guides under `docs/modules/` describe some things that

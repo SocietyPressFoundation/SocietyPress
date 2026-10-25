@@ -16,7 +16,7 @@ one.
 Forms is one of the optional features. If you don't see **Forms** in the
 left-hand menu, it just needs switching on:
 
-1. In the left menu, go to **Settings → Modules**.
+1. In the left menu, go to **Settings → Features**.
 2. Find **Forms** in the list and switch it on.
 3. Save.
 

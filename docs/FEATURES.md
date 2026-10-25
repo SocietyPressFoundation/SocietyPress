@@ -49,7 +49,7 @@ files, helper functions), see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 ## How modules are turned on and off
 
 Every module except Members is toggleable. An administrator turns modules
-on or off in **Settings → Modules** using a card grid of labeled switches
+on or off in **Settings → Features** using a card grid of labeled switches
 with Enable All and Disable All helpers. Disabling a module:
 
 - Hides its admin pages and menu entries

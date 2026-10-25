@@ -99,7 +99,7 @@ If you want to ship physical printed certificates instead of letting members pri
 
 ## If something looks wrong
 
-**Applicant says they can't submit.** First check that the program is active and accepting applications. If they're paying a fee and Stripe is misconfigured, they'd see an error after clicking Submit — verify your Stripe keys under **SocietyPress → Settings → Payments**.
+**Applicant says they can't submit.** First check that the program is active and accepting applications. If they're paying a fee and Stripe is misconfigured, they'd see an error after clicking Submit — verify your Stripe keys under **SocietyPress → Settings → Events → Online Payments**.
 
 **Stripe redirect lands on a "payment_error" page.** Open Stripe's dashboard → Developers → Logs and look at the most recent failed Checkout Session. The error message tells you what's wrong (most common: an old test-mode key that expired).
 

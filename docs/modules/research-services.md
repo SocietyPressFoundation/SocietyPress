@@ -2,7 +2,7 @@
 
 Optional paid research-case workflow. Comradery via [Help Requests](help-requests.md) is the default — most quick questions get free volunteer help. Research Services is the opt-in escalation for cases that genuinely need many hours of focused work: deep ancestor traces, full record-set transcriptions, professional-grade reports.
 
-This module is **off by default**. Enable it under **SocietyPress → Settings → Modules** when you want it.
+This module is **off by default**. Enable it under **SocietyPress → Settings → Features** when you want it.
 
 ## What you can do
 
@@ -28,7 +28,7 @@ This module is **off by default**. Enable it under **SocietyPress → Settings �
 
 ## How to enable the module
 
-**SocietyPress → Settings → Modules → Paid Research Services → On.** The new admin menu item (SocietyPress → Research Cases) appears.
+**SocietyPress → Settings → Features → Paid Research Services → On.** The new admin menu item (SocietyPress → Research Cases) appears.
 
 Every new case starts at these terms:
 

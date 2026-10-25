@@ -86,4 +86,4 @@ You can change what members see in each case under **Wording**: the button text,
 
 **The survey's page is gone.** If someone deleted it from the Pages screen, open the survey and press **Put the Page Back**.
 
-**Surveys isn't in the menu.** Settings → Modules → turn on Surveys.
+**Surveys isn't in the menu.** Settings → Features → turn on Surveys.

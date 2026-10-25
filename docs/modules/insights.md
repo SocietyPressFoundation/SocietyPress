@@ -2,7 +2,7 @@
 
 A single page that answers the question every board asks at every meeting: "How alive is our society right now?" Insights pulls the engagement and use numbers out of every enabled module — active members, events held, volunteer hours, donations raised, newsletters published — and shows them all on one screen across whatever time window you pick.
 
-This is admin/board-only. Members never see it. Disabled modules are hidden, not greyed out — if you've turned off the Store module in **SocietyPress → Settings → Modules**, the Insights page acts as if the Store doesn't exist.
+This is admin/board-only. Members never see it. Disabled modules are hidden, not greyed out — if you've turned off the Store module in **SocietyPress → Settings → Features**, the Insights page acts as if the Store doesn't exist.
 
 ## What you can do
 
@@ -69,7 +69,7 @@ If a module is disabled, its row doesn't appear.
 
 **This fiscal year is empty.** Your fiscal-year-start month under **SocietyPress → Settings → Membership** may be set wrong. Many genealogy societies run a July-to-June fiscal year; the default is January. Check the setting, save, refresh Insights.
 
-**A module I have enabled isn't showing up.** Three possibilities, in order. (1) The module's settings switch under **SocietyPress → Settings → Modules** is actually off. (2) The module's database tables didn't install correctly — visit **Plugins → Installed Plugins**, deactivate SocietyPress, reactivate it, and the missing tables get created. (3) You're viewing as a non-admin who has access to that module but not Reports — log in as a full administrator to confirm.
+**A module I have enabled isn't showing up.** Three possibilities, in order. (1) The module's settings switch under **SocietyPress → Settings → Features** is actually off. (2) The module's database tables didn't install correctly — visit **Plugins → Installed Plugins**, deactivate SocietyPress, reactivate it, and the missing tables get created. (3) You're viewing as a non-admin who has access to that module but not Reports — log in as a full administrator to confirm.
 
 **Donations total looks too low.** Insights only counts donations where the status is `recorded` (manual cash/check entry), `paid` (Stripe one-time), or `subscription_active` (recurring). Failed, pending, cancelled, and refunded donations are excluded. If you see $0 but you know money came in, check **SocietyPress → Donations** for any rows still in `pending` — usually a Stripe webhook didn't deliver and the donation needs a manual status bump.
 

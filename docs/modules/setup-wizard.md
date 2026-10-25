@@ -1,62 +1,55 @@
 # Setup Wizard
 
-The first thing SocietyPress shows you after install. Three short pages get the basics in place so the rest of the platform has somewhere to land. Takes about ten minutes if you have your society's information at hand.
+The first thing SocietyPress shows you after install. Four short steps get the basics in place so the rest of the platform has somewhere to land. Takes about ten minutes if you have your society's information at hand.
 
 ## What you'll need
 
-- Your society's name and mailing address.
-- A working email address (for site notifications).
-- An idea of your membership tiers and dues (you can edit these later).
-- An idea of your color and font preferences (you can change these later too).
+- Your society's name, mailing address, phone number and contact email.
+- When your membership year starts, if you use one.
+- A rough idea of which features you want (you can change them later).
+- An email address for the site to send from — one at your own website's domain works best.
 
-## Page 1 — Organization
+## Step 1 — Your Organization
 
-The basics about your society: name, address, phone, email, website. The name shows up in the header, in email signatures, on member-facing forms. The address fills tax-receipt language on donation receipts. None of this is locked in — every field is editable later under **SocietyPress → Settings → Organization**.
+Society name, contact email, mailing address and phone number. The name shows up in the header, in emails and on member-facing forms. Every field can be changed later under **SocietyPress → Settings → Organization**.
 
-If your society is a 501(c)(3), enter your EIN on this page. SocietyPress automatically appends the standard "no goods or services were provided" language to donation receipts when an EIN is configured.
+## Step 2 — Membership
 
-## Page 2 — Membership
+Choose how membership periods work:
 
-Pick your dues structure:
+- **Annual (fixed year)** — everyone's membership runs to the end of the same year. Most societies use this. Then pick the **Fiscal Year Start Month** — many societies start in July.
+- **Rolling (12 months from join date)** — each member's year runs from the day they joined.
+- **Lifetime only** — memberships never expire.
 
-- **Annual** — most common. Members renew once a year on the anniversary of joining (or on a fixed calendar date — both options exist).
-- **Rolling** — multi-year cycles, useful for societies that sell 2- or 5-year memberships at a discount.
-- **Lifetime** — one-time payment, no expiration.
+SocietyPress starts you with five membership plans — Individual, Joint/Family, Student, Lifetime and Honorary. Rename them, change prices, and add or remove plans under **SocietyPress → Members → Membership Plans**. The period type and start month can be changed later under **SocietyPress → Settings → Membership**.
 
-You can mix-and-match. The wizard creates a default Individual tier and a default Joint/Family tier. You can rename, re-price, add tiers, and remove tiers anytime from **SocietyPress → Members → Member Levels**. The defaults are placeholders.
+## Step 3 — Choose Your Features
 
-You'll also pick whether members renew on their join anniversary or on a fixed date (e.g., January 1st for everyone). Most societies pick the anniversary model — it spreads renewal work across the year. The fixed-date model is simpler for societies that prefer a single bulk renewal cycle.
+Tick the features your society needs — Events, Library, Newsletters, Store, and so on. Members and finances are always on. You can turn features on and off later under **SocietyPress → Settings → Features**.
 
-## Page 3 — Appearance
+## Step 4 — Finishing Touches
 
-Pick a starting look:
+- **Primary Color** and **Accent Color** for your site.
+- **Email "From" Name** and **Email "From" Address** — who emails from the site appear to come from.
 
-- **Heritage** — navy + gold, formal serif headings. The classic "society" feel.
-- **Coastline** — sea-glass blue + sand. For coastal historical groups.
-- **Prairie** — terracotta + field green. For agricultural-region societies.
-- **Ledger** — slate gray + cream. Library / research-focused, professional.
-- **Parlor** — burgundy + ivory. Vintage 19th-century feel.
-
-These are child themes. Activating one applies its color palette and font choices. You can tweak any setting individually under **SocietyPress → Settings → Design** afterward, or import a different preset from the [Theme Gallery](theme-presets.md).
-
-If none of these match what you want, pick the closest one and modify. You can always change the active theme later (Themes lives at **SocietyPress → Themes**).
+Click **Finish Setup**.
 
 ## What happens after
 
-The wizard ends on a **You're ready** page. Three suggested next steps:
+The last page offers to **Import My Members** — see [Members](members.md), and the [ENS migration guide](../ENS-MIGRATION-GUIDE.md) if you're moving from EasyNetSites. Or go to the Dashboard and come back to it.
 
-1. **Import members** — see [Members](members.md). The CSV importer recognizes the standard ENS export format if you're moving from EasyNetSites.
-2. **Set up payments** — drop your Stripe and/or PayPal credentials in **SocietyPress → Settings → Payments**. Required before members can pay dues, before donations work, and before the store accepts orders.
-3. **Add your first event** — see [Events](events.md). Most societies start with their next monthly meeting.
+Other things most societies do next:
 
-You don't have to do these in any particular order. The wizard's defaults are deliberate so the site is functional without any of them.
+- **Set up payments** — add your Stripe and/or PayPal keys under **SocietyPress → Settings → Events → Online Payments**. Needed before members can pay dues online, before donations work, and before the store accepts orders.
+- **Pick a look** — **SocietyPress → Themes** has five child themes (Heritage, Coastline, Prairie, Ledger, Parlor), and **Settings → Design** fine-tunes colors and fonts. See [Theme Presets](theme-presets.md) and [Child Themes](child-themes.md).
+- **Add your first event** — see [Events](events.md). Most societies start with their next monthly meeting.
 
 ## If something looks wrong
 
-**The wizard didn't appear after install.** It only runs once. To see it again, go to **SocietyPress → Settings → Reset Setup Wizard** (you may need to scroll the Settings sidebar). This won't delete any data; it just lets you walk through the wizard again.
+**The wizard didn't appear after install.** It opens once, on the first visit to the admin after SocietyPress is switched on, and not again after it is finished or skipped. Everything it asks is also on the Settings screens, so you never need it again: Organization, Membership, Modules and Design.
 
-**I picked the wrong theme.** Themes are easy to change. **SocietyPress → Themes** lets you switch. Activating a different child theme doesn't touch your members, events, or content.
+**I picked the wrong theme.** **SocietyPress → Themes** lets you switch. Changing theme doesn't touch your members, events or content.
 
-**I picked the wrong dues structure.** Membership Levels (under **SocietyPress → Members**) is where you change tier prices, durations, and add/remove tiers. The renewal model (anniversary vs fixed date) lives at **SocietyPress → Settings → Membership** and changing it doesn't reset existing members' renewal dates.
+**I picked the wrong membership period.** Change it under **SocietyPress → Settings → Membership**. Existing members keep the expiration dates they have; new dates follow the new setting. Plan names and prices are under **SocietyPress → Members → Membership Plans**.
 
 **The address on my receipts is wrong.** **SocietyPress → Settings → Organization**. Edit, save. The next receipt picks up the new address.

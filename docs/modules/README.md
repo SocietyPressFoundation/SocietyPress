@@ -17,7 +17,7 @@ If you just installed SocietyPress and the site is empty:
 
 - **[Members](members.md)** — roster, dues, renewals, member directory, household relationships.
 
-### Toggleable (Settings → Modules)
+### Toggleable (Settings → Features)
 
 - **[Events](events.md)** — calendar, registration, speakers, recurring events.
 - **[Library](library.md)** — catalog of books, periodicals, microfilm. OPAC-style search.

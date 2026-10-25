@@ -134,7 +134,7 @@ You can also save a builder row as a "template" via the row's settings menu → 
 
 **The builder toggle isn't appearing.** Make sure you're editing a Page (not a Post). The builder is page-only. Go **SocietyPress → Pages → All Pages**, click the page title to edit.
 
-**A widget I expected isn't in the picker.** The widget probably belongs to a module that's currently disabled. **SocietyPress → Settings → Modules** — turn on the module that owns the widget.
+**A widget I expected isn't in the picker.** The widget probably belongs to a module that's currently disabled. **SocietyPress → Settings → Features** — turn on the module that owns the widget.
 
 **A widget shows raw shortcode instead of rendering.** Double-check the page is published (not draft) and you're viewing the front-end (not the editor preview). Shortcode resolution happens at front-end render.
 

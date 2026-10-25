@@ -295,7 +295,7 @@ When you ask for help, tell us:
 
 ## What you might want to enable next
 
-Once your members are imported and the front page looks right, these modules are typically the highest-leverage next steps. Each one is a setting toggle (Settings → Modules) — turn on what fits your society, leave the rest off.
+Once your members are imported and the front page looks right, these modules are typically the highest-leverage next steps. Each one is a setting toggle (Settings → Features) — turn on what fits your society, leave the rest off.
 
 - **First Families / Lineage Programs** — If your society recognizes descendants of historically significant ancestors (First Families of [your county], Pioneer Settlers, Civil War veterans descendants, etc.), enable Lineage Programs. Members apply through a public form, you review proofs in an admin queue, and approved members appear on a public roster with a printable certificate.
 - **Picture Wall** — Member-submitted ancestor portrait gallery, distinct from regular event photo albums. Members upload a portrait + ancestor name + relationship; staff approve in a moderation queue.

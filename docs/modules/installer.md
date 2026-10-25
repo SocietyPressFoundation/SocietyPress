@@ -97,7 +97,7 @@ This is the recommended path for societies that just want a working site as fast
 
 **Installation completed but I get a 404 on the home page.** WordPress permalinks haven't been written yet. Log in to the WP admin → Settings → Permalinks → Save Changes (without changing anything). This rebuilds the URL routing.
 
-**A specific feature module isn't appearing in the admin sidebar.** Settings → Modules — toggle the modules you want enabled. The installer leaves all modules off by default to keep the admin sidebar clean; you turn on what you need.
+**A specific feature module isn't appearing in the admin sidebar.** Settings → Features — toggle the modules you want enabled. The installer leaves all modules off by default to keep the admin sidebar clean; you turn on what you need.
 
 **The Setup Wizard doesn't run.** It only runs once. To re-run it: SocietyPress → Settings → Reset Setup Wizard.
 

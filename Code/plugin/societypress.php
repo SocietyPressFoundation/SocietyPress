@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.53
+ * Version:     1.5.54
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.53' );
+define( 'SOCIETYPRESS_VERSION', '1.5.54' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40194,7 +40194,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.53',
+            'version'     => '1.5.54',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40202,7 +40202,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.53',
+            'version'     => '1.5.54',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40210,7 +40210,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.53',
+            'version'     => '1.5.54',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40218,7 +40218,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.53',
+            'version'     => '1.5.54',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40226,7 +40226,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.53',
+            'version'     => '1.5.54',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -63757,43 +63757,68 @@ add_shortcode( 'societypress_join', 'sp_render_join_form' );
 
 /**
  * Compute a membership expiration date N years out, honoring the society's
- * period type. Rolling = today + N years; annual = the next cycle's start month,
- * then N-1 further years. Used when online dues are paid for a multi-year term.
+ * period type. Used when online dues are paid, for a new term or a renewal.
+ *
+ * A renewal extends from the member's current expiration when it is still in
+ * the future, so paying early never costs them time. A new or lapsed member
+ * starts from today.
+ *
+ * WHY the annual case counts from the current expiration: it used to count
+ * from today alone, so a member paid through June 30 who renewed online in
+ * June got June 30 again — charged a year's dues for nothing — and a member
+ * already paid a year ahead was moved back. Online renewals come in just
+ * before the expiration date, so that was nearly every on-time renewal.
+ *
+ * @param int         $years              Years being paid for (at least 1).
+ * @param array       $settings           sp_settings().
+ * @param string|null $current_expiration The member's expiration on file, if any.
+ * @return string Y-m-d, or '' for lifetime memberships.
  */
 function sp_membership_compute_expiration( int $years, array $settings, ?string $current_expiration = null ): string {
     $years       = max( 1, $years );
     $period_type = $settings['membership_period_type'] ?? 'annual';
-    $start_month = (int) ( $settings['membership_start_month'] ?? 1 );
-    $today       = new DateTime();
+    // Same fallback as sp_settings() and sp_calculate_expiration().
+    $start_month = max( 1, min( 12, (int) ( $settings['membership_start_month'] ?? 7 ) ) );
+    $today       = new DateTime( current_time( 'Y-m-d' ) );
 
     // Lifetime memberships never expire — blank sentinel (see sp_calculate_expiration).
     if ( $period_type === 'lifetime' ) {
         return '';
     }
 
-    if ( $period_type === 'rolling' ) {
-        // Extend from whichever is later: today, or the member's current
-        // expiration. WHY: a member who renews early shouldn't forfeit the
-        // days they had left — stacking the new term onto the unused tail is
-        // the fair, expected behavior. New members (no/past expiration) just
-        // get today + term.
-        $base = $today;
-        if ( $current_expiration ) {
-            $exp_dt = DateTime::createFromFormat( 'Y-m-d', substr( $current_expiration, 0, 10 ) );
-            if ( $exp_dt && $exp_dt > $today ) {
-                $base = $exp_dt;
-            }
+    // Still paid up? Then the new term runs on from the current expiration.
+    $current = null;
+    if ( $current_expiration ) {
+        $exp_dt = DateTime::createFromFormat( '!Y-m-d', substr( $current_expiration, 0, 10 ) );
+        if ( $exp_dt && $exp_dt >= $today ) {
+            $current = $exp_dt;
         }
-        return $base->modify( '+' . $years . ' year' )->format( 'Y-m-d' );
     }
-    $cy       = (int) $today->format( 'Y' );
-    $cm       = (int) $today->format( 'n' );
-    $exp_year = ( $cm >= $start_month ? $cy + 1 : $cy ) + ( $years - 1 );
+
+    if ( $period_type === 'rolling' ) {
+        // Stack the new term onto the unused tail, or start from today.
+        $base = $current ?: $today;
+        return ( clone $base )->modify( '+' . $years . ' year' )->format( 'Y-m-d' );
+    }
+
+    // Annual: the result always lands on a period end — the last day of the
+    // month before the start month. Find the date the paid-for time reaches,
+    // then take the end of the period that contains it.
+    //   Renewing: current expiration + N years. Paid through 2026-12-31 with a
+    //   January start, one year → 2027-12-31. An expiration off the cycle
+    //   (an imported 2026-11-15) still rounds out to its period's end.
+    //   New or lapsed: today + (N - 1) years, so one year means the period
+    //   they are joining now.
+    $reach = $current
+        ? ( clone $current )->modify( '+' . $years . ' year' )
+        : ( clone $today )->modify( '+' . ( $years - 1 ) . ' year' );
+
+    $ry       = (int) $reach->format( 'Y' );
+    $rm       = (int) $reach->format( 'n' );
+    $exp_year = $rm >= $start_month ? $ry + 1 : $ry;
     // The period ends the day BEFORE the next period's start month — the last
-    // day of the prior month — to match sp_calculate_expiration(). Returning the
-    // first of the start month expired online renewals one day later than
-    // admin-entered memberships under identical settings.
-    $end = DateTime::createFromFormat( 'Y-m-d', sprintf( '%04d-%02d-01', $exp_year, $start_month ) );
+    // day of the prior month — to match sp_calculate_expiration().
+    $end = DateTime::createFromFormat( '!Y-m-d', sprintf( '%04d-%02d-01', $exp_year, $start_month ) );
     $end->modify( '-1 day' );
     return $end->format( 'Y-m-d' );
 }
@@ -63832,7 +63857,7 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
     $settings = sp_settings();
     $exp      = sp_membership_compute_expiration( max( 1, $years ), $settings, $current_exp );
 
-    $update = [ 'status' => 'active', 'expiration_date' => $exp ];
+    $update = [ 'status' => 'active', 'expiration_date' => $exp ?: null ]; // Blank = lifetime.
     if ( $tier_id > 0 ) {
         $update['tier_id'] = $tier_id;
     }
@@ -63939,23 +63964,15 @@ add_action( 'init', function () {
         return;
     }
 
-    // Calculate expiration date based on membership period settings
-    $settings     = sp_settings();
-    $period_type  = $settings['membership_period_type'] ?? 'annual';
-    $start_month  = (int) ( $settings['membership_start_month'] ?? 1 );
-    $today        = new DateTime();
-    $join_date    = $today->format( 'Y-m-d' );
-
-    if ( $period_type === 'rolling' ) {
-        // Rolling: expires 1 year from today
-        $exp_date = $today->modify( '+1 year' )->format( 'Y-m-d' );
-    } else {
-        // Annual: expires on the start month of the next cycle
-        $current_year  = (int) $today->format( 'Y' );
-        $current_month = (int) $today->format( 'n' );
-        $exp_year = $current_month >= $start_month ? $current_year + 1 : $current_year;
-        $exp_date = sprintf( '%04d-%02d-01', $exp_year, $start_month );
-    }
+    // Calculate expiration date based on membership period settings.
+    // WHY the shared function: this form used to do its own date math, which
+    // landed on the first of the start month (one day later than a member the
+    // admin enters), treated lifetime as annual, and skipped the late-join
+    // credit. A member who joins online now gets the same date as one entered
+    // by hand.
+    $settings  = sp_settings();
+    $join_date = current_time( 'Y-m-d' );
+    $exp_date  = sp_calculate_expiration( $join_date, $settings );
 
     // Joint member fields — only populate if the selected tier allows it
     // WHY: Even if someone tampers with the form and submits joint fields
@@ -63995,7 +64012,7 @@ add_action( 'init', function () {
         'postal_code'     => sanitize_text_field( wp_unslash( $_POST['postal_code'] ?? '' ) ),
         'country'         => sanitize_text_field( wp_unslash( $_POST['country'] ?? 'US' ) ),
         'join_date'       => $join_date,
-        'expiration_date' => $exp_date,
+        'expiration_date' => $exp_date ?: null, // Blank = lifetime, never expires.
         // Email-preference defaults are society-configurable (Settings → Privacy).
         'pref_email_notices'     => $sp_pref_email_defaults['pref_email_notices'],
         'pref_email_events'      => $sp_pref_email_defaults['pref_email_events'],

@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.54] — 2026-10-25
+
+**Renewing early no longer costs a member their year.** With an annual
+membership year — the default — a member who paid their dues online before
+their expiration date was charged and kept the same expiration date, and a
+member already paid a year ahead was moved back a year. Renewals now run on
+from the member's current expiration, so paying early never loses time.
+Rolling memberships already worked this way.
+
+**Members who join online get the same expiration date as members you add
+yourself.** The Join form worked out its own date: one day late, ignoring the
+late-join credit, and treating lifetime memberships as annual.
+
 ## [1.5.53] — 2026-10-23
 
 **The catalog can be sorted and filtered by when an item was acquired.** The

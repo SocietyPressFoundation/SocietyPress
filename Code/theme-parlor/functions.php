@@ -17,7 +17,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'PARLOR_THEME_VERSION' ) ) {
-    define( 'PARLOR_THEME_VERSION', '1.5.61' );
+    define( 'PARLOR_THEME_VERSION', '1.5.62' );
 }
 
 /**
@@ -43,8 +43,8 @@ add_action( 'after_switch_theme', function () {
     $settings['design_color_header_text']   = '#FFF8F0';
     $settings['design_color_footer_bg']     = '#3C1053';
     $settings['design_color_footer_text']   = '#FFF8F0';
-    $settings['design_font_body']           = 'eb-garamond';
-    $settings['design_font_heading']        = 'eb-garamond';
+    $settings['design_font_body']           = 'garamond';
+    $settings['design_font_heading']        = 'garamond';
 
     update_option( 'societypress_settings', $settings );
 } );

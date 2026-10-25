@@ -163,7 +163,7 @@ $sp_installer_url = gsp_get_installer_url();
                     code required.
                 </p>
                 <ul class="dl-included__list">
-                    <li><strong>Heritage</strong> &mdash; classic serif, warm cream and navy</li>
+                    <li><strong>Heritage</strong> &mdash; classic serif, rich browns and antique gold</li>
                     <li><strong>Coastline</strong> &mdash; airy blues, sans-serif</li>
                     <li><strong>Prairie</strong> &mdash; earthy greens and tans</li>
                     <li><strong>Ledger</strong> &mdash; editorial, archival feel</li>

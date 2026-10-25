@@ -20,6 +20,21 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.62] — 2026-10-25
+
+**Parlor shows its Garamond.** Activating Parlor saved a font setting the
+plugin didn't recognise, so Parlor sites displayed the system sans-serif
+instead of EB Garamond, and the Design page showed no font chosen. New
+activations save the right setting, and sites that already use Parlor are
+corrected automatically on their next page load.
+
+**Preset downloads match the child themes.** The five looks offered in the
+website's theme gallery now use the same colors and fonts as the child themes
+they're named after. Heritage, for example, had been navy and gold; it's now
+the theme's browns and antique gold.
+
+---
+
 ## [1.5.61] — 2026-10-25
 
 **Feature widgets reach the page builder.** Seventeen widgets that come with

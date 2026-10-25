@@ -1,50 +1,42 @@
 # Newsletters
 
-A PDF archive. Upload your back issues; SocietyPress generates cover thumbnails and shows them in a grid. Members browse, click, read.
+A PDF archive of your newsletters and journals. Upload your back issues; SocietyPress makes a cover thumbnail from each one, reads the text so members can search inside them, and shows them in a grid.
 
 ## What you can do
 
-- Upload past newsletters as PDFs.
-- Auto-generate cover thumbnails from the first page of each PDF.
-- Organize by year, by series ("Quarterly Journal," "Monthly Newsletter," "Annual Report").
-- Restrict to members-only or make public.
-- Bulk upload — drag a folder of PDFs once instead of one at a time.
+- Upload past issues as PDFs, with title, publication date, volume and issue number, a description and a table of contents.
+- Get a cover thumbnail made automatically from each PDF's first page, or choose your own.
+- Make each issue public or members-only — sample issues public, the rest for members, say.
+- Import many issues at once and check them before they're saved.
+- Let members search the words inside every issue from the site's search.
 
 ## How to add your first newsletter
 
-**SocietyPress → Newsletters → Add New.** Title (e.g., "March 2026 Quarterly"), date, optional description, upload the PDF. Save.
+**SocietyPress → Newsletters & Email → Newsletter Archive → Add Newsletter.** Title (e.g., "March 2026 Quarterly"), Publication Date, Volume & Issue, an optional Description and Table of Contents, Visibility, and the PDF File. Save.
 
-The cover thumbnail generates automatically — the first page of the PDF, rendered as a small image. If you want to override it (e.g., the first page is a plain table-of-contents and you'd prefer to use the second page), upload a custom cover image on the same edit page.
+The cover is made from the first page of the PDF as soon as you choose it. To use a different picture — when the first page is a plain table of contents, say — click **Choose Cover Image** on the same screen.
 
-## How to bulk upload back issues
+## How to import back issues
 
-Got fifty back issues sitting in a folder? **SocietyPress → Newsletters → Bulk Upload.** Drag the folder into the dropzone. SocietyPress queues each file, generates titles from the filenames (e.g., `2025-Q1-Newsletter.pdf` becomes "2025 Q1 Newsletter"), and processes them.
-
-Editable batch — review the auto-generated titles before final import. Set the publication date series-wide if it's not in the filenames.
+Got fifty back issues in a folder? **SocietyPress → Newsletters & Email → Import Newsletters.** Choose the PDFs. SocietyPress saves each one, makes its cover, and works out what it can from the file name, then shows a **Review and confirm** list: adjust the details, untick any you don't want, and save. It then reads the text of each PDF so it can be searched — you can leave the page once that finishes.
 
 ## How to put the archive on a page
 
-**Page builder:** drop the "Newsletter Archive" widget. Configure: per-page count, login-required toggle.
-
-**Shortcode:** `[sp_newsletter_archive]`.
-
-The archive shows the cover thumbnails in a grid, sorted newest-first, with the title below each. Click a thumbnail to open the PDF.
+SocietyPress makes a **Newsletters** page when it's first switched on, showing the archive as a grid of covers, newest first; click one to open the PDF. You can also drop the **Newsletter Archive** widget on any page with the page builder.
 
 ## How to control access
 
-**SocietyPress → Settings → Newsletters → Members-only download** (toggle).
+Each issue has its own **Visibility**: Public, or Members Only. A members-only issue still shows its cover in the grid to everyone — so visitors see what they'd get by joining — but only signed-in members can open the PDF.
 
-When on, non-members can see the grid and the cover thumbnails (so they know what they'd get if they joined) but clicking a thumbnail prompts a login. Members get the PDF directly.
-
-Per-newsletter override is available — open any newsletter, set "Visibility" to public to make that single issue available to everyone (useful for sample issues used in marketing).
+To change many at once, tick them on the Newsletter Archive list and use **Set selected to** Public or Members Only.
 
 ## If something looks wrong
 
-**Cover thumbnail didn't generate.** PDF parsing depends on the host's available libraries. **SocietyPress → Newsletters** lists each newsletter; click "Regenerate cover" on the row. If it fails repeatedly, your host may not have the required PDF library — upload a custom cover image as a fallback.
+**The cover didn't generate.** Making covers needs a PDF library called Imagick on your host; Import Newsletters warns you if it's missing. Choose a cover image by hand on the newsletter's edit screen, or ask your host to enable Imagick.
 
-**Bulk upload stalled.** Refresh and try again. Bulk upload processes files one at a time; if your PHP timeout is short (under 30 seconds), large batches can hit it. Either upload in smaller batches or ask your host to bump `max_execution_time`.
+**Import stalled.** Try again with fewer files at a time; long uploads can hit your host's time limit.
 
-**Members can't download.** Verify they're logged in. The "Members-only download" setting requires a logged-in session. If a logged-in member still can't download, check their member status — lapsed members fail the access check.
+**Members can't open an issue.** Check they're signed in. Anyone with a sign-in on the site can open members-only issues — including members whose dues have lapsed.
 
 ## Related guides
 

@@ -1,69 +1,58 @@
 # Documents
 
-Upload and organize your society's documents — bylaws, policies, board minutes, financial reports, anything that isn't a newsletter or library item. Per-document access control (public / members-only / staff-only).
+Upload and organize your society's documents — bylaws, policies, board minutes, financial reports, anything that isn't a newsletter or library item. Each document, or a whole section, can be public or members-only.
 
 ## What you can do
 
-- Upload PDFs, Word docs, Excel files, anything WordPress media library accepts.
-- Organize by category (Bylaws / Financial / Meeting Minutes / Policies / Member Resources).
-- Per-document access — public, members-only, or staff-only.
-- Version tracking — replace a document with a newer version; the old one is archived.
-- Bulk upload — drag a whole folder.
-- Search across documents (full-text title + description).
-- Display on a public page with category filtering.
+- Upload PDFs, Word documents, spreadsheets — anything the WordPress Media Library accepts.
+- Organize them into sections (Bylaws, Financial Reports, Board Meeting Minutes, Policies…).
+- Make a document, or a whole section, public or members-only.
+- Upload many documents at once into a section.
+- Show minutes by month and year, show when a living document like the bylaws was last updated, and choose how each section is sorted.
+- Show them on a page of your site, grouped by section.
 
 ## How to add your first document
 
-**SocietyPress → Documents → Add New.** Title, description, file upload. Pick a category. Set visibility (Public / Members / Staff). Save.
+**SocietyPress → Documents → Add Document.** Title, description, the file, the section it belongs in, a document date, and Access Level (Public or Members Only). Status can be Published or Draft. Save.
 
-For sensitive documents (board financials, executive session minutes), set visibility to Members or Staff. The document is filed in the WordPress media library, but the access check happens before the file URL is served.
+For sensitive documents (board financials, executive session minutes), choose Members Only — or put them in a members-only section. The check happens before the file is handed over, so a members-only file can't be downloaded by someone who isn't signed in.
 
-## How to organize categories
+Each document is also filed in its section's folder on **Website → Files**.
 
-**SocietyPress → Documents → Categories.** Add categories in the order you want them to appear. Suggested starter set:
+## How to organize sections
 
-- Bylaws
-- Articles of Incorporation
-- Financial Reports
-- Board Meeting Minutes
-- Membership Meeting Minutes
-- Committee Documents
-- Policies
-- Member Resources
+**SocietyPress → Documents → Document Sections.** Add sections in the order you want them to appear. For each one:
 
-Each category can have its own default visibility (so all "Board Meeting Minutes" default to Members-only, all "Member Resources" default to public). You override per-document on the edit page.
+- **Access** — Public, or Members only. Members only makes every document in the section members-only, whatever each document says.
+- **Display Format** — Title & description, or Month & year (for minutes and other dated archives).
+- **Last Updated** — show each document's last-updated date, so members can tell the bylaws are current.
+- **List By** — manual order, newest first, or title A to Z.
 
-## How to put a document library on a page
+A starter set many societies use: Bylaws, Articles of Incorporation, Financial Reports, Board Meeting Minutes, Membership Meeting Minutes, Committee Documents, Policies, Member Resources.
 
-**Page builder:** drop the "Documents" widget. **Shortcode:** `[sp_documents]`. The display shows a list grouped by category, with title, description, file type icon (PDF, DOC, XLS, etc.), and a Download button.
+## How to show documents on your site
 
-Members see only documents they have access to. Non-members see only public documents. Staff see everything.
+Create a page (**Website → Pages → Add New Page**) and choose the **Documents** page template. It lists your published documents grouped by section, with a download link for each. Members see the documents they're allowed to; visitors who aren't signed in see only public ones.
 
-Filter the widget to a specific category if you want a "Bylaws" page that only shows the bylaws.
+## How to upload many at once
 
-## How to bulk upload
+On the Documents list, click **Upload Many**. Choose the files and the section they belong in; each file becomes a document titled from its file name. Edit titles and descriptions afterwards.
 
-**SocietyPress → Documents → Bulk Upload.** Drag a folder; SocietyPress queues each file, generates a title from the filename, and sets the default category for the batch. Edit titles + descriptions individually after upload.
+For very large batches, upload in groups so your host's time limit isn't reached.
 
-For large batches (50+), upload in groups to avoid hitting your host's PHP timeout.
+## How to replace a document with a newer version
 
-## How to version a document
-
-When you have a new version of a document already on file:
-
-**SocietyPress → Documents → [doc] → Edit.** Click "Replace File." Upload the new version. The old file is archived (not deleted) and the document's URL now serves the new file.
-
-Members downloading the document always get the current version. Old versions are accessible to staff via the document's revision history.
+Open the document, remove the old file, choose the new one, and save. The document keeps its place, title and link; there's no history of earlier versions, so keep the old file elsewhere if you need it.
 
 ## If something looks wrong
 
-**A member can't download a document they should be able to.** Check their member status. The members-only access check requires `status = active`. Lapsed or expired members fail it.
+**A member can't download a document they should be able to.** Check their status. Members-only documents need an **active** membership; lapsed or expired members are treated as visitors.
 
-**A public document is being asked for login.** Two things to check: (1) the document's visibility is set to Public (not Members), (2) the download URL doesn't have a stale cookie value. Try in an incognito window.
+**A public document asks people to sign in.** Check the document's Access Level and its section's Access — a members-only section makes every document in it members-only.
 
-**Bulk upload stalled.** Refresh and try again with a smaller batch. PHP timeouts kill long-running uploads.
+**Bulk upload stalled.** Try again with fewer files at a time; long uploads can hit your host's time limit.
 
-**Document download serves the wrong file.** If you replaced a file with a new version, a cache layer is most likely serving the old one. Clear your caching plugin's cache (W3 Total Cache, WP Super Cache, LiteSpeed Cache, etc.) — that's almost always the real fix. Verify in an incognito window: if you get the new file there, it's local browser cache and a normal reload after a minute will catch up.
+**A replaced document still downloads the old file.** If a caching plugin is installed (W3 Total Cache, WP Super Cache, LiteSpeed Cache), clear its cache.
 
 ## Related guides
 

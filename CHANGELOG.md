@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.61] — 2026-10-25
+
+**Feature widgets reach the page builder.** Seventeen widgets that come with
+features — Donation Form, Genealogical Records Search, Research Guide, the
+Lineage and Research Help widgets, Picture Wall, My Volunteer Hours, Latest
+News, Society Sidebar and others — were never offered in the builder's picker,
+so none of them could be put on a page. They're now on a **From your features**
+shelf, appear only while their feature is on, and keep their settings when
+saved. The Genealogical Records Search widget also gained the display it was
+missing.
+
+**Guides match the sidebar.** Every module guide now gives menu paths by the
+sidebar's real groups — Members, Money, Events, Meetings & Board, Research and
+so on — instead of a "SocietyPress" menu that doesn't exist.
+
+---
+
 ## [1.5.60] — 2026-10-25
 
 **The Renewal Grace Period works.** The setting under Settings → Membership was

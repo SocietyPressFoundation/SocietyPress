@@ -15,7 +15,7 @@ Online giving — one-time, monthly, annually — with receipts. Plus campaign t
 
 ## Before you start
 
-You need a Stripe account. Create one at stripe.com if you don't have one. Drop your **publishable key** and **secret key** in **SocietyPress → Settings → Events → Online Payments** — the same Stripe connection serves donations, event registrations and dues. Test mode keys work for trying things out; switch to live keys when you're ready to take real money.
+You need a Stripe account. Create one at stripe.com if you don't have one. Drop your **publishable key** and **secret key** in **Settings → Events → Online Payments** — the same Stripe connection serves donations, event registrations and dues. Test mode keys work for trying things out; switch to live keys when you're ready to take real money.
 
 PayPal is optional. If you want it, add your **client ID** and **secret** under the same Settings page. PayPal handles one-time donations in the form; recurring (monthly/annual) goes through Stripe.
 
@@ -40,7 +40,7 @@ The form has preset amount buttons ($25 / $50 / $100 / $250 / $500 by default) p
 
 ## How to set up a campaign
 
-**SocietyPress → Donations → Campaigns.** Add a campaign with its name and details, and save.
+**Money → Campaigns.** Add a campaign with its name and details, and save.
 
 To credit online gifts to it, give the donate form its slug — in the Donation Form widget's Campaign box, or `[sp_donate campaign="library-fund"]`. A gift you record by hand can be assigned to a campaign on the Record Donation screen. **Donations** can be filtered by campaign to see what each has raised.
 
@@ -51,7 +51,7 @@ Receipts go out automatically the moment Stripe confirms the payment. The email 
 - The amount.
 - The frequency ("one-time donation" vs "monthly recurring donation").
 - The dedication, if one was provided.
-- 501(c)(3) language including your EIN — but only if the EIN is configured under **SocietyPress → Settings → Organization**. If it's blank, the receipt simply thanks the donor without tax-status language.
+- 501(c)(3) language including your EIN — but only if the EIN is configured under **Settings → Organization**. If it's blank, the receipt simply thanks the donor without tax-status language.
 
 For gifts recorded by hand, tick them on the **Donations** list and click **Send Acknowledgment Email**. Its wording is under **Newsletters & Email → Email Templates**.
 
@@ -61,19 +61,19 @@ When a donor picks Monthly or Annually, Stripe creates a subscription. SocietyPr
 
 If a donor cancels their subscription (via Stripe's customer portal or by emailing you to cancel), the webhook (`customer.subscription.deleted`) flips your record to `subscription_canceled`. No more renewal rows are created.
 
-To set up the webhook: in your Stripe dashboard, add an endpoint URL `https://yoursite.org/wp-json/societypress/v1/webhooks/stripe`. Pick the three events: `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`. Copy the signing secret into **SocietyPress → Settings → Events → Online Payments → Webhook Signing Secret**.
+To set up the webhook: in your Stripe dashboard, add an endpoint URL `https://yoursite.org/wp-json/societypress/v1/webhooks/stripe`. Pick the three events: `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`. Copy the signing secret into **Settings → Events → Online Payments → Webhook Signing Secret**.
 
 ## How to record a donation by hand
 
 For checks, cash, in-kind contributions, or grants that don't flow through Stripe:
 
-**SocietyPress → Donations → Record Donation.** Donor name, email, amount, type (cash, check, in-kind or other), date, optional campaign, optional note. Save. The donation appears in the ledger alongside online donations; receipts can be sent on demand.
+**Money → Donations → Record Donation.** Donor name, email, amount, type (cash, check, in-kind or other), date, optional campaign, optional note. Save. The donation appears in the ledger alongside online donations; receipts can be sent on demand.
 
 In-kind donations support a free-text description of what was given (e.g., "1850 census photocopies, ~200 sheets, value $50") plus an optional fair-market amount.
 
 ## If something looks wrong
 
-**Donation form says Stripe isn't set up.** Add your publishable and secret keys under **SocietyPress → Settings → Events → Online Payments**.
+**Donation form says Stripe isn't set up.** Add your publishable and secret keys under **Settings → Events → Online Payments**.
 
 **Donations land but no receipt arrives.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test; if it never arrives, see [Email Setup](email-setup.md). If mail works generally, check that the donor's email address is correctly captured (look at the donation row in the admin ledger).
 

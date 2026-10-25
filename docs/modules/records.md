@@ -19,7 +19,7 @@ This is different from the [Library](library.md), which is a catalog of physical
 
 Pick a record type. For this example, let's say cemetery transcriptions for St. Mary's Cemetery.
 
-**SocietyPress → Records → Record Collections → Add New Collection.** Name it "St. Mary's Cemetery." Set the record type to Cemetery / Burial Index, and the access to Public or Members only.
+**Research → Record Collections → Add New Collection.** Name it "St. Mary's Cemetery." Set the record type to Cemetery / Burial Index, and the access to Public or Members only.
 
 Then define the fields. For a cemetery, you'd want:
 
@@ -37,7 +37,7 @@ Save. The collection now exists with no records. Time to load data.
 
 ## How to import records
 
-**SocietyPress → Records → Import Records.** Upload your CSV (or a `.genrecord` file). SocietyPress reads the headers and asks you to match each one to a collection field; skip columns you don't want.
+**Research → Import Records.** Upload your CSV (or a `.genrecord` file). SocietyPress reads the headers and asks you to match each one to a collection field; skip columns you don't want.
 
 Preview shows the first rows matched up. If anything looks wrong, fix the CSV in your spreadsheet and upload it again. The importer handles tens of thousands of rows, working through them in batches with a progress bar.
 
@@ -70,7 +70,7 @@ Genealogy dates are *always* messy: "abt 1820," "before 1850," "circa 1830s." Us
 
 ## How to export a collection
 
-**SocietyPress → Records → Browse Records**, choose the collection, and click **Export CSV** at the top. The export includes every field, public or not.
+**Research → Record Collections**, click **Browse** on the collection, and click **Export CSV** at the top. The export includes every field, public or not.
 
 This is the canonical "your data, your spreadsheet" export. Run it periodically as a backup. If you ever leave SocietyPress, every collection comes with you.
 

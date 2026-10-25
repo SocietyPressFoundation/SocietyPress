@@ -1,4 +1,4 @@
-# SocietyPress — Harold's Module Guides
+# SocietyPress Module Guides
 
 A guide per module, written for the volunteer who runs the website. No code, no jargon, no preamble. Pick the module you're trying to use and the guide tells you what it does, how to set it up, and what to do when something looks wrong.
 
@@ -6,10 +6,10 @@ A guide per module, written for the volunteer who runs the website. No code, no 
 
 If you just installed SocietyPress and the site is empty:
 
-1. **[Setup Wizard](setup-wizard.md)** — first 10 minutes. Tells SocietyPress your society's name, picks default fonts and colors, sets up your first membership tier.
+1. **[Setup Wizard](setup-wizard.md)** — the first ten minutes: your society's details, your colors, and your membership year.
 2. **[Members](members.md)** — get your roster in. CSV import or one-by-one. This is the foundation; most other modules attach to members.
-3. **[Theme Presets](theme-presets.md)** — pick a look. Fastest path to a site that doesn't feel default.
-4. **[Page Builder](page-builder.md)** — drop modules into pages. Every shortcode listed in these guides has a matching widget you can drag.
+3. **[Child Themes](child-themes.md)** — pick a look. Fastest path to a site that doesn't feel default.
+4. **[Page Builder](page-builder.md)** — build pages from ready-made widgets: events, the directory, a donate form and more.
 
 ## All modules
 
@@ -41,18 +41,18 @@ If you just installed SocietyPress and the site is empty:
 - **[Installer](installer.md)** — the one-click `sp-installer.php` flow.
 - **[Setup Wizard](setup-wizard.md)** — the first-run configuration flow.
 - **[Insights](insights.md)** — engagement and use numbers across every module, on one admin/board-only page.
-- **[Backup & Restore](backup-restore.md)** — one-click full-site export and the recipe for restoring it.
+- **[Backup & Restore](backup-restore.md)** — the one-click export, scheduled backups, and moving to a new host.
 - **[User Access & Roles](user-access.md)** — give volunteers different levels of access without giving everyone admin rights.
 - **[Email Setup](email-setup.md)** — SMTP, transactional providers, SPF/DKIM, real cron — what to do once so renewal reminders and blast emails actually land.
 - **[Privacy & GDPR](privacy-gdpr.md)** — encryption at rest, the export/erasure tools, processing requests, what the law actually requires.
 - **[Glossary](glossary.md)** — words SocietyPress uses, defined in plain English. Look here when a term in another guide isn't obvious.
-- **[Theme Presets](theme-presets.md)** — export your look as JSON, import others'.
+- **[Theme Presets](theme-presets.md)** — save your colors and fonts as a look, and share it.
 - **[Child Themes](child-themes.md)** — Heritage, Coastline, Prairie, Ledger, Parlor — when to pick which.
-- **[Page Builder](page-builder.md)** — drag widgets into columns, no code.
+- **[Page Builder](page-builder.md)** — stack ready-made widgets on a page, no code.
 
 ### For developers
 
-- **[Developer Reference](developer-reference.md)** — shortcodes, filters, AJAX endpoints, REST routes, custom tables, capabilities, encryption API. For technically-inclined webmasters extending the platform.
+- **[Developer Reference](developer-reference.md)** — shortcodes, filters, custom tables, capabilities and the encryption API, for webmasters extending SocietyPress.
 
 ## Style
 
@@ -60,12 +60,10 @@ These guides assume you're not technical. They assume you're busy. They assume t
 
 Each guide opens with one paragraph: what the module is, who it's for. Then 2-4 named recipes ("How to add your first event"). Then a short "If something looks wrong" section.
 
-Every screenshot is a placeholder until we have a clean demo to capture from. If a guide says `[screenshot:...]`, that's a note to add the picture later.
-
 ## Conventions
 
 - "Member" = anyone in `sp_members`. They have a WordPress user account behind the scenes.
 - "Visitor" = someone reading your site without logging in.
 - "Admin" = the volunteer who manages the site (you, probably).
 - "Society" = your organization.
-- All paths in the SocietyPress admin start at **SocietyPress → ...** in the left sidebar.
+- Paths start from the drop-down groups in the admin sidebar — **Members**, **Money**, **Events**, **Meetings & Board**, **Volunteers**, **Library**, **Research**, **Newsletters & Email**, **Surveys**, **Website**, **Reports** and **Settings**. An administrator can rearrange them under **Settings → Admin Sidebar**, so on your site a screen may live somewhere else.

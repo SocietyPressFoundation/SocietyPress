@@ -14,7 +14,7 @@ Online ballots for board elections, bylaw amendments and member surveys. You can
 
 ## How to create a ballot
 
-**SocietyPress → Ballots → Create New Ballot.**
+**Meetings & Board → Ballots → Create New Ballot.**
 
 - **Title** — what's being voted on.
 - **Description** — context for voters.

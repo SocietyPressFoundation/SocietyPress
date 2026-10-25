@@ -15,7 +15,7 @@ Recognition programs for members who can document descent from historically sign
 
 ## How to set up your first program
 
-**SocietyPress → Lineage Programs**, then fill in the form on the left:
+**Research → Lineage Programs**, then fill in the form on the left:
 
 - **Name** — "First Families of Sample County" or whatever you call it.
 - **URL Name** — filled in from the name if left blank. It also starts every certificate number, so don't change it once you've approved anyone.
@@ -53,7 +53,7 @@ If the program has a fee, **Submit for Review** goes on to Stripe Checkout, and 
 
 ## How to review an application
 
-**SocietyPress → Lineage Applications.** The list shows all applications across all programs with filters (status, program, search by ancestor or applicant name). Click "Review" on a row.
+**Research → Lineage Applications.** The list shows all applications across all programs with filters (status, program, search by ancestor or applicant name). Click "Review" on a row.
 
 The review page shows applicant info, ancestor detail (with a green checkmark if the arrival year meets the cutoff, red X otherwise), narrative, sources, attached proofs (clickable to open in a new tab).
 
@@ -100,7 +100,7 @@ If you want to ship physical printed certificates instead of letting members pri
 
 ## If something looks wrong
 
-**Applicant says they can't submit.** First check that the program is active and accepting applications. If they're paying a fee and Stripe is misconfigured, they'd see an error after clicking Submit — verify your Stripe keys under **SocietyPress → Settings → Events → Online Payments**.
+**Applicant says they can't submit.** First check that the program is active and accepting applications. If they're paying a fee and Stripe is misconfigured, they'd see an error after clicking Submit — verify your Stripe keys under **Settings → Events → Online Payments**.
 
 **Stripe redirect lands on a "payment_error" page.** Open Stripe's dashboard → Developers → Logs and look at the most recent failed Checkout Session. The error message tells you what's wrong (most common: an old test-mode key that expired).
 

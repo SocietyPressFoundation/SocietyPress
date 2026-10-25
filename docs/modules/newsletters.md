@@ -12,13 +12,13 @@ A PDF archive of your newsletters and journals. Upload your back issues; Society
 
 ## How to add your first newsletter
 
-**SocietyPress → Newsletters & Email → Newsletter Archive → Add Newsletter.** Title (e.g., "March 2026 Quarterly"), Publication Date, Volume & Issue, an optional Description and Table of Contents, Visibility, and the PDF File. Save.
+**Newsletters & Email → Newsletter Archive → Add Newsletter.** Title (e.g., "March 2026 Quarterly"), Publication Date, Volume & Issue, an optional Description and Table of Contents, Visibility, and the PDF File. Save.
 
 The cover is made from the first page of the PDF as soon as you choose it. To use a different picture — when the first page is a plain table of contents, say — click **Choose Cover Image** on the same screen.
 
 ## How to import back issues
 
-Got fifty back issues in a folder? **SocietyPress → Newsletters & Email → Import Newsletters.** Choose the PDFs. SocietyPress saves each one, makes its cover, and works out what it can from the file name, then shows a **Review and confirm** list: adjust the details, untick any you don't want, and save. It then reads the text of each PDF so it can be searched — you can leave the page once that finishes.
+Got fifty back issues in a folder? **Newsletters & Email → Import Newsletters.** Choose the PDFs. SocietyPress saves each one, makes its cover, and works out what it can from the file name, then shows a **Review and confirm** list: adjust the details, untick any you don't want, and save. It then reads the text of each PDF so it can be searched — you can leave the page once that finishes.
 
 ## How to put the archive on a page
 

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.60
+ * Version:     1.5.61
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.60' );
+define( 'SOCIETYPRESS_VERSION', '1.5.61' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40647,7 +40647,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.60',
+            'version'     => '1.5.61',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40655,7 +40655,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.60',
+            'version'     => '1.5.61',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40663,7 +40663,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.60',
+            'version'     => '1.5.61',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40671,7 +40671,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.60',
+            'version'     => '1.5.61',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40679,7 +40679,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.60',
+            'version'     => '1.5.61',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -48129,7 +48129,7 @@ function sp_directory_detail_styles(): void {
  * @return array Registry of widget types.
  */
 function sp_get_widget_registry(): array {
-    return [
+    $core = [
         // --- Content ---
         'rich_text' => [
             'label'       => __( 'Rich Text', 'societypress' ),
@@ -48273,6 +48273,45 @@ function sp_get_widget_registry(): array {
             'category'    => 'info',
         ],
     ];
+
+    // WHY the filter: each feature registers its own widgets (Donation Form,
+    // Lineage Roster, Research Help…) through sp_builder_widget_types. The
+    // filter was never applied here, so none of those widgets could ever be
+    // added to a page — the picker offered only the core list above.
+    $all = apply_filters( 'sp_builder_widget_types', $core );
+
+    // Feature widgets describe their settings as 'fields' and say nothing
+    // about the picker, so give them a shelf and an icon, and leave out any
+    // whose feature is switched off.
+    $owners = [
+        'donate'                  => 'donations',
+        'picture_wall'            => 'gallery',
+        'picture_wall_submit'     => 'gallery',
+        'help_request_submit'     => 'help_requests',
+        'help_requests_archive'   => 'help_requests',
+        'research_request'        => 'research_services',
+        'my_research_cases'       => 'research_services',
+        'my_research_assignments' => 'research_services',
+        'lineage_roster'          => 'lineage',
+        'lineage_apply'           => 'lineage',
+        'lineage_my_applications' => 'lineage',
+        'records_search'          => 'records',
+        'database_subscriptions'  => 'library',
+        'my_volunteer_hours'      => 'governance',
+    ];
+    foreach ( $all as $type => $info ) {
+        if ( isset( $owners[ $type ] ) && ! sp_module_enabled( $owners[ $type ] ) ) {
+            unset( $all[ $type ] );
+            continue;
+        }
+        $all[ $type ] += [
+            'icon'        => 'screenoptions',
+            'category'    => 'features',
+            'description' => '',
+        ];
+    }
+
+    return $all;
 }
 
 
@@ -48469,7 +48508,8 @@ function sp_render_builder_ui( WP_Post $post ): void {
                 $categories = [
                     'content' => __( 'Content', 'societypress' ),
                     'info'    => __( 'Information', 'societypress' ),
-                    'action'  => __( 'Actions', 'societypress' ),
+                    'action'   => __( 'Actions', 'societypress' ),
+                    'features' => __( 'From your features', 'societypress' ),
                 ];
                 foreach ( $categories as $cat_slug => $cat_label ) :
                     $cat_widgets = array_filter( $registry, function ( $w ) use ( $cat_slug ) {
@@ -48553,11 +48593,92 @@ function sp_render_builder_card( $index, array $widget, array $registry ): void 
             $fn = 'sp_builder_fields_' . $type;
             if ( function_exists( $fn ) ) {
                 $fn( $index, $settings );
+            } elseif ( ! empty( $info['fields'] ) ) {
+                sp_builder_generic_fields( $index, $settings, $info['fields'] );
             }
             ?>
         </div>
     </div>
     <?php
+}
+
+
+/**
+ * Settings form for a widget that describes its settings as 'fields'.
+ *
+ * WHY: feature widgets register a list of fields (text, number, checkbox,
+ *      select) instead of writing their own form, so one renderer covers all
+ *      of them and a new feature widget needs no admin markup of its own.
+ *
+ * @param int|string $index    Widget position (or '__INDEX__' in templates).
+ * @param array      $settings Saved settings.
+ * @param array      $fields   Field definitions keyed by setting name.
+ */
+function sp_builder_generic_fields( $index, array $settings, array $fields ): void {
+    foreach ( $fields as $key => $field ) {
+        $key   = sanitize_key( $key );
+        $type  = $field['type'] ?? 'text';
+        $id    = 'sp-w-' . $index . '-' . $key;
+        $name  = "sp_widgets[{$index}][settings][{$key}]";
+        $value = array_key_exists( $key, $settings ) ? $settings[ $key ] : ( $field['default'] ?? '' );
+        echo '<p class="sp-builder-field">';
+        if ( 'checkbox' === $type ) {
+            echo '<label for="' . esc_attr( $id ) . '">';
+            echo '<input type="hidden" name="' . esc_attr( $name ) . '" value="0">';
+            echo '<input type="checkbox" id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" value="1" ' . checked( ! empty( $value ), true, false ) . '> ';
+            echo esc_html( $field['label'] ?? $key ) . '</label>';
+        } else {
+            echo '<label class="sp-field-label" for="' . esc_attr( $id ) . '">' . esc_html( $field['label'] ?? $key ) . '</label>';
+            if ( 'select' === $type && ! empty( $field['options'] ) ) {
+                echo '<select id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '">';
+                foreach ( (array) $field['options'] as $opt_value => $opt_label ) {
+                    echo '<option value="' . esc_attr( $opt_value ) . '" ' . selected( (string) $value, (string) $opt_value, false ) . '>' . esc_html( $opt_label ) . '</option>';
+                }
+                echo '</select>';
+            } else {
+                $input_type = 'number' === $type ? 'number' : 'text';
+                echo '<input type="' . esc_attr( $input_type ) . '" id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" value="' . esc_attr( (string) $value ) . '" class="widefat">';
+            }
+        }
+        if ( ! empty( $field['description'] ) ) {
+            echo '<span class="description">' . esc_html( $field['description'] ) . '</span>';
+        }
+        echo '</p>';
+    }
+}
+
+/**
+ * Clean the settings of a widget that describes them as 'fields'.
+ *
+ * WHY: the save handler keeps only what a sanitizer returns, and the switch
+ *      in sp_sanitize_builder_widget() knows only the core widgets — so a
+ *      feature widget would have saved with every setting thrown away.
+ *
+ * @param array $settings Raw settings from the form.
+ * @param array $fields   Field definitions keyed by setting name.
+ * @return array
+ */
+function sp_sanitize_builder_generic( array $settings, array $fields ): array {
+    $clean = [];
+    foreach ( $fields as $key => $field ) {
+        $key = sanitize_key( $key );
+        $raw = $settings[ $key ] ?? ( $field['default'] ?? '' );
+        switch ( $field['type'] ?? 'text' ) {
+            case 'checkbox':
+                $clean[ $key ] = ! empty( $raw );
+                break;
+            case 'number':
+                $clean[ $key ] = is_numeric( $raw ) ? $raw + 0 : (int) ( $field['default'] ?? 0 );
+                break;
+            case 'select':
+                $options       = array_map( 'strval', array_keys( (array) ( $field['options'] ?? [] ) ) );
+                $clean[ $key ] = in_array( (string) $raw, $options, true ) ? (string) $raw : (string) ( $field['default'] ?? '' );
+                break;
+            default:
+                $clean[ $key ] = sanitize_text_field( (string) $raw );
+        }
+    }
+    return $clean;
 }
 
 
@@ -49988,6 +50109,10 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
             ];
 
         default:
+            $registry = sp_get_widget_registry();
+            if ( ! empty( $registry[ $type ]['fields'] ) ) {
+                return sp_sanitize_builder_generic( $settings, $registry[ $type ]['fields'] );
+            }
             return [];
     }
 }
@@ -99225,6 +99350,20 @@ add_filter( 'sp_builder_widget_types', function( array $types ): array {
     ];
     return $types;
 } );
+
+/**
+ * Render: Genealogical Records Search widget.
+ *
+ * WHY through the shortcode: it already resolves the collection, honors the
+ *      sign-in requirement and draws the search, so the widget and
+ *      [societypress_records] can never drift apart.
+ */
+function sp_render_builder_widget_records_search( array $s ): void {
+    echo sp_shortcode_records( [ // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- the shortcode escapes its own output.
+        'collection'     => ! empty( $s['collection_id'] ) ? (string) absint( $s['collection_id'] ) : '',
+        'login_required' => ! empty( $s['login_required'] ) ? '1' : '',
+    ] );
+}
 
 
 /**

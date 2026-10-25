@@ -12,16 +12,16 @@ Sell your society's publications, merchandise, and back issues online. Stripe + 
 - PayPal Smart Buttons (PayPal + Venmo, also inline).
 - Sell downloadable files — a PDF index, a scanned booklet. The buyer gets download links by email, good for 30 days and five downloads.
 - Give members a lower price on any product.
-- Charge sales tax, if your state requires it, set under **SocietyPress → Settings → Organization → Sales Tax Rate**.
+- Charge sales tax, if your state requires it, set under **Settings → Organization → Sales Tax Rate**.
 - Per-order shipping address capture and admin order detail with fulfillment status (pending → paid → shipped → completed).
 
 ## How to add your first product
 
 Two paths depending on what you're selling:
 
-**Society-published books** (county histories, family genealogies, transcribed records): use the Library. **SocietyPress → Library → [item] → Edit.** In the Store Listing section, tick **List this item for sale in the Store**, make sure Value is above 0 — that's its price — set the shipping fee per copy, and save. Recording a value on its own never puts an item in the Store, so things held in the collection stay out of it.
+**Society-published books** (county histories, family genealogies, transcribed records): use the Library. **Library → Library Catalog → [item] → Edit.** In the Store Listing section, tick **List this item for sale in the Store**, make sure Value is above 0 — that's its price — set the shipping fee per copy, and save. Recording a value on its own never puts an item in the Store, so things held in the collection stay out of it.
 
-**Other merchandise** (T-shirts, pins, maps, anything that isn't a book): **SocietyPress → Store Products → Add New.** Title, SKU, description, price, shipping fee, image URL, store category, optional stock quantity. Save.
+**Other merchandise** (T-shirts, pins, maps, anything that isn't a book): **Money → Store Products → Add New.** Title, SKU, description, price, shipping fee, image URL, store category, optional stock quantity. Save.
 
 The storefront shows both sources merged together — buyers don't know (or care) which source a product came from.
 
@@ -62,12 +62,12 @@ This is per-item shipping, not flat-rate or weight-based. If you need flat-rate 
 3. SocietyPress writes the order in `pending` status with the cart's items.
 4. Stripe / PayPal confirms payment via webhook → order flips to `paid`.
 5. Stock decrements automatically (only for products with a stock_qty set).
-6. You see the order in **SocietyPress → Orders** and ship it. Mark it "shipped" → "completed" as you go.
+6. You see the order in **Money → Store Orders** and ship it. Mark it "shipped" → "completed" as you go.
 7. The buyer gets an order confirmation by email, with download links for any files they bought. Marking an order shipped doesn't email them — if they'd like to know, tell them yourself.
 
 ## How to manage orders
 
-**SocietyPress → Orders.** List with status tabs (All / Pending / Paid / Shipped / Completed / Refunded / Failed). Click an order to see details: customer, items, total, shipping address, payment method, transaction ID.
+**Money → Store Orders.** List with status tabs (All / Pending / Paid / Shipped / Completed / Refunded / Failed). Click an order to see details: customer, items, total, shipping address, payment method, transaction ID.
 
 Per-order actions: mark shipped, mark completed, issue a refund (one click, through Stripe or PayPal). Refunds restore stock automatically.
 
@@ -81,9 +81,9 @@ When an order is paid, stock decrements by the purchased quantity. When an order
 
 ## If something looks wrong
 
-**Checkout says Stripe isn't set up.** Add your publishable and secret keys under **SocietyPress → Settings → Events → Online Payments** — the same Stripe connection serves the Store, donations and event registrations. Test mode keys work; switch to live when ready.
+**Checkout says Stripe isn't set up.** Add your publishable and secret keys under **Settings → Events → Online Payments** — the same Stripe connection serves the Store, donations and event registrations. Test mode keys work; switch to live when ready.
 
-**PayPal Smart Button doesn't appear.** Check the PayPal part of **SocietyPress → Settings → Events → Online Payments**. Both client ID and secret must be filled in. The button is hidden when either is blank.
+**PayPal Smart Button doesn't appear.** Check the PayPal part of **Settings → Events → Online Payments**. Both client ID and secret must be filled in. The button is hidden when either is blank.
 
 **Orders are stuck in `pending` after payment.** Webhook isn't reaching your site. Stripe dashboard → Developers → Webhooks → recent attempts shows the failure. Re-copy the signing secret into your settings if it doesn't match.
 

@@ -11,7 +11,7 @@ The first thing SocietyPress shows you after install. Four short steps get the b
 
 ## Step 1 — Your Organization
 
-Society name, contact email, mailing address and phone number. The name shows up in the header, in emails and on member-facing forms. Every field can be changed later under **SocietyPress → Settings → Organization**.
+Society name, contact email, mailing address and phone number. The name shows up in the header, in emails and on member-facing forms. Every field can be changed later under **Settings → Organization**.
 
 ## Step 2 — Membership
 
@@ -21,11 +21,11 @@ Choose how membership periods work:
 - **Rolling (12 months from join date)** — each member's year runs from the day they joined.
 - **Lifetime only** — memberships never expire.
 
-SocietyPress starts you with five membership plans — Individual, Joint/Family, Student, Lifetime and Honorary. Rename them, change prices, and add or remove plans under **SocietyPress → Members → Membership Plans**. The period type and start month can be changed later under **SocietyPress → Settings → Membership**.
+SocietyPress starts you with five membership plans — Individual, Joint/Family, Student, Lifetime and Honorary. Rename them, change prices, and add or remove plans under **Members → Membership Plans**. The period type and start month can be changed later under **Settings → Membership**.
 
 ## Step 3 — Choose Your Features
 
-Tick the features your society needs — Events, Library, Newsletters, Store, and so on. Members and finances are always on. You can turn features on and off later under **SocietyPress → Settings → Features**.
+Tick the features your society needs — Events, Library, Newsletters, Store, and so on. Members and finances are always on. You can turn features on and off later under **Settings → Features**.
 
 ## Step 4 — Finishing Touches
 
@@ -40,7 +40,7 @@ The last page offers to **Import My Members** — see [Members](members.md), and
 
 Other things most societies do next:
 
-- **Set up payments** — add your Stripe and/or PayPal keys under **SocietyPress → Settings → Events → Online Payments**. Needed before members can pay dues online, before donations work, and before the store accepts orders.
+- **Set up payments** — add your Stripe and/or PayPal keys under **Settings → Events → Online Payments**. Needed before members can pay dues online, before donations work, and before the store accepts orders.
 - **Pick a look** — **Website → Appearance → Theme** has five child themes (Heritage, Coastline, Prairie, Ledger, Parlor), and **Website → Appearance → Colors & Fonts** fine-tunes colors and fonts. See [Theme Presets](theme-presets.md) and [Child Themes](child-themes.md).
 - **Add your first event** — see [Events](events.md). Most societies start with their next monthly meeting.
 
@@ -50,6 +50,6 @@ Other things most societies do next:
 
 **I picked the wrong theme.** **Website → Appearance → Theme** lets you switch. Changing theme doesn't touch your members, events or content.
 
-**I picked the wrong membership period.** Change it under **SocietyPress → Settings → Membership**. Existing members keep the expiration dates they have; new dates follow the new setting. Plan names and prices are under **SocietyPress → Members → Membership Plans**.
+**I picked the wrong membership period.** Change it under **Settings → Membership**. Existing members keep the expiration dates they have; new dates follow the new setting. Plan names and prices are under **Members → Membership Plans**.
 
-**The address on my receipts is wrong.** **SocietyPress → Settings → Organization**. Edit, save. The next receipt picks up the new address.
+**The address on my receipts is wrong.** **Settings → Organization**. Edit, save. The next receipt picks up the new address.

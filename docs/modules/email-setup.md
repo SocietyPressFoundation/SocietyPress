@@ -105,14 +105,14 @@ Now scheduled tasks fire on a real clock instead of when someone happens to load
 Three places to check:
 
 - **Your own inbox.** Most boring, most accurate. Ask for a password reset ("Lost your password?" on the sign-in page) with your own address, or send a Blast Email to a group containing only you. Did it land in inbox or spam?
-- **SocietyPress → Newsletters & Email → Sent Email.** Records every email the system tries to send, with the result (sent / failed). If a failure shows up here, the SMTP plugin is configured wrong; if it shows "sent" but the recipient didn't get it, the deliverability problem is downstream (their spam filter, your authentication setup).
+- **Newsletters & Email → Sent Email.** Records every email the system tries to send, with the result (sent / failed). If a failure shows up here, the SMTP plugin is configured wrong; if it shows "sent" but the recipient didn't get it, the deliverability problem is downstream (their spam filter, your authentication setup).
 - **mail-tester.com.** Send a test email to the address it gives you, then click "Then check your score." A score of 9-10/10 means you're set. Anything under 7 means SPF/DKIM/DMARC need work.
 
 ## If something looks wrong
 
 **Test email never arrives.** Check **WP Mail SMTP → Email Test → Result**. If it says "failed," the SMTP credentials are wrong — go back to the configuration screen and recheck your API key. If it says "success" but the email isn't in your inbox, check spam — your authentication isn't fully set up yet.
 
-**Renewal reminders aren't going out, but test emails work.** WP cron isn't running. Set up the cPanel cron trigger above and disable wp-cron. Manually trigger by visiting `yoursociety.org/wp-cron.php` in a browser; check **SocietyPress → Newsletters & Email → Sent Email** for new entries.
+**Renewal reminders aren't going out, but test emails work.** WP cron isn't running. Set up the cPanel cron trigger above and disable wp-cron. Manually trigger by visiting `yoursociety.org/wp-cron.php` in a browser; check **Newsletters & Email → Sent Email** for new entries.
 
 **Some members get the email, others don't.** Almost always the recipient's spam filter, not your sending. Check the headers on a delivered copy; you'll see `Authentication-Results: ... spf=pass dkim=pass`. If pass-pass, your end is fine — affected members need to whitelist your sending address. Email them from a personal address with instructions ("Look in spam for messages from `noreply@yoursociety.org` and click 'Not Spam'").
 

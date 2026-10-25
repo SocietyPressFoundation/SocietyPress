@@ -15,7 +15,7 @@ Catalog of every book, periodical, microfilm and CD in your physical library. Me
 
 ## How to add your first item
 
-**SocietyPress → Library → Library Catalog → Add New Item.** Title, author, publisher, year, call number and shelf location; pick its Media Type, Subjects and Location. Save.
+**Library → Library Catalog → Add New Item.** Title, author, publisher, year, call number and shelf location; pick its Media Type, Subjects and Location. Save.
 
 If the item has an ISBN, add it, and **Fill In Book Details** (below) can look up the rest.
 
@@ -27,13 +27,13 @@ Most societies have their catalog in a spreadsheet, an old Access database, or p
 - Whatever columns you have — title, author, publisher, year, ISBN, call number, shelf location, county, state, surname, condition, donor, acquisition date, value.
 - Don't worry about column names — the importer lets you match them on upload.
 
-**SocietyPress → Library → Import Library.** Upload, match the columns, preview, import. It handles dozens to thousands of rows; a library of 17,000 items takes about ten minutes.
+**Library → Import Library.** Upload, match the columns, preview, import. It handles dozens to thousands of rows; a library of 17,000 items takes about ten minutes.
 
-Afterwards, **SocietyPress → Library → Fill In Book Details** works through every item with an ISBN, filling in missing details and covers from Open Library.
+Afterwards, **Library → Fill In Book Details** works through every item with an ISBN, filling in missing details and covers from Open Library.
 
 ## How to set up your word lists and search columns
 
-**SocietyPress → Library → Catalog Options.**
+**Library → Catalog Options.**
 
 - **The lists catalogers pick from** — Media Type, Subject and Location, one entry per line. Delete a line to take it out of the dropdowns; items already using it keep it until someone edits them. **Put back the standard list** restores the starting set.
 - **What a visitor sees in search results** — untick columns your catalog doesn't fill in, and use the arrows to put them in order.

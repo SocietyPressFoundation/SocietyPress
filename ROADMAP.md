@@ -16,6 +16,16 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Module guides checked against the software — 1.5.57 to 1.5.61
+
+Every guide under `docs/modules/` was read beside the screens it describes and
+corrected to what the software does, with menu paths matching the sidebar's
+groups. Bugs found along the way were fixed in the same releases rather than
+written around: ballots that never closed, a Voting page type no one could
+choose, feature widgets the page builder never offered, a grace period that was
+never applied, and others listed in the changelog. Gaps that need building are
+the new items below.
+
 Items that have landed recently. Kept here for a release cycle or two so
 visitors can see momentum before being pruned into the changelog.
 
@@ -101,19 +111,6 @@ before the session ends.
 
 ### High
 
-#### Check every module guide against the software
-
-**Motivation:** The guides under `docs/modules/` describe some things that
-don't exist. Checking the Members guide on 2026-10-25 turned up a "Create
-WordPress account" checkbox, a "Family will continue membership" option and a
-"Show in directory" option that aren't in the plugin, alongside import choices
-that never existed (fixed that day in the Members and ENS guides). A volunteer
-following a guide to a button that isn't there stops trusting the guide.
-**Scope:** Read each module guide beside the screens it describes, and correct
-it to what the software does. Where a guide describes something worth having,
-put it on this roadmap rather than leaving it in the guide.
-**Blockers:** None.
-
 #### Survey editor redesign
 
 **Motivation:** The survey editor works but asks a volunteer to think in
@@ -149,20 +146,6 @@ the votes themselves are written with no member attached, and nothing on the
 results screen, CSV export or privacy export can join them back.
 **Blockers:** None.
 
-### Medium
-
-#### Meetings and minutes on the public site
-
-**Motivation:** Each meeting has a Visibility setting — Public, Members only,
-Committee only — but nothing on the public site lists meetings, so the
-setting does nothing. Societies that record minutes on the Meetings screen
-have to upload them again under Documents for members to read them.
-**Scope:** A Meetings page type (and page-builder widget) listing past
-meetings by type and year, with agenda and minutes links and inline notes,
-honoring each meeting's visibility, and offered by the Meetings screen's
-"make the page for me" banner.
-**Blockers:** None.
-
 #### Privacy export and erase: research cases, store orders, ballots
 
 **Motivation:** WordPress's Export and Erase Personal Data tools cover most of
@@ -186,6 +169,31 @@ volunteer facing a dead host needs a button.
 install: upload a backup ZIP, check it, load the tables (rewriting the table
 prefix), settings and uploaded files, and re-encrypt member fields under the
 new site's key, so a backup moves between hosts without the old wp-config.
+**Blockers:** None.
+
+#### Paid Research Services: who may claim cases
+
+**Motivation:** Any signed-in user who finds the My Research Assignments page
+sees every open paid case, with the requester's description, and can claim
+it. There's no list of researchers.
+**Scope:** A way to mark members as researchers, and the open-case queue and
+claim button limited to them (and staff). Waiting on one decision: a
+"Researcher" checkbox on the member record, or an access area under
+Settings → Who Can Do What.
+**Blockers:** The decision above.
+
+### Medium
+
+#### Meetings and minutes on the public site
+
+**Motivation:** Each meeting has a Visibility setting — Public, Members only,
+Committee only — but nothing on the public site lists meetings, so the
+setting does nothing. Societies that record minutes on the Meetings screen
+have to upload them again under Documents for members to read them.
+**Scope:** A Meetings page type (and page-builder widget) listing past
+meetings by type and year, with agenda and minutes links and inline notes,
+honoring each meeting's visibility, and offered by the Meetings screen's
+"make the page for me" banner.
 **Blockers:** None.
 
 #### Send a test email

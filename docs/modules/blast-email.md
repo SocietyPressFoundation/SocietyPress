@@ -12,7 +12,7 @@ Send one email to all your members, or to a group of them. SocietyPress sends it
 
 ## How to send your first email
 
-**SocietyPress → Newsletters & Email → Compose Email.**
+**Newsletters & Email → Send Email → Compose New.**
 
 - **Subject** — required.
 - **Recipients** — All Active Members, By Group, Mailing list subscribers, Renewal due soon, Recently joined, or Birthdays this month. Each shows how many people it reaches. Underneath, tick one or more membership plans to send only to members on those plans.
@@ -39,7 +39,7 @@ For a notice everyone must get — an emergency, a quorum call — tick **Send e
 
 ## How to see what happened
 
-**SocietyPress → Newsletters & Email → Send Email** lists every email with its status and how many were sent and how many failed. A failure means WordPress couldn't hand that copy to your mail server; it doesn't tell you about mail that was accepted and later bounced or sorted into junk.
+**Newsletters & Email → Send Email** lists every email with its status and how many were sent and how many failed. A failure means WordPress couldn't hand that copy to your mail server; it doesn't tell you about mail that was accepted and later bounced or sorted into junk.
 
 **Email Templates**, in the same menu, is something else: the wording of the emails SocietyPress sends on its own — welcome, renewal reminders, event confirmations.
 

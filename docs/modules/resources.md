@@ -11,17 +11,17 @@ A categorized directory of useful external links — partner societies, archives
 
 ## How to add your first resource
 
-**SocietyPress → Resource Links**, then add a link: title (e.g., "Texas Vital Records"), address, optional description, category. Save.
+**Research → Resource Links**, then add a link: title (e.g., "Texas Vital Records"), address, optional description, category. Save.
 
 Categories help visitors find their way — a list of a hundred links is daunting; the same hundred grouped into ten categories is browsable.
 
 ## How to import a list
 
-**SocietyPress → Resource Links → Import Links.** Upload a CSV with title, address, description and category columns, match the columns, preview, import. An EasyNetSites links export is recognized and matched for you.
+**Research → Import Links.** Upload a CSV with title, address, description and category columns, match the columns, preview, import. An EasyNetSites links export is recognized and matched for you.
 
 ## How to set up categories
 
-**SocietyPress → Resource Links → Resource Categories.** Add categories in the order you want them displayed. A common starter set:
+**Research → Resource Categories.** Add categories in the order you want them displayed. A common starter set:
 
 - General Genealogy Resources
 - [Your State] Resources

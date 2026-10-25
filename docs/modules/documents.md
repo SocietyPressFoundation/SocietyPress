@@ -13,7 +13,7 @@ Upload and organize your society's documents — bylaws, policies, board minutes
 
 ## How to add your first document
 
-**SocietyPress → Documents → Add Document.** Title, description, the file, the section it belongs in, a document date, and Access Level (Public or Members Only). Status can be Published or Draft. Save.
+**Meetings & Board → Documents → Add Document.** Title, description, the file, the section it belongs in, a document date, and Access Level (Public or Members Only). Status can be Published or Draft. Save.
 
 For sensitive documents (board financials, executive session minutes), choose Members Only — or put them in a members-only section. The check happens before the file is handed over, so a members-only file can't be downloaded by someone who isn't signed in.
 
@@ -21,7 +21,7 @@ Each document is also filed in its section's folder on **Website → Files**.
 
 ## How to organize sections
 
-**SocietyPress → Documents → Document Sections.** Add sections in the order you want them to appear. For each one:
+**Meetings & Board → Document Sections.** Add sections in the order you want them to appear. For each one:
 
 - **Access** — Public, or Members only. Members only makes every document in the section members-only, whatever each document says.
 - **Display Format** — Title & description, or Month & year (for minutes and other dated archives).

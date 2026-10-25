@@ -4,7 +4,7 @@ Ask your members questions and see everyone's answers added up. You write the qu
 
 ## How to run your first survey
 
-**SocietyPress → Surveys → Add New Survey.**
+**Surveys → Add New Survey.**
 
 1. **Survey title.** Members see this at the top (e.g. "2027 Membership Survey").
 2. **Introduction.** Optional. Why you're asking, and how long it takes.

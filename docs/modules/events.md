@@ -15,11 +15,11 @@ Calendar, registration, recurring events, and speaker management. The most-used 
 
 ## How to add your first event
 
-**SocietyPress → Events → Add Event.** Title, description, date, time, location. Save.
+**Events → Add Event.** Title, description, date, time, location. Save.
 
 If you want online registration, tick **Enable registration**. Set the member price and the non-member price (0.00 for a free event), and a registration limit if the room only holds so many.
 
-A confirmation email goes out to everyone who registers. Its subject line is under **SocietyPress → Settings → Events**.
+A confirmation email goes out to everyone who registers. Its subject line is under **Settings → Events**.
 
 ## How to make an event recurring
 
@@ -35,15 +35,15 @@ To take an occurrence out of its series completely — the December meeting is a
 
 ## How to manage speakers
 
-**SocietyPress → Events → Speakers.** Add a speaker once with their bio, photo, and contact info. Then on any event's edit page, add them to the event and pick their role: Speaker, Instructor, Moderator or Panelist. The event page shows their bio and photo.
+**Events → Speakers.** Add a speaker once with their bio, photo, and contact info. Then on any event's edit page, add them to the event and pick their role: Speaker, Instructor, Moderator or Panelist. The event page shows their bio and photo.
 
 An event can have several speakers — a panel, or a workshop with co-presenters.
 
 ## How to subscribe to other calendars
 
-**SocietyPress → Events → External Calendars** takes iCal addresses from elsewhere — a partner society's calendar, the county library's events. SocietyPress checks them on a schedule and adds their events to your calendar. Each feed shows when it last synced and the last error, if any; **Sync now** checks immediately. To edit one imported event on its own, open it and click **Detach from Feed**.
+**Events → External Calendars** takes iCal addresses from elsewhere — a partner society's calendar, the county library's events. SocietyPress checks them on a schedule and adds their events to your calendar. Each feed shows when it last synced and the last error, if any; **Sync now** checks immediately. To edit one imported event on its own, open it and click **Detach from Feed**.
 
-Your own calendar is published as a feed too. Your public events pages have a **Subscribe** menu that opens it in a calendar app or gives the address to copy into Google Calendar; a signed-in member gets their own address that includes members-only events. Subscribed calendars stay up to date on their own. The feed can be switched off under **SocietyPress → Settings → Events**.
+Your own calendar is published as a feed too. Your public events pages have a **Subscribe** menu that opens it in a calendar app or gives the address to copy into Google Calendar; a signed-in member gets their own address that includes members-only events. Subscribed calendars stay up to date on their own. The feed can be switched off under **Settings → Events**.
 
 ## How to put the calendar on a page
 
@@ -55,11 +55,11 @@ Most societies put Upcoming Events on the homepage and a full calendar on a dedi
 
 **The occurrences aren't showing up.** Save the event, then reload the events list. They're created when you save.
 
-**Registration says Stripe isn't set up.** Add your Stripe keys under **SocietyPress → Settings → Events → Online Payments**. Test mode with Stripe's test keys works for trying it out; switch to live keys when you're ready.
+**Registration says Stripe isn't set up.** Add your Stripe keys under **Settings → Events → Online Payments**. Test mode with Stripe's test keys works for trying it out; switch to live keys when you're ready.
 
 **A member registered but didn't get a confirmation email.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test. If that never arrives, your host is probably blocking WordPress's mail; see [Email Setup](email-setup.md).
 
-**An external iCal feed isn't coming in.** **SocietyPress → Events → External Calendars** shows when each feed last synced and its last error. Click **Sync now** to try again. If the address has changed at the source, edit it. Feeds that need a password aren't supported.
+**An external iCal feed isn't coming in.** **Events → External Calendars** shows when each feed last synced and its last error. Click **Sync now** to try again. If the address has changed at the source, edit it. Feeds that need a password aren't supported.
 
 **A weekly series runs too far ahead.** Set **Repeat Until** to the date it should stop. Left blank, a series runs twelve months.
 

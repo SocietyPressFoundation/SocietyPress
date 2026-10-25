@@ -58,7 +58,7 @@ Widgets stack one above another, full width. There are no side-by-side columns; 
 - Genealogical Records Search
 - Resource Links
 - Research Guide
-- Database Subscriptions
+- Research Subscriptions
 - Newsletter Archive
 
 **Photos**
@@ -87,7 +87,7 @@ Widgets stack one above another, full width. There are no side-by-side columns; 
 - Lineage Application Form
 - My Lineage Applications
 
-A widget that belongs to a feature appears in the list only while that feature is turned on.
+Widgets that come with a feature are on the picker's **From your features** shelf, and appear only while that feature is turned on.
 
 ## How widget settings work
 
@@ -107,7 +107,7 @@ Many widgets also exist as shortcodes — `[sp_donate]`, `[sp_lineage_roster]`, 
 
 **The builder isn't appearing.** Make sure the page's **Page Type** is **Page Builder** and that you've saved the page at least once. The builder is for pages only, not posts.
 
-**A widget I expected isn't in the list.** It probably belongs to a feature that's turned off. **SocietyPress → Settings → Features** — turn on the feature that owns the widget.
+**A widget I expected isn't in the list.** It probably belongs to a feature that's turned off. **Settings → Features** — turn on the feature that owns the widget.
 
 **A widget shows raw shortcode text instead of the real thing.** Check the feature it belongs to is turned on, and that you're looking at the published page rather than the editor.
 

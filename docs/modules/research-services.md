@@ -2,7 +2,7 @@
 
 Optional paid research-case workflow. Comradery via [Help Requests](help-requests.md) is the default — most quick questions get free volunteer help. Research Services is the opt-in escalation for cases that genuinely need many hours of focused work: deep ancestor traces, full record-set transcriptions, professional-grade reports.
 
-This module is **off by default**. Enable it under **SocietyPress → Settings → Features** when you want it.
+This module is **off by default**. Enable it under **Settings → Features** when you want it.
 
 ## What you can do
 
@@ -28,7 +28,7 @@ This module is **off by default**. Enable it under **SocietyPress → Settings �
 
 ## How to enable the module
 
-**SocietyPress → Settings → Features → Paid Research Services → On.** The new admin menu item (SocietyPress → Research Cases) appears.
+**Settings → Features → Paid Research Services → On.** The new admin menu item (Research → Research Cases) appears.
 
 Every new case starts at these terms:
 
@@ -59,7 +59,7 @@ Researchers see two things:
 
 ## How to manage cases
 
-**SocietyPress → Research Cases.** List filters by status (Pending Payment / Open / Claimed / In Progress / Needs More Hours / Completed / Cancelled / Refunded) plus search by title, requester, or surname.
+**Research → Research Cases.** List filters by status (Pending Payment / Open / Claimed / In Progress / Needs More Hours / Completed / Cancelled / Refunded) plus search by title, requester, or surname.
 
 Click "Review" on a row to open the single-case view. The page shows requester info, the full case description, hours logged so far (with totals), invoices issued, and a sidebar with status workflow + researcher assignment + rate override + SLA override + admin notes.
 
@@ -97,7 +97,7 @@ The thread is private to the requester, the assigned researcher, and staff. Othe
 
 ## If something looks wrong
 
-**Intake form says "stripe_unconfigured."** Add your Stripe keys under **SocietyPress → Settings → Events → Online Payments**.
+**Intake form says "stripe_unconfigured."** Add your Stripe keys under **Settings → Events → Online Payments**.
 
 **Case is stuck in `pending_payment` after the requester says they paid.** Stripe success URL didn't get hit (closed tab, browser interrupted). Look at the Stripe dashboard → Payments to verify the charge succeeded; if it did, manually flip the case status to `open` and update `paid_amount` in the admin.
 

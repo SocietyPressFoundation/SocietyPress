@@ -16,7 +16,7 @@ This is the *free* path. The [Research Services](research-services.md) module is
 
 ## How to put a Q&A page on your site
 
-The one page you need is a **Research Help** page. **SocietyPress → Research Help Requests** offers to make it for you if you don't have one; to make it by hand, **Website → Pages → Add New Page** and set **Page Type** to **Research Help Requests**. It lists the questions, has an **Ask a Question** button, and is where each question's full thread opens and members answer.
+The one page you need is a **Research Help** page. **Research → Research Help** offers to make it for you if you don't have one; to make it by hand, **Website → Pages → Add New Page** and set **Page Type** to **Research Help Requests**. It lists the questions, has an **Ask a Question** button, and is where each question's full thread opens and members answer.
 
 You can also put the pieces on other pages:
 
@@ -35,7 +35,7 @@ A homepage button reading "Got a research question? Ask the community" that link
 
 ## How to moderate
 
-**SocietyPress → Research Help Requests** is the admin list. Filter it by status, or search it.
+**Research → Research Help** is the admin list. Filter it by status, or search it.
 
 Bulk actions: tick rows and choose **Mark Resolved**, **Hide** or **Delete**. A notice at the top shows how many questions are still waiting for the asker to confirm their email.
 

@@ -14,7 +14,7 @@ The roster. Every other module — events, donations, voting, library checkouts 
 
 ## How to add your first member
 
-**SocietyPress → Members → Add Member.** Fill in name, email, phone, address. Pick a tier. Set a join date. Save. That's it.
+**Members → Add Member.** Fill in name, email, phone, address. Pick a tier. Set a join date. Save. That's it.
 
 For a birthday, use **Date of Birth** if you know the year. If the member would rather not give their age, leave it empty and pick just the month and day underneath — they'll still get the "Birthdays this month" email. Members can set either one themselves in My Account.
 
@@ -22,7 +22,7 @@ If they should have a login, check "Create WordPress account" on the form. Socie
 
 ## How to import an existing roster
 
-**SocietyPress → Members → Import.** The first time, it asks you to add yourself as a member — use the email address your old system has for you, so the import recognizes your own row. Then upload a CSV. SocietyPress reads the column headers, matches each one to a field, and shows you a sample value beside each match and the first five rows underneath.
+**Members → Import Members.** The first time, it asks you to add yourself as a member — use the email address your old system has for you, so the import recognizes your own row. Then upload a CSV. SocietyPress reads the column headers, matches each one to a field, and shows you a sample value beside each match and the first five rows underneath.
 
 If you're coming from EasyNetSites, export your member roster as CSV from your ENS admin and upload it here. SocietyPress recognizes the ENS column layout (87 columns) and maps them automatically. Each spouse arrives as their own member, linked into one household. Before anything is written, it asks you to confirm any row that matches an account already on the site — on a new site, that's you.
 
@@ -34,7 +34,7 @@ After import, **always** open three or four random members and verify their data
 
 ## How to send a renewal reminder
 
-Renewal reminders run automatically. Out of the box, each member gets an email 30 days, 15 days and 7 days before their membership expires — once each. Turn any of them off, and change the subject line, under **SocietyPress → Settings → Membership → Renewal Reminders**. An optional "your membership has expired" email can be switched on in the same place.
+Renewal reminders run automatically. Out of the box, each member gets an email 30 days, 15 days and 7 days before their membership expires — once each. Turn any of them off, and change the subject line, under **Settings → Membership → Renewal Reminders**. An optional "your membership has expired" email can be switched on in the same place.
 
 There's no button to send one member a reminder on demand. To nudge someone, email them, or use **Blast Email** with the "Renewal due" audience to reach everyone expiring in the next 30 days.
 
@@ -45,7 +45,7 @@ Two paths:
 - **The Directory page.** SocietyPress creates a page called Directory, when it is first switched on, that shows the full membership directory. It's members-only by design: visitors who aren't signed in don't see it, and it's left out of the menu for them.
 - **Page builder.** Create a page and drop the **Member Directory** widget on it. Tick **Require login to view** to keep it to members, and set how many results show per page.
 
-Every active member is listed by default. A member leaves the directory by unticking **Show name** — on their record under **Preferences → Directory Visibility**, or themselves in My Account — and the same place has separate choices for address, phone, email, website and photo. **SocietyPress → Settings → Directory** decides which of those columns the directory shows at all, whatever members choose.
+Every active member is listed by default. A member leaves the directory by unticking **Show name** — on their record under **Preferences → Directory Visibility**, or themselves in My Account — and the same place has separate choices for address, phone, email, website and photo. **Settings → Directory** decides which of those columns the directory shows at all, whatever members choose.
 
 ## How to handle a household
 

@@ -12,7 +12,7 @@ Photo albums for your society's events and collections, plus a member-submitted 
 
 ## How to make an album
 
-**SocietyPress → Photos & Albums → Add New Album.** Album Title, Description, Cover Image, Visibility (Public or Members Only) and Sort Order. Save.
+**Website → Photos & Albums → Add New Album.** Album Title, Description, Cover Image, Visibility (Public or Members Only) and Sort Order. Save.
 
 Then click **Add Photos** and choose them from your computer or the Media Library. The album list uses the cover image as each album's thumbnail.
 

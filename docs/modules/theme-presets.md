@@ -4,25 +4,27 @@ A preset is your site's design — colors, fonts, spacing, layout — packaged a
 
 ## What you can do
 
+- Keep a shelf of saved looks on your own site and switch between them with one click.
 - Export your current look as a JSON file. Save it as a backup or hand it to another society.
-- Import a preset from another society. The site immediately takes on its look.
-- Browse the public Theme Gallery at https://getsocietypress.org/themes/ for curated starter presets.
-- Submit your preset to the Gallery for other societies to discover.
+- Import a look from another society. The site immediately takes on its look.
+- Import a themed bundle (`.spchildtheme`) — a look plus its own extra styling and images.
+- Browse the Theme Exchange at https://getsocietypress.org/themes/ for looks, bundles and reviewed child themes.
+
+All of this is on **Website → Appearance → Saved Looks**.
+
+## How to keep a shelf of looks
+
+Under **Save current look as**, give your current design a name (and a note, if you like) and save it. It joins the **Saved looks** list, where **Apply** switches the site to it and **Delete** removes it. Save one before trying something new and you can always get back.
 
 ## How to export your look
 
-**SocietyPress → Theme Presets → Export.**
-
-- **Name** — defaults to "[Your Society] theme." Edit if you want.
-- **Description** — optional. A short note explaining the look ("Navy + gold palette, Garamond headings, generous spacing for older readers").
-
-Click **Download Preset**. A `.json` file lands in your Downloads folder. That's it. Send it as an email attachment to the society that asked for your look. Or hold it as a backup before experimenting with imports.
+Under **Export current look**, give it a name and an optional description ("Navy and gold, Garamond headings, generous spacing for older readers"), then click **Download This Look**. A `.json` file lands in your Downloads folder. That's it. Send it as an email attachment to the society that asked for your look. Or hold it as a backup before experimenting with imports.
 
 ## How to import a preset
 
-**SocietyPress → Theme Presets → Import.**
+Under **Import a preset**, choose the `.json` file and click **Apply This Look**. The site takes on the new colors, fonts and spacing straight away.
 
-Pick the `.json` file. Click **Apply Preset**. The site picks up the new colors, fonts, and spacing immediately — refresh the front-end and you'll see the change.
+A themed bundle (`.spchildtheme`) is imported the same way under **Import a themed bundle**, with **Apply Bundle**. A bundle can carry its own extra styling and images as well as a look; SocietyPress strips anything in its styling that could load outside code.
 
 Before you do this for the first time, **export your current preset first** as a backup. If you don't love the imported look, re-import your original to roll back.
 
@@ -50,52 +52,31 @@ Presets deliberately exclude anything site-specific or sensitive:
 
 This is by design. A preset is the *minimum* needed to express a look. Anything bigger crosses into "you're trusting the source."
 
-## How the Theme Gallery works
+## How the Theme Exchange works
 
-https://getsocietypress.org/themes/ is a curated catalog of presets. As of this writing it ships with five starter presets matching the five GPL child themes:
+https://getsocietypress.org/themes/ is the Theme Exchange: five starter looks, looks and bundles other societies have shared, and full child themes that have been read line by line before they carry a "Reviewed by SocietyPress" badge — a statement about safety, nothing else.
 
-- **Heritage** — Navy & Gold (formal serif, the classic society feel)
-- **Coastline** — Blue & Sand (clean sans-serif, coastal)
-- **Prairie** — Earth Tones (slab-serif, agricultural region feel)
-- **Parlor** — Vintage Burgundy (Palatino, 19th-century parlor)
-- **Ledger** — Slate & Cream (modern professional, library-focused)
-
-Click any card → **Download Preset** → save the JSON. Then import it via **SocietyPress → Theme Presets → Import**. Two clicks from "I want that look" to "my site has that look."
-
-To submit your preset for the Gallery, use the **Submit your preset** link at the bottom of the Gallery page. Reviewed presets get listed for other societies to discover.
+Download a look or bundle from the Exchange, then import it on **Saved Looks**. A full child theme is a `.zip` you upload through WordPress's **Appearance → Themes → Add New → Upload Theme**. How to submit your own work is on the Exchange.
 
 ## How presets and child themes interact
 
-The five child themes (Heritage, Coastline, Prairie, Parlor, Ledger) shipped with SocietyPress include their own palette-on-activation hooks — when you activate Heritage, the palette flips to navy+gold automatically.
+The five child themes that ship with SocietyPress (Heritage, Coastline, Prairie, Parlor, Ledger) each set their own colors and fonts when you activate them, and each has its own layout. A saved look changes only colors, fonts and spacing — never the layout.
 
-The matching preset (also called Heritage) sets the *exact* same tokens via the Theme Presets path. The end result is identical.
-
-The difference: child themes carry PHP, custom widget areas, and template overrides; presets are tokens only. Most societies are well-served picking a child theme + importing the matching preset, then tweaking individual settings under **SocietyPress → Settings → Design**.
-
-If you want to change palettes without changing themes, just import a different preset. The active child theme stays the same.
-
-## What the future tiers add
-
-Tier 1 (presets — what's described here) is the foundation. Two more tiers on the roadmap:
-
-- **Tier 2 — Themed Bundle** — a `.spchildtheme` archive with `tokens.json` + `custom.css` + image assets. Same import flow, but the bundle can carry custom CSS rules and asset images. CSS is sanitized (no `@import`, no script injection) so the security boundary stays intact.
-- **Tier 3 — Full Child Theme** — a WordPress child theme with PHP, templates, custom functions. Carries real risk; gated behind a manual SocietyPress review with a "Reviewed by SocietyPress" badge before listing in the Gallery.
-
-Tier 2 and Tier 3 don't exist yet. Tier 1 is what's shippable today.
+So the most recent action wins: activate a theme and its colors replace yours; apply a saved look and its colors replace the theme's, while the theme's layout stays. To try a look without losing your own, save your current design to the shelf first. See [Child Themes](child-themes.md).
 
 ## If something looks wrong
 
-**The Import button says "Preset format not recognized."** The JSON file is from somewhere else (not a SocietyPress preset). Double-check you grabbed it from the Gallery or another SocietyPress site's export. The format key in a valid preset is `"format": "societypress.preset.v1"`.
+**Importing says "This file is not a saved look."** The JSON file is from somewhere else (not a SocietyPress preset). Double-check you grabbed it from the Gallery or another SocietyPress site's export. The format key in a valid preset is `"format": "societypress.preset.v1"`.
 
-**I imported a preset and the site looks identical.** Either the preset's tokens matched your current ones (unlikely if you actually picked a different look), or a cache layer is still serving the old stylesheet. Open the front-end in an incognito window to confirm — if the preset took effect there, purge any caching plugin's cache and the issue resolves.
+**I imported a look and the site looks identical.** The look may match your current settings closely. If you use a caching plugin, clear its cache so visitors get the new styling.
 
-**My logo is gone after import.** It shouldn't be — presets don't touch the logo. Check **SocietyPress → Settings → Design → Logo** — the logo media-library reference is on that page.
+**My logo is gone after import.** It shouldn't be — presets don't touch the logo. Check the logo on **Website → Appearance → Colors & Fonts**.
 
-**I want to undo an import.** Re-import your original preset (the one you exported as a backup before importing the new one). If you didn't export a backup first, manually adjust the tokens via **SocietyPress → Settings → Design** and the Customizer.
+**I want to undo an import.** Apply the look you saved before importing, from the **Saved looks** list. If you didn't save one, adjust the settings by hand on **Website → Appearance → Colors & Fonts**.
 
-**The Gallery page is empty.** Visit https://getsocietypress.org/themes/ in a browser; it should show 5 starter presets. If it's blank, the SocietyPress site (yours, not getsocietypress.org) has a network or cache issue — the Gallery itself doesn't depend on your site.
+**The Exchange page is empty.** Visit https://getsocietypress.org/themes/ in a browser. The Exchange is on the SocietyPress website, not yours, so if it won't load, try again later.
 
 ## Related guides
 
-- [Setup Wizard](setup-wizard.md) — picks the initial child theme + initial palette
+- [Setup Wizard](setup-wizard.md) — sets your first two colors
 - [Page Builder](page-builder.md) — design tokens drive the page-builder rendering

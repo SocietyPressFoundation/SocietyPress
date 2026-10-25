@@ -41,14 +41,14 @@ The last page offers to **Import My Members** — see [Members](members.md), and
 Other things most societies do next:
 
 - **Set up payments** — add your Stripe and/or PayPal keys under **SocietyPress → Settings → Events → Online Payments**. Needed before members can pay dues online, before donations work, and before the store accepts orders.
-- **Pick a look** — **SocietyPress → Themes** has five child themes (Heritage, Coastline, Prairie, Ledger, Parlor), and **Settings → Design** fine-tunes colors and fonts. See [Theme Presets](theme-presets.md) and [Child Themes](child-themes.md).
+- **Pick a look** — **Website → Appearance → Theme** has five child themes (Heritage, Coastline, Prairie, Ledger, Parlor), and **Website → Appearance → Colors & Fonts** fine-tunes colors and fonts. See [Theme Presets](theme-presets.md) and [Child Themes](child-themes.md).
 - **Add your first event** — see [Events](events.md). Most societies start with their next monthly meeting.
 
 ## If something looks wrong
 
 **The wizard didn't appear after install.** It opens once, on the first visit to the admin after SocietyPress is switched on, and not again after it is finished or skipped. Everything it asks is also on the Settings screens, so you never need it again: Organization, Membership, Modules and Design.
 
-**I picked the wrong theme.** **SocietyPress → Themes** lets you switch. Changing theme doesn't touch your members, events or content.
+**I picked the wrong theme.** **Website → Appearance → Theme** lets you switch. Changing theme doesn't touch your members, events or content.
 
 **I picked the wrong membership period.** Change it under **SocietyPress → Settings → Membership**. Existing members keep the expiration dates they have; new dates follow the new setting. Plan names and prices are under **SocietyPress → Members → Membership Plans**.
 

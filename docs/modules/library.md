@@ -1,79 +1,79 @@
 # Library
 
-Catalog of every book, periodical, microfilm, and CD in your physical library. Members search it from the website; volunteers maintain it from the admin. OPAC-style — open-access, no checkouts (most society libraries are reference-only and don't lend).
+Catalog of every book, periodical, microfilm and CD in your physical library. Members search it from the website; volunteers maintain it from the admin. Most society libraries are reference-only, so SocietyPress assumes yours is — switch on lending if yours lends.
 
 ## What you can do
 
-- Catalog books, serials, microfilm, manuscripts, CDs, DVDs, ephemera, and society publications.
-- Track call number, shelf location, condition, donor, acquisition date, value.
-- Search by title, author, surname (huge for genealogy libraries), county, state, publisher, year.
-- Show the catalog on your public site with members-only access optional per-collection.
-- Sell society-published books from the same catalog — flip a switch and a catalog item appears in the store.
-- Import an existing catalog from CSV (we'll map the columns).
-- Auto-fetch cover thumbnails from Open Library by ISBN.
+- Catalog books, serials, microfilm, manuscripts, CDs, DVDs, ephemera and society publications.
+- Record call number, shelf location, condition, donor, acquisition date and value.
+- Tag each item with one or more Media Types, Subjects and Locations from word lists you control.
+- Let visitors search by title, author, call number, description, county, state or surname — or all at once — and narrow by year.
+- Show the catalog on your public site, to everyone or members only.
+- Sell society-published books from the same catalog — tick a box and the item appears in the Store.
+- Import an existing catalog from a spreadsheet (CSV), mapping its columns as you go.
+- Fill in missing publishers, years and covers from Open Library by ISBN.
 
 ## How to add your first item
 
-**SocietyPress → Library → Add New.** Title, author, publisher, year. Pick a category. Add the call number and shelf location. Save.
+**SocietyPress → Library → Library Catalog → Add New Item.** Title, author, publisher, year, call number and shelf location; pick its Media Type, Subjects and Location. Save.
 
-If the item has an ISBN, paste it in. SocietyPress queries Open Library and fills in publisher, year, and a cover thumbnail automatically. You can override anything it pulls.
+If the item has an ISBN, add it, and **Fill In Book Details** (below) can look up the rest.
 
 ## How to import a whole catalog
 
 Most societies have their catalog in a spreadsheet, an old Access database, or printed cards. Get it into a CSV:
 
 - One row per item.
-- Columns we recognize: title, author, publisher, pub_year, isbn, call_number, shelf_location, geographic_location, surname, county, state, category, condition, donor, acquisition_year, item_value.
-- Don't worry about column names — the importer lets you map them on upload.
+- Whatever columns you have — title, author, publisher, year, ISBN, call number, shelf location, county, state, surname, condition, donor, acquisition date, value.
+- Don't worry about column names — the importer lets you match them on upload.
 
-**SocietyPress → Library → Import Library.** Upload, map columns, preview. The import handles dozens to thousands of rows. For a library with 17,000 items, expect about 10 minutes.
+**SocietyPress → Library → Import Library.** Upload, match the columns, preview, import. It handles dozens to thousands of rows; a library of 17,000 items takes about ten minutes.
 
-After import, run **SocietyPress → Library → Catalog Enrichment** if you want to auto-pull missing covers from Open Library. It batches through anything with an ISBN but no cover URL.
+Afterwards, **SocietyPress → Library → Fill In Book Details** works through every item with an ISBN, filling in missing details and covers from Open Library.
 
-## How to organize by category
+## How to set up your word lists and search columns
 
-**SocietyPress → Library → Categories.** Add categories that match how your library is organized — "County Histories," "Family Histories," "Vital Records," "Microfilm," "Newsletters," "Reference."
+**SocietyPress → Library → Catalog Options.**
 
-On the front-end catalog, members can filter by category. Same category names show up in the admin list view as a filter dropdown.
+- **The lists catalogers pick from** — Media Type, Subject and Location, one entry per line. Delete a line to take it out of the dropdowns; items already using it keep it until someone edits them. **Put back the standard list** restores the starting set.
+- **What a visitor sees in search results** — untick columns your catalog doesn't fill in, and use the arrows to put them in order.
+- **Lending** — tick **This library lends items out** only if material leaves the building. Otherwise the catalog says nothing about borrowing.
 
 ## How to put the catalog on the public site
 
-**Page builder:** drop the "Library Catalog" widget. Configure:
+SocietyPress makes a **Library** page when it's first switched on. You can also drop the **Library Catalog** widget on any page with the page builder. Its settings:
 
-- Login required (members-only) or public.
-- Items per page (default 25).
-- Whether to show in-stock badges.
-- Whether the search box appears.
+- Items per page.
+- Show the landing page — collection stats, browse by type, popular subjects.
+- Show the search box.
+- Show available items only.
+- Require login to view.
 
-**Shortcode:** `[sp_library_catalog]`. Same options as widget settings.
-
-Members search by title, author, or use the advanced search to narrow by category, geographic location (county/state), surname, or year range. Results expand inline to show the full record (call number, shelf location, donor, etc.).
+Visitors search by title, author, call number, description, county, state, surname, or all of them, and open a row to see the full record.
 
 ## How to sell a society publication from the catalog
 
 For books your society has published — county histories, family genealogies, transcribed records:
 
-1. Open the library item edit page.
-2. Find the **Store Listing** section.
-3. Set "Item Value" above 0 (this is the sale price).
-4. Optionally pick a Store Category (e.g., "County Histories").
-5. Optionally write a Store Description (marketing copy, separate from the catalog description).
-6. Set per-unit Shipping fee.
-7. Save.
+1. Open the item's edit page and find the **Store Listing** section.
+2. Tick **List this item for sale in the Store**.
+3. Make sure **Value** is above 0 — it's the sale price.
+4. Optionally pick a Store Category and write a Store Description (separate from the catalog description).
+5. Set the shipping fee per copy, and save.
 
-That item now appears in the public store automatically (assuming the [Store](store.md) module is enabled). The library catalog still shows it; only the storefront pulls in items with a value > 0.
+The item now appears in the Store (if the [Store](store.md) feature is on) and stays in the catalog. A value on its own never puts an item in the Store, so things held in the collection stay out of it.
 
 ## If something looks wrong
 
-**Cover thumbnails aren't loading.** Open Library's API is rate-limited and occasionally times out. Run **SocietyPress → Library → Catalog Enrichment** again — it skips items that already have a cover and retries the failed ones.
+**Covers aren't loading.** Open Library limits how fast it can be asked and sometimes times out. Run **Fill In Book Details** again — it skips items that already have a cover.
 
-**An item shows up in the storefront but shouldn't.** Open the item, set Item Value to 0 (or leave blank). The storefront only shows items with a value > 0.
+**An item shows up in the Store but shouldn't.** Open it and untick **List this item for sale in the Store**.
 
-**Search isn't finding a known item.** SocietyPress searches title, author, surname, county, and state. If the search term is in the description (free text), the search might miss it — the search is keyword-indexed, not full-text. Try a different word from the title or author.
+**Search isn't finding a known item.** Check which field you're searching. Choose **All Listed Fields** to look in all of them at once.
 
-**Import says columns aren't recognized.** During the upload step, you map every CSV column to a SocietyPress field. Set unrecognized columns to "Skip" — they'll be ignored. The required column is title; everything else is optional.
+**Import says columns aren't recognized.** During the upload step, match each column to a SocietyPress field, or skip it. Only the title is required.
 
-**Donor name is wrong on a batch of items.** Bulk edit: select the items in the catalog list, choose "Edit Donor" from the bulk actions dropdown, set the new name, apply.
+**Donor name is wrong on a batch of items.** There's no bulk edit for donors yet; open each item and correct it.
 
 ## Related guides
 

@@ -10,47 +10,49 @@ This is different from the [Library](library.md), which is a catalog of physical
 - Define the columns each collection has (different record types need different fields).
 - Import the data from CSV.
 - Let members search across one collection or all collections at once.
-- Hide certain collections behind the members-only login (a researcher's perk).
-- Make individual fields private (donor name visible to staff, hidden from search results).
-- Export a collection back to CSV anytime — your data stays portable.
+- Make a collection members-only (a researcher's perk).
+- Keep individual fields off the public site (a donor's name, say) while still storing them.
+- Export a collection back to CSV any time — your data stays portable.
+- Import the same file again safely — rows already there aren't added twice.
 
 ## How to build your first collection
 
 Pick a record type. For this example, let's say cemetery transcriptions for St. Mary's Cemetery.
 
-**SocietyPress → Records → Collections → Add Collection.** Name it "St. Mary's Cemetery." Set Record Type to "Cemetery." Pick the access level — public, members-only, or staff-only.
+**SocietyPress → Records → Record Collections → Add New Collection.** Name it "St. Mary's Cemetery." Set the record type to Cemetery / Burial Index, and the access to Public or Members only.
 
 Then define the fields. For a cemetery, you'd want:
 
-- Surname (text, indexed for search)
-- Given Name (text)
-- Birth Date (date or text — genealogy dates are messy)
-- Death Date (date or text)
-- Section / Plot (text)
-- Inscription (text)
-- Notes (text, optional)
+- Surname (Text)
+- Given Name (Text)
+- Birth Date (Text — genealogy dates are messy; see below)
+- Death Date (Text)
+- Section / Plot (Text)
+- Inscription (Long Text)
+- Notes (Long Text)
 
-Each field has flags: "Searchable" (appears in the search box and indexes), "Public" (visible to non-members or marked private), "Required" (can't import a row without it).
+Field types are Text, Long Text, Number and Date. Each field has two tick boxes: **Searchable** (the search looks in it) and **Public** (it shows on the public site; untick it to keep a field to the admin).
 
 Save. The collection now exists with no records. Time to load data.
 
 ## How to import records
 
-**SocietyPress → Records → Import Records.** Upload your CSV. SocietyPress reads the headers and asks you to map each one to a collection field. Skip columns you don't want. Save the mapping (you can save it as a "preset" so subsequent imports use the same mapping without re-doing the work).
+**SocietyPress → Records → Import Records.** Upload your CSV (or a `.genrecord` file). SocietyPress reads the headers and asks you to match each one to a collection field; skip columns you don't want.
 
-Preview shows the first 5 rows mapped. If anything looks wrong, fix the CSV in your spreadsheet and re-upload. The importer handles 10,000+ rows with no trouble.
+Preview shows the first rows matched up. If anything looks wrong, fix the CSV in your spreadsheet and upload it again. The importer handles tens of thousands of rows, working through them in batches with a progress bar.
+
+Importing the same file twice adds nothing: a row is skipped when the collection already holds an identical one. A source that genuinely lists the same line more than once — three infants buried the same day — keeps every copy.
 
 ## How to put records on the public site
 
-**Page builder:** drop the "Records Search" widget. Configure:
+SocietyPress makes a **Records** page when it's first switched on. Or, with the page builder, drop the **Genealogical Records Search** widget on any page and set:
 
-- Specific collection (drops the picker — search only this collection) OR
-- All collections (member picks from a dropdown).
-- Login required or not.
+- A collection, to search only that one — or leave it blank to let visitors choose.
+- Require login, or not.
 
 **Shortcode:** `[societypress_records]` for all collections. `[societypress_records collection="cemetery-index"]` to lock it to one — the collection's slug or its ID both work.
 
-Members type a search term, optionally filter by collection, and see results in a table. Each row expands inline to show the full record. Public/members-only/staff-only field flags determine what each viewer sees.
+Members type a search term, optionally filter by collection, and see results in a table. Each row opens to show the full record, without the fields that aren't marked Public.
 
 ### Sorting the results
 
@@ -64,27 +66,25 @@ Only columns that hold one value can be sorted. When results span several collec
 
 ## How to handle messy dates
 
-Genealogy dates are *always* messy: "abt 1820," "before 1850," "circa 1830s." We accommodate. When you define a date field, pick "Free-text date" (the default) instead of "Strict date." Free-text accepts anything; the search treats it as text. Strict dates parse and validate.
-
-If you mix the two — strict for known dates, free-text for fuzzy ones — define two fields ("Death Date" as strict, "Death Date Approximate" as free-text). Most projects don't bother and just use free-text everywhere.
+Genealogy dates are *always* messy: "abt 1820," "before 1850," "circa 1830s." Use a **Text** field for them — it takes anything and searches as written. The **Date** type is for dates you know exactly; it won't accept "abt 1820."
 
 ## How to export a collection
 
-**SocietyPress → Records → Collections.** Click the collection. There's an "Export to CSV" button at the top right. The export honors your field-level public/private flags from a staff perspective — i.e., it includes everything, including private fields, since you're the staff.
+**SocietyPress → Records → Browse Records**, choose the collection, and click **Export CSV** at the top. The export includes every field, public or not.
 
 This is the canonical "your data, your spreadsheet" export. Run it periodically as a backup. If you ever leave SocietyPress, every collection comes with you.
 
 ## If something looks wrong
 
-**Search returns nothing for a record I know is there.** Three things to check: (1) is the field "Searchable"? (2) is the term spelled the same way (try Soundex variants — "Smith" vs "Smyth")? (3) is the visitor logged in if the collection is members-only?
+**Search returns nothing for a record I know is there.** Three things to check: (1) is the field "Searchable"? (2) is the term spelled the same way? Record search matches the letters you type, so try other spellings — "Smith" and "Smyth" are different searches. (3) is the visitor signed in, if the collection is members-only?
 
 **Import says column count doesn't match.** Some rows in your CSV have extra commas or quotes. Open the file in a spreadsheet, fix the row, save as CSV, re-upload. The importer is strict about matching column counts.
 
-**A field I added isn't showing in search results.** Each field has a "Show in results" flag separate from "Searchable." A field can be searched but hidden from the result table — useful for searching by donor without listing the donor publicly. Edit the field, tick "Show in results."
+**A field I added isn't showing on the public site.** Tick its **Public** box on the collection's edit screen.
 
-**Records are showing private fields to non-members.** Each field has its own "Public / Members / Staff" access level. Open the field, set the access level to Members or Staff. The change applies to existing rows immediately.
+**A field is showing that should be private.** Untick its **Public** box on the collection's edit screen. It disappears from the public site straight away, for every record. To keep a whole collection to members, set the collection's access to Members only.
 
-**Importing duplicates.** The importer doesn't dedupe by default — it inserts every row in the CSV. To deduplicate, define a "key" field (usually a record ID from the source) and set "Update existing rows by [key]" on the import options.
+**A corrected file added new rows instead of fixing old ones.** A row counts as already there only when every field matches. Change a spelling in the file and it's a different row. To correct records, edit them in **Browse Records** — or, for many changes, delete the collection (which removes its records too), set it up again, and import the corrected file.
 
 ## Related guides
 

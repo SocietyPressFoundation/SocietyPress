@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.57
+ * Version:     1.5.58
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.57' );
+define( 'SOCIETYPRESS_VERSION', '1.5.58' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -291,6 +291,41 @@ add_action( 'admin_init', function () {
 
 
 /**
+ * Swap the Leadership page's placeholder paragraphs for the live lists.
+ *
+ * WHY: Early installs created the Leadership page with bracketed notes
+ *      promising the officers and committees would appear "automatically".
+ *      The lists that keep that promise ([societypress_officers] and
+ *      [societypress_committees]) came later and were never put on the page,
+ *      so visitors read the placeholder. Only the exact placeholder paragraph
+ *      is replaced — a page someone has since rewritten is left alone.
+ */
+function sp_fix_leadership_placeholders(): void {
+    $page = get_page_by_path( 'leadership' );
+    if ( ! $page ) {
+        return;
+    }
+
+    // Both the translated and the English text, because the page was written
+    // in whatever language the site had on the day it was created.
+    $swaps = [];
+    foreach ( [
+        '[societypress_officers]'   => '[This page will be populated automatically once officers are assigned in the admin panel.]',
+        '[societypress_committees]' => '[Committee information will appear here once committees are set up.]',
+    ] as $shortcode => $english ) {
+        foreach ( array_unique( [ $english, __( $english, 'societypress' ) ] ) as $text ) { // phpcs:ignore WordPress.WP.I18n.NonSingularStringLiteralText
+            $swaps[ '<p>' . $text . '</p>' ] = "\n" . $shortcode . "\n";
+        }
+    }
+
+    $content = strtr( $page->post_content, $swaps );
+    if ( $content !== $page->post_content ) {
+        wp_update_post( [ 'ID' => $page->ID, 'post_content' => $content ] );
+    }
+}
+
+
+/**
  * Create the essential default pages if no published pages exist.
  *
  * WHY: WordPress starts with a "Sample Page" that may or may not still be
@@ -520,9 +555,12 @@ function sp_maybe_create_default_pages(): void {
         'post_title'   => __( 'Leadership', 'societypress' ),
         'post_content' => '<p>' . __( 'Meet the people who keep our society running.', 'societypress' ) . '</p>'
                         . '<h2>' . __( 'Officers', 'societypress' ) . '</h2>'
-                        . '<p>' . __( '[This page will be populated automatically once officers are assigned in the admin panel.]', 'societypress' ) . '</p>'
+                        // WHY shortcodes on their own lines, not in <p>: each
+                        // renders a list, and a list inside a paragraph is
+                        // invalid markup that browsers split unpredictably.
+                        . "\n[societypress_officers]\n"
                         . '<h2>' . __( 'Committees', 'societypress' ) . '</h2>'
-                        . '<p>' . __( '[Committee information will appear here once committees are set up.]', 'societypress' ) . '</p>',
+                        . "\n[societypress_committees]\n",
         'post_status'  => 'publish',
         'post_type'    => 'page',
         'post_name'    => 'leadership',
@@ -4890,6 +4928,13 @@ add_action( 'admin_init', function () {
         // install that already has pages — which is every real society.
         sp_maybe_create_store_pages();
 
+        // Leadership pages made before the officer and committee lists existed
+        // still say they'll fill in "automatically" — and never do.
+        if ( ! get_option( 'sp_leadership_placeholders_fixed' ) ) {
+            sp_fix_leadership_placeholders();
+            update_option( 'sp_leadership_placeholders_fixed', 1 );
+        }
+
         // Recover which file belongs to what from the *_url columns every
         // screen has been writing all along. Guarded to once ever: after the
         // first pass the save handlers keep the record current, and a society
@@ -7674,7 +7719,7 @@ add_action( 'admin_menu', function () {
     //      the dashboard panel links straight to it.
     // -----------------------------------------------------------------
     add_submenu_page(
-        null,
+        '',
         __( 'Notepad — SocietyPress', 'societypress' ),
         __( 'Notepad', 'societypress' ),
         'sp_use_notepad',
@@ -7787,7 +7832,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Edit Group page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Group — SocietyPress', 'societypress' ),
         __( 'Edit Group', 'societypress' ),
         'manage_options',
@@ -7928,7 +7973,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Committee add/edit page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Committee — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -7948,7 +7993,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Meeting add/edit page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Meeting — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -7988,7 +8033,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden page for editing a single opportunity
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Opportunity — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -8009,8 +8054,8 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden pages for ballot editing and results
-    add_submenu_page( null, __( 'Edit Ballot — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-edit', 'sp_render_ballot_edit_page' );
-    add_submenu_page( null, __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
+    add_submenu_page( '', __( 'Edit Ballot — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-edit', 'sp_render_ballot_edit_page' );
+    add_submenu_page( '', __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
 
     // -----------------------------------------------------------------
     // GALLERY GROUP — Photo album management
@@ -8434,7 +8479,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden page for recording a new payment (linked from finances page)
     add_submenu_page(
-        null,
+        '',
         __( 'Record Payment — SocietyPress', 'societypress' ),
         __( 'Record Payment', 'societypress' ),
         'manage_options',
@@ -8454,7 +8499,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Donation edit/record page
     add_submenu_page(
-        null,
+        '',
         __( 'Record Donation — SocietyPress', 'societypress' ),
         __( 'Record Donation', 'societypress' ),
         'manage_options',
@@ -8474,7 +8519,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Campaign edit page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Campaign — SocietyPress', 'societypress' ),
         __( 'Edit Campaign', 'societypress' ),
         'manage_options',
@@ -8494,7 +8539,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Store Product add/edit page
     add_submenu_page(
-        null,
+        '',
         __( 'Edit Store Product — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -8514,7 +8559,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Order detail page
     add_submenu_page(
-        null,
+        '',
         __( 'Order Detail — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -8551,7 +8596,7 @@ add_action( 'admin_menu', function () {
 
     // Hidden: Compose/edit blast email page
     add_submenu_page(
-        null,
+        '',
         __( 'Compose Email — SocietyPress', 'societypress' ),
         __( 'Compose Email', 'societypress' ),
         'manage_options',
@@ -8596,12 +8641,12 @@ add_action( 'admin_menu', function () {
         'sp_render_appearance_page'
     );
 
-    // The three screens Appearance absorbed stay registered with a null parent:
+    // The three screens Appearance absorbed stay registered with an empty parent:
     // off the menu, but still valid pages, so the admin_init redirect that sends
     // their old URLs to the right tab has something to redirect FROM rather than
     // WordPress refusing the page before the redirect runs.
     add_submenu_page(
-        null,
+        '',
         __( 'Themes — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -8803,7 +8848,7 @@ add_action( 'admin_menu', function () {
     );
 
     add_submenu_page(
-        null,
+        '',
         __( 'Design — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -8841,13 +8886,13 @@ add_action( 'admin_menu', function () {
     //      this page." This hidden submenu catches the old URL and
     //      redirects to the new Website settings page.
     //
-    // WHY parent null rather than 'societypress': with the SocietyPress parent
+    // WHY an empty parent rather than 'societypress': with the SocietyPress parent
     //      it was a real sidebar entry carrying an empty label, so it drew a
-    //      blank row at the bottom of the menu. A null parent registers the
+    //      blank row at the bottom of the menu. An empty parent registers the
     //      page without listing it, which is what "hidden" was meant to be.
     // -----------------------------------------------------------------
     add_submenu_page(
-        null,
+        '',
         '',
         '',
         'manage_options',
@@ -9238,11 +9283,11 @@ add_action( 'admin_menu', function () {
 // ADMIN PAGE TITLE FLOOR — Silence strip_tags(null) on hidden admin pages
 // ============================================================================
 //
-// WHY: 34 of our admin screens are registered with add_submenu_page( null, ... )
+// WHY: 34 of our admin screens are registered with add_submenu_page( '', ... )
 //      so they're reachable by URL but never appear in the sidebar — the
 //      editors (sp-member-edit, sp-event-edit, sp-document-edit, and so on).
 //      WordPress's get_admin_page_title() finds a page's title by walking the
-//      $menu and $submenu arrays. A page registered with a null parent is in
+//      $menu and $submenu arrays. A page registered with an empty parent is in
 //      neither, so the function falls through without setting the $title
 //      global, and wp-admin/admin-header.php line 41 then runs:
 //
@@ -14108,7 +14153,7 @@ function sp_default_menu_config(): array {
                            'sp-import', 'sp-export' ] ],
 
             [ 'id' => 'finances', 'label' => __( 'Money', 'societypress' ), 'icon' => 'dashicons-money-alt',
-              // sp-record-payment is deliberately absent: it registers with a null
+              // sp-record-payment is deliberately absent: it registers with an empty
               // parent (a hidden screen reached from the button on Payment
               // History) so listing it here was a silent no-op — the group asked
               // for a screen that can never render in it. It is an action taken
@@ -20111,6 +20156,7 @@ function sp_screen_public_pages(): array {
         'sp-help-requests'    => [ 'template' => 'sp-help-requests',   'title' => __( 'Research Help', 'societypress' ),      'module' => 'help_requests' ],
         'sp-library'          => [ 'template' => 'sp-resources',       'title' => __( 'Resource Links', 'societypress' ),     'module' => 'resources' ],
         'sp-newsletter-archive' => [ 'template' => 'sp-newsletter-archive', 'title' => __( 'Newsletters', 'societypress' ),   'module' => 'newsletters' ],
+        'sp-ballots'          => [ 'template' => 'sp-voting',          'title' => __( 'Voting', 'societypress' ),             'module' => 'voting' ],
     ];
 }
 
@@ -20137,6 +20183,24 @@ function sp_page_using_template( string $template ): ?WP_Post {
     ] );
 
     return $found ? $found[0] : null;
+}
+
+/**
+ * Link to one Research Help question's full thread.
+ *
+ * WHY: A thread is drawn by the Research Help Requests page type, so the link
+ *      has to land on that page. The archive widget and the status emails
+ *      used to point at the home page instead, which ignored the question and
+ *      showed the home page. Falls back to the home page only when the society
+ *      has no published Research Help page, where there is nothing better.
+ */
+function sp_help_thread_url( int $request_id ): string {
+    static $base = null;
+    if ( null === $base ) {
+        $page = sp_page_using_template( 'sp-help-requests' );
+        $base = ( $page && 'publish' === $page->post_status ) ? get_permalink( $page ) : home_url( '/' );
+    }
+    return add_query_arg( [ 'sp_help' => 'view', 'id' => $request_id ], $base );
 }
 
 /**
@@ -21191,7 +21255,7 @@ add_action( 'admin_menu', function () {
 
     // Registered without a menu row: you reach one ticket from the list.
     add_submenu_page(
-        null,
+        '',
         __( 'Ticket — SocietyPress', 'societypress' ),
         __( 'Ticket', 'societypress' ),
         'sp_access_admin',
@@ -34431,7 +34495,7 @@ function sp_sanitize_settings( array $input ): array {
  */
 function sp_register_wizard_page(): void {
     add_submenu_page(
-        null, // Hidden — no menu link
+        '', // Hidden — no menu link
         'SocietyPress Setup',
         'Setup Wizard',
         'manage_options',
@@ -37904,6 +37968,17 @@ function sp_get_page_type_labels(): array {
         'sp-store'           => __( 'Store', 'societypress' ),
         'sp-cart'            => __( 'Shopping Cart', 'societypress' ),
         'sp-records'         => __( 'Genealogical Records Search', 'societypress' ),
+
+        /*
+         * Same gap, worse consequence: the save handlers below throw away any
+         * page type not on this list. Voting could not be chosen at all, so no
+         * member could ever reach a ballot; and opening the Privacy Policy or
+         * News page that SocietyPress created and pressing Save quietly turned
+         * it back into a plain page.
+         */
+        'sp-voting'          => __( 'Voting', 'societypress' ),
+        'sp-news'            => __( 'News', 'societypress' ),
+        'sp-privacy-policy'  => __( 'Privacy Policy', 'societypress' ),
     ];
 }
 
@@ -40496,7 +40571,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.57',
+            'version'     => '1.5.58',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40504,7 +40579,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.57',
+            'version'     => '1.5.58',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40512,7 +40587,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.57',
+            'version'     => '1.5.58',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40520,7 +40595,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.57',
+            'version'     => '1.5.58',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40528,7 +40603,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.57',
+            'version'     => '1.5.58',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -83501,10 +83576,42 @@ function sp_render_leadership_page(): void {
                     <tr>
                         <th scope="col"><label for="committee_name_input"><?php esc_html_e( 'Committee Name', 'societypress' ); ?></label></th>
                         <td>
-                            <input type="text" name="committee" id="committee_name_input"
-                                   value="<?php echo esc_attr( $editing_section === 'committee' ? ( $editing->committee ?? '' ) : '' ); ?>"
-                                   class="regular-text" required
-                                   placeholder="<?php esc_attr_e( 'e.g., Programs Committee', 'societypress' ); ?>">
+                            <?php
+                            // WHY a dropdown, not a text box: membership is matched to
+                            // a committee by its exact name, so a typed "Program
+                            // Committee" for "Programs Committee" left the member off
+                            // the committee with nothing to say so. Choosing from the
+                            // real list makes that mistake impossible.
+                            $committee_choices = $wpdb->get_col(
+                                "SELECT name FROM {$prefix}committees WHERE active = 1 ORDER BY sort_order ASC, name ASC"
+                            );
+                            $committee_current = $editing_section === 'committee' ? (string) ( $editing->committee ?? '' ) : '';
+                            ?>
+                            <select name="committee" id="committee_name_input" required>
+                                <option value=""><?php esc_html_e( '— Choose a committee —', 'societypress' ); ?></option>
+                                <?php if ( '' !== $committee_current && ! in_array( $committee_current, $committee_choices, true ) ) : ?>
+                                    <option value="<?php echo esc_attr( $committee_current ); ?>" selected>
+                                        <?php
+                                        /* translators: %s: committee name saved on an older assignment */
+                                        echo esc_html( sprintf( __( '%s (not a current committee)', 'societypress' ), $committee_current ) );
+                                        ?>
+                                    </option>
+                                <?php endif; ?>
+                                <?php foreach ( $committee_choices as $committee_choice ) : ?>
+                                    <option value="<?php echo esc_attr( $committee_choice ); ?>" <?php selected( $committee_current, $committee_choice ); ?>><?php echo esc_html( $committee_choice ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php if ( empty( $committee_choices ) ) : ?>
+                                <p class="description">
+                                    <?php
+                                    printf(
+                                        /* translators: %s: link to the Committees screen */
+                                        wp_kses_post( __( 'No committees yet. <a href="%s">Add your committees</a> first.', 'societypress' ) ),
+                                        esc_url( admin_url( 'admin.php?page=sp-committees' ) )
+                                    );
+                                    ?>
+                                </p>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <tr>
@@ -118748,7 +118855,7 @@ add_shortcode( 'sp_help_requests_archive', function ( $atts ) {
             </p>
         <?php else : ?>
             <?php foreach ( $rows as $r ) :
-                $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $r->id ], home_url() );
+                $thread_url = sp_help_thread_url( (int) $r->id );
                 $tags = array_filter( array_map( 'trim', explode( ',', (string) $r->tags ) ) );
                 ?>
                 <div class="sp-help-thread">
@@ -119132,7 +119239,7 @@ add_action( 'init', function () {
                 </p>
             <?php else : ?>
                 <?php foreach ( $rows as $r ) :
-                    $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $r->id ], home_url() );
+                    $thread_url = sp_help_thread_url( (int) $r->id );
                     $tags = array_filter( array_map( 'trim', explode( ',', (string) $r->tags ) ) );
                     ?>
                     <div class="sp-help-thread">
@@ -121605,7 +121712,7 @@ function sp_theme_preset_apply( array $payload ) {
  */
 add_action( 'admin_menu', function () {
     add_submenu_page(
-        null,
+        '',
         __( 'Saved Looks — SocietyPress', 'societypress' ),
         '',
         'manage_options',
@@ -123445,7 +123552,7 @@ function sp_help_send_status_email( int $request_id, string $new_status ): void 
     ];
     if ( ! isset( $subjects[ $new_status ] ) ) return;
 
-    $thread_url = add_query_arg( [ 'sp_help' => 'view', 'id' => $request_id ], home_url() );
+    $thread_url = sp_help_thread_url( (int) $request_id );
 
     /* translators: %s: name of the person who asked, or Friend */
     $body  = sprintf( __( "Dear %s,\n\n", 'societypress' ), $name ?: __( 'Friend', 'societypress' ) );

@@ -14,7 +14,7 @@ SocietyPress turns off WordPress's block editor. Pages are either plain pages wi
 ## How to make a builder page
 
 1. **Website → Pages → Add New Page.** Give it a title.
-2. Choose **Page Builder** as the page template, and save the page once — the builder appears after the first save.
+2. Set **Page Type** to **Page Builder**, and save the page once — the builder appears after the first save.
 3. Click **Add Widget**, pick one from the list, and fill in its settings.
 4. Add more widgets the same way. Use the ▲ and ▼ arrows on each widget to put them in order.
 5. Save. Make sure the page is published when you want visitors to see it.
@@ -105,7 +105,7 @@ Many widgets also exist as shortcodes — `[sp_donate]`, `[sp_lineage_roster]`, 
 
 ## If something looks wrong
 
-**The builder isn't appearing.** Make sure the page's template is **Page Builder** and that you've saved the page at least once. The builder is for pages only, not posts.
+**The builder isn't appearing.** Make sure the page's **Page Type** is **Page Builder** and that you've saved the page at least once. The builder is for pages only, not posts.
 
 **A widget I expected isn't in the list.** It probably belongs to a feature that's turned off. **SocietyPress → Settings → Features** — turn on the feature that owns the widget.
 

@@ -37,7 +37,7 @@ Empty categories don't show on the public directory.
 
 ## How to put the directory on a page
 
-Create a page and choose the **Resource Links Directory** page template, or drop the **Resource Links** widget on a page with the page builder — it can show one category only, and a maximum number of links, which suits a "DNA resources" box on another page. Links are grouped by category, each with its title and description.
+Create a page (**Website → Pages → Add New Page**) and set **Page Type** to **Resource Links Directory** — the Resource Links screen offers to make it for you — or drop the **Resource Links** widget on a page with the page builder — it can show one category only, and a maximum number of links, which suits a "DNA resources" box on another page. Links are grouped by category, each with its title and description.
 
 ## How to handle dead links
 

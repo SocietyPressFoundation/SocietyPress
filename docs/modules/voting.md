@@ -38,7 +38,7 @@ When the end date passes, the ballot closes by itself. To close it early, or to 
 
 ## How members vote
 
-Create a page (**Website → Pages → Add New Page**) and choose the **Voting** page template. Put it on your menu.
+Members vote on a Voting page. If you don't have one, the Ballots screen says so and offers **Create the Voting page**, which makes it and offers to add it to your menu. To make it by hand: **Website → Pages → Add New Page**, set **Page Type** to **Voting**, publish.
 
 Members sign in and go to that page. Under **Open Ballots** they see each ballot they're eligible for, with its closing time, and vote with **Submit Vote**. Ballots they're not eligible for don't appear. Lapsed and expired members, and visitors who aren't signed in, can't vote.
 

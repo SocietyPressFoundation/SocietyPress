@@ -32,7 +32,7 @@ A starter set many societies use: Bylaws, Articles of Incorporation, Financial R
 
 ## How to show documents on your site
 
-Create a page (**Website → Pages → Add New Page**) and choose the **Documents** page template. It lists your published documents grouped by section, with a download link for each. Members see the documents they're allowed to; visitors who aren't signed in see only public ones.
+Create a page (**Website → Pages → Add New Page**) and set **Page Type** to **Documents**. The Documents screen offers to make this page for you if you don't have one. It lists your published documents grouped by section, with a download link for each. Members see the documents they're allowed to; visitors who aren't signed in see only public ones.
 
 ## How to upload many at once
 

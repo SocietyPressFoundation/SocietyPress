@@ -1,72 +1,80 @@
 # Governance
 
-Committees, officers, meetings, volunteer hours. The administrative backbone — who's on which committee, who chairs what, when did the board last meet, how many hours did Mary contribute this year.
+Officers, committees, meetings and volunteer hours — who holds which office, who chairs what, when the board last met, and how many hours your volunteers gave this year.
+
+These screens are under **Meetings & Board** (officers, committees, meetings) and **Volunteers** (roster, hours, opportunities) in the sidebar.
 
 ## What you can do
 
-- Track committees with names, chairs, members, and active/inactive flags.
-- Assign committee chairs who get a "My Committee" dashboard with scoped access.
-- Record meeting minutes (board, membership, committee). Attach agendas + minutes PDFs.
-- Track volunteer hours by activity and source (committee work, event volunteering, library duty, help responses, research cases, etc.).
-- Generate annual volunteer-hours reports (board, IRS Form 990 Schedule O, grantor reports).
+- List your officers and board members, and show them on your website automatically.
+- Keep a list of committees with their chairs, and assign members to them.
+- Give each committee chair a **My Committee** screen covering just their committees.
+- Record board, membership and committee meetings, with attendance, notes, and links to the agenda and minutes.
+- Track volunteer hours — logged by hand, or automatically when members answer research questions or work on research cases.
+
+## Officers
+
+**Meetings & Board → Officers.** Under **Officers & Board**, click **Add Officer**: find the member, type the position title ("President", "Treasurer"), and optionally a start and end date. Leave the end date blank for an ongoing position. Set an officer to Inactive when their term ends to keep the history.
 
 ## Committees
 
-**SocietyPress → Committees.** Add committee, set name, optional slug, optional description, optional chair (a WP user). Active flag controls whether it appears in dropdowns. Sort order controls display sequence.
+**Meetings & Board → Committees → Add Committee.** Name, an optional description, the chair, a sort order (lower numbers first), and **Active** — inactive committees drop out of the lists and dropdowns.
 
-Once committees exist, they show up everywhere relevant — the volunteer-opportunity edit form's committee dropdown, the meeting edit form's committee picker, the public committee roster widget.
+To put members on a committee, go to **Meetings & Board → Officers**, scroll to **Committees**, and click **Add Committee Assignment**: find the member, choose the committee, and type their role in it ("Member", "Vice-Chair"). The committee's chair is set on the committee itself.
 
-Members are added to committees through the volunteer-roles system. **SocietyPress → Volunteer Roster** lets you assign members to committees with role labels ("Chair," "Vice Chair," "Member").
+## Showing officers and committees on your website
+
+New sites get a **Leadership** page that lists both, and keeps itself current as you change them. On another page, put `[societypress_officers]` where the officers should go and `[societypress_committees]` for the committees. Officers show with their position; committees show with their chair.
 
 ## Committee chairs
 
-Anyone set as `chair_user_id` on an active committee gets a chair dashboard at **SocietyPress → My Committee**. The dashboard is scoped to their committee(s) — upcoming meetings, upcoming events, open volunteer opportunities, recent minutes — with one-click links to create or edit each.
+Anyone set as a committee's chair gets **Meetings & Board → My Committee** when they sign in. It covers just their committees: upcoming meetings and events, open volunteer opportunities and waitlisted sign-ups, recent minutes, and buttons to **Record a Meeting**, **Add an Event** or **Post a Volunteer Opportunity**. Someone who chairs two committees sees both.
 
-Chair status is derived live from the committees table; no separate role assignment to forget. A chair can chair multiple committees; the dashboard aggregates across all of them.
-
-Admins still see the full menu, unchanged. Chairs see a trimmed menu — just their committee dashboard plus filtered list pages for events, meetings, and volunteer opportunities they own.
+There's no separate role to assign. Chair a committee and the screen appears; stop chairing it and it goes away. Chairs can record meetings only for committees they chair.
 
 ## Meetings & minutes
 
-**SocietyPress → Meetings & Minutes.** Add meeting, pick type (Board / Membership / Committee), pick committee (only for Committee type), set date, location, attendance, agenda URL, minutes URL, inline notes, visibility (public / members-only / committee-only).
+**Meetings & Board → Meetings & Minutes → Record a Meeting.**
 
-Visibility lets you keep board meeting notes members-only, committee meeting notes committee-only, and membership meeting notes public.
+- **Meeting Type** — Board, Membership (general meeting), or Committee. A committee meeting also needs its committee.
+- **Title** and **Meeting Date**, **Location**.
+- **Attendance** — a count, a list of names, or both.
+- **Agenda URL** and **Minutes URL** — upload the file under **Website → Files**, then paste its address here.
+- **Inline Notes** — a summary, or the full minutes.
+- **Visibility** — Public, Members only, or Committee only.
 
-The meeting edit page accepts both an attached PDF (agenda or minutes) and inline notes. Different societies record at different formality — the inline notes field is for societies that just paste a paragraph; the PDF attachments are for formal minutes documents.
+Meetings are kept in the admin for your records and for chairs' dashboards; there is no public page listing them yet, so the Visibility setting doesn't show them anywhere today. Minutes you want members to read belong in [Documents](documents.md), which has members-only access and a Month & year layout made for minutes.
 
 ## Volunteer hours
 
-`sp_volunteer_hours` is the unified ledger. Every helping action — committee work, event volunteering, library duty, help responses, paid research cases — writes a row here.
+**Volunteers → Volunteer Hours** shows every hour logged, with this year's total and the number of active volunteers at the top.
 
-**SocietyPress → Volunteer Hours** shows the full ledger. Filter by member, by source type (help_request / research_case / committee / event / meeting / library_duty / other), by date range. Export as CSV for reporting.
+To log hours by hand, use **Log Hours**: member, activity ("Library shelving"), an optional committee, hours and date.
 
-Member-attributed totals appear in three places:
+Some hours log themselves:
 
-- The member's record (Volunteer Hours tab).
-- The member directory if you've enabled the "Volunteer Hours" widget on each member's card.
-- The `[sp_my_volunteer_hours]` shortcode on a member-area page (logged-in member sees their own).
+- **Research Help answers** — a member answering a question says how long it took, and that time is added.
+- **Paid Research cases** — time a researcher records on a case is added.
 
-For annual reporting, total all rows in a date range, group by source type. The "Volunteer Stats" widget on a public dashboard does this automatically.
+Signing up for a volunteer opportunity does not log hours; add them afterwards.
 
-## How to use this for IRS Form 990
+**Export CSV** downloads every entry — name, activity, committee, hours and date. For a year's total for a grant report or Form 990, filter the date column in your spreadsheet and sum the hours.
 
-Schedule O of Form 990 asks for narrative about the organization's mission and activities, including volunteer involvement. The volunteer-hours export gives you a defensible number. Run **SocietyPress → Volunteer Hours → Export → Year 2026** and the CSV contains every logged hour with attribution.
-
-For grantor reports requesting a volunteer-hour total: same export, sum the hours column.
+Members can see their own hours for the year on a page with the **My Volunteer Hours** widget (or `[sp_my_volunteer_hours]`), broken down by kind of work. The **Volunteer Stats** widget shows the society's total hours, active volunteers and top contributors.
 
 ## If something looks wrong
 
-**A chair can't see "My Committee."** Check the committee record — `chair_user_id` must point at the WP user ID, not the member ID. They're often the same number but sometimes not. Edit the committee, re-pick the chair from the dropdown, save.
+**A chair can't see My Committee.** Check the committee is Active and that the right person is picked as its chair.
 
-**Volunteer hours aren't aggregating.** Check that `source_type` is set on the rows. Older imports (pre-2026-04) didn't write a source_type — those rows show under "Other" in the breakdown. Run a quick SQL update to backfill if you care about clean reports.
+**A member isn't showing as on a committee.** Check their assignment under **Meetings & Board → Officers → Committees** is Active. An assignment saved before committees were chosen from a list may show "(not a current committee)" — pick the right committee and save.
 
-**Meeting visibility isn't enforced.** Members-only / committee-only visibility uses the active session. Verify the visitor is logged in (members-only) and is in the right committee (committee-only). The committee membership is derived from sp_volunteer_roles where role_type = 'committee'.
+**The Leadership page shows bracketed placeholder text.** Updating to 1.5.58 or later replaces it with the live lists, as long as you haven't rewritten that text yourself. If you have, put `[societypress_officers]` and `[societypress_committees]` back where you want them.
 
-**Committee dropdown is empty on event/meeting forms.** The committee table has rows with `active = 0`. Activate the ones you want visible (or add new ones).
+**A committee is missing from dropdowns.** It's marked inactive. Edit it and tick **Active**.
 
 ## Related guides
 
-- [Help Requests](help-requests.md) — response time logs into volunteer hours
+- [Help Requests](help-requests.md) — answering questions logs volunteer hours
 - [Research Services](research-services.md) — case hours log here too
-- [Voting](voting.md) — tier eligibility for board elections
-- [Members](members.md) — committee assignments are member-attributed
+- [Voting](voting.md) — ballots for elections and bylaw votes
+- [Documents](documents.md) — where minutes for members go

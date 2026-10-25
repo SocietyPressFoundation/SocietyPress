@@ -7,8 +7,8 @@ This module is **off by default**. Enable it under **SocietyPress → Settings �
 ## What you can do
 
 - Take paid research requests via a public intake form with up-front Stripe billing.
-- Set your default rate and minimum hours (default $30/hour, 1 hour authorized).
-- Researchers (members you flag as such) claim cases from a queue, log hours as they work.
+- Quote every request at $30 an hour for one hour up front, and change any case's rate and hours once it comes in.
+- Researchers claim cases from a queue and log hours as they work.
 - Bill additional hours mid-case — researcher requests, requester authorizes via Stripe, case continues.
 - In-system messaging between requester and researcher with file attachments.
 - Status-change emails fire on every transition (claimed, in_progress, needs_more_hours, completed).
@@ -20,7 +20,7 @@ This module is **off by default**. Enable it under **SocietyPress → Settings �
 1. Visitor fills the intake form on a page hosting `[sp_research_request]`.
 2. Submission creates the case in `pending_payment` status. Visitor is redirected to Stripe Checkout for the up-front fee (rate × max_hours_authorized).
 3. On payment success, case flips to `open` and lands in the admin queue. Configured admin email is notified.
-4. A researcher claims the case (either an admin assigns from the case-edit page, or a researcher self-claims from the dashboard). Status flips to `claimed`. Requester is emailed.
+4. A researcher claims the case (an admin assigns it from the case-edit page, or a researcher claims it from the My Research Assignments page). Status flips to `claimed`. Requester is emailed.
 5. Researcher logs the first hour of work. Status auto-flips to `in_progress`. Requester is emailed.
 6. Researcher works the case, communicates via in-system messages, logs hours as they go.
 7. **If more time is needed:** researcher uses the "Request Additional Hours" form on the admin case page. SocietyPress creates a pending invoice, emails the requester a Stripe payment link, sets status to `needs_more_hours`. When the requester pays, the invoice marks paid, the case's `max_hours_authorized` increases, status returns to `in_progress`.
@@ -50,11 +50,9 @@ When the visitor submits, they're sent to Stripe Checkout. On success, they're r
 
 ## How to set up researchers
 
-Researchers are members you've flagged as such. There's no separate "researcher role" — any member can be flagged.
+There is no researcher list or flag yet. Anyone who is signed in and opens a page with the **My Research Assignments** widget (or `[sp_my_research_assignments]`) sees the open cases and can claim one. Until that's tightened, keep that page off your menu and give its address only to your researchers — and remember a determined member could still find it. Admins can also assign a case to a researcher from the case's admin page.
 
-(Today the flag is configured manually by an admin in the member edit page. A self-service researcher signup flow with skill profiles is on the future roadmap.)
-
-Flagged researchers see two things:
+Researchers see two things:
 
 1. The "My Research Assignments" dashboard (via `[sp_my_research_assignments]` shortcode) showing their active cases plus open cases available to claim.
 2. Inline log-hours forms on each active case so they can record time as they work without leaving the page.

@@ -151,6 +151,18 @@ results screen, CSV export or privacy export can join them back.
 
 ### Medium
 
+#### Meetings and minutes on the public site
+
+**Motivation:** Each meeting has a Visibility setting — Public, Members only,
+Committee only — but nothing on the public site lists meetings, so the
+setting does nothing. Societies that record minutes on the Meetings screen
+have to upload them again under Documents for members to read them.
+**Scope:** A Meetings page type (and page-builder widget) listing past
+meetings by type and year, with agenda and minutes links and inline notes,
+honoring each meeting's visibility, and offered by the Meetings screen's
+"make the page for me" banner.
+**Blockers:** None.
+
 #### Send a test email
 
 **Motivation:** "Is my site's email working?" is the first question behind
@@ -164,25 +176,21 @@ person clicking it and reports whether WordPress accepted it, with the same
 
 #### Paid Research Services: set your own rate
 
-**Motivation:** Every society offering paid research charges $30 an hour, for
-one hour up front, with a 14-day response time, because those terms can't be
-changed. The code reads `research_default_rate`,
+**Motivation:** Every new paid research request is quoted at $30 an hour,
+for one hour up front, with a 14-day response time. An admin can change the
+terms on each case afterwards, but not the starting terms. The code reads `research_default_rate`,
 `research_default_max_hours` and `research_sla_days`, but no screen sets them.
 **Scope:** Put the three on a settings screen. The intake form's quote and
 every new case already use them.
 **Blockers:** None.
 
-#### Research Help: moderation, limits and hours
+#### Research Help: moderation and limits
 
-**Motivation:** The Research Help guide promised three things the module
-doesn't do. A society facing spam can't hold questions for a moderator, can't
-change the three-a-day limit, and volunteers' answers don't count toward the
-volunteer-hours total the way committee work does. The code already reads
+**Motivation:** A society facing spam can't hold questions for a moderator or
+change the three-a-day limit. The code already reads
 `help_requests_require_approval` and `help_requests_per_email_per_day`, but
-no screen sets them, and each answer's `minutes_spent` is always 0.
-**Scope:** Put the approval switch and the daily limit on a settings screen;
-add a "how long did this take?" choice to the answer form and feed it into
-the volunteer-hours ledger.
+no screen sets them.
+**Scope:** Put the approval switch and the daily limit on a settings screen.
 **Blockers:** None.
 
 #### Donation receipts: the tax-exempt statement

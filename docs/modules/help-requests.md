@@ -7,7 +7,7 @@ This is the *free* path. The [Research Services](research-services.md) module is
 ## What you can do
 
 - Public submission — visitors fill out a form; a simple sum and an email check keep spam out.
-- Members and staff answer on the question's page.
+- Members and staff answer on the question's page; the time each answer took is added to the volunteer's hours.
 - Mark helpful answers with a star, so the best ones stand out.
 - The asker (or staff) accepts one answer, which closes the thread, or marks it resolved.
 - A public archive of open and resolved questions, with a search box that looks in titles, descriptions and tags.
@@ -16,20 +16,21 @@ This is the *free* path. The [Research Services](research-services.md) module is
 
 ## How to put a Q&A page on your site
 
-You'll typically want two pages — one to *ask* a question, one to *browse* existing questions.
+The one page you need is a **Research Help** page. **SocietyPress → Research Help Requests** offers to make it for you if you don't have one; to make it by hand, **Website → Pages → Add New Page** and set **Page Type** to **Research Help Requests**. It lists the questions, has an **Ask a Question** button, and is where each question's full thread opens and members answer.
 
-**Ask page** (e.g., `/ask/`): drop the **Help Request Submission Form** widget, or put `[sp_help_request_submit]` on it. The form takes name, email, title, description and optional tags, and asks the sum.
+You can also put the pieces on other pages:
 
-**Archive page** (e.g., `/research-help/`): drop the **Help Requests Archive** widget, or put `[sp_help_requests_archive]` on it. It lists open questions first, then resolved ones, each with its tags, and has a search box.
+- **Ask page** — the **Help Request Submission Form** widget, or `[sp_help_request_submit]`. The form takes name, email, title, description and optional tags, and asks the sum.
+- **Archive** — the **Help Requests Archive** widget, or `[sp_help_requests_archive]`. It lists open questions first, then resolved ones, each with its tags, and has a search box. Clicking a question opens its thread on the Research Help page, so keep that page even if you use the widget elsewhere.
 
-A homepage button reading "Got a research question? Ask the community" that links to the ask page works well; the archive can sit off the main menu.
+A homepage button reading "Got a research question? Ask the community" that links to the ask page works well.
 
 ## How submissions actually flow
 
 1. A visitor fills in the form, answers the sum ("what is 5 + 7?"), and submits.
 2. SocietyPress emails them a link to confirm their address.
 3. They click it, and the question goes live in the archive.
-4. Members answer it on the question's page. The asker gets an email each time someone answers.
+4. Signed-in members answer it on the question's page, and say how long it took (5, 15, 30 minutes, an hour, or their own figure). That time goes into their volunteer hours. The asker gets an email each time someone answers.
 5. The asker (or staff) accepts the answer that solved it, which closes the thread, or marks it resolved.
 
 ## How to moderate

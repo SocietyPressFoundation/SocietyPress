@@ -20,6 +20,36 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.58] — 2026-10-25
+
+**Members can reach ballots.** The Voting page type wasn't offered in the page
+editor, so there was no way to make the page members vote on. It's there now,
+and the Ballots screen offers to make the page for you when you don't have one.
+
+**Saving the Privacy Policy or News page keeps it working.** Opening either
+page in the page editor and pressing Save quietly turned it into a plain page.
+Both are now proper page types and survive a save.
+
+**The Leadership page lists your officers and committees.** It was created
+with placeholder notes promising the names would appear "automatically", and
+they never did. New sites get the live lists; on existing sites the
+placeholders are swapped for them, unless you've rewritten that text.
+
+**Research Help Archive links open the question.** Clicking a question in the
+Help Requests Archive widget, or the link in a "your question is resolved"
+email, went to the home page. It now opens the thread on your Research Help
+page.
+
+**Committee assignments use a dropdown.** Putting a member on a committee meant
+typing its name exactly; a typo left them off the committee with no warning.
+You now choose from your committees.
+
+**Quieter error log.** Twenty admin screens were registered in a way that
+wrote two PHP deprecation notices to the debug log on every admin page load,
+burying real errors. They no longer do.
+
+---
+
 ## [1.5.57] — 2026-10-25
 
 **Ballots close themselves when voting ends.** A ballot left open past its end

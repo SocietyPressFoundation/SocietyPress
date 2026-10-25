@@ -209,6 +209,20 @@ def build():
             'Max Members': '3', 'Amount Paid': '75.00', 'Payment Type': 'Invoice',
         }))
 
+    # Birthdays and photos the way ENS exports them. A member may give a
+    # birthday without a year, which arrives blank or as "0000"; photo files
+    # keep whatever name they were uploaded under, punctuation and all.
+    extras = {
+        'Eleanor':  {'Birth Year': '',     'Birth Month': '3',  'Birth Day': '14'},
+        'Walter':   {'Birth Year': '0000', 'Birth Month': '10', 'Birth Day': '2'},
+        'Bernice':  {'Birth Year': '1950', 'Birth Month': '5',  'Birth Day': '20'},
+        'Ogden':    {'Image Filename': '1351448786_Fairweather,_Ogden.jpg'},
+        'Louisa':   {'Image Filename': "Okonkwo_(Louisa).jpg"},
+        'Clement':  {'Image Filename': 'Rasmussen,_Clement.jpg'},
+    }
+    for r in rows:
+        r.update(extras.get(r['First Name'], {}))
+
     assert len(rows) == 22, len(rows)
     return rows
 

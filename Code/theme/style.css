@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.5.54
+Version: 1.5.55
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -2187,6 +2187,15 @@ input[type="submit"]:focus-visible {
     font-weight: 600;
     font-size: 0.9rem;
     color: var(--sp-color-primary, #1e3a5f);
+}
+
+/* Month and day pickers for a birthday given without a year. */
+.sp-birthday-noyear {
+    display: flex;
+    gap: 8px;
+}
+.sp-birthday-noyear select {
+    flex: 1;
 }
 
 /* Free-text research note on a surname / research-area / relationship row.

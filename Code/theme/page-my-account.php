@@ -708,9 +708,11 @@ $sp_section_locked = function ( $section ) {
                             <input type="date" id="sp-dob" name="date_of_birth"
                                    value="<?php echo esc_attr( sp_m( $member, 'date_of_birth' ) ); ?>" />
                         </div>
-                        <div class="sp-form-field">
-                            <!-- Spacer so DOB doesn't stretch full width -->
-                        </div>
+                        <!-- For members who'd rather not give their age. -->
+                        <fieldset class="sp-form-field sp-form-fieldset">
+                            <legend><?php esc_html_e( 'Or just your birthday (no year)', 'societypress' ); ?></legend>
+                            <?php sp_render_birthday_no_year_fields( $member, 'sp-account-birth' ); ?>
+                        </fieldset>
                     </div>
 
                     <button type="submit" class="sp-button"><?php esc_html_e( 'Save Personal Information', 'societypress' ); ?></button>

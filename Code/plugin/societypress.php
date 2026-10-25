@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.54
+ * Version:     1.5.55
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.54' );
+define( 'SOCIETYPRESS_VERSION', '1.5.55' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -758,6 +758,8 @@ function sp_create_tables(): void {
         maiden_name         VARCHAR(100)        NULL,
         suffix              VARCHAR(20)         NULL,
         date_of_birth       DATE                NULL,
+        birth_month         TINYINT UNSIGNED    NULL,
+        birth_day           TINYINT UNSIGNED    NULL,
         photo_url           VARCHAR(500)        NULL,
         gender              VARCHAR(10)         NULL,
         deceased            TINYINT(1)          NOT NULL DEFAULT 0,
@@ -865,6 +867,8 @@ function sp_create_tables(): void {
         suffix              VARCHAR(20)         NULL,
         use_maiden          VARCHAR(20)         NOT NULL DEFAULT 'Not Used',
         date_of_birth       DATE                NULL,
+        birth_month         TINYINT UNSIGNED    NULL,
+        birth_day           TINYINT UNSIGNED    NULL,
         gender              VARCHAR(10)         NULL,
         deceased            TINYINT(1)          NOT NULL DEFAULT 0,
         deceased_date       DATE                NULL,
@@ -10385,6 +10389,102 @@ function sp_seasonal_from_post( string $field, int $user_id ): ?string {
     }
     return $month;
 }
+// ============================================================================
+// BIRTHDAYS — a full date of birth, or a month and day alone
+// ============================================================================
+//
+// WHY two shapes: plenty of members will give their birthday but not their
+//      age, and an ENS export carries exactly that — a month and day with the
+//      year left blank. A DATE column can't hold a date with no year, so the
+//      month and day were thrown away on import and the member never appeared
+//      in "birthdays this month". birth_month and birth_day hold them instead.
+//      When a full date of birth is known it is the only thing stored; the
+//      month and day columns are for when it isn't.
+
+/**
+ * Whether a month and day can be a birthday. February 29 counts.
+ */
+function sp_birthday_is_valid( int $month, int $day ): bool {
+    return $month >= 1 && $month <= 12 && $day >= 1 && checkdate( $month, $day, 2000 );
+}
+
+/**
+ * The birthday fields to store, from a member form's POST.
+ *
+ * A complete date of birth wins and clears the month/day pair; otherwise a
+ * valid month and day are kept on their own; otherwise all three are empty.
+ *
+ * @return array{date_of_birth: ?string, birth_month: ?int, birth_day: ?int}
+ */
+function sp_birthday_from_post(): array {
+    $dob   = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
+    $month = absint( $_POST['birth_month'] ?? 0 );
+    $day   = absint( $_POST['birth_day'] ?? 0 );
+
+    $dob_dt = $dob ? DateTime::createFromFormat( '!Y-m-d', $dob ) : false;
+    if ( $dob_dt && $dob_dt->format( 'Y-m-d' ) === $dob ) {
+        return [ 'date_of_birth' => $dob, 'birth_month' => null, 'birth_day' => null ];
+    }
+    if ( sp_birthday_is_valid( $month, $day ) ) {
+        return [ 'date_of_birth' => null, 'birth_month' => $month, 'birth_day' => $day ];
+    }
+    return [ 'date_of_birth' => null, 'birth_month' => null, 'birth_day' => null ];
+}
+
+/**
+ * A member's birthday for display: the full date when known, "March 14"
+ * when only the month and day are, '' when neither.
+ *
+ * @param object|array $m A member row.
+ */
+function sp_member_birthday_label( $m ): string {
+    $m   = (array) $m;
+    $dob = $m['date_of_birth'] ?? '';
+    if ( $dob && '0000-00-00' !== $dob ) {
+        return date_i18n( get_option( 'date_format' ), strtotime( $dob ) );
+    }
+    $month = (int) ( $m['birth_month'] ?? 0 );
+    $day   = (int) ( $m['birth_day'] ?? 0 );
+    if ( sp_birthday_is_valid( $month, $day ) ) {
+        /* translators: 1: month name, 2: day of the month — a birthday with no year */
+        return sprintf( _x( '%1$s %2$d', 'birthday without a year', 'societypress' ), date_i18n( 'F', mktime( 0, 0, 0, $month, 1, 2000 ) ), $day );
+    }
+    return '';
+}
+
+/**
+ * Month and day dropdowns for a birthday given without a year.
+ *
+ * Printed beside a date-of-birth input on the admin member form and on My
+ * Account. Shared so both forms ask the same question in the same words.
+ *
+ * @param object|array|null $m      The member row, if editing.
+ * @param string            $prefix Id prefix for the two selects.
+ */
+function sp_render_birthday_no_year_fields( $m, string $prefix = 'sp-birth' ): void {
+    $m     = (array) $m;
+    $month = (int) ( $m['birth_month'] ?? 0 );
+    $day   = (int) ( $m['birth_day'] ?? 0 );
+    ?>
+    <span class="sp-birthday-noyear">
+        <label class="screen-reader-text" for="<?php echo esc_attr( $prefix ); ?>-month"><?php esc_html_e( 'Birthday month', 'societypress' ); ?></label>
+        <select name="birth_month" id="<?php echo esc_attr( $prefix ); ?>-month">
+            <option value=""><?php esc_html_e( 'Month', 'societypress' ); ?></option>
+            <?php for ( $i = 1; $i <= 12; $i++ ) : ?>
+                <option value="<?php echo (int) $i; ?>" <?php selected( $month, $i ); ?>><?php echo esc_html( date_i18n( 'F', mktime( 0, 0, 0, $i, 1, 2000 ) ) ); ?></option>
+            <?php endfor; ?>
+        </select>
+        <label class="screen-reader-text" for="<?php echo esc_attr( $prefix ); ?>-day"><?php esc_html_e( 'Birthday day', 'societypress' ); ?></label>
+        <select name="birth_day" id="<?php echo esc_attr( $prefix ); ?>-day">
+            <option value=""><?php esc_html_e( 'Day', 'societypress' ); ?></option>
+            <?php for ( $i = 1; $i <= 31; $i++ ) : ?>
+                <option value="<?php echo (int) $i; ?>" <?php selected( $day, $i ); ?>><?php echo (int) $i; ?></option>
+            <?php endfor; ?>
+        </select>
+    </span>
+    <?php
+}
+
 
 
 // ============================================================================
@@ -11326,12 +11426,13 @@ function sp_handle_account_forms() {
         $maiden_name    = sanitize_text_field( wp_unslash( $_POST['maiden_name'] ?? '' ) );
         $prefix         = sanitize_text_field( wp_unslash( $_POST['prefix'] ?? '' ) );
         $suffix         = sanitize_text_field( wp_unslash( $_POST['suffix'] ?? '' ) );
-        $dob            = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
+        $birthday       = sp_birthday_from_post();
 
         $new_data = [
             'prefix' => $prefix, 'first_name' => $first_name, 'preferred_name' => $preferred_name,
             'middle_name' => $middle_name, 'last_name' => $last_name, 'maiden_name' => $maiden_name,
-            'suffix' => $suffix, 'date_of_birth' => $dob ?: null,
+            'suffix' => $suffix, 'date_of_birth' => $birthday['date_of_birth'],
+            'birth_month' => $birthday['birth_month'], 'birth_day' => $birthday['birth_day'],
         ];
 
         if ( $require_approval && sp_user_has_member_record( $user->ID ) ) {
@@ -12126,6 +12227,8 @@ function sp_render_pending_changes_page(): void {
             'maiden_name'       => __( 'Maiden Name', 'societypress' ),
             'suffix'            => __( 'Suffix', 'societypress' ),
             'date_of_birth'     => __( 'Date of Birth', 'societypress' ),
+            'birth_month'       => __( 'Birthday Month', 'societypress' ),
+            'birth_day'         => __( 'Birthday Day', 'societypress' ),
             'user_email'        => __( 'Email', 'societypress' ),
             'phone'             => __( 'Phone', 'societypress' ),
             'cell'              => __( 'Cell Phone', 'societypress' ),
@@ -12321,12 +12424,13 @@ add_action( 'wp_ajax_sp_save_account', function() {
         $maiden_name    = sanitize_text_field( wp_unslash( $_POST['maiden_name'] ?? '' ) );
         $prefix         = sanitize_text_field( wp_unslash( $_POST['prefix'] ?? '' ) );
         $suffix         = sanitize_text_field( wp_unslash( $_POST['suffix'] ?? '' ) );
-        $dob            = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
+        $birthday       = sp_birthday_from_post();
 
         $new_data = [
             'prefix' => $prefix, 'first_name' => $first_name, 'preferred_name' => $preferred_name,
             'middle_name' => $middle_name, 'last_name' => $last_name, 'maiden_name' => $maiden_name,
-            'suffix' => $suffix, 'date_of_birth' => $dob ?: null,
+            'suffix' => $suffix, 'date_of_birth' => $birthday['date_of_birth'],
+            'birth_month' => $birthday['birth_month'], 'birth_day' => $birthday['birth_day'],
         ];
 
         // Queue for approval if enabled
@@ -25032,7 +25136,7 @@ add_action( 'admin_init', function () {
     $member_prefix  = sanitize_text_field( wp_unslash( $_POST['prefix'] ?? '' ) );
     $suffix         = sanitize_text_field( wp_unslash( $_POST['suffix'] ?? '' ) );
     $member_number  = sanitize_text_field( wp_unslash( $_POST['member_number'] ?? '' ) );
-    $date_of_birth  = sanitize_text_field( wp_unslash( $_POST['date_of_birth'] ?? '' ) );
+    $birthday       = sp_birthday_from_post();
     $status         = sanitize_text_field( wp_unslash( $_POST['status'] ?? 'active' ) );
     if ( ! array_key_exists( $status, sp_get_member_statuses() ) ) {
         $status = 'active';
@@ -25137,7 +25241,9 @@ add_action( 'admin_init', function () {
         'last_name'             => $last_name,
         'maiden_name'           => $maiden_name ?: null,
         'suffix'                => $suffix ?: null,
-        'date_of_birth'         => $date_of_birth ?: null,
+        'date_of_birth'         => $birthday['date_of_birth'],
+        'birth_month'           => $birthday['birth_month'],
+        'birth_day'             => $birthday['birth_day'],
         'join_date'             => $join_date,
         'expiration_date'       => $expiration_date ?: null,
         'address_1'             => $address_1 ?: null,
@@ -26109,6 +26215,14 @@ function sp_render_member_edit_page(): void {
                     max-width: none;
                     margin: 0;
                 }
+                /* Birthday without a year: month and day share one line. */
+                .sp-birthday-noyear {
+                    display: flex;
+                    gap: 8px;
+                }
+                .sp-birthday-noyear select {
+                    flex: 1;
+                }
                 /* A label wrapping a checkbox reads as one thing — box then
                    words, on one line — rather than a heading with a field
                    underneath it. */
@@ -26864,6 +26978,8 @@ function sp_render_member_edit_page(): void {
                             <label for="sp-dob"><?php esc_html_e( 'Date of Birth', 'societypress' ); ?></label>
                             <input type="date" name="date_of_birth" id="sp-dob"
                                    value="<?php echo esc_attr( $member->date_of_birth ?? '' ); ?>">
+                            <p class="description"><?php esc_html_e( 'No year? Give just the birthday:', 'societypress' ); ?></p>
+                            <?php sp_render_birthday_no_year_fields( $member ?? null ); ?>
                         </div>
 
                     </div>
@@ -27879,6 +27995,58 @@ function sp_import_is_organization_type( string $value ): bool {
     return in_array( $needle, $types, true );
 }
 
+/**
+ * Attach an imported member's photo from uploads/sp-profile-photos.
+ *
+ * WHY the original name is tried: ENS names photos however they were
+ * uploaded — "Adkins,_Henry.jpg" included — and the import used to look only
+ * for the cleaned-up name WordPress would give it ("Adkins_Henry.jpg"), so a
+ * photo with a comma, apostrophe or parenthesis in its name was skipped in
+ * silence. When only the original exists it is copied to the clean name, so
+ * the address stored on the member is a safe one and the file the society
+ * uploaded is left as it was.
+ *
+ * @param int    $user_id  Member's user id.
+ * @param string $raw_name The Image Filename cell, as exported.
+ * @return string 'none' (no name given), 'missing', 'unchanged' or 'linked'.
+ */
+function sp_import_link_member_photo( int $user_id, string $raw_name ): string {
+    global $wpdb;
+    $raw_name = trim( str_replace( '\\', '/', $raw_name ) );
+    if ( '' === $raw_name || false !== strpos( $raw_name, "\0" ) ) {
+        return 'none';
+    }
+    // Only the file's own name counts; any folder in front of it is ENS's.
+    $raw   = basename( $raw_name );
+    $clean = sanitize_file_name( $raw );
+    if ( '' === $clean || '.' === $raw[0] ) {
+        return 'none';
+    }
+
+    $upload_dir = wp_upload_dir();
+    $photo_dir  = $upload_dir['basedir'] . '/sp-profile-photos';
+
+    if ( ! file_exists( $photo_dir . '/' . $clean ) ) {
+        $raw_path = $photo_dir . '/' . $raw;
+        if ( $raw === $clean || ! is_file( $raw_path ) || ! @copy( $raw_path, $photo_dir . '/' . $clean ) ) {
+            return 'missing';
+        }
+    }
+
+    $url_base = $upload_dir['baseurl'] . '/sp-profile-photos/' . $clean;
+    $old      = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$wpdb->prefix}sp_members WHERE user_id = %d", $user_id ) );
+    // Already this photo? Leave it, so importing again doesn't add a
+    // "photo changed" entry to the member's history each time.
+    if ( strtok( $old, '?' ) === $url_base ) {
+        return 'unchanged';
+    }
+    $new = $url_base . '?v=' . time();
+    $wpdb->update( $wpdb->prefix . 'sp_members', [ 'photo_url' => $new ], [ 'user_id' => $user_id ] );
+    sp_record_member_photo( $user_id, $old, $new );
+    update_user_meta( $user_id, 'sp_profile_photo_url', $new );
+    return 'linked';
+}
+
 function sp_process_import_batch( string $file_path, array $field_map, int $offset = 0, int $batch_size = 50, ?array $link_user_ids = null, bool $update_existing = true, bool $replace_on_newer = false ): array {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -27905,6 +28073,9 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // kept apart from errors so the results screen doesn't show a
         // successful link in the same red as a row that failed.
         'notes'          => [],
+        // Photos named in the file but not found in uploads/sp-profile-photos.
+        'photos_missing'       => 0,
+        'photos_missing_names' => [],
         'tiers_created'  => [],
         // Plan names matched onto a tier that already existed under another
         // word, as CSV name => existing tier name. Reported so the match is
@@ -28504,6 +28675,7 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // Build date of birth from separate Year/Month/Day columns
         // ==============================================================
         $dob = '';
+        $birth_md    = [ null, null ]; // Month and day when the year is missing.
         $birth_year  = $get( $row, 'birth_year' );
         $birth_month = $get( $row, 'birth_month' );
         $birth_day   = $get( $row, 'birth_day' );
@@ -28514,6 +28686,11 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                 max( 1, (int) $birth_month ),
                 max( 1, (int) $birth_day )
             );
+        } elseif ( sp_birthday_is_valid( (int) $birth_month, (int) $birth_day ) ) {
+            // WHY: ENS lets a member give their birthday without the year, and
+            //      exports it with the year blank or "0000". Kept as month and
+            //      day so they still get their birthday email.
+            $birth_md = [ (int) $birth_month, (int) $birth_day ];
         }
 
         // ==============================================================
@@ -28813,6 +28990,8 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
             'maiden_name'           => sanitize_text_field( $get( $row, 'maiden_name' ) ) ?: null,
             'suffix'                => sanitize_text_field( $get( $row, 'suffix' ) ) ?: null,
             'date_of_birth'         => $dob ?: null,
+            'birth_month'           => $birth_md[0],
+            'birth_day'             => $birth_md[1],
             'gender'                => sanitize_text_field( $get( $row, 'gender' ) ) ?: null,
             'deceased'              => ( $deceased === 'yes' ) ? 1 : 0,
             'join_date'             => $join_date,
@@ -28948,6 +29127,16 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
                 'first_name' => $first_name,
                 'last_name'  => $last_name,
             ] );
+            // WHY photos here too: the photo files usually go up after the
+            //      first import, and importing again is how they get attached.
+            //      Unlike payments, linking a photo twice changes nothing.
+            $photo_status = sp_import_link_member_photo( $update_user_id, $get( $row, 'image_filename' ) );
+            if ( 'missing' === $photo_status ) {
+                $results['photos_missing']++;
+                if ( count( $results['photos_missing_names'] ) < 5 ) {
+                    $results['photos_missing_names'][] = sanitize_text_field( $get( $row, 'image_filename' ) );
+                }
+            }
             $results['updated']++;
             continue;
         }
@@ -29055,21 +29244,11 @@ function sp_process_import_batch( string $file_path, array $field_map, int $offs
         // ==============================================================
         // Link member photo if Image Filename is provided (batch)
         // ==============================================================
-        $image_filename = sanitize_file_name( $get( $row, 'image_filename' ) );
-        if ( ! empty( $image_filename ) ) {
-            $upload_dir = wp_upload_dir();
-            $photo_dir  = $upload_dir['basedir'] . '/sp-profile-photos';
-            $photo_path = $photo_dir . '/' . $image_filename;
-            if ( file_exists( $photo_path ) ) {
-                $photo_url_val = $upload_dir['baseurl'] . '/sp-profile-photos/' . $image_filename . '?v=' . time();
-                $old_photo = (string) $wpdb->get_var( $wpdb->prepare( "SELECT photo_url FROM {$prefix}members WHERE user_id = %d", $user_id ) );
-                $wpdb->update(
-                    $prefix . 'members',
-                    [ 'photo_url' => $photo_url_val ],
-                    [ 'user_id' => $user_id ]
-                );
-                sp_record_member_photo( (int) $user_id, $old_photo, $photo_url_val );
-                update_user_meta( $user_id, 'sp_profile_photo_url', $photo_url_val );
+        $photo_status = sp_import_link_member_photo( (int) $user_id, $get( $row, 'image_filename' ) );
+        if ( 'missing' === $photo_status ) {
+            $results['photos_missing']++;
+            if ( count( $results['photos_missing_names'] ) < 5 ) {
+                $results['photos_missing_names'][] = sanitize_text_field( $get( $row, 'image_filename' ) );
             }
         }
 
@@ -30712,7 +30891,7 @@ function sp_render_import_page(): void {
                 if (submitBtn) submitBtn.disabled = true;
 
                 // Running totals across all batches
-                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], notes: [], tiers_created: [], tiers_matched: {}, orgs_unmatched: 0, orgs_unmatched_types: [] };
+                var totals = { imported: 0, updated: 0, linked: 0, skipped: 0, errors: [], notes: [], photos_missing: 0, photos_missing_names: [], tiers_created: [], tiers_matched: {}, orgs_unmatched: 0, orgs_unmatched_types: [] };
                 var updateExistingEl = document.getElementById('sp-import-update-existing');
                 var updateExisting = updateExistingEl ? (updateExistingEl.checked ? 1 : 0) : 1;
                 var replaceNewerEl = document.getElementById('sp-import-replace-newer');
@@ -30759,6 +30938,10 @@ function sp_render_import_page(): void {
                             totals.skipped  += d.skipped || 0;
                             if (d.errors && d.errors.length) totals.errors = totals.errors.concat(d.errors);
                             if (d.notes && d.notes.length) totals.notes = totals.notes.concat(d.notes);
+                            totals.photos_missing += d.photos_missing || 0;
+                            (d.photos_missing_names || []).forEach(function (n) {
+                                if (totals.photos_missing_names.length < 5) totals.photos_missing_names.push(n);
+                            });
                             if (d.tiers_created && d.tiers_created.length) {
                                 d.tiers_created.forEach(function (t) {
                                     if (totals.tiers_created.indexOf(t) === -1) totals.tiers_created.push(t);
@@ -30854,6 +31037,22 @@ function sp_render_import_page(): void {
                         errorsEl.appendChild(orgNote);
                     }
 
+                    // Photos named in the file that aren't on the server yet. One
+                    // line rather than one per member: before the photo files are
+                    // uploaded, every member with a photo would otherwise be an error.
+                    if (totals.photos_missing > 0) {
+                        var photoNote = document.createElement('div');
+                        // textContent: the file names come from the uploaded CSV.
+                        photoNote.textContent =
+                            totals.photos_missing
+                            + <?php echo wp_json_encode( ' ' . __( 'photos named in your file were not found in wp-content/uploads/sp-profile-photos, so those members have no photo yet.', 'societypress' ) ); ?>
+                            + (totals.photos_missing_names.length
+                                ? <?php echo wp_json_encode( ' ' . __( 'For example:', 'societypress' ) . ' ' ); ?> + totals.photos_missing_names.join(', ') + '.'
+                                : '')
+                            + <?php echo wp_json_encode( ' ' . __( 'Upload the photos to that folder and import the same file again — that attaches them without duplicating anyone.', 'societypress' ) ); ?>;
+                        errorsEl.appendChild(photoNote);
+                    }
+
                     if (totals.errors.length > 0) {
                         // WHY textContent (not innerHTML): error strings include
                         // user-supplied CSV values (first/last name, error messages
@@ -30942,6 +31141,13 @@ function sp_get_export_columns(): array {
         'date_of_birth'  => [
             'label' => __( 'Date of Birth', 'societypress' ),
             'value' => fn( $m ) => $m->date_of_birth ?? '',
+        ],
+        // Month and day for members who gave no year, as MM-DD so a
+        // spreadsheet sorts it; blank when the full date is known.
+        'birthday_no_year' => [
+            'label' => __( 'Birthday (no year)', 'societypress' ),
+            'value' => fn( $m ) => ( empty( $m->date_of_birth ) && ! empty( $m->birth_month ) )
+                ? sprintf( '%02d-%02d', (int) $m->birth_month, (int) $m->birth_day ) : '',
         ],
 
         // ---- Membership ----
@@ -31228,7 +31434,7 @@ function sp_render_export_page(): void {
         __( 'Identity', 'societypress' )             => [ 'member_type', 'organization_name', 'member_number',
                                                           'prefix', 'first_name', 'preferred_name',
                                                           'middle_name', 'last_name', 'maiden_name', 'suffix',
-                                                          'date_of_birth' ],
+                                                          'date_of_birth', 'birthday_no_year' ],
         __( 'Membership', 'societypress' )           => [ 'status', 'tier_name', 'join_date', 'expiration_date' ],
         __( 'Contact', 'societypress' )              => [ 'email', 'phone', 'cell', 'website' ],
         __( 'Address', 'societypress' )              => [ 'address_1', 'address_2', 'city', 'state', 'postal_code',
@@ -40194,7 +40400,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.54',
+            'version'     => '1.5.55',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40202,7 +40408,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.54',
+            'version'     => '1.5.55',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40210,7 +40416,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.54',
+            'version'     => '1.5.55',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40218,7 +40424,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.54',
+            'version'     => '1.5.55',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40226,7 +40432,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.54',
+            'version'     => '1.5.55',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -87018,7 +87224,8 @@ function sp_blast_segment_clause( string $recipient_type ): string {
         case 'recently_joined':
             return ' AND m.join_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)';
         case 'birthday_month':
-            return ' AND m.date_of_birth IS NOT NULL AND MONTH(m.date_of_birth) = MONTH(CURDATE())';
+            // A member who gave a month and day but no year counts too.
+            return ' AND ( MONTH(m.date_of_birth) = MONTH(CURDATE()) OR ( m.date_of_birth IS NULL AND m.birth_month = MONTH(CURDATE()) ) )';
         default:
             return '';
     }
@@ -89479,7 +89686,7 @@ function sp_privacy_export_member_data( string $email_address, int $page = 1 ): 
         [ 'name' => __( 'Name', 'societypress' ),             'value' => trim( $member->prefix . ' ' . $member->first_name . ' ' . $member->middle_name . ' ' . $member->last_name . ' ' . $member->suffix ) ],
         [ 'name' => __( 'Preferred Name', 'societypress' ),   'value' => $member->preferred_name ?: $none_label ],
         [ 'name' => __( 'Maiden Name', 'societypress' ),      'value' => $member->maiden_name ?: $none_label ],
-        [ 'name' => __( 'Date of Birth', 'societypress' ),    'value' => $member->date_of_birth ?: __( '(not provided)', 'societypress' ) ],
+        [ 'name' => __( 'Date of Birth', 'societypress' ),    'value' => sp_member_birthday_label( $member ) ?: __( '(not provided)', 'societypress' ) ],
         [ 'name' => __( 'Join Date', 'societypress' ),        'value' => $member->join_date ],
         [ 'name' => __( 'Expiration Date', 'societypress' ),  'value' => $member->expiration_date ?: $none_label ],
         [ 'name' => __( 'Address', 'societypress' ),          'value' => implode( ', ', array_filter( [
@@ -133288,6 +133495,8 @@ function sp_migrate_members_to_people(): array {
             'suffix'           => $row['suffix'],
             'use_maiden'       => $row['use_maiden'] ?: 'Not Used',
             'date_of_birth'    => $row['date_of_birth'] ?: null,
+            'birth_month'      => $row['birth_month'] ?? null,
+            'birth_day'        => $row['birth_day'] ?? null,
             'gender'           => $row['gender'],
             'deceased'         => (int) $row['deceased'],
             'email'            => sp_migration_user_email( $user_id ),

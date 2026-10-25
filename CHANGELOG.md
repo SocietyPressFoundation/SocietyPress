@@ -20,6 +20,24 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.55] — 2026-10-25
+
+**Birthdays without a year are kept.** A member can give their birthday but
+not their age, and an EasyNetSites export carries exactly that — a month and
+day with the year blank or "0000". The import used to throw those away; now
+they're kept, and the member gets the "Birthdays this month" email like
+everyone else. The member form and My Account have a month-and-day choice
+beside Date of Birth for members who'd rather not give the year. A full date
+of birth, when there is one, still takes its place.
+
+**Imported member photos with commas or brackets in their names attach.** A
+photo named like "Adkins,_Henry.jpg" was looked for under a cleaned-up name,
+not found, and skipped without a word. The import now finds it by the name it
+was uploaded under. Photos named in the file that aren't on the server yet are
+counted on the results screen, with examples, and importing the same file again
+after uploading them attaches them — before, a second import never touched
+photos at all.
+
 ## [1.5.54] — 2026-10-25
 
 **Renewing early no longer costs a member their year.** With an annual

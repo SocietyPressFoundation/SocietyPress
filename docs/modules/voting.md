@@ -1,71 +1,70 @@
 # Voting & Elections
 
-Online ballots for board elections, bylaw amendments, and member surveys. Tier-based eligibility (e.g., "only full members vote on bylaw changes; subscriber-tier members don't") is built in.
+Online ballots for board elections, bylaw amendments and member surveys. You can limit a ballot to certain membership tiers — for example, only full members vote on bylaw changes.
 
 ## What you can do
 
-- Run any number of ballots — board elections, bylaw votes, surveys.
-- Single-choice, multi-choice, or yes/no question types.
-- Open and close periods (votes accepted only between dates).
-- Tier-based eligibility (every active member, or only specific membership tiers).
-- One vote per eligible member, enforced by the system.
-- Optional anonymous voting (votes recorded but not tied to the voter).
-- Results page with vote counts, percentages, eligible-vs-cast turnout.
-- Optional "abstain" choice on every question.
+- Run any number of ballots — elections, referendums, surveys.
+- Ask single-choice, multiple-choice or yes/no questions, several to a ballot.
+- Set a voting period, or leave the dates blank and open and close voting by hand.
+- Let every active member vote, or only members in the tiers you pick.
+- One vote per member per ballot, enforced by the system. A vote can't be changed once it's submitted.
+- Offer an "Abstain" choice on every question.
+- Choose who sees the results, and when.
 
 ## How to create a ballot
 
-**SocietyPress → Voting & Elections → Add Ballot.**
+**SocietyPress → Ballots → Create New Ballot.**
 
 - **Title** — what's being voted on.
 - **Description** — context for voters.
-- **Open / close dates** — when voting is accepted.
-- **Eligibility** — All active members, or specific tiers.
-- **Anonymous** — toggle.
-- **Allow abstain** — toggle.
+- **Ballot Type** — Election, Referendum or Survey. It's a label members see on the ballot.
+- **Who Can Vote** — All Active Members, or Specific Membership Tiers (tick the tiers).
+- **Voting Period** — start and end date and time. Both are optional.
+- **Allow Abstain** — adds an Abstain choice to every question.
+- **Results Visibility** — After Voting Closes, Visible During Voting, or Admin Only.
 
-Save. Then add questions. Each question:
+Then add questions with **Add Question**. For each one, the question text, its type (single choice, multiple choice with a maximum number of selections, or yes/no) and its choices. A board election usually has one question per office.
 
-- Question text.
-- Type — single choice, multi choice, yes/no.
-- Choices — for single/multi-choice.
+Counting is plurality — the choice with the most votes wins. Ranked-choice isn't available.
 
-Multiple questions per ballot. A board election typically has one ballot with one question per office (or one question listing all candidates if you're using ranked-choice — currently SocietyPress is plurality only; ranked-choice is roadmapped).
+Save. A new ballot is a draft; members can't see it yet.
+
+## How to open and close voting
+
+On the **Ballots** list, click **Open Voting** on the ballot. Members can vote from then until the end of the voting period. If you set a start date in the future, the ballot appears when that date arrives.
+
+When the end date passes, the ballot closes by itself. To close it early, or to close a ballot with no end date, click **Close Voting**.
 
 ## How members vote
 
-The ballot appears on any page hosting the voting widget (drop it from the page builder, or use `[sp_ballot id="..."]`). Eligible members see the questions and submit. Non-eligible members see a message explaining why they can't vote ("This ballot is open only to full members").
+Create a page (**Website → Pages → Add New Page**) and choose the **Voting** page template. Put it on your menu.
 
-After submitting, the member sees a confirmation. They can't change their vote — submission is final.
+Members sign in and go to that page. Under **Open Ballots** they see each ballot they're eligible for, with its closing time, and vote with **Submit Vote**. Ballots they're not eligible for don't appear. Lapsed and expired members, and visitors who aren't signed in, can't vote.
 
-If they hit the page after the close date, they see a results page (if results have been published) or a "voting has closed" message.
+Under **Past Ballots** they see the 20 most recently closed ballots and, unless a ballot's results are Admin Only, its results.
 
-## How to publish results
+## Who sees the results
 
-**SocietyPress → Voting & Elections → [Ballot] → Results.** Two options:
+- **After Voting Closes** — results appear under Past Ballots once the ballot closes.
+- **Visible During Voting** — a member sees the running totals after casting their vote, marked as still in progress.
+- **Admin Only** — members never see the results; admins do.
 
-1. **Publish to members** — results visible to logged-in members.
-2. **Publish to public** — results visible to anyone.
+Admins see full results any time from the **Results** link on the Ballots list: eligible voters, votes cast, participation rate, and a bar chart for each question. **Export Results (CSV)** downloads the totals for your minutes.
 
-Until you click Publish, results are visible only to staff (admins). This lets you verify totals before announcing.
+## Votes are not secret
 
-## How tier eligibility works
-
-When you pick "Specific tiers" for eligibility, you check off which membership tiers are allowed to vote. Members in any *unchecked* tier see "you're not eligible for this ballot."
-
-This is the standard pattern for: bylaw votes (only full members, not subscribers); board elections (only members in good standing, not honorary or expired); surveys (everyone, including subscribers).
+SocietyPress records which member cast each vote. Members never see who voted for what, but anyone with access to the database could. If your bylaws require a secret ballot, keep using paper for that vote for now. Secret ballots are on the roadmap.
 
 ## If something looks wrong
 
-**A member says they should be eligible but the system disagrees.** Check their membership tier on their member record. Eligibility is per-tier; if their tier isn't in the ballot's allowed list, they don't vote.
+**A member says they should be able to vote but the ballot isn't on their page.** Check their membership is active and their tier is one the ballot allows. Ballots a member isn't eligible for don't show at all.
 
-**Results don't add up.** The ballot might allow multi-choice answers (a single voter can pick multiple options on one question). Verify the question type. For yes/no votes, total responses should equal the number of voters.
+**Results don't add up to the number of voters.** On a multiple-choice question one voter can pick several options. On single-choice and yes/no questions, abstentions are counted separately.
 
-**Anonymous ballot still shows voter names somewhere.** It shouldn't. Anonymous ballots write `voter_user_id = NULL` to the ballot_votes table. If you see names in any results view, file a bug — that's incorrect.
-
-**Ballot disappeared from the voting page.** Check the open/close dates. If "now" is outside the window, the ballot doesn't render. Edit dates if you need to extend.
+**A ballot isn't showing on the Voting page.** Check it's been opened on the Ballots list, and that its start date has arrived.
 
 ## Related guides
 
-- [Members](members.md) — tiers drive eligibility
-- [Governance](governance.md) — bylaw votes pair with meeting minutes
+- [Members](members.md) — tiers decide who can vote
+- [Governance](governance.md) — committees and meetings

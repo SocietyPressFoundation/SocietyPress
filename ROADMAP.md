@@ -137,6 +137,18 @@ diagnosis and the rule against widening the buffer are in
 saving a real form and confirming the debug log stays clean.
 **Blockers:** None.
 
+#### Secret ballots
+
+**Motivation:** Many bylaws require board elections by secret ballot. Today
+every vote is stored with the member who cast it (`sp_ballot_votes.user_id`),
+so a society bound by that rule can't run its election online. Members never
+see who voted for what, but anyone with database access could.
+**Scope:** A "Secret ballot" choice on the ballot. One-vote-per-member stays
+enforced through `sp_ballot_voters`, which records only *that* someone voted;
+the votes themselves are written with no member attached, and nothing on the
+results screen, CSV export or privacy export can join them back.
+**Blockers:** None.
+
 ### Medium
 
 #### Send a test email
@@ -171,6 +183,25 @@ no screen sets them, and each answer's `minutes_spent` is always 0.
 **Scope:** Put the approval switch and the daily limit on a settings screen;
 add a "how long did this take?" choice to the answer form and feed it into
 the volunteer-hours ledger.
+**Blockers:** None.
+
+#### Donation receipts: the tax-exempt statement
+
+**Motivation:** A donor claiming a deduction needs the society's EIN and a
+501(c)(3) statement on the receipt. The receipt code prints them when
+`tax_id` is set, but no screen sets it, so no receipt has ever carried them.
+**Scope:** An EIN box on **Settings → Organization**, and confirm the
+statement appears on the emailed and printable receipts.
+**Blockers:** None.
+
+#### Picture Wall: let an album accept submissions
+
+**Motivation:** The Picture Wall submission form only accepts photos into an
+album marked to take them, and the album screen has no way to mark one, so
+the form never has anywhere to send a photo.
+**Scope:** "Accept member submissions" and submission type on the album edit
+screen, writing the existing `accepts_submissions` and `submission_type`
+fields.
 **Blockers:** None.
 
 #### Join form: volunteering, print by mail, how they heard about us

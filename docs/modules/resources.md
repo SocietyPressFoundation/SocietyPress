@@ -4,28 +4,24 @@ A categorized directory of useful external links — partner societies, archives
 
 ## What you can do
 
-- Add external links with title, URL, description, category.
-- Group by category (Sample County / Texas / National / DNA / Cemeteries / etc.).
-- Sort within category.
-- Track when each link was last verified (encourages periodic cleanup).
-- Public or members-only access (most are public).
-- Bulk import from CSV.
+- Add external links with title, address, description and category.
+- Group them by category (your county, your state, national, DNA, cemeteries…), in the order you choose.
+- Mark a link as featured, or switch one off without deleting it.
+- Import a list from CSV — including an EasyNetSites links export — and export it back with **Export CSV**.
 
 ## How to add your first resource
 
-**SocietyPress → Resource Links → Add New.** Title (e.g., "Texas Vital Records"), URL, optional description, category. Save.
+**SocietyPress → Resource Links**, then add a link: title (e.g., "Texas Vital Records"), address, optional description, category. Save.
 
-Categories help visitors navigate — a 100-link list is daunting; a 100-link list grouped into 10 categories is browsable.
+Categories help visitors find their way — a list of a hundred links is daunting; the same hundred grouped into ten categories is browsable.
 
 ## How to import a list
 
-**SocietyPress → Resource Links → Import Links.** CSV with columns: title, url, description, category, sort_order. Upload, map, preview, import.
-
-If you're moving from EasyNetSites, the ENS Links export format is recognized — drop in the CSV and the importer maps the columns automatically.
+**SocietyPress → Resource Links → Import Links.** Upload a CSV with title, address, description and category columns, match the columns, preview, import. An EasyNetSites links export is recognized and matched for you.
 
 ## How to set up categories
 
-**SocietyPress → Resource Links → Categories.** Add categories in the order you want them displayed. Common starter set:
+**SocietyPress → Resource Links → Resource Categories.** Add categories in the order you want them displayed. A common starter set:
 
 - General Genealogy Resources
 - [Your State] Resources
@@ -37,29 +33,23 @@ If you're moving from EasyNetSites, the ENS Links export format is recognized �
 - Migration & Immigration
 - Military Records
 
-You can have as many or as few as makes sense. Empty categories are hidden from the public display.
+Empty categories don't show on the public directory.
 
 ## How to put the directory on a page
 
-**Page builder:** drop the "Resource Links" widget. **Shortcode:** `[sp_resources]`.
-
-The display groups by category, with each link's title (clickable) + description. Sort by category, then by sort_order within category.
-
-If you want a single category on a single page (e.g., "DNA Resources" page), the shortcode accepts `category="dna-resources"` (using the category slug).
+Create a page and choose the **Resource Links Directory** page template, or drop the **Resource Links** widget on a page with the page builder — it can show one category only, and a maximum number of links, which suits a "DNA resources" box on another page. Links are grouped by category, each with its title and description.
 
 ## How to handle dead links
 
-**SocietyPress → Resource Links → Verify Links.** Runs a batch check — visits each URL, marks broken links red. Doesn't auto-delete; you decide what to fix vs remove.
-
-The "last verified" timestamp updates per check. Links not verified in 6+ months get a yellow warning badge in the admin.
+There's no automatic link checker yet. Every so often, work down the list and click through; switch off any link that's dead rather than deleting it, in case the site comes back.
 
 ## If something looks wrong
 
-**Links not appearing in the public directory.** Three reasons: (1) the link's status is `inactive`, (2) the link's category is empty / inactive, (3) members-only access on a page viewed by a non-member.
+**A link isn't appearing in the public directory.** Check it's switched on (active) and that it has a category.
 
-**Categories displaying in wrong order.** Edit the categories, set sort_order. Lower numbers appear first. Items with the same sort_order are alphabetized by name.
+**Categories show in the wrong order.** Edit the categories and set their sort order. Lower numbers appear first.
 
-**Imported CSV has extra/missing columns.** During upload, the importer asks you to map each CSV column to a SocietyPress field. Skip columns you don't want.
+**An imported CSV has extra or missing columns.** During upload, match each column to a field, or skip it.
 
 ## Related guides
 

@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.57] — 2026-10-25
+
+**Ballots close themselves when voting ends.** A ballot left open past its end
+date dropped off the members' Voting page without its results ever appearing
+under Past Ballots, until someone remembered to click Close Voting. It now
+closes as soon as the end date passes.
+
+**Ballots without dates reach members.** The voting period is optional, but an
+open ballot saved without one never showed on the Voting page. It now shows
+until an admin closes it, without a "Voting closes" line.
+
+---
+
 ## [1.5.56] — 2026-10-25
 
 **Members → Export downloads again.** Clicking Download CSV just reloaded the

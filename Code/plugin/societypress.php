@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.56
+ * Version:     1.5.57
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.56' );
+define( 'SOCIETYPRESS_VERSION', '1.5.57' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40496,7 +40496,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.56',
+            'version'     => '1.5.57',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40504,7 +40504,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.56',
+            'version'     => '1.5.57',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40512,7 +40512,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.56',
+            'version'     => '1.5.57',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40520,7 +40520,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.56',
+            'version'     => '1.5.57',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40528,7 +40528,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.56',
+            'version'     => '1.5.57',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -109424,6 +109424,8 @@ function sp_render_voting_frontend(): void {
     $user_id = get_current_user_id();
     $now     = current_time( 'mysql' );
 
+    sp_close_expired_ballots();
+
     // Check if the current user is an active member
     $member = $wpdb->get_row( $wpdb->prepare(
         "SELECT user_id, status, tier_id FROM {$prefix}members WHERE user_id = %d",
@@ -109436,12 +109438,15 @@ function sp_render_voting_frontend(): void {
     }
 
     // ---- Open Ballots ----
+    // WHY the IS NULL branches: both dates are optional on the edit screen,
+    // and the vote handler treats a blank date as "no limit". Without them an
+    // open ballot saved without dates never reached the members at all.
     $open_ballots = $wpdb->get_results( $wpdb->prepare(
         "SELECT * FROM {$prefix}ballots
          WHERE status = 'open'
-           AND voting_start <= %s
-           AND voting_end >= %s
-         ORDER BY voting_end ASC",
+           AND ( voting_start IS NULL OR voting_start <= %s )
+           AND ( voting_end IS NULL OR voting_end >= %s )
+         ORDER BY voting_end IS NULL, voting_end ASC",
         $now, $now
     ) );
 
@@ -109482,10 +109487,14 @@ function sp_render_voting_frontend(): void {
                 echo '<p class="sp-ballot-desc">' . wp_kses_post( $ballot->description ) . '</p>';
             }
 
-            echo '<p class="sp-ballot-period">';
-            echo '<strong>' . esc_html__( 'Voting closes:', 'societypress' ) . '</strong> ';
-            echo esc_html( sp_format_wall_clock( $ballot->voting_end, 'F j, Y \a\t g:i A' ) );
-            echo '</p>';
+            // No end date means it stays open until an admin closes it, so
+            // there's no closing time to announce.
+            if ( ! empty( $ballot->voting_end ) ) {
+                echo '<p class="sp-ballot-period">';
+                echo '<strong>' . esc_html__( 'Voting closes:', 'societypress' ) . '</strong> ';
+                echo esc_html( sp_format_wall_clock( $ballot->voting_end, 'F j, Y \a\t g:i A' ) );
+                echo '</p>';
+            }
 
             if ( $has_voted > 0 ) {
                 echo '<div class="sp-ballot-voted-badge">';
@@ -109537,6 +109546,25 @@ function sp_render_voting_frontend(): void {
     if ( empty( $open_ballots ) && empty( $closed_ballots ) ) {
         echo '<p class="sp-text-muted">' . esc_html__( 'There are no active or recent ballots at this time.', 'societypress' ) . '</p>';
     }
+}
+
+
+/**
+ * Close any open ballot whose voting period has ended.
+ *
+ * WHY: The member Voting page lists open ballots only while the period is
+ *      running, and lists results only for closed ones. A ballot nobody
+ *      remembered to close by hand fell between the two — it vanished from
+ *      the page and its results never appeared. Closing on read keeps the
+ *      page honest without depending on WP-Cron, which doesn't run on
+ *      quiet sites.
+ */
+function sp_close_expired_ballots(): void {
+    global $wpdb;
+    $wpdb->query( $wpdb->prepare(
+        "UPDATE {$wpdb->prefix}sp_ballots SET status = 'closed' WHERE status = 'open' AND voting_end < %s",
+        current_time( 'mysql' )
+    ) );
 }
 
 
@@ -110036,6 +110064,8 @@ class SP_Ballots_List_Table extends WP_List_Table {
 function sp_render_ballots_page(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
+
+    sp_close_expired_ballots();
 
     // ---- Handle Open Ballot (POST) ----
     if ( ( $_POST['action'] ?? '' ) === 'open_ballot' && ! empty( $_POST['ballot_id'] ) ) {
@@ -110605,6 +110635,8 @@ function sp_render_ballot_question_card( int $q_index, ?object $question ): void
 function sp_render_ballot_results_page(): void {
     global $wpdb;
     $prefix    = $wpdb->prefix . 'sp_';
+
+    sp_close_expired_ballots();
     $ballot_id = (int) ( $_GET['ballot_id'] ?? 0 );
 
     $ballot = $wpdb->get_row( $wpdb->prepare(

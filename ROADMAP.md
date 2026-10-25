@@ -118,15 +118,17 @@ before the session ends.
 
 ### High
 
-#### Survey editor redesign
+#### Surveys, rebuilt from scratch
 
 **Motivation:** The survey editor works but asks a volunteer to think in
-form-builder terms. A question-by-question editor, the shape people know
-from SurveyMonkey, is what a non-technical officer expects.
-**Scope:** Finish, test and release the redesign on the
-`wip/survey-editor-redesign` branch (one commit, 2026-10-15, marked untested
-and not for release; 468 lines added, 147 removed in the plugin).
-**Blockers:** None.
+form-builder terms. Surveys should be something a non-technical officer can
+build and read without help.
+**Scope:** A complete redesign, started fresh (decided 2026-10-25). The
+`wip/survey-editor-redesign` branch is kept for reference only. Questions to
+settle first, one at a time: whether surveys get their own tool or keep sharing
+the Forms builder; who can answer (members only, the public, chosen groups);
+and what happens to surveys already on existing sites.
+**Blockers:** The design questions above.
 
 #### Handle admin form saves before the page renders
 

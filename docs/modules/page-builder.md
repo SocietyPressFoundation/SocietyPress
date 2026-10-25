@@ -1,79 +1,85 @@
 # Page Builder
 
-Drag-and-drop page assembly. Every shortcode SocietyPress ships has a matching widget in the page builder, so you don't have to type shortcodes by hand if you don't want to.
+Build a page by stacking ready-made widgets — a heading, some text, the events calendar, a donate form — instead of writing in an editor. It's part of SocietyPress, not a separate plugin, and it was made deliberately simple: pick a widget, fill in its settings, move it up or down, save.
 
-The page builder is a SocietyPress feature, not a separate plugin. It works on top of WordPress's Pages — you create a Page, edit it with the SocietyPress builder, save.
+SocietyPress turns off WordPress's block editor. Pages are either plain pages with ordinary text, or builder pages made of widgets.
 
 ## What you can do
 
-- Drop pre-built widgets (40 types) into single-column or multi-column rows.
-- Configure each widget through a settings panel — no code, no shortcode syntax.
-- Drag widgets to reorder. Resize columns by dragging the dividers.
-- Preview as you build — what you see in the editor is roughly what visitors see.
-- Save drafts, publish when ready. Revisions are tracked like any WordPress page.
-- Any page can mix builder widgets with WordPress block-editor content if you switch back-and-forth.
+- Add any of about 40 widgets to a page, from one list.
+- Fill in each widget's settings in plain boxes — no code, no shortcodes to remember.
+- Put the widgets in order with the up and down arrows.
+- Save drafts and publish when ready, like any WordPress page.
 
 ## How to make a builder page
 
-**SocietyPress → Pages → Add New.** Title the page. In the page editor, click the **Use SocietyPress Builder** toggle at the top. The block editor disappears; the builder canvas appears.
+1. **SocietyPress → Pages → Add New Page.** Give it a title.
+2. Choose **Page Builder** as the page template, and save the page once — the builder appears after the first save.
+3. Click **Add Widget**, pick one from the list, and fill in its settings.
+4. Add more widgets the same way. Use the ▲ and ▼ arrows on each widget to put them in order.
+5. Save. Make sure the page is published when you want visitors to see it.
 
-From here:
-
-1. Click **+ Row** to add a row. Pick a column layout (1 column / 2 columns / 3 columns / etc.).
-2. Click **+ Widget** in any column to open the widget picker.
-3. Pick a widget. Configure its settings in the right-hand panel. Save.
-4. Drag widgets to rearrange. Drag the column divider to resize.
-5. Click **Save** at the top right when done.
-
-The page is published the same way any WordPress page is — make sure the page status is "Published" (top-right of the WP page editor).
+Widgets stack one above another, full width. There are no side-by-side columns; widgets that show lists or grids — calendars, galleries, feature cards — arrange their own contents and narrow themselves on a phone.
 
 ## What widgets ship
 
-Categorized by what they do:
+**Members**
 
-**Member-facing**
+- Member Directory
+- Surname Lookup
+- Membership Tiers
+- Quick Stats
+- My Volunteer Hours
 
-- Member Directory — public roster with privacy controls
-- Membership Tiers — display the join page
-- Surname Lookup — search member-researched surnames
-- My Volunteer Hours — logged-in member's contribution summary
-- My Research Cases — member's paid-research-case list
-- My Research Assignments — researcher dashboard
+**Content and layout**
 
-**Content + display**
-
-- Heading
+- Heading / Divider
 - Rich Text
 - Image
+- Button / CTA
 - Hero Slider
 - Feature Cards
 - Contact Card
-- Map Embed
+- Map
 - Community Link
-- Newsletter Archive
-- Photo Gallery
-- Picture Wall (member-submitted ancestor portraits)
+- Latest News
+- Society Sidebar
 
-**Events**
+**Events and volunteers**
 
-- Event Calendar (grid view)
-- Upcoming Events (list view)
+- Upcoming Events
+- Events Calendar
+- Volunteer Opportunities
+- Volunteer Stats
 
-**Library + Records**
+**Library, records and research**
 
 - Library Catalog
 - Genealogical Records Search
+- Resource Links
+- Research Guide
+- Database Subscriptions
+- Newsletter Archive
 
-**Donations + store**
+**Photos**
+
+- Photo Gallery
+- Picture Wall
+- Picture Wall — Submission Form
+
+**Giving and forms**
 
 - Donation Form
-- Membership Tiers (drives the join flow)
+- Contact Form
+- Form
 
-**Help / Research**
+**Research Help and Paid Research**
 
 - Help Request Submission Form
 - Help Requests Archive
 - Research Case Request
+- My Research Cases
+- My Research Assignments
 
 **Lineage Programs**
 
@@ -81,66 +87,31 @@ Categorized by what they do:
 - Lineage Application Form
 - My Lineage Applications
 
-**Information**
-
-- Database Subscriptions
-- Research Guide
-
-**Forms + utility**
-
-- Contact Form
-- Button
-- Member Stats
-- Volunteer Stats
-
-That's the full set. New modules ship with their widgets registered automatically — they appear in the picker as soon as you enable the module.
+A widget that belongs to a feature appears in the list only while that feature is turned on.
 
 ## How widget settings work
 
-Each widget has a unique settings panel — the Donation Form has fields for default frequency and campaign; the Library Catalog has a per-page count and login-required toggle; the Member Directory has columns shown and search behavior.
+Each widget has its own settings — the Donation Form asks for a campaign and a starting frequency; the Library Catalog asks how many items to show per page and whether visitors must sign in; the Member Directory asks the same.
 
-Common patterns:
+Settings that come up often:
 
-- **Login required** — gate the widget behind a login. Visitors without a session see a "please log in" message instead.
-- **Per-page count** — how many items to show per page in paginated widgets.
-- **Show search** — a checkbox to enable/disable a search box at the top of the widget.
-- **Filter by [thing]** — pre-filter the widget to show only content matching some condition.
+- **Require login** — only signed-in members see the widget; everyone else sees a prompt to sign in.
+- **Per page** — how many items show before the list pages.
+- **Show search** — whether the widget has its own search box.
 
-The settings panel updates the live preview as you change settings, so you see the impact before saving.
+## Widgets and shortcodes
 
-## How shortcodes and widgets relate
-
-Every page-builder widget is a wrapper around a shortcode. If you'd rather use shortcodes (in a regular post body, in an email template, in a child-theme PHP template), every widget has a shortcode equivalent.
-
-Convention: widget `donate` corresponds to shortcode `[sp_donate]`. Widget `lineage_roster` corresponds to `[sp_lineage_roster]`. Settings on the widget become attributes on the shortcode (`[sp_donate default_frequency="monthly"]`).
-
-This means you can prototype with the page builder, then "graduate" to shortcodes when you want to embed the same content elsewhere — your WordPress post, your child theme, an email — without redoing the configuration.
-
-## How responsive layouts work
-
-Builder rows are responsive out of the box. A 3-column row on desktop becomes 2-column on tablet, then 1-column on phone. You don't configure this — it's automatic.
-
-If you want a row that stays multi-column at all sizes (rare), edit the row settings → "Responsive Behavior" → pick a different breakpoint.
-
-The widgets themselves are also responsive — tables collapse to cards on mobile, image grids reflow, font sizes scale. You shouldn't have to do anything for a builder page to work on a phone.
-
-## How to embed a builder page elsewhere
-
-If you've built a great page and want to drop part of it onto another page, the simplest path is shortcodes. Each widget on the original page is a configured shortcode somewhere; copy the shortcode (visible in the widget settings → "Shortcode" tab) and paste it on the second page.
-
-You can also save a builder row as a "template" via the row's settings menu → "Save as template," then drop it into another page from the **Templates** widget category.
+Many widgets also exist as shortcodes — `[sp_donate]`, `[sp_lineage_roster]`, `[sp_help_requests_archive]` and others — for use outside a builder page. The widget's settings become the shortcode's options, such as `[sp_donate default_frequency="monthly"]`. Each feature's guide lists its shortcode where there is one. Not every widget has a shortcode, and not every shortcode has a widget.
 
 ## If something looks wrong
 
-**The builder toggle isn't appearing.** Make sure you're editing a Page (not a Post). The builder is page-only. Go **SocietyPress → Pages → All Pages**, click the page title to edit.
+**The builder isn't appearing.** Make sure the page's template is **Page Builder** and that you've saved the page at least once. The builder is for pages only, not posts.
 
-**A widget I expected isn't in the picker.** The widget probably belongs to a module that's currently disabled. **SocietyPress → Settings → Features** — turn on the module that owns the widget.
+**A widget I expected isn't in the list.** It probably belongs to a feature that's turned off. **SocietyPress → Settings → Features** — turn on the feature that owns the widget.
 
-**A widget shows raw shortcode instead of rendering.** Double-check the page is published (not draft) and you're viewing the front-end (not the editor preview). Shortcode resolution happens at front-end render.
+**A widget shows raw shortcode text instead of the real thing.** Check the feature it belongs to is turned on, and that you're looking at the published page rather than the editor.
 
-**The page-builder layout looks broken on mobile.** Open the page in a phone-sized browser window. If a column is being too aggressive, edit the row → "Responsive Behavior" and pick a wider breakpoint.
-
-**I want to copy a page.** WordPress's "Duplicate Page" plugin works fine for this. Or save the row(s) as templates and reassemble.
+**I want to copy a page.** There's no copy button. A plugin such as "Duplicate Page" does it, or rebuild the page — widgets are quick to add.
 
 ## Related guides
 

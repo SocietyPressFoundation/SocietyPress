@@ -42,7 +42,7 @@ A case's rate and hours can be changed on its own admin page after it comes in â
 
 ## How to put the intake form on a page
 
-Put the `[sp_research_request]` shortcode on a page. There's no page-builder widget for it; in the builder, add the shortcode to a text block.
+Drop the **Research Case Request** widget on a page with the page builder, or use the `[sp_research_request]` shortcode.
 
 The form has fields for case title, description, surname, ancestor name, time period, location, and "what have you already tried?" (optional). At the bottom is a quote box that shows the up-front cost calculated from your defaults.
 

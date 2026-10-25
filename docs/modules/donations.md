@@ -23,13 +23,18 @@ PayPal is optional. If you want it, add your **client ID** and **secret** under 
 
 Two paths:
 
-Put the `[sp_donate]` shortcode on any page. It takes three optional settings:
+Two paths:
+
+- **Page builder.** Drop the **Donation Form** widget and fill in the same three settings below.
+- **Shortcode.** Put `[sp_donate]` on any page.
+
+Either way there are three optional settings:
 
 - `campaign="library-fund"` — credit every gift on that form to a campaign (its slug or number).
 - `default_frequency="monthly"` — which choice starts selected: `one_time`, `monthly` or `annually`.
 - `show_dedication="0"` — hide the in-honor-of / in-memory-of field.
 
-For example: `[sp_donate campaign="library-fund" default_frequency="monthly"]`. There's no page-builder widget for it; in the builder, add the shortcode to a text block.
+For example: `[sp_donate campaign="library-fund" default_frequency="monthly"]`.
 
 The form has preset amount buttons ($25 / $50 / $100 / $250 / $500 by default) plus a custom-amount input. The donor picks one-time / monthly / annually, optionally toggles "cover the processing fee," fills in name + email, optionally adds a dedication and a note. Then they click Donate and Stripe Checkout takes over.
 
@@ -37,7 +42,7 @@ The form has preset amount buttons ($25 / $50 / $100 / $250 / $500 by default) p
 
 **SocietyPress → Donations → Campaigns.** Add a campaign with its name and details, and save.
 
-To credit online gifts to it, give the donate form its slug: `[sp_donate campaign="library-fund"]`. A gift you record by hand can be assigned to a campaign on the Record Donation screen. **Donations** can be filtered by campaign to see what each has raised.
+To credit online gifts to it, give the donate form its slug — in the Donation Form widget's Campaign box, or `[sp_donate campaign="library-fund"]`. A gift you record by hand can be assigned to a campaign on the Record Donation screen. **Donations** can be filtered by campaign to see what each has raised.
 
 ## How to read the receipt
 

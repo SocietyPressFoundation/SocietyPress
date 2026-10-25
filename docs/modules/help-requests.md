@@ -16,11 +16,11 @@ This is the *free* path. The [Research Services](research-services.md) module is
 
 ## How to put a Q&A page on your site
 
-You'll typically want two pages — one to *ask* a question, one to *browse* existing questions. Both are shortcodes; there's no page-builder widget for them, so in the builder add the shortcode to a text block.
+You'll typically want two pages — one to *ask* a question, one to *browse* existing questions.
 
-**Ask page** (e.g., `/ask/`): put `[sp_help_request_submit]` on it. The form takes name, email, title, description and optional tags, and asks the sum.
+**Ask page** (e.g., `/ask/`): drop the **Help Request Submission Form** widget, or put `[sp_help_request_submit]` on it. The form takes name, email, title, description and optional tags, and asks the sum.
 
-**Archive page** (e.g., `/research-help/`): put `[sp_help_requests_archive]` on it. It lists open questions first, then resolved ones, each with its tags, and has a search box.
+**Archive page** (e.g., `/research-help/`): drop the **Help Requests Archive** widget, or put `[sp_help_requests_archive]` on it. It lists open questions first, then resolved ones, each with its tags, and has a search box.
 
 A homepage button reading "Got a research question? Ask the community" that links to the ask page works well; the archive can sit off the main menu.
 

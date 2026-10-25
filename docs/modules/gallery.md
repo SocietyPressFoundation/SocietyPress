@@ -1,65 +1,37 @@
 # Gallery
 
-Photo albums for your society's events, plus member-submitted "Picture Wall" galleries (ancestor portraits, member-submitted heritage photos).
+Photo albums for your society's events and collections, plus a member-submitted "Picture Wall" of ancestor portraits.
 
 ## What you can do
 
-- Create photo albums with titles, descriptions, captions per photo.
-- Two album types: **Curated** (admin uploads) and **Submissions** (members submit, admin approves).
-- Cover photo per album, sortable order, public / members-only visibility.
-- Drag-to-reorder photos within an album.
-- Bulk upload — drop multiple files at once.
-- Picture Wall — special submission-album type for ancestor portraits with name, relationship, and submitter credit.
+- Create photo albums with a title, description and cover image.
+- Make an album public or members-only, and set the order albums appear in.
+- Add many photos at once, and view an album's photos as thumbnails or as a list by name.
+- Show albums on any page with the **Photo Gallery** page-builder widget; photos open in a lightbox.
+- Picture Wall — a gallery of ancestor portraits that members submit and staff approve. (See the note below: it can't be switched on from the admin yet.)
 
-## How to make a curated album
+## How to make an album
 
-**SocietyPress → Photo Gallery → Add Album.** Title, description, optional event association, visibility. Save.
+**SocietyPress → Photos & Albums → Add New Album.** Album Title, Description, Cover Image, Visibility (Public or Members Only) and Sort Order. Save.
 
-Then upload photos. Drag files into the album's edit page; SocietyPress processes them via WP Media Library and adds them to the album. Set captions per photo. Drag to reorder.
-
-Cover photo: pick from the uploaded photos, or upload separately. The album list view uses the cover photo as the album's thumbnail.
-
-## How to make a Picture Wall
-
-A Picture Wall is a member-submission album. Members upload an ancestor portrait + name + relationship + brief note. Staff approves before it appears publicly.
-
-**SocietyPress → Photo Gallery → Add Album.** Title (e.g., "Ancestor Portraits"), description. **Submission Type** = Submissions. **Accepts Submissions** = on. **Submission Instructions** = the guidance shown to members on the upload form.
-
-To put the submission form on a page: drop the "Picture Wall — Submission Form" widget OR `[sp_picture_wall_submit album="ancestor-portraits"]`. Members fill in the form, upload, submit. Status starts at `pending`.
-
-To display the approved photos: drop the "Picture Wall" widget OR `[sp_picture_wall album="ancestor-portraits"]`. Configure columns (default 4) and whether to show submitter credits.
-
-## How to moderate Picture Wall submissions
-
-**SocietyPress → Picture Wall Pending.** Each pending submission shows the photo thumbnail, ancestor name, relationship, caption, submitter, date.
-
-Two buttons per submission:
-
-- **Approve** — submission goes live in the public Picture Wall. Submitter is emailed.
-- **Reject** — submission is hidden. Submitter is emailed (with a polite "thank you for the submission, this one wasn't approved" note).
-
-A pending-submissions banner appears on every SocietyPress admin page when items are awaiting review, so you don't have to remember to check.
+Then click **Add Photos** and choose them from your computer or the Media Library. The album list uses the cover image as each album's thumbnail.
 
 ## How to display albums
 
-**Page builder:** drop the "Photo Gallery" widget. Pick which album(s). **Shortcode:** `[sp_album id="..."]` or `[sp_album slug="annual-banquet-2025"]`.
+Drop the **Photo Gallery** widget on a page with the page builder and pick the album, or leave the album unset to show all of them as cards — click a card to open the album. The grid narrows on a phone, and clicking a photo opens it larger with its caption.
 
-The display is a responsive grid (4-col → 2-col → 1-col on mobile). Click any photo to open a lightbox with caption.
+## The Picture Wall
 
-For a master "all albums" page, the gallery widget without an album ID shows the album list (each album as a thumbnail card). Click a card to open the album.
+A Picture Wall is an album members add to: they upload an ancestor's portrait with the ancestor's name, their relationship and a short note, and staff approve it before it appears. The pieces exist — the `[sp_picture_wall_submit album="…"]` form, the `[sp_picture_wall album="…" columns="4"]` display, and the **Picture Wall Pending** queue with Approve and Reject — but an album has to be marked as taking submissions before the form will accept anything, and there's no setting on the album screen for that yet. It's on the [roadmap](https://github.com/SocietyPressFoundation/SocietyPress/blob/main/ROADMAP.md).
 
 ## If something looks wrong
 
-**Photos didn't upload.** WordPress's max upload size (set in php.ini) might be smaller than the photo file. Check **SocietyPress → Settings → System → Max upload size**. If a photo is bigger, resize it (most genealogy photos can be ≤ 2MB without losing detail) or ask your host to bump the upload limit.
+**Photos didn't upload.** Your host limits how large an uploaded file can be. WordPress shows the limit on **Media → Add New**. If a photo is bigger, resize it (most genealogy photos are fine at 2 MB or less) or ask your host to raise the limit.
 
-**A member's submission isn't appearing in Pending.** Check that the submission album has `submission_type = 'submissions'` AND `accepts_submissions = 1`. Both flags must be on for submissions to land. Toggle them on the album edit page.
+**A photo from an iPhone won't upload.** iPhones save photos as HEIC, which browsers and WordPress often can't use. Change the iPhone's camera to "Most Compatible" under Settings → Camera → Formats, or convert the photo to JPG before uploading.
 
-**Submission form rejects images.** The form accepts JPG and PNG by default (image/* mime type). HEIC files from iPhones get rejected — submitter should convert to JPG first (their iPhone's Photos app can do this; share → "Save as JPG" or via Files).
-
-**Lightbox isn't opening.** Browser cache. Hard-refresh. If it still doesn't work, check the browser console for a JS error and report it.
+**The lightbox isn't opening.** Check the browser's console for an error and report it with the page address.
 
 ## Related guides
 
-- [Events](events.md) — albums can be associated with events
-- [Members](members.md) — submitter credits link to member records when emails match
 - [Page Builder](page-builder.md) — placement on pages

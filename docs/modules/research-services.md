@@ -30,17 +30,19 @@ This module is **off by default**. Enable it under **SocietyPress → Settings �
 
 **SocietyPress → Settings → Modules → Paid Research Services → On.** The new admin menu item (SocietyPress → Research Cases) appears.
 
-Configure defaults under **SocietyPress → Settings**:
+Every new case starts at these terms:
 
-- **Default hourly rate** — what you charge per hour. Default 30.00.
-- **Default hours authorized** — how many hours the up-front fee covers. Default 1.0 (1 hour).
-- **SLA days** — initial response time to set on every new case. Default 14.
+- **Hourly rate** — $30.00 an hour.
+- **Hours covered** — the up-front fee pays for 1 hour.
+- **Response time** — 14 days.
 
-These are starting points. Individual cases can override the rate and hours from the admin case-edit page.
+There isn't yet a screen to change those starting terms for your society; they're on the [roadmap](https://github.com/SocietyPressFoundation/SocietyPress/blob/main/ROADMAP.md).
+
+A case's rate and hours can be changed on its own admin page after it comes in — the up-front fee the requester pays is always worked out from the starting terms above.
 
 ## How to put the intake form on a page
 
-**Page builder:** drop the "Research Case Request" widget. **Shortcode:** `[sp_research_request]`.
+Put the `[sp_research_request]` shortcode on a page. There's no page-builder widget for it; in the builder, add the shortcode to a text block.
 
 The form has fields for case title, description, surname, ancestor name, time period, location, and "what have you already tried?" (optional). At the bottom is a quote box that shows the up-front cost calculated from your defaults.
 
@@ -97,11 +99,11 @@ The thread is private to the requester, the assigned researcher, and staff. Othe
 
 ## If something looks wrong
 
-**Intake form says "stripe_unconfigured."** Drop your Stripe credentials in **SocietyPress → Settings → Payments**.
+**Intake form says "stripe_unconfigured."** Add your Stripe keys under **SocietyPress → Settings → Events → Online Payments**.
 
 **Case is stuck in `pending_payment` after the requester says they paid.** Stripe success URL didn't get hit (closed tab, browser interrupted). Look at the Stripe dashboard → Payments to verify the charge succeeded; if it did, manually flip the case status to `open` and update `paid_amount` in the admin.
 
-**Requester didn't get the additional-hours email.** **SocietyPress → Settings → Email → Send test email** to confirm outbound mail. If mail works, look at the case's invoice list — the invoice should have been created. The email goes to the requester's email; verify it's correct on the case.
+**Requester didn't get the additional-hours email.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test; if it never arrives, see [Email Setup](email-setup.md). If mail works, look at the case's invoice list — the invoice should have been created. The email goes to the requester's email; verify it's correct on the case.
 
 **Researcher can't see open cases.** Check that they're logged in and on a page hosting `[sp_my_research_assignments]`. The dashboard uses the logged-in user's ID to find claimed cases; if the page is cached, it might show stale data.
 

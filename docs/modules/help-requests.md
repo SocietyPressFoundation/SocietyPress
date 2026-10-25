@@ -6,76 +6,61 @@ This is the *free* path. The [Research Services](research-services.md) module is
 
 ## What you can do
 
-- Public submission — visitors fill out a form, math captcha + email verification keep spam out.
-- Members and staff respond. Each response logs the time it took to write — those minutes flow into your unified volunteer-hours ledger automatically.
-- Endorse helpful answers ("★ Helpful") so the best responses surface.
-- Asker (or staff) marks a thread Resolved or accepts a specific response as the answer.
-- Public archive of every resolved thread, searchable, filterable by tag.
-- Spam controls — captcha, email verification, per-email rate limit, optional moderation queue.
-- Email lifecycle — askers get notified when someone responds.
+- Public submission — visitors fill out a form; a simple sum and an email check keep spam out.
+- Members and staff answer on the question's page.
+- Mark helpful answers with a star, so the best ones stand out.
+- The asker (or staff) accepts one answer, which closes the thread, or marks it resolved.
+- A public archive of open and resolved questions, with a search box that looks in titles, descriptions and tags.
+- Spam controls — the sum, email verification, and a limit of three questions per email address a day.
+- The asker is emailed when someone answers.
 
 ## How to put a Q&A page on your site
 
-You'll typically want two pages — one to *ask* a question, one to *browse* existing questions.
+You'll typically want two pages — one to *ask* a question, one to *browse* existing questions. Both are shortcodes; there's no page-builder widget for them, so in the builder add the shortcode to a text block.
 
-**Ask page** (e.g., `/ask/`): drop the "Help Request Submission Form" widget OR `[sp_help_request_submit]` shortcode. The form captures name, email, title, description, optional tags, and includes the captcha.
+**Ask page** (e.g., `/ask/`): put `[sp_help_request_submit]` on it. The form takes name, email, title, description and optional tags, and asks the sum.
 
-**Archive page** (e.g., `/research-help/`): drop the "Help Requests Archive" widget OR `[sp_help_requests_archive]`. The archive shows open + resolved threads with their tags, filters by tag pills, paginates.
+**Archive page** (e.g., `/research-help/`): put `[sp_help_requests_archive]` on it. It lists open questions first, then resolved ones, each with its tags, and has a search box.
 
-A good homepage CTA pattern: "Got a research question? **Ask the community →**" linking to the ask page. The archive lives off the main nav.
+A homepage button reading "Got a research question? Ask the community" that links to the ask page works well; the archive can sit off the main menu.
 
 ## How submissions actually flow
 
-1. Visitor fills the form, answers the captcha (a simple "what is 5 + 7?"), submits.
-2. SocietyPress creates the request in `pending_verification` status and emails the visitor a verification link.
-3. Visitor clicks the link. If you've left the moderator-approval setting off (default), the request transitions to `open` and goes live on the archive immediately. If approval is on, it transitions to `pending_review` and a staff member publishes it.
-4. Members see the open request, respond, log the time it took. The asker gets an email each time someone responds.
-5. The asker (or staff) marks the question resolved. Optionally the asker accepts a specific response as the answer.
-
-## How responses log volunteer hours
-
-Every response asks "How long did this take?" with quick options (5 min / 15 min / 30 min / 1 hour / custom). The default is 15 minutes; one click submits the response with the time. The hours flow into `sp_volunteer_hours` automatically — same ledger as committee work, library duty, event volunteering.
-
-This is deliberate: every helping action produces a logged hour. At the end of the year, your society can report "our members donated 2,400 volunteer hours" and the data is real, not estimated.
-
-For aspiring Certified Genealogist (CG) candidates, this builds a portable track record — "47 questions answered, 41 marked helpful, 32 hours logged" appears on their member profile.
+1. A visitor fills in the form, answers the sum ("what is 5 + 7?"), and submits.
+2. SocietyPress emails them a link to confirm their address.
+3. They click it, and the question goes live in the archive.
+4. Members answer it on the question's page. The asker gets an email each time someone answers.
+5. The asker (or staff) accepts the answer that solved it, which closes the thread, or marks it resolved.
 
 ## How to moderate
 
-**SocietyPress → Research Help Requests** is the admin queue. The list filters by status (All / Open / Pending Review / Resolved / Closed / Hidden) and includes a search box.
+**SocietyPress → Research Help Requests** is the admin list. Filter it by status, or search it.
 
-Bulk actions: select rows, pick **Approve** (publishes pending_review), **Mark Resolved**, **Hide**, or **Delete** from the dropdown.
+Bulk actions: tick rows and choose **Mark Resolved**, **Hide** or **Delete**. A notice at the top shows how many questions are still waiting for the asker to confirm their email.
 
-The page also shows a notice at the top whenever there are pending submissions waiting for verification or approval, so you don't have to remember to check.
+**Help Tags**, in the same area, lets you tidy the tags people have used.
 
 ## How to control abuse
 
-Per-email rate limit (default 3 submissions per email per 24h, configurable in Settings). Per-IP rate limit (default 9 per IP per 24h — three times the email cap, since multiple legitimate users can share an IP).
+Each email address can submit three questions a day, and each internet address nine (three times as many, since a library or a household can share one). Neither number can be changed from the admin yet.
 
-Email verification means you can't spam from a typoed/throwaway email — the request never goes live until the verification link is clicked.
+Email verification means a made-up or mistyped address can't post — the question never goes live until the link is clicked.
 
-If you want all public submissions reviewed by a moderator before going live, turn on **SocietyPress → Settings → Help Requests → Require Approval**. Public submissions land in `pending_review`; moderator clicks Approve to publish.
+There's no setting yet to hold every question for a moderator before it goes live. To deal with something already posted, hide or delete it from the admin list.
 
 ## How to use tags
 
-Tags are free-text on the submission form. Visitors enter "sample county, marriage records, 1850s" and SocietyPress stores them.
-
-The archive shows the top-12 most-used tags as filter pills above the thread list. Clicking a pill filters the archive to threads with that tag. Combined with the search box, this turns the archive into a navigable knowledge base instead of a chronological dump.
+Tags are free text on the form: someone types "sample county, marriage records, 1850s" and SocietyPress keeps them. They show on each question in the archive, and the archive's search box looks in them, so searching "marriage records" finds questions tagged that way.
 
 ## If something looks wrong
 
-**The form says "Bad request — please refresh."** The captcha or nonce expired (each captcha is good for 30 minutes). Just refresh the page and try again.
+**The form says "Bad request — please refresh."** The sum or the form's security token expired (each is good for 30 minutes). Refresh the page and try again.
 
-**Verification email doesn't arrive.** **SocietyPress → Settings → Email → Send test email** to confirm outbound mail works. If it doesn't, switch to SMTP under the same Settings page.
+**The verification email doesn't arrive.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test. If that never arrives, see [Email Setup](email-setup.md). Ask the visitor to look in their junk folder too.
 
-**Resolved threads don't show up.** Check the archive's status filter. The shortcode shows open + resolved by default — if you've narrowed it via URL params, broaden again.
-
-**Spam is getting through.** First, lower the per-email rate limit to 1/day. Second, turn on the moderator-approval setting so every request gets a human gate. Third, consider blocking the source IP at your host's firewall if it's a sustained attack.
-
-**Volunteer hours aren't logging.** Each response form has a required time-entry picker. If members are using the admin-side reply form (not the front-end member-facing one), the time-entry isn't there — they should be replying from the public thread page, not the WP admin.
+**Spam is getting through.** Hide or delete the posts from the admin list. If it's a sustained attack from one place, block the source at your host's firewall.
 
 ## Related guides
 
 - [Research Services](research-services.md) — paid escalation when free help isn't enough
 - [Members](members.md) — non-members can ask, but members can endorse + accept answers
-- [Governance](governance.md) — volunteer hours feed into the same ledger

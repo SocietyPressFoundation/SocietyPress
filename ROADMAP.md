@@ -150,6 +150,29 @@ person clicking it and reports whether WordPress accepted it, with the same
 "from" name members' emails use.
 **Blockers:** None.
 
+#### Paid Research Services: set your own rate
+
+**Motivation:** Every society offering paid research charges $30 an hour, for
+one hour up front, with a 14-day response time, because those terms can't be
+changed. The code reads `research_default_rate`,
+`research_default_max_hours` and `research_sla_days`, but no screen sets them.
+**Scope:** Put the three on a settings screen. The intake form's quote and
+every new case already use them.
+**Blockers:** None.
+
+#### Research Help: moderation, limits and hours
+
+**Motivation:** The Research Help guide promised three things the module
+doesn't do. A society facing spam can't hold questions for a moderator, can't
+change the three-a-day limit, and volunteers' answers don't count toward the
+volunteer-hours total the way committee work does. The code already reads
+`help_requests_require_approval` and `help_requests_per_email_per_day`, but
+no screen sets them, and each answer's `minutes_spent` is always 0.
+**Scope:** Put the approval switch and the daily limit on a settings screen;
+add a "how long did this take?" choice to the answer form and feed it into
+the volunteer-hours ledger.
+**Blockers:** None.
+
 #### Join form: volunteering, print by mail, how they heard about us
 
 **Motivation:** Three questions on nearly every society's paper application

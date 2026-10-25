@@ -42,7 +42,7 @@ There's no button to send one member a reminder on demand. To nudge someone, ema
 
 Two paths:
 
-- **The Directory page.** The setup wizard creates a page called Directory that shows the full membership directory. It's members-only by design: visitors who aren't signed in don't see it, and it's left out of the menu for them.
+- **The Directory page.** SocietyPress creates a page called Directory, when it is first switched on, that shows the full membership directory. It's members-only by design: visitors who aren't signed in don't see it, and it's left out of the menu for them.
 - **Page builder.** Create a page and drop the **Member Directory** widget on it. Tick **Require login to view** to keep it to members, and set how many results show per page.
 
 Every active member is listed by default. A member leaves the directory by unticking **Show name** — on their record under **Preferences → Directory Visibility**, or themselves in My Account — and the same place has separate choices for address, phone, email, website and photo. **SocietyPress → Settings → Directory** decides which of those columns the directory shows at all, whatever members choose.
@@ -63,7 +63,7 @@ To link existing members, open each record and give them the same number in **Ho
 
 **Renewal reminders aren't going out.** Three things to check: (1) the reminders are switched on under **Settings → Membership → Renewal Reminders**; (2) your site can send email at all — the quickest test is "Lost your password?" on the sign-in page with your own address; if that email never arrives, see [Email Setup](email-setup.md); (3) the member actually has an email address on file. Each reminder goes to each member only once.
 
-**The member directory shows everyone.** That's the default: every active member is listed. The Directory page the wizard made is already members-only; on a page-builder directory, tick **Require login to view**. To take one member out, open their record and untick **Show name** under **Preferences → Directory Visibility**.
+**The member directory shows everyone.** That's the default: every active member is listed. The Directory page SocietyPress made is already members-only; on a page-builder directory, tick **Require login to view**. To take one member out, open their record and untick **Show name** under **Preferences → Directory Visibility**.
 
 **A member died.** Open their record, set status to "Deceased." This keeps the historical record intact (event registrations, donations) but removes them from active rosters, the directory, and renewal reminders. If a spouse is carrying on, their own record stays as it is — check their plan and expiration date.
 

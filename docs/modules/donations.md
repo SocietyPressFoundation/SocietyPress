@@ -5,7 +5,7 @@ Online giving — one-time, monthly, annually — with receipts. Plus campaign t
 ## What you can do
 
 - Take online donations via Stripe (one-time, monthly, annually) and PayPal (one-time).
-- Run named campaigns with progress bars ("Library Renovation: $4,200 of $10,000").
+- Run named campaigns — the library fund, a building appeal — and see what each has raised.
 - Auto-send tax receipts with 501(c)(3) language when an EIN is configured.
 - Let donors cover the processing fee so 100% of their gift reaches you.
 - Accept anonymous donations (donor identifier scrubbed from the public-facing list).
@@ -15,7 +15,7 @@ Online giving — one-time, monthly, annually — with receipts. Plus campaign t
 
 ## Before you start
 
-You need a Stripe account. Create one at stripe.com if you don't have one. Drop your **publishable key** and **secret key** in **SocietyPress → Settings → Payments**. Test mode keys work for trying things out; switch to live keys when you're ready to take real money.
+You need a Stripe account. Create one at stripe.com if you don't have one. Drop your **publishable key** and **secret key** in **SocietyPress → Settings → Events → Online Payments** — the same Stripe connection serves donations, event registrations and dues. Test mode keys work for trying things out; switch to live keys when you're ready to take real money.
 
 PayPal is optional. If you want it, add your **client ID** and **secret** under the same Settings page. PayPal handles one-time donations in the form; recurring (monthly/annual) goes through Stripe.
 
@@ -23,18 +23,21 @@ PayPal is optional. If you want it, add your **client ID** and **secret** under 
 
 Two paths:
 
-- **Page builder.** Drop the "Donation Form" widget. Configure default frequency (one-time / monthly / annually), whether to show the in-honor-of field, optional campaign association.
-- **Shortcode.** `[sp_donate]` on any page. Accepts the same options as attributes: `[sp_donate campaign="library-fund" default_frequency="monthly"]`.
+Put the `[sp_donate]` shortcode on any page. It takes three optional settings:
+
+- `campaign="library-fund"` — credit every gift on that form to a campaign (its slug or number).
+- `default_frequency="monthly"` — which choice starts selected: `one_time`, `monthly` or `annually`.
+- `show_dedication="0"` — hide the in-honor-of / in-memory-of field.
+
+For example: `[sp_donate campaign="library-fund" default_frequency="monthly"]`. There's no page-builder widget for it; in the builder, add the shortcode to a text block.
 
 The form has preset amount buttons ($25 / $50 / $100 / $250 / $500 by default) plus a custom-amount input. The donor picks one-time / monthly / annually, optionally toggles "cover the processing fee," fills in name + email, optionally adds a dedication and a note. Then they click Donate and Stripe Checkout takes over.
 
 ## How to set up a campaign
 
-**SocietyPress → Donations → Campaigns → Add New.** Name, description, goal amount (optional), end date (optional), image (optional). Save.
+**SocietyPress → Donations → Campaigns.** Add a campaign with its name and details, and save.
 
-Once a campaign exists, every donation form / widget can attribute gifts to it: pass `campaign="library-fund"` (using the campaign's slug) to the form, or set the campaign in the widget settings.
-
-The campaign page (`/campaigns/[slug]/`) shows a progress bar with current total vs goal, recent donors (anonymous gifts excluded), and a donate button pre-tagged for the campaign.
+To credit online gifts to it, give the donate form its slug: `[sp_donate campaign="library-fund"]`. A gift you record by hand can be assigned to a campaign on the Record Donation screen. **Donations** can be filtered by campaign to see what each has raised.
 
 ## How to read the receipt
 
@@ -45,7 +48,7 @@ Receipts go out automatically the moment Stripe confirms the payment. The email 
 - The dedication, if one was provided.
 - 501(c)(3) language including your EIN — but only if the EIN is configured under **SocietyPress → Settings → Organization**. If it's blank, the receipt simply thanks the donor without tax-status language.
 
-For check/cash donations recorded in the admin, receipts go out via a batch action on the donations list ("Send acknowledgment for selected"). Same template.
+For gifts recorded by hand, tick them on the **Donations** list and click **Send Acknowledgment Email**. Its wording is under **Newsletters & Email → Email Templates**.
 
 ## How recurring donations work
 
@@ -53,25 +56,25 @@ When a donor picks Monthly or Annually, Stripe creates a subscription. SocietyPr
 
 If a donor cancels their subscription (via Stripe's customer portal or by emailing you to cancel), the webhook (`customer.subscription.deleted`) flips your record to `subscription_canceled`. No more renewal rows are created.
 
-To set up the webhook: in your Stripe dashboard, add an endpoint URL `https://yoursite.org/wp-json/societypress/v1/webhooks/stripe`. Pick the three events: `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`. Copy the signing secret into **SocietyPress → Settings → Payments → Stripe Webhook Secret**.
+To set up the webhook: in your Stripe dashboard, add an endpoint URL `https://yoursite.org/wp-json/societypress/v1/webhooks/stripe`. Pick the three events: `checkout.session.completed`, `invoice.paid`, `customer.subscription.deleted`. Copy the signing secret into **SocietyPress → Settings → Events → Online Payments → Webhook Signing Secret**.
 
 ## How to record a donation by hand
 
 For checks, cash, in-kind contributions, or grants that don't flow through Stripe:
 
-**SocietyPress → Donations → Record Donation.** Donor name, email, amount, type (cash / check / in-kind / grant), date, optional campaign, optional note. Save. The donation appears in the ledger alongside online donations; receipts can be sent on demand.
+**SocietyPress → Donations → Record Donation.** Donor name, email, amount, type (cash, check, in-kind or other), date, optional campaign, optional note. Save. The donation appears in the ledger alongside online donations; receipts can be sent on demand.
 
 In-kind donations support a free-text description of what was given (e.g., "1850 census photocopies, ~200 sheets, value $50") plus an optional fair-market amount.
 
 ## If something looks wrong
 
-**Donation form says "Stripe is not configured."** **SocietyPress → Settings → Payments**. Drop in your publishable + secret keys.
+**Donation form says Stripe isn't set up.** Add your publishable and secret keys under **SocietyPress → Settings → Events → Online Payments**.
 
-**Donations land but no receipt arrives.** **SocietyPress → Settings → Email → Send test email** to confirm outbound mail works. If mail works generally, check that the donor's email address is correctly captured (look at the donation row in the admin ledger).
+**Donations land but no receipt arrives.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test; if it never arrives, see [Email Setup](email-setup.md). If mail works generally, check that the donor's email address is correctly captured (look at the donation row in the admin ledger).
 
 **Recurring donations stop after the first payment.** The webhook isn't reaching your site. In Stripe's dashboard → Developers → Webhooks, look at recent attempts to your endpoint. If they're failing, the most common reasons are: signing secret doesn't match (re-copy it from Stripe), URL is wrong, or your host's firewall is blocking the request.
 
-**Donor wants their data scrubbed (GDPR).** **SocietyPress → Tools → Privacy → Erase Personal Data**. Their donation rows are pseudonymized — donor name becomes "Anonymous Donor," email is cleared, the amount + date + payment method are kept (IRS recordkeeping requires this for at least 7 years). The financial total of past gifts isn't touched.
+**Donor wants their data scrubbed (GDPR).** WordPress's **Tools → Erase Personal Data**. Their donation rows are pseudonymized — donor name becomes "Anonymous Donor," email is cleared, the amount + date + payment method are kept (IRS recordkeeping requires this for at least 7 years). The financial total of past gifts isn't touched.
 
 **Stripe processing fees are eating into small donations.** Turn on the "cover the processing fee" toggle in the form. Donors who tick it add ~3% to their gift so 100% reaches you. Most do, especially for smaller amounts.
 

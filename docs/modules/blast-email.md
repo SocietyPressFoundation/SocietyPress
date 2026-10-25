@@ -1,80 +1,57 @@
 # Blast Email
 
-Send mass emails to all members or specific groups. Track delivery, suppress bouncers, honor opt-outs.
+Send one email to all your members, or to a group of them. SocietyPress sends it in small batches in the background, leaves out members who've opted out, and keeps a count of what was sent and what failed.
 
 ## What you can do
 
-- Compose plain-text or HTML emails to any member group.
-- Target by tier ("only Lifetime members"), by status ("only active"), by committee ("Library Committee only"), or by hand-picked list.
-- Schedule for later or send immediately.
-- Track per-recipient delivery status (sent / bounced / opened — opens require an open-tracking pixel).
-- Honor opt-outs — members who unsubscribed from a category never receive future blasts in that category.
-- Reuse templates — save common emails ("monthly newsletter announcement," "annual meeting reminder") and tweak before each send.
+- Write an email with formatting, pictures and attachments — a flyer, the newsletter PDF.
+- Send it to all active members, a group (a committee, say), your mailing-list subscribers, members whose renewal is due, recent joiners, or members with a birthday this month — and narrow any of those to particular membership plans.
+- Personalize it with each member's name.
+- Send under a committee's name or address instead of the society's.
+- Keep a draft and come back to it.
 
-## How to send your first blast
+## How to send your first email
 
-**SocietyPress → Blast Email → Compose.**
+**SocietyPress → Newsletters & Email → Compose Email.**
 
-- **From** — defaults to your site's admin email. Override per blast if you want.
 - **Subject** — required.
-- **Audience** — pick from dropdown (All active members / All members / Specific tiers / Specific committee / Custom list).
-- **Body** — rich-text editor. Inserts merge tags (e.g., `{{first_name}}`) that personalize per recipient.
-- **Schedule** — Send now / Schedule for [datetime].
+- **Recipients** — All Active Members, By Group, Mailing list subscribers, Renewal due soon, Recently joined, or Birthdays this month. Each shows how many people it reaches. Underneath, tick one or more membership plans to send only to members on those plans.
+- **Email Body** — the editor, with merge tags (below) and the Add Media button for pictures.
+- **Attachments** — optional files sent with every copy. Keep them small; large attachments slow delivery and some hosts refuse them.
+- **Send as** — optional sender name and From address, such as "Membership Committee". Leave blank to send under your society's name. Use an address at your own website's domain; a Gmail or Yahoo address as the From often lands in junk.
 
-Preview before sending — the preview renders as it'll appear in the recipient's inbox, with a sample member's data filled in.
-
-Click **Send** (or **Schedule**). The blast queues and sends in batches (default 50/minute to avoid tripping host rate limits).
+Click **Send Now**, or **Save Draft** to finish later. There's no scheduling — an email goes when you click Send Now. It's sent in batches of 50 a few seconds apart, so a large list takes a few minutes.
 
 ## How merge tags work
 
-Available tags:
+Type these into the body and each recipient sees their own:
 
-- `{{first_name}}` — recipient's first name.
-- `{{last_name}}` — recipient's last name.
-- `{{org_name}}` — your society's name (from Settings).
-- `{{member_number}}` — their member ID.
-- `{{expiration_date}}` — their dues expiration date.
-
-Custom merge tags can be added by extending the merge-tag map in your child theme — see the developer reference (when written).
+- `{{first_name}}` — first name
+- `{{last_name}}` — last name
+- `{{display_name}}` — full name as shown on the site
+- `{{organization_name}}` — your society's name
 
 ## How opt-outs work
 
-Every blast email includes an unsubscribe link in the footer (required by anti-spam law). Clicking it presents the recipient with a granular opt-out:
+A member who ticks "Do not send me any email" in My Account (or whom you mark that way on their record, under Preferences) is left out of every email automatically. Mailing-list subscribers get a one-click unsubscribe link at the bottom of each email.
 
-- Unsubscribe from all SocietyPress emails (transactional confirmations like password resets are excluded).
-- Unsubscribe from a specific category (newsletter / events / general announcements).
+For a notice everyone must get — an emergency, a quorum call — tick **Send even to members who opted out**. Use it sparingly.
 
-Their preferences are saved on their member record. Future blasts in opted-out categories skip them automatically.
+## How to see what happened
 
-To check who's opted out: **SocietyPress → Members → [member]** → Communication Preferences tab.
+**SocietyPress → Newsletters & Email → Send Email** lists every email with its status and how many were sent and how many failed. A failure means WordPress couldn't hand that copy to your mail server; it doesn't tell you about mail that was accepted and later bounced or sorted into junk.
 
-## How delivery tracking works
-
-Each recipient gets their own row in the blast's recipients table. Status starts at `pending`, flips to `sent` when wp_mail returns success, flips to `bounced` if the host reports a hard bounce.
-
-Open tracking is optional — when enabled, a 1px pixel is added to HTML emails. When the recipient opens the email and their client loads images, the pixel fires and the row's `opened_at` timestamp records.
-
-(Some email clients block image loading by default, so open rates are always under-reported. The number is directional, not exact.)
-
-To see results: **SocietyPress → Blast Email → [blast]** → Recipients tab.
-
-## How to use templates
-
-**SocietyPress → Blast Email → Templates.** Save commonly-used emails as templates. When composing a new blast, pick a template to pre-fill subject + body. Edit the body before sending.
-
-Common templates: monthly meeting reminder, annual meeting announcement, dues renewal nudge, new-quarterly-issue alert, fundraiser kickoff.
+**Email Templates**, in the same menu, is something else: the wording of the emails SocietyPress sends on its own — welcome, renewal reminders, event confirmations.
 
 ## If something looks wrong
 
-**Sent count is way lower than expected.** Some members are opted out of the category. Some have invalid email addresses (bounced previously). Some are inactive or lapsed. Check the blast's recipients tab for the per-status breakdown.
+**Fewer people received it than expected.** Opted-out members are left out, and "All Active Members" leaves out lapsed and inactive ones. A member with no email address on file can't receive anything. The count beside each Recipients choice shows the real number before you send.
 
-**Emails not arriving at all.** **SocietyPress → Settings → Email → Send test email** to confirm outbound mail. If the test fails, switch to SMTP under the same Settings page. Also check your host's anti-spam practices — some hosts throttle outbound mail aggressively.
+**Emails not arriving at all.** Check your site can send email — "Lost your password?" on the sign-in page with your own address is the quickest test. If that never arrives, see [Email Setup](email-setup.md). Some hosts also limit how much mail a site can send in an hour.
 
-**An invitation went out to someone who shouldn't have received it.** They might be in the targeted group via a tier or committee assignment. Check their member record. If they shouldn't be in the audience, either change their tier/assignment or use the "Custom list" audience type for one-off precision.
+**Someone got an email they shouldn't have.** Check their record: their status, plan and groups decide which audiences they're in. To reach a precise set of people, put them in a group and send **By Group**.
 
-**Members complaining about too many emails.** Add categories to your blasts (newsletter, events, fundraiser) so members can opt out of categories they don't want without unsubscribing entirely. Send less.
-
-**Open rate is implausibly low (or zero).** Open tracking depends on the recipient's email client loading images. Some clients block by default; iOS Mail privacy-protect adds noise. Treat the number as directional only.
+**Members complaining about too many emails.** Send less, and use the narrower audiences — a group, or particular plans — rather than All Active Members for everything.
 
 ## Related guides
 

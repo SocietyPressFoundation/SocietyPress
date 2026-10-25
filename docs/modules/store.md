@@ -4,19 +4,22 @@ Sell your society's publications, merchandise, and back issues online. Stripe + 
 
 ## What you can do
 
-- Sell society-published books from the [Library](library.md) catalog (one toggle on each item).
+- Sell society-published books from the [Library](library.md) catalog (one tick box on each item).
 - Sell non-library merchandise — apparel, lapel pins, maps, anything — from a separate Store Products list.
 - Per-item shipping fees (multiplied by quantity at checkout).
 - Stock tracking (set a quantity, decrements on purchase, "Sold out" badge when zero).
 - Stripe Payment Element (card + Apple Pay + Google Pay + Link, all inline).
 - PayPal Smart Buttons (PayPal + Venmo, also inline).
+- Sell downloadable files — a PDF index, a scanned booklet. The buyer gets download links by email, good for 30 days and five downloads.
+- Give members a lower price on any product.
+- Charge sales tax, if your state requires it, set under **SocietyPress → Settings → Organization → Sales Tax Rate**.
 - Per-order shipping address capture and admin order detail with fulfillment status (pending → paid → shipped → completed).
 
 ## How to add your first product
 
 Two paths depending on what you're selling:
 
-**Society-published books** (county histories, family genealogies, transcribed records): use the Library. **SocietyPress → Library → [item] → Edit.** In the Store Listing section, set Item Value above 0, set Shipping fee per unit, save. The book appears in the storefront automatically.
+**Society-published books** (county histories, family genealogies, transcribed records): use the Library. **SocietyPress → Library → [item] → Edit.** In the Store Listing section, tick **List this item for sale in the Store**, make sure Value is above 0 — that's its price — set the shipping fee per copy, and save. Recording a value on its own never puts an item in the Store, so things held in the collection stay out of it.
 
 **Other merchandise** (T-shirts, pins, maps, anything that isn't a book): **SocietyPress → Store Products → Add New.** Title, SKU, description, price, shipping fee, image URL, store category, optional stock quantity. Save.
 
@@ -24,9 +27,7 @@ The storefront shows both sources merged together — buyers don't know (or care
 
 ## How to set up a storefront page
 
-**Page builder:** drop the "Store" widget. **Shortcode:** `[sp_store]`. The storefront renders a grid of products with category filters and a search box. Each card has Add to Cart.
-
-You'll also want a cart page. Drop `[sp_cart]` on a `/cart/` page; the cart page handles checkout (Stripe Element + PayPal Smart Buttons appear when the cart has items).
+SocietyPress creates a **Store** page and a **Cart** page when it is first switched on. The Store page shows a grid of products with category filters and a search box, each with Add to Cart; the Cart page handles checkout, with the Stripe and PayPal payment options appearing once the cart has something in it. If you deleted either page, create a page and choose the matching page template — "Store" or "Shopping Cart" — in the page settings.
 
 ## How buyers get around a long storefront
 
@@ -62,13 +63,13 @@ This is per-item shipping, not flat-rate or weight-based. If you need flat-rate 
 4. Stripe / PayPal confirms payment via webhook → order flips to `paid`.
 5. Stock decrements automatically (only for products with a stock_qty set).
 6. You see the order in **SocietyPress → Orders** and ship it. Mark it "shipped" → "completed" as you go.
-7. Buyer gets emails at each transition (order received, shipped, etc.).
+7. The buyer gets an order confirmation by email, with download links for any files they bought. Marking an order shipped doesn't email them — if they'd like to know, tell them yourself.
 
 ## How to manage orders
 
 **SocietyPress → Orders.** List with status tabs (All / Pending / Paid / Shipped / Completed / Refunded / Failed). Click an order to see details: customer, items, total, shipping address, payment method, transaction ID.
 
-Per-order actions: mark shipped (with optional tracking number), mark completed, issue a refund (one-click via Stripe / PayPal). Refunds restore stock automatically.
+Per-order actions: mark shipped, mark completed, issue a refund (one click, through Stripe or PayPal). Refunds restore stock automatically.
 
 ## How stock tracking works
 
@@ -80,17 +81,17 @@ When an order is paid, stock decrements by the purchased quantity. When an order
 
 ## If something looks wrong
 
-**Stripe says "not configured."** **SocietyPress → Settings → Payments**. Drop your publishable + secret keys. Test mode keys work; switch to live when ready.
+**Checkout says Stripe isn't set up.** Add your publishable and secret keys under **SocietyPress → Settings → Events → Online Payments** — the same Stripe connection serves the Store, donations and event registrations. Test mode keys work; switch to live when ready.
 
-**PayPal Smart Button doesn't appear.** Check **SocietyPress → Settings → Payments → PayPal**. Both client ID and secret must be filled in. The button is hidden when either is blank.
+**PayPal Smart Button doesn't appear.** Check the PayPal part of **SocietyPress → Settings → Events → Online Payments**. Both client ID and secret must be filled in. The button is hidden when either is blank.
 
 **Orders are stuck in `pending` after payment.** Webhook isn't reaching your site. Stripe dashboard → Developers → Webhooks → recent attempts shows the failure. Re-copy the signing secret into your settings if it doesn't match.
 
 **Stock isn't decrementing.** Verify the product has stock_qty set (not blank). Blank = unlimited; only set values track stock. If stock IS set and not decrementing, the order may have failed payment — check its status.
 
-**Buyer says they paid but never got an order confirmation email.** **SocietyPress → Settings → Email → Send test email** to verify outbound mail. Buyer's email address is captured during checkout — check the order detail to confirm it's right.
+**Buyer says they paid but never got an order confirmation email.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test; if it never arrives, see [Email Setup](email-setup.md). Buyer's email address is captured during checkout — check the order detail to confirm it's right.
 
-**A library item shows up in the store but shouldn't.** Open the library item, set Item Value to 0 (or blank). Only items with value > 0 appear in the storefront.
+**A library item shows up in the store but shouldn't.** Open the library item and untick **List this item for sale in the Store**. Only ticked items are sold.
 
 **There's no Show 20 / 50 / All control.** It only appears once the list runs past 40 items. Below that everything fits in a page or two and the pager alone does the job. Filtering to a small category hides it too — the count that matters is the one being shown.
 

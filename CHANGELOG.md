@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.63] — 2026-10-25
+
+**Only researchers can claim paid research cases.** Until now anyone signed in
+who found the My Research Assignments page could see every open paid case,
+including the requester's name and question, and claim it. Who Can Do What has
+a new **Paid Research** area: tick it for each researcher. Only they see open
+cases and the claim button; anyone else who finds the page is told it's for the
+society's researchers. The tick doesn't open the admin side of the site, so a
+researcher signs in like any other member. Someone who already had cases in
+progress keeps seeing those, tick or not, so no work is stranded.
+
+---
+
 ## [1.5.62] — 2026-10-25
 
 **Parlor shows its Garamond.** Activating Parlor saved a font setting the

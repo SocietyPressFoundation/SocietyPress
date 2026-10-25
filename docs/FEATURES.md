@@ -63,7 +63,7 @@ back on restores everything.
 
 ## Access areas and permissions
 
-SocietyPress defines **ten access areas** — logical groupings like
+SocietyPress defines **eleven access areas** — logical groupings like
 "Members Admin," "Events Admin," "Finance," "Committees" — and **eight
 role templates** that map WordPress roles onto those areas. An
 administrator can change who sees what by reassigning access-area

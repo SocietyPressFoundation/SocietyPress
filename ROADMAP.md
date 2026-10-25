@@ -16,6 +16,13 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Paid research is for researchers — 1.5.63
+
+Open paid research cases, and the button to claim one, are now limited to
+people ticked for the new **Paid Research** area under Who Can Do What. The
+tick doesn't open the admin side, so researchers keep signing in like any
+member.
+
 ### Module guides checked against the software — 1.5.57 to 1.5.61
 
 Every guide under `docs/modules/` was read beside the screens it describes and
@@ -170,17 +177,6 @@ install: upload a backup ZIP, check it, load the tables (rewriting the table
 prefix), settings and uploaded files, and re-encrypt member fields under the
 new site's key, so a backup moves between hosts without the old wp-config.
 **Blockers:** None.
-
-#### Paid Research Services: who may claim cases
-
-**Motivation:** Any signed-in user who finds the My Research Assignments page
-sees every open paid case, with the requester's description, and can claim
-it. There's no list of researchers.
-**Scope:** A way to mark members as researchers, and the open-case queue and
-claim button limited to them (and staff). Waiting on one decision: a
-"Researcher" checkbox on the member record, or an access area under
-Settings → Who Can Do What.
-**Blockers:** The decision above.
 
 ### Medium
 

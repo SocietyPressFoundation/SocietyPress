@@ -50,7 +50,9 @@ When the visitor submits, they're sent to Stripe Checkout. On success, they're r
 
 ## How to set up researchers
 
-There is no researcher list or flag yet. Anyone who is signed in and opens a page with the **My Research Assignments** widget (or `[sp_my_research_assignments]`) sees the open cases and can claim one. Until that's tightened, keep that page off your menu and give its address only to your researchers — and remember a determined member could still find it. Admins can also assign a case to a researcher from the case's admin page.
+Researchers are marked under **Settings → Who Can Do What**. Find the volunteer, tick **Paid Research**, and click **Save Access**. That's the only thing the tick does: it doesn't open the admin side of the site, so a researcher keeps signing in like any other member.
+
+Only people with the tick can see or claim open cases on the **My Research Assignments** page. Anyone else who finds that page is told it's for the society's researchers. If you take the tick away from someone partway through a case, they can still see and finish the cases they already claimed, but they can't claim new ones. Admins can also assign a case to a researcher from the case's admin page.
 
 Researchers see two things:
 

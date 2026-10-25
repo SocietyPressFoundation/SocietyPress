@@ -6,7 +6,7 @@ If more than one volunteer works in your site's admin, set this up.
 
 ## How it works
 
-SocietyPress has **10 access areas**. Each volunteer gets some combination of them, and sees only the screens those areas cover. A volunteer with just Events sees the Events screens and nothing else.
+SocietyPress has **11 access areas**. Each volunteer gets some combination of them, and sees only the screens those areas cover. A volunteer with just Events sees the Events screens and nothing else.
 
 To save ticking boxes one at a time, there are **8 role templates** — Webmaster, Membership Manager, Treasurer, Event Coordinator, Librarian, Communications Director, Records Manager and Content Editor. Pick one and its areas are ticked for you; adjust from there.
 
@@ -24,7 +24,7 @@ WordPress administrators always have full access, and only administrators can gi
 
 Next time they sign in, the sidebar shows only what they can use.
 
-## The 10 access areas
+## The 11 access areas
 
 | Area | What it covers |
 |---|---|
@@ -38,6 +38,7 @@ Next time they sign in, the sidebar shows only what they can use.
 | **Content & Pages** | Pages, the media library, resource links, documents, photos and the page builder. |
 | **Settings & Design** | SocietyPress settings, colors and fonts, and features. |
 | **Reports** | Membership reports, event statistics, financial summaries and Insights. |
+| **Paid Research** | Picking up and working paid research cases on the My Research Assignments page. This one doesn't open the admin side — a researcher signs in like any member. |
 
 ## The 8 role templates
 

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://getsocietypress.org
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.62
+ * Version:     1.5.63
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.62' );
+define( 'SOCIETYPRESS_VERSION', '1.5.63' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7140,7 +7140,38 @@ function sp_get_access_areas(): array {
             'icon'       => 'dashicons-chart-bar',
             'description'=> __( 'View membership reports, event statistics, and financial summaries.', 'societypress' ),
         ],
+        'research' => [
+            'name'       => __( 'Paid Research', 'societypress' ),
+            'capability' => 'sp_claim_research_cases',
+            'icon'       => 'dashicons-search',
+            'description'=> __( 'Pick up and work paid research jobs on the My Research Assignments page. This does not open the admin side of the site.', 'societypress' ),
+        ],
     ];
+}
+
+/**
+ * Access areas that are worked from the public site, not the admin.
+ *
+ * WHY: Every other area is a back-office job, so holding one lets a person
+ *      into wp-admin. A volunteer researcher only needs the My Research
+ *      Assignments page; sending them to an admin screen full of menus they
+ *      can't use is exactly the confusion rule 27 forbids. These areas grant
+ *      their capability but never the admin door.
+ *
+ * @return string[] Area slugs.
+ */
+function sp_front_end_access_areas(): array {
+    return [ 'research' ];
+}
+
+/**
+ * Whether a set of assigned areas includes any that need the admin side.
+ *
+ * @param mixed $areas The sp_access_areas user meta value.
+ * @return bool
+ */
+function sp_areas_open_admin( $areas ): bool {
+    return is_array( $areas ) && ! empty( array_diff( $areas, sp_front_end_access_areas() ) );
 }
 
 /**
@@ -7168,6 +7199,7 @@ function sp_get_access_area_caps(): array {
         'content'        => 'sp_manage_content',
         'settings'       => 'sp_manage_settings',
         'reports'        => 'sp_view_reports',
+        'research'       => 'sp_claim_research_cases',
     ];
 }
 
@@ -7283,8 +7315,7 @@ function sp_user_can_access_admin( ?int $user_id = null ): bool {
         return true;
     }
 
-    $user_areas = get_user_meta( $user_id, 'sp_access_areas', true );
-    if ( is_array( $user_areas ) && ! empty( $user_areas ) ) {
+    if ( sp_areas_open_admin( get_user_meta( $user_id, 'sp_access_areas', true ) ) ) {
         return true;
     }
 
@@ -7561,9 +7592,6 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
         return $allcaps;
     }
 
-    // Grant the umbrella cap so they can see the top-level menu
-    $allcaps['sp_access_admin'] = true;
-
     // Grant specific area capabilities
     $area_caps = sp_get_access_area_caps();
     foreach ( $user_areas as $area_slug ) {
@@ -7572,8 +7600,14 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
         }
     }
 
-    // Non-admin SP staff need basic WP caps to access wp-admin
-    $allcaps['read'] = true;
+    // A researcher-only volunteer stays a front-end user: no menu, no wp-admin.
+    if ( sp_areas_open_admin( $user_areas ) ) {
+        // Grant the umbrella cap so they can see the top-level menu
+        $allcaps['sp_access_admin'] = true;
+
+        // Non-admin SP staff need basic WP caps to access wp-admin
+        $allcaps['read'] = true;
+    }
 
     return $allcaps;
 }, 10, 4 );
@@ -29708,7 +29742,7 @@ function sp_import_find_existing_account_collisions( string $file_path, array $f
         }
         $is_you   = ( $uid === $me );
         $areas    = get_user_meta( $uid, 'sp_access_areas', true );
-        $is_admin = user_can( $u, 'manage_options' ) || ( is_array( $areas ) && ! empty( $areas ) );
+        $is_admin = user_can( $u, 'manage_options' ) || sp_areas_open_admin( $areas );
         $csv_name = trim( (string) $info['csv_name'] );
         $exact    = ( $csv_name !== '' && strcasecmp( $csv_name, trim( (string) $u->display_name ) ) === 0 );
         $collisions[] = [
@@ -40671,7 +40705,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.62',
+            'version'     => '1.5.63',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40679,7 +40713,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.62',
+            'version'     => '1.5.63',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40687,7 +40721,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.62',
+            'version'     => '1.5.63',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40695,7 +40729,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.62',
+            'version'     => '1.5.63',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40703,7 +40737,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.62',
+            'version'     => '1.5.63',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -121055,13 +121089,24 @@ add_shortcode( 'sp_my_research_assignments', function () {
         $user_id
     ) );
 
-    // Open cases anyone can claim
-    $open = $wpdb->get_results(
+    // WHY a capability rather than "any signed-in user": open cases carry a
+    //      paying requester's name and question, and claiming one commits the
+    //      society. Only people ticked for Paid Research under Who Can Do What
+    //      may see or claim them. Someone without the tick still sees cases
+    //      they already claimed, so work in progress isn't stranded when the
+    //      tick is added later or taken away.
+    $can_claim = current_user_can( 'sp_claim_research_cases' );
+    if ( ! $can_claim && empty( $claimed ) ) {
+        return '<p>' . esc_html__( 'This page is for the society\'s researchers.', 'societypress' ) . '</p>';
+    }
+
+    // Open cases any researcher can claim
+    $open = $can_claim ? $wpdb->get_results(
         "SELECT * FROM {$cases_t}
          WHERE status = 'open' AND (claimed_by_user_id IS NULL OR claimed_by_user_id = 0)
          ORDER BY created_at ASC
          LIMIT 50"
-    );
+    ) : [];
 
     // Hours totals per claimed case
     $hours_by_case = [];
@@ -121094,7 +121139,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
         $member_action = sanitize_text_field( wp_unslash( $_POST['sp_research_member_action'] ) );
         $case_id       = (int) ( $_POST['case_id'] ?? 0 );
 
-        if ( $member_action === 'claim' && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_research_claim_' . $case_id ) ) {
+        if ( $member_action === 'claim' && $can_claim && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'sp_research_claim_' . $case_id ) ) {
             $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $case_id ) );
             if ( $case && $case->status === 'open' && empty( $case->claimed_by_user_id ) ) {
                 $wpdb->update( $cases_t, [
@@ -121230,6 +121275,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
             </div>
         <?php endforeach; endif; ?>
 
+        <?php if ( $can_claim ) : ?>
         <h3 class="sp-mt-24">
             <?php esc_html_e( 'Open Cases (Available to Claim)', 'societypress' ); ?>
             <span class="count"><?php echo (int) count( $open ); ?></span>
@@ -121269,6 +121315,7 @@ add_shortcode( 'sp_my_research_assignments', function () {
                 </form>
             </div>
         <?php endforeach; endif; ?>
+        <?php endif; ?>
     </div>
     <?php
     return (string) ob_get_clean();

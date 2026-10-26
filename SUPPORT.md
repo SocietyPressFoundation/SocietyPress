@@ -9,19 +9,19 @@ of what to try first.
 
 Most questions are answered in the documentation.
 
-- **End-user guides** — [getsocietypress.org/docs](https://getsocietypress.org/docs)
+- **End-user guides** — [societypress.net/docs](https://societypress.net/docs)
   cover installing, setup, and every module from a volunteer's
   point of view.
 - **Feature reference** — [`docs/FEATURES.md`](docs/FEATURES.md) in this
   repository is the authoritative list of what every module does.
-- **Frequently asked questions** — [getsocietypress.org/faq](https://getsocietypress.org/faq)
+- **Frequently asked questions** — [societypress.net/faq](https://societypress.net/faq)
 
 ## 2. Ask on the community forums
 
 For "how do I …" questions, workflow discussions, and anything that might
 benefit another society administrator:
 
-**[getsocietypress.org/community](https://getsocietypress.org/community)**
+**[societypress.net/community](https://societypress.net/community)**
 
 The forums are the best place for general help. Discussions are archived
 and searchable, so an answer posted today helps the next administrator
@@ -42,7 +42,7 @@ useful report.
 For suggestions, comments, frustrations, or anything that isn't a specific
 bug or how-to question:
 
-**[getsocietypress.org/feedback](https://getsocietypress.org/feedback)**
+**[societypress.net/feedback](https://societypress.net/feedback)**
 
 ## 5. Report a security issue (do this privately)
 

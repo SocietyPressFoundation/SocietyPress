@@ -21,7 +21,7 @@ msgstr ""
 
 #. Theme URI of the theme
 #: style.css
-msgid "https://getsocietypress.org"
+msgid "https://societypress.net"
 msgstr ""
 
 #. Description of the theme

@@ -125,4 +125,4 @@ Three places to check:
 - [Blast Email](blast-email.md) — sends through whatever SMTP you set up here
 - [Members](members.md) — renewal reminders are a member-module feature that depends on this
 - [Help Requests](help-requests.md) — verification emails go through this pipe too
-- [Troubleshooting](https://getsocietypress.org/docs/troubleshooting/) — short version on the marketing site
+- [Troubleshooting](https://societypress.net/docs/troubleshooting/) — short version on the marketing site

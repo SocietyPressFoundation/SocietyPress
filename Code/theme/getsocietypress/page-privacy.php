@@ -2,7 +2,7 @@
 /**
  * Privacy Policy Page Template (page-privacy.php)
  *
- * Marketing site's own privacy policy — what getsocietypress.org itself
+ * Marketing site's own privacy policy — what societypress.net itself
  * collects from visitors. Distinct from the privacy policy that
  * SocietyPress generates for actual society installations (that lives
  * inside the plugin).
@@ -20,7 +20,7 @@ get_header();
     <div class="container">
         <div class="page-hero__content">
             <h1 class="page-hero__title">Privacy Policy</h1>
-            <p class="page-hero__subtitle">What getsocietypress.org collects, and what we do with it.</p>
+            <p class="page-hero__subtitle">What societypress.net collects, and what we do with it.</p>
         </div>
     </div>
 </section>
@@ -33,7 +33,7 @@ get_header();
         </p>
 
         <p class="legal-page__lede">
-            This page covers what <strong>getsocietypress.org</strong> (this
+            This page covers what <strong>societypress.net</strong> (this
             marketing website) collects from its visitors. If you're looking
             for the privacy policy on a society's SocietyPress installation,
             that policy is generated and maintained by the society running

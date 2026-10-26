@@ -75,7 +75,7 @@ get_header();
             <li>The SocietyPress parent theme.</li>
             <li>The five bundled child themes (Heritage, Coastline, Prairie, Ledger, Parlor).</li>
             <li>The one-click installer (<code>sp-installer.php</code>).</li>
-            <li>The getsocietypress.org marketing website itself.</li>
+            <li>The societypress.net marketing website itself.</li>
             <li>The demo site at <code>demo.getsocietypress.org</code>.</li>
         </ul>
 

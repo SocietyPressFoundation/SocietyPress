@@ -136,7 +136,7 @@
                     <?php
                     echo wp_kses(
                         /* translators: %s: SocietyPress link */
-                        sprintf( __( 'Powered by %s', 'heritage' ), '<a href="https://getsocietypress.org">SocietyPress</a>' ),
+                        sprintf( __( 'Powered by %s', 'heritage' ), '<a href="https://societypress.net">SocietyPress</a>' ),
                         [ 'a' => [ 'href' => [] ] ]
                     );
                     ?>

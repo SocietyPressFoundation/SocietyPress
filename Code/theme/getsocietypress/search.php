@@ -3,7 +3,7 @@
  * Search Results Template (search.php)
  *
  * WordPress-native search across every public post type on the
- * getsocietypress.org install — pages (which is where most marketing
+ * societypress.net install — pages (which is where most marketing
  * content lives: docs, FAQ, showcase, blog), blog posts, and bbPress
  * topics if the forum is active.
  *

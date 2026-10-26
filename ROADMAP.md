@@ -39,7 +39,7 @@ visitors can see momentum before being pruned into the changelog.
 ### ENS migration walkthrough — published
 
 Shipped 2026-10-16 at
-[getsocietypress.org/docs/ens-migration-walkthrough/](https://getsocietypress.org/docs/ens-migration-walkthrough/).
+[societypress.net/docs/ens-migration-walkthrough/](https://societypress.net/docs/ens-migration-walkthrough/).
 One complete ENS import of an invented 22-member society, run on a clean
 1.5.51 install, with screenshots of every step. The member file is rebuilt by
 `scripts/generate-ens-walkthrough-fixture.py`, so anybody can repeat the run
@@ -92,7 +92,7 @@ backing out: undo the import, restore the site, or start over.
 
 Audited 2026-08-27 against the live sites and the source. Twelve entries
 were describing work that had already shipped, in some cases months
-earlier: site-wide search and the XML sitemap on getsocietypress.org, the
+earlier: site-wide search and the XML sitemap on societypress.net, the
 GitHub releases feed on the homepage, the mailing-list signup, Theme
 Exchange Tier 2, the Kindred dataset on the demo site, the Hart Island
 collection, the 29-guide documentation hub, the FAQ content, the

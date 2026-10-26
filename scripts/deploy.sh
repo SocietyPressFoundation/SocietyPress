@@ -10,7 +10,7 @@
 #   ./scripts/deploy.sh <theme-name> Deploy a specific child theme (heritage, coastline, prairie, ledger, parlor)
 #   ./scripts/deploy.sh installer    Deploy the one-click installer
 #   ./scripts/deploy.sh bundle       Build and upload societypress-latest.zip for the installer
-#   ./scripts/deploy.sh marketing    Deploy the getsocietypress.org theme
+#   ./scripts/deploy.sh marketing    Deploy the societypress.net theme
 #
 # WHY the structure: each per-site helper checks scp's exit code so a failed
 # copy is reported as FAILED rather than silently swallowed. An earlier
@@ -34,14 +34,20 @@ DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
 # a site nobody deploys to also has nothing to compare itself against.
 #
 # WHY the marketing site runs the plugin at all: it is not a showcase copy.
-# getsocietypress.org takes donations through the plugin's donation module and
+# societypress.net takes donations through the plugin's donation module and
 # its theme calls plugin functions throughout, so an out-of-date plugin there
 # is out-of-date payment code on the site that collects the money.
 #
 # WHY ensdemo: it is the ENS-comparison demo a prospective society is pointed
 # at. A stale one quietly misrepresents the product to exactly the audience
 # the comparison exists to persuade.
-MARKETING_BASE="~/domains/getsocietypress.org/public_html/cms/wp-content"
+# WHY a second host: societypress.net, the public site, lives on its own
+# Hawk Host account, apart from the demo and ensdemo installs on Skystra. Its
+# WordPress sits in wp/ under the web root, with downloads/ and
+# sp-docs-source/ beside it so the theme and the download logger find them.
+SITE_HOST="societypress-net"
+SITE_ROOT="~/public_html"
+MARKETING_BASE="$SITE_ROOT/wp/wp-content"
 ENSDEMO_BASE="~/domains/getsocietypress.org/public_html/ensdemo/wp-content"
 
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -163,7 +169,7 @@ deploy_theme_to() {
 # ----------------------------------------------------------------------------
 deploy_plugin_all_sites() {
     deploy_plugin_to "$DEMO_BASE" "demo.getsocietypress.org"
-    deploy_plugin_to "$MARKETING_BASE" "getsocietypress.org"
+    deploy_plugin_to "$MARKETING_BASE" "societypress.net" "$SITE_HOST"
     deploy_plugin_to "$ENSDEMO_BASE" "getsocietypress.org/ensdemo"
     if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
         deploy_plugin_to "$SECONDARY_BASE" "$SECONDARY_LABEL" "${SECONDARY_HOST:-$HOST}"
@@ -206,7 +212,7 @@ case "${1:-plugin}" in
         done
         ;;
     bundle)
-        # Build societypress-latest.zip and upload to getsocietypress.org/downloads/
+        # Build societypress-latest.zip and upload to societypress.net/downloads/
         # WHY: The installer downloads this bundle on fresh installs. If it's stale,
         # new installs get an old plugin version. Run this after every version bump.
         echo "Building SocietyPress bundle..."
@@ -223,7 +229,7 @@ case "${1:-plugin}" in
         # Parent theme → themes/societypress/
         mkdir -p "$BUNDLE_STAGING/themes/societypress"
         cp -r "$LOCAL_BASE/Code/theme/"* "$BUNDLE_STAGING/themes/societypress/"
-        # The getsocietypress.org marketing site is nested inside Code/theme/ but
+        # The societypress.net marketing site is nested inside Code/theme/ but
         # is NOT part of the shippable product — it stays the learn/demo/download
         # site only. Strip it so it never rides along in the installer bundle.
         rm -rf "$BUNDLE_STAGING/themes/societypress/getsocietypress"
@@ -244,12 +250,12 @@ case "${1:-plugin}" in
         (cd "$BUNDLE_STAGING" && zip -r "$BUNDLE_ZIP" . -x '*.DS_Store')
 
         # Upload
-        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/downloads"
-        if ! scp "$LOCAL_BASE/scripts/downloads.htaccess" "$HOST:~/domains/getsocietypress.org/public_html/downloads/.htaccess"; then
+        ssh "$SITE_HOST" "mkdir -p $SITE_ROOT/downloads"
+        if ! scp "$LOCAL_BASE/scripts/downloads.htaccess" "$SITE_HOST:$SITE_ROOT/downloads/.htaccess"; then
             echo "  FAILED: downloads/.htaccess scp did not complete."
             OVERALL_STATUS=1
         fi
-        if ! scp "$BUNDLE_ZIP" "$HOST:~/domains/getsocietypress.org/public_html/downloads/societypress-latest.zip"; then
+        if ! scp "$BUNDLE_ZIP" "$SITE_HOST:$SITE_ROOT/downloads/societypress-latest.zip"; then
             echo "  FAILED: bundle upload did not complete."
             OVERALL_STATUS=1
         fi
@@ -263,16 +269,16 @@ case "${1:-plugin}" in
         ;;
     installer)
         # The installer is distributed as a downloadable file from
-        # getsocietypress.org/downloads/sp-installer.php. The /downloads/
+        # societypress.net/downloads/sp-installer.php. The /downloads/
         # directory has a .htaccess that disables PHP parsing there, so
         # the file is served as a download rather than executed.
         echo "Deploying installer to downloads/..."
-        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/downloads"
-        if ! scp "$LOCAL_BASE/scripts/downloads.htaccess" "$HOST:~/domains/getsocietypress.org/public_html/downloads/.htaccess"; then
+        ssh "$SITE_HOST" "mkdir -p $SITE_ROOT/downloads"
+        if ! scp "$LOCAL_BASE/scripts/downloads.htaccess" "$SITE_HOST:$SITE_ROOT/downloads/.htaccess"; then
             echo "  FAILED: downloads/.htaccess scp did not complete."
             OVERALL_STATUS=1
         fi
-        if ! scp "$LOCAL_BASE/Code/installer/sp-installer.php" "$HOST:~/domains/getsocietypress.org/public_html/downloads/sp-installer.php"; then
+        if ! scp "$LOCAL_BASE/Code/installer/sp-installer.php" "$SITE_HOST:$SITE_ROOT/downloads/sp-installer.php"; then
             echo "  FAILED: installer scp did not complete."
             OVERALL_STATUS=1
         else
@@ -281,7 +287,7 @@ case "${1:-plugin}" in
         ;;
     marketing)
         echo "Deploying marketing site theme..."
-        if ! scp -r "$LOCAL_BASE/Code/theme/getsocietypress/"* "$HOST:~/domains/getsocietypress.org/public_html/cms/wp-content/themes/getsocietypress/"; then
+        if ! scp -r "$LOCAL_BASE/Code/theme/getsocietypress/"* "$SITE_HOST:$MARKETING_BASE/themes/getsocietypress/"; then
             echo "  FAILED: marketing theme scp did not complete."
             OVERALL_STATUS=1
         else
@@ -289,30 +295,30 @@ case "${1:-plugin}" in
         fi
 
         # Sync the user-facing markdown docs the theme renders as pages.
-        # They live outside the WP tree (in sp-docs-source/ next to cms/)
+        # They live outside the WP tree (in sp-docs-source/ next to wp/)
         # because /docs/ is a WordPress route — a same-named directory
         # inside the webroot would shadow it and cause a 403.
         echo "Deploying user-facing markdown docs..."
-        ssh "$HOST" "mkdir -p ~/domains/getsocietypress.org/public_html/sp-docs-source/modules"
-        if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-GUIDE.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-GUIDE.md"; then
+        ssh "$SITE_HOST" "mkdir -p $SITE_ROOT/sp-docs-source/modules"
+        if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-GUIDE.md" "$SITE_HOST:$SITE_ROOT/sp-docs-source/ENS-MIGRATION-GUIDE.md"; then
             echo "  FAILED: ENS-MIGRATION-GUIDE.md scp did not complete."
             OVERALL_STATUS=1
         else
             echo "  OK: ENS migration guide deployed."
         fi
-        if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-WALKTHROUGH.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-WALKTHROUGH.md"; then
+        if ! scp "$LOCAL_BASE/docs/ENS-MIGRATION-WALKTHROUGH.md" "$SITE_HOST:$SITE_ROOT/sp-docs-source/ENS-MIGRATION-WALKTHROUGH.md"; then
             echo "  FAILED: ENS-MIGRATION-WALKTHROUGH.md scp did not complete."
             OVERALL_STATUS=1
         else
             echo "  OK: ENS migration walkthrough deployed."
         fi
-        if ! scp "$LOCAL_BASE/docs/modules/"*.md "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/modules/"; then
+        if ! scp "$LOCAL_BASE/docs/modules/"*.md "$SITE_HOST:$SITE_ROOT/sp-docs-source/modules/"; then
             echo "  FAILED: module-docs scp did not complete."
             OVERALL_STATUS=1
         else
             echo "  OK: module guides deployed."
         fi
-        if ! scp "$LOCAL_BASE/CHANGELOG.md" "$LOCAL_BASE/ROADMAP.md" "$HOST:~/domains/getsocietypress.org/public_html/sp-docs-source/"; then
+        if ! scp "$LOCAL_BASE/CHANGELOG.md" "$LOCAL_BASE/ROADMAP.md" "$SITE_HOST:$SITE_ROOT/sp-docs-source/"; then
             echo "  FAILED: CHANGELOG/ROADMAP scp did not complete."
             OVERALL_STATUS=1
         else

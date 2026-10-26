@@ -43,7 +43,7 @@ and hit enter. Show the installer's landing page.
 
 **NARRATION:**
 > You start by uploading one file to your web host — `sp-installer.php`,
-> which you got from getsocietypress.org/download/. Then you point your
+> which you got from societypress.net/download/. Then you point your
 > browser at it.
 
 *(Click through the installer's welcome screen.)*
@@ -181,11 +181,11 @@ populated. Footer shows society info.
 > There's a lot more SocietyPress can do — newsletter archive, library
 > catalog, genealogical record collections, donation tracking,
 > volunteer management, online balloting, photo galleries. The
-> documentation at getsocietypress.org/docs/ walks through each one.
+> documentation at societypress.net/docs/ walks through each one.
 
 *(End card)*
 
-> Free. Open source. Yours. Download at getsocietypress.org.
+> Free. Open source. Yours. Download at societypress.net.
 
 ---
 
@@ -195,7 +195,7 @@ populated. Footer shows society info.
   offices or on mobile muted.
 - **Chapters:** mark the 5 scenes as chapters. YouTube/Vimeo pick them
   up, and viewers often come back to one specific part.
-- **End card:** 5 seconds. "getsocietypress.org" centered, big.
+- **End card:** 5 seconds. "societypress.net" centered, big.
 - **No music:** the content is informational, not emotional. Adding a
   royalty-free soundtrack mostly distracts. If you must, keep it
   ambient and under 15% volume.

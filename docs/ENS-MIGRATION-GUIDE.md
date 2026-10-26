@@ -4,7 +4,7 @@ A step-by-step guide for genealogical and historical society webmasters who are 
 
 This guide assumes you are not a developer. You don't need to know PHP, MySQL, or anything about WordPress to follow it. You **do** need access to your current ENS site as an administrator, and access to a web hosting account where SocietyPress will live.
 
-**Coming from ENS-Classic or the new ENS-Responsive?** Both paths are supported. ENS-Classic is being sunset (Blue Crab's official end date is 5/31/2027 with no guarantee of extension), and ENS-R societies who'd prefer to own their stack are also welcome — the export format is similar enough that the same CSV importer reads both. If you're still deciding which way to go, see the [side-by-side comparison](https://getsocietypress.org/comparison/) first.
+**Coming from ENS-Classic or the new ENS-Responsive?** Both paths are supported. ENS-Classic is being sunset (Blue Crab's official end date is 5/31/2027 with no guarantee of extension), and ENS-R societies who'd prefer to own their stack are also welcome — the export format is similar enough that the same CSV importer reads both. If you're still deciding which way to go, see the [side-by-side comparison](https://societypress.net/comparison/) first.
 
 **Want to see one done first?** [A migration, start to finish](ENS-MIGRATION-WALKTHROUGH.md) walks through a complete import on a real file — the numbers it produced, the two places it needed a hand, and why running the import twice is safe.
 
@@ -105,7 +105,7 @@ You have two paths. Pick the easier one.
 
 This is the fastest path for most societies.
 
-1. In your web browser, go to: `https://getsocietypress.org/sp-installer.php`
+1. In your web browser, go to: `https://societypress.net/sp-installer.php`
 2. Right-click the page (or `File → Save Page As`) and save it as `sp-installer.php`. **Don't rename it.**
 3. Log in to your hosting account's cPanel.
 4. Open **File Manager** and navigate to your domain's `public_html` folder.
@@ -121,7 +121,7 @@ This is the fastest path for most societies.
 
 ### Path B — Manual install
 
-If your host doesn't allow the one-click installer (rare), follow the standard WordPress install instructions, then download the SocietyPress bundle from `https://getsocietypress.org/downloads/societypress-latest.zip` and unzip it into your `wp-content/` folder so that `societypress/` lands in `wp-content/plugins/` and the themes land in `wp-content/themes/`. Activate the plugin and the SocietyPress theme from the WordPress admin.
+If your host doesn't allow the one-click installer (rare), follow the standard WordPress install instructions, then download the SocietyPress bundle from `https://societypress.net/downloads/societypress-latest.zip` and unzip it into your `wp-content/` folder so that `societypress/` lands in `wp-content/plugins/` and the themes land in `wp-content/themes/`. Activate the plugin and the SocietyPress theme from the WordPress admin.
 
 ---
 
@@ -281,9 +281,9 @@ When you're ready to make SocietyPress your live site:
 
 ## Getting help
 
-- **Documentation:** `https://getsocietypress.org/docs`
+- **Documentation:** `https://societypress.net/docs`
 - **GitHub issues** (for technical questions and bug reports): `https://github.com/SocietyPressFoundation/SocietyPress/issues`
-- **Email:** the contact form on getsocietypress.org
+- **Email:** the contact form on societypress.net
 
 When you ask for help, tell us:
 - What step you were on
@@ -304,7 +304,7 @@ Once your members are imported and the front page looks right, these modules are
 - **Surname Research Database** — A members-only inquiry index where each member lists the surnames they're researching plus county, state, and year range. Visitors search with Soundex + Metaphone phonetic matching and contact the researching member through an anti-spam form.
 - **Database Subscriptions** — A members-area panel that gateways the genealogy databases your society pays for (Ancestry, Fold3, FamilySearch affiliate, NEHGS). One-click handoff with members-only access controls.
 
-These were all added in the run-up to the 2026 Texas State Genealogical Society conference; if you've evaluated SocietyPress before and these weren't there, they are now. See `https://getsocietypress.org/features/` for the full module list.
+These were all added in the run-up to the 2026 Texas State Genealogical Society conference; if you've evaluated SocietyPress before and these weren't there, they are now. See `https://societypress.net/features/` for the full module list.
 
 ---
 

@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.64] — 2026-10-25
+
+**SocietyPress has a new home: societypress.net.** The project website,
+documentation, forums, Theme Exchange and downloads now live at
+societypress.net. Every link SocietyPress shows you points there — the
+Theme Exchange and review-policy buttons in the admin, the "Powered by
+SocietyPress" credit in the child-theme footers, and the theme and plugin
+details pages. The one-click installer now downloads SocietyPress from
+societypress.net. The demo site stays at demo.getsocietypress.org for now,
+and the project's email addresses are unchanged.
+
 ## [1.5.63] — 2026-10-25
 
 **Only researchers can claim paid research cases.** Until now anyone signed in

@@ -63,7 +63,7 @@ For more than that — a custom layout, a unique footer — build your own child
 
 Copy one of the five theme folders — whichever is closest — rename it, and change its name in `style.css` (keep `Template: societypress`). Its starting colors and fonts are set in the theme's `functions.php` when it's activated; change those to yours.
 
-To share it with other societies, submit it to the [Theme Exchange](https://getsocietypress.org/themes/). Child themes are read line by line before they're listed with a "Reviewed by SocietyPress" badge.
+To share it with other societies, submit it to the [Theme Exchange](https://societypress.net/themes/). Child themes are read line by line before they're listed with a "Reviewed by SocietyPress" badge.
 
 ## If something looks wrong
 

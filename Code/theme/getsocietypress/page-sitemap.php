@@ -89,7 +89,7 @@ $gsp_sitemap = array(
         <div class="page-hero__content">
             <h1 class="page-hero__title">Sitemap</h1>
             <p class="page-hero__subtitle">
-                Every page on getsocietypress.org, grouped by purpose.
+                Every page on societypress.net, grouped by purpose.
             </p>
         </div>
     </div>

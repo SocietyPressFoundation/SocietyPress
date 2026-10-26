@@ -2,7 +2,7 @@
 /**
  * Features Page Template (page-features.php)
  *
- * The platform overview page for getsocietypress.org. Showcases what
+ * The platform overview page for societypress.net. Showcases what
  * SocietyPress can do with a hero, capability grid, detailed feature
  * sections, technical requirements, open-source commitment, showcase,
  * and a final CTA.

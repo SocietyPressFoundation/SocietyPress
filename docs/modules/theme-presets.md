@@ -8,7 +8,7 @@ A preset is your site's design — colors, fonts, spacing, layout — packaged a
 - Export your current look as a JSON file. Save it as a backup or hand it to another society.
 - Import a look from another society. The site immediately takes on its look.
 - Import a themed bundle (`.spchildtheme`) — a look plus its own extra styling and images.
-- Browse the Theme Exchange at https://getsocietypress.org/themes/ for looks, bundles and reviewed child themes.
+- Browse the Theme Exchange at https://societypress.net/themes/ for looks, bundles and reviewed child themes.
 
 All of this is on **Website → Appearance → Saved Looks**.
 
@@ -54,7 +54,7 @@ This is by design. A preset is the *minimum* needed to express a look. Anything 
 
 ## How the Theme Exchange works
 
-https://getsocietypress.org/themes/ is the Theme Exchange: five starter looks, looks and bundles other societies have shared, and full child themes that have been read line by line before they carry a "Reviewed by SocietyPress" badge — a statement about safety, nothing else.
+https://societypress.net/themes/ is the Theme Exchange: five starter looks, looks and bundles other societies have shared, and full child themes that have been read line by line before they carry a "Reviewed by SocietyPress" badge — a statement about safety, nothing else.
 
 Download a look or bundle from the Exchange, then import it on **Saved Looks**. A full child theme is a `.zip` you upload through WordPress's **Appearance → Themes → Add New → Upload Theme**. How to submit your own work is on the Exchange.
 
@@ -74,7 +74,7 @@ So the most recent action wins: activate a theme and its colors replace yours; a
 
 **I want to undo an import.** Apply the look you saved before importing, from the **Saved looks** list. If you didn't save one, adjust the settings by hand on **Website → Appearance → Colors & Fonts**.
 
-**The Exchange page is empty.** Visit https://getsocietypress.org/themes/ in a browser. The Exchange is on the SocietyPress website, not yours, so if it won't load, try again later.
+**The Exchange page is empty.** Visit https://societypress.net/themes/ in a browser. The Exchange is on the SocietyPress website, not yours, so if it won't load, try again later.
 
 ## Related guides
 

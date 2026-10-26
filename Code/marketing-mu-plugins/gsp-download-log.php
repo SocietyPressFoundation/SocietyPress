@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: GSP Download Log
- * Description: Records who downloads SocietyPress from getsocietypress.org, and serves the files.
+ * Description: Records who downloads SocietyPress from societypress.net, and serves the files.
  * Version:     1.0.0
  * Author:      SocietyPress Foundation
  * License:     GPL-2.0-or-later

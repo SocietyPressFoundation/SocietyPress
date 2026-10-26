@@ -989,7 +989,7 @@ Plugin + parent theme: 1.0.58. Marketing theme: 0.42d.
   JSON preset and share it with other societies. Admin page at SocietyPress
   → Theme Presets handles export and import; tokens are sanitized through
   the existing design-page validators on import. Companion Theme Gallery at
-  `getsocietypress.org/themes/` ships five curated starter presets (one per
+  `societypress.net/themes/` ships five curated starter presets (one per
   child theme).
 - **Help Requests upgrade — comradery model.** The module pivots from
   member-only Q&A to a public "duty librarian" forum:

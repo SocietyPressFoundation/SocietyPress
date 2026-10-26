@@ -45,7 +45,7 @@
 // on hosts too old for the rest of it, and that host is the single most
 // interesting one we could hear from. No type hints or PHP 7+ syntax here.
 // ----------------------------------------------------------------------------
-define( 'SP_INSTALLER_BEACON_URL', 'https://getsocietypress.org/wp-json/societypress/v1/installs/attempt' );
+define( 'SP_INSTALLER_BEACON_URL', 'https://societypress.net/wp-json/societypress/v1/installs/attempt' );
 
 function sp_installer_beacon( $event, $result ) {
     $host = isset( $_SERVER['HTTP_HOST'] ) ? substr( (string) $_SERVER['HTTP_HOST'], 0, 255 ) : '';
@@ -60,7 +60,7 @@ function sp_installer_beacon( $event, $result ) {
         return;
     }
 
-    // WHY an explicit user agent: getsocietypress.org sits behind bot
+    // WHY an explicit user agent: societypress.net sits behind bot
     // protection that answers unrecognised clients with a JavaScript
     // challenge instead of the endpoint. A beacon that arrives as a bare
     // curl default is exactly the shape that gets challenged, and it would
@@ -162,7 +162,7 @@ if ( file_exists( __DIR__ . '/wp-config.php' ) || file_exists( __DIR__ . '/wp-in
 
 // Where to download WordPress and SocietyPress from
 define( 'SP_INSTALLER_WP_URL',     'https://wordpress.org/latest.zip' );
-define( 'SP_INSTALLER_BUNDLE_URL', 'https://getsocietypress.org/downloads/societypress-latest.zip' );
+define( 'SP_INSTALLER_BUNDLE_URL', 'https://societypress.net/downloads/societypress-latest.zip' );
 define( 'SP_INSTALLER_GITHUB_REPO', 'SocietyPressFoundation/SocietyPress' );
 define( 'SP_INSTALLER_SALT_URL',    'https://api.wordpress.org/secret-key/1.1/salt/' );
 // Demo mode: if a config file exists outside the web root, load it.
@@ -1766,7 +1766,7 @@ MUPLUGIN;
     // WHY: We extract SocietyPress BEFORE redirecting to the WordPress installer
     // bridge script. The mu-plugin needs the plugin and theme files to already
     // be in place when it fires on first admin page load.
-    // WHY: We try our own bundle URL first (hosted on getsocietypress.org) because
+    // WHY: We try our own bundle URL first (hosted on societypress.net) because
     // it's a direct download with no redirects. GitHub's archive URLs require redirect
     // following and sometimes fail on locked-down shared hosts. The bundle contains
     // the plugin + parent theme + all child themes in a simple flat structure.

@@ -1528,7 +1528,7 @@ add_action( 'template_redirect', 'gsp_prelaunch_cloak', 0 );
 // INSTALL REGISTER — the receiving end
 //
 // WHY it lives in the marketing theme rather than the plugin: this is
-//      getsocietypress.org's job, not a society's. The plugin sends; this
+//      societypress.net's job, not a society's. The plugin sends; this
 //      receives, stores and shows. Keeping the two apart means a society's
 //      install carries none of the code that runs the register.
 //

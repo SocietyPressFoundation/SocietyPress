@@ -2,7 +2,7 @@
 /**
  * Terms of Use Page Template (page-terms.php)
  *
- * Terms for using the getsocietypress.org marketing website and for
+ * Terms for using the societypress.net marketing website and for
  * downloading the SocietyPress software. Software itself is governed by
  * the GPL v2 — these terms cover the website and the download experience.
  *
@@ -57,7 +57,7 @@ get_header();
         <h2>The website</h2>
 
         <p>
-            The content on getsocietypress.org &mdash; documentation, guides,
+            The content on societypress.net &mdash; documentation, guides,
             blog posts, marketing copy &mdash; is provided for your reference.
             You're welcome to quote it, link to it, and share it. If you want
             to republish significant portions in print or on another

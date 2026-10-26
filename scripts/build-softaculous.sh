@@ -119,8 +119,8 @@ fi
 echo "Copying SocietyPress parent theme..."
 if [ -d "$PROJECT_ROOT/Code/theme" ]; then
     cp -r "$PROJECT_ROOT/Code/theme" "$BUILD_DIR/wp-content/themes/societypress"
-    # The getsocietypress.org marketing site lives nested inside Code/theme/.
-    # It is NOT part of the shippable product — getsocietypress.org stays the
+    # The societypress.net marketing site lives nested inside Code/theme/.
+    # It is NOT part of the shippable product — societypress.net stays the
     # place people learn/demo/download, never something bundled into a society's
     # install. Strip it so it can't ride along in the package.
     rm -rf "$BUILD_DIR/wp-content/themes/societypress/getsocietypress"

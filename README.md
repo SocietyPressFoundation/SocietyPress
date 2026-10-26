@@ -12,7 +12,7 @@ just the whole thing, given away.
 [![PHP: 8.0+](https://img.shields.io/badge/PHP-8.0%2B-777bb4.svg)](https://www.php.net/)
 [![Version](https://img.shields.io/badge/Plugin-v1.0.72-brightgreen.svg)](CHANGELOG.md)
 
-[**getsocietypress.org**](https://getsocietypress.org) &nbsp;·&nbsp;
+[**societypress.net**](https://societypress.net) &nbsp;·&nbsp;
 [**Live demo**](https://demo.getsocietypress.org) &nbsp;·&nbsp;
 [**Documentation**](docs/) &nbsp;·&nbsp;
 [**Report a bug**](https://github.com/SocietyPressFoundation/SocietyPress/issues)
@@ -119,17 +119,17 @@ The setup wizard will open on first activation.
 | [`CHANGELOG.md`](CHANGELOG.md) | Release history |
 
 End-user guides (setup walkthroughs, module-by-module how-tos) live at
-[getsocietypress.org/docs](https://getsocietypress.org/docs).
+[societypress.net/docs](https://societypress.net/docs).
 
 ---
 
 ## Getting help
 
-- **Support forums** — [getsocietypress.org/community](https://getsocietypress.org/community)
-- **Documentation** — [getsocietypress.org/docs](https://getsocietypress.org/docs)
+- **Support forums** — [societypress.net/community](https://societypress.net/community)
+- **Documentation** — [societypress.net/docs](https://societypress.net/docs)
 - **Bug reports** — [GitHub Issues](https://github.com/SocietyPressFoundation/SocietyPress/issues)
 - **Security issues** — see [SECURITY.md](SECURITY.md) (please do **not** file these publicly)
-- **Everything else** — the [feedback form](https://getsocietypress.org/feedback)
+- **Everything else** — the [feedback form](https://societypress.net/feedback)
 
 See also [`SUPPORT.md`](SUPPORT.md).
 

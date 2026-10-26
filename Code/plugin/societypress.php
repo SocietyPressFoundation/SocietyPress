@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: SocietyPress
- * Plugin URI:  https://getsocietypress.org
+ * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.63
+ * Version:     1.5.64
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.63' );
+define( 'SOCIETYPRESS_VERSION', '1.5.64' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8794,7 +8794,7 @@ add_action( 'admin_menu', function () {
     // WHY the WordPress Customizer is NOT registered here: nothing SocietyPress
     // ships populates it. The plugin contains no wp_customize calls, and
     // neither does the parent theme or any of the five child themes — the only
-    // Customizer code in the repository belongs to the getsocietypress.org
+    // Customizer code in the repository belongs to the societypress.net
     // marketing theme, which is never installed on a society's site. The entry
     // therefore opened a WordPress-branded screen offering core-only controls
     // (site identity, homepage) that duplicate or contradict Settings -> Design,
@@ -16743,7 +16743,7 @@ add_filter( 'plugins_api', function ( $result, $action, $args ) {
         'slug'          => 'societypress',
         'version'       => $release->version,
         'author'        => '<a href="https://stricklindevelopment.com/">Stricklin Development</a>',
-        'homepage'      => 'https://getsocietypress.org',
+        'homepage'      => 'https://societypress.net',
         'download_link' => $release->download_url,
         'requires'      => '6.0',
         'requires_php'  => '8.0',
@@ -20760,7 +20760,7 @@ add_action( 'admin_post_sp_add_page_to_menu', function () {
 /**
  * Where check-ins go.
  */
-const SP_INSTALL_REGISTER_ENDPOINT = 'https://getsocietypress.org/wp-json/societypress/v1/installs';
+const SP_INSTALL_REGISTER_ENDPOINT = 'https://societypress.net/wp-json/societypress/v1/installs';
 
 /**
  * The three facts, and nothing else.
@@ -40705,7 +40705,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.63',
+            'version'     => '1.5.64',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40713,7 +40713,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.63',
+            'version'     => '1.5.64',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40721,7 +40721,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.63',
+            'version'     => '1.5.64',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40729,7 +40729,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.63',
+            'version'     => '1.5.64',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40737,7 +40737,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.63',
+            'version'     => '1.5.64',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -41068,9 +41068,9 @@ function sp_generate_custom_theme_css( string $name, string $slug ): string {
 
     $css  = "/*\n";
     $css .= "Theme Name: {$esc_name}\n";
-    $css .= "Theme URI: https://getsocietypress.org\n";
+    $css .= "Theme URI: https://societypress.net\n";
     $css .= "Author: SocietyPress Theme Builder\n";
-    $css .= "Author URI: https://getsocietypress.org\n";
+    $css .= "Author URI: https://societypress.net\n";
     $css .= "Description: A self-contained SocietyPress child theme. Activating it restores its captured look — colors, fonts, layout, logo, and homepage hero — across the whole site.\n";
     $css .= "Version: 1.0.0\n";
     $css .= "Template: societypress\n";
@@ -123484,7 +123484,7 @@ function sp_render_theme_presets_page(): void {
                         <p><?php esc_html_e( 'The five themes that came with SocietyPress are yours already. The Exchange is where societies lend each other the work they have done on top of them, so the society three counties over can use the look you spent a winter getting right.', 'societypress' ); ?></p>
                         <p><?php esc_html_e( 'Saved looks and bundles hold colors, fonts and pictures. They cannot run anything, so there is nothing in one that can harm your site, and one click puts your old look back.', 'societypress' ); ?></p>
                         <p>
-                            <a href="https://getsocietypress.org/themes/" class="button button-primary" target="_blank" rel="noopener">
+                            <a href="https://societypress.net/themes/" class="button button-primary" target="_blank" rel="noopener">
                                 <?php esc_html_e( 'Browse the Exchange', 'societypress' ); ?>
                                 <span aria-hidden="true">&rarr;</span>
                                 <span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'societypress' ); ?></span>
@@ -123512,7 +123512,7 @@ function sp_render_theme_presets_page(): void {
                         <p><?php esc_html_e( 'The rest of this is for whoever looks after your site\'s code — a volunteer who writes themes, or somebody your society hires. Nothing here is needed to use SocietyPress, and both links lead to developer tools rather than anything in your admin.', 'societypress' ); ?></p>
                         <p><?php esc_html_e( 'Anybody may submit a child theme. You do not have to be a society, or known to us — but you do have to be named, because somebody has to be answerable for code that runs where a society\'s member records live. Themes are licensed GPL-2.0-or-later, the free license that lets anyone use and change the code.', 'societypress' ); ?></p>
                         <p>
-                            <a href="https://getsocietypress.org/theme-review-policy/" class="button" target="_blank" rel="noopener">
+                            <a href="https://societypress.net/theme-review-policy/" class="button" target="_blank" rel="noopener">
                                 <?php esc_html_e( 'What gets accepted', 'societypress' ); ?>
                                 <span aria-hidden="true">&rarr;</span>
                                 <span class="screen-reader-text"><?php esc_html_e( '(opens in a new tab)', 'societypress' ); ?></span>

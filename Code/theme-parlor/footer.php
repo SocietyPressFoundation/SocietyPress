@@ -115,7 +115,7 @@
                     sprintf(
                         /* translators: %s: SocietyPress link */
                         __( 'Powered by %s', 'parlor' ),
-                        '<a href="https://getsocietypress.org">SocietyPress</a>'
+                        '<a href="https://societypress.net">SocietyPress</a>'
                     ),
                     [ 'a' => [ 'href' => [] ] ]
                 );

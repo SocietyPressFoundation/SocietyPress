@@ -2,7 +2,7 @@
 
 The fastest way from "I heard about SocietyPress" to "our site is running on it": one PHP file, `sp-installer.php`, that you upload to your web host and open in a browser.
 
-For a walk-through with screenshots, see the [Installation page on getsocietypress.org](https://getsocietypress.org/docs/installation/). This guide is the short version.
+For a walk-through with screenshots, see the [Installation page on societypress.net](https://societypress.net/docs/installation/). This guide is the short version.
 
 ## What it does
 
@@ -26,7 +26,7 @@ In a few minutes on most cPanel hosts, the installer:
 
 ## How to run it
 
-1. **Download the installer** from [getsocietypress.org/sp-installer.php](https://getsocietypress.org/sp-installer.php) and keep the name `sp-installer.php`.
+1. **Download the installer** from [societypress.net/sp-installer.php](https://societypress.net/sp-installer.php) and keep the name `sp-installer.php`.
 2. **Upload it** to the folder your domain serves — usually `public_html` — with cPanel's **File Manager** or an FTP program.
 3. **Open it in a browser**: `https://yourdomain.org/sp-installer.php`. If your host fails a requirement, the page says which and how to fix it.
 4. **Fill in the form:**
@@ -41,9 +41,9 @@ In a few minutes on most cPanel hosts, the installer:
 ## How it stays safe
 
 - **It deletes itself** when it finishes, so nothing is left behind for anyone else to run.
-- **Downloads come over HTTPS** from wordpress.org and getsocietypress.org (or SocietyPress's GitHub releases if that fails), and each download is checked to be a complete ZIP before it's unpacked.
+- **Downloads come over HTTPS** from wordpress.org and societypress.net (or SocietyPress's GitHub releases if that fails), and each download is checked to be a complete ZIP before it's unpacked.
 - **Your database password goes only into `wp-config.php`**, where WordPress needs it. It isn't stored in the session or sent anywhere else.
-- **One small report**: when someone opens the installer, it tells getsocietypress.org the site's address and whether the requirements check passed — nothing else — so the project knows when hosts are turning people away.
+- **One small report**: when someone opens the installer, it tells societypress.net the site's address and whether the requirements check passed — nothing else — so the project knows when hosts are turning people away.
 
 The installer is in the repository at `Code/installer/sp-installer.php` if you'd like to read it first.
 
@@ -52,7 +52,7 @@ The installer is in the repository at `Code/installer/sp-installer.php` if you'd
 If your host won't run an uploaded PHP file, or you'd rather do it yourself:
 
 1. Install WordPress with your host's usual one-click WordPress installer.
-2. Download the bundle from `https://getsocietypress.org/downloads/societypress-latest.zip` and unzip it.
+2. Download the bundle from `https://societypress.net/downloads/societypress-latest.zip` and unzip it.
 3. Upload the `societypress` plugin folder to `wp-content/plugins/`, and the theme folders to `wp-content/themes/`.
 4. In WordPress, **Plugins → SocietyPress → Activate**, then activate the SocietyPress theme or one of the five child themes.
 5. The Setup Wizard opens the next time you visit the admin.

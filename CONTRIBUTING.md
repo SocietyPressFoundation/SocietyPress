@@ -85,7 +85,7 @@ be accepted into the repository directly at the maintainer's discretion.
 
 For general questions, help using SocietyPress, or discussion that isn't
 a specific bug or feature request, please use the support forums at
-[getsocietypress.org/community](https://getsocietypress.org/community)
+[societypress.net/community](https://societypress.net/community)
 rather than GitHub Issues.
 
 ## A note on tone

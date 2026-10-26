@@ -300,8 +300,8 @@ buttons.)*
 
 *(End card)*
 
-> More page-builder examples at getsocietypress.org/docs. Questions
-> in the community forum at getsocietypress.org/forums.
+> More page-builder examples at societypress.net/docs. Questions
+> in the community forum at societypress.net/forums.
 
 ---
 

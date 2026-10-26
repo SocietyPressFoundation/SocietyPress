@@ -31,7 +31,7 @@ $gsp_incidents = array(
  * 'operational' | 'degraded' | 'outage'
  */
 $gsp_components = array(
-    array( 'name' => 'getsocietypress.org website',      'status' => 'operational' ),
+    array( 'name' => 'societypress.net website',      'status' => 'operational' ),
     array( 'name' => 'Download endpoint (latest .zip)', 'status' => 'operational' ),
     array( 'name' => 'Installer (sp-installer.php)',     'status' => 'operational' ),
     array( 'name' => 'Demo site (demo.getsocietypress.org)', 'status' => 'operational' ),
@@ -127,7 +127,7 @@ $gsp_overall_label = $gsp_any_ongoing ? __( 'Active incident', 'getsocietypress'
     <div class="container container--narrow">
         <p>
             <strong>A note on what this page does and doesn't cover.</strong>
-            This page tracks the availability of getsocietypress.org and its
+            This page tracks the availability of societypress.net and its
             services. It does not monitor individual SocietyPress
             installations at societies &mdash; those are self-hosted and
             operated by each society independently. If your society's site

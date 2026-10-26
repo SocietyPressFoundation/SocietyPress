@@ -2,7 +2,7 @@
 /**
  * Homepage Template (front-page.php)
  *
- * The main landing page for getsocietypress.org. Tells the SocietyPress story
+ * The main landing page for societypress.net. Tells the SocietyPress story
  * in clear, confident sections:
  *
  * 1. Hero — what it is, two CTAs (download + demo)

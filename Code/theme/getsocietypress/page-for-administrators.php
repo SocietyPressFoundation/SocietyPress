@@ -95,7 +95,7 @@ get_header();
         <section class="onepager__section">
             <h2>Getting started takes about 30 minutes</h2>
             <ol class="onepager__steps">
-                <li>Visit <strong>getsocietypress.org/download/</strong> and grab the installer.</li>
+                <li>Visit <strong>societypress.net/download/</strong> and grab the installer.</li>
                 <li>Upload <code>sp-installer.php</code> to a fresh <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> hosting account and visit it in your browser.</li>
                 <li>Answer the 3-step setup wizard (society info, membership tiers, colors).</li>
                 <li>Import your members via CSV.</li>
@@ -110,7 +110,7 @@ get_header();
             </p>
             <p>
                 <strong>Download and docs:</strong>
-                <a href="https://getsocietypress.org/">getsocietypress.org</a>
+                <a href="https://societypress.net/">societypress.net</a>
             </p>
             <p class="onepager__footer-meta">
                 Print this page for your board or fellow volunteers &mdash;

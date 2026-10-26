@@ -21,7 +21,7 @@ get_header();
             <div class="error-404__code">404</div>
             <h1 class="page-hero__title">Page not found</h1>
             <p class="page-hero__subtitle">
-                That URL doesn't exist on getsocietypress.org &mdash; at
+                That URL doesn't exist on societypress.net &mdash; at
                 least not anymore. Search or pick a destination below.
             </p>
 

@@ -283,7 +283,7 @@ Newsletters Add New.
 
 *(End card)*
 
-> That's the migration. Full guide at getsocietypress.org/ens-migration
+> That's the migration. Full guide at societypress.net/ens-migration
 > if you want the written version. Good luck, and welcome to
 > SocietyPress.
 

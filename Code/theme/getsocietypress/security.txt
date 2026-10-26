@@ -4,9 +4,9 @@
 Contact: mailto:security@getsocietypress.org
 Expires: 2027-04-15T00:00:00.000Z
 Preferred-Languages: en
-Canonical: https://getsocietypress.org/.well-known/security.txt
-Policy: https://getsocietypress.org/security-policy/
-Acknowledgments: https://getsocietypress.org/sponsors/
+Canonical: https://societypress.net/.well-known/security.txt
+Policy: https://societypress.net/security-policy/
+Acknowledgments: https://societypress.net/sponsors/
 
 # Please report vulnerabilities privately first.
 # We commit to:

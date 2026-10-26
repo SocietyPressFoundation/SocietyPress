@@ -392,7 +392,7 @@ get_header();
                     </svg>
                 </summary>
                 <div class="inst-trouble-item__answer">
-                    <p>Your host is blocking outbound connections. The installer needs to reach <code>wordpress.org</code> and <code>getsocietypress.org</code> to fetch the files it installs. This is rare on hosts that run <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> at all, but if it happens, ask your host to allow outbound HTTPS to those two domains &mdash; or use the Advanced manual install instead.</p>
+                    <p>Your host is blocking outbound connections. The installer needs to reach <code>wordpress.org</code> and <code>societypress.net</code> to fetch the files it installs. This is rare on hosts that run <a href="https://wordpress.org" target="_blank" rel="noopener">WordPress</a> at all, but if it happens, ask your host to allow outbound HTTPS to those two domains &mdash; or use the Advanced manual install instead.</p>
                 </div>
             </details>
 

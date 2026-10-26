@@ -1,5 +1,5 @@
 #!/bin/bash
-# SocietyPress — read the getsocietypress.org download log
+# SocietyPress — read the societypress.net download log
 #
 # The log is written by the gsp-download-log mu-plugin on the marketing site and
 # lives outside the web root, so it can only be read over SSH. This script
@@ -18,8 +18,8 @@
 
 set -o pipefail
 
-HOST="skystra"
-REMOTE_LOG="~/domains/getsocietypress.org/gsp-analytics/downloads.jsonl"
+HOST="societypress-net"
+REMOTE_LOG="~/gsp-analytics/downloads.jsonl"
 TMP="$(mktemp -t spdl)"
 trap 'rm -f "$TMP"' EXIT
 
@@ -54,7 +54,7 @@ HUMAN_IP="$(jq -r 'select(.bot == false) | .ip' "$TMP" | sort -u | wc -l | tr -d
 FIRST="$(head -1 "$TMP" | jq -r '.at')"
 LAST="$(tail -1 "$TMP" | jq -r '.at')"
 
-echo "getsocietypress.org downloads"
+echo "societypress.net downloads"
 echo "  logging since: $FIRST"
 echo "  most recent:   $LAST"
 echo

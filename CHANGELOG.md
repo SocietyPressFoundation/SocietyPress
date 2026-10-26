@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.65] — 2026-10-26
+
+**Payment history can be exported.** Payment History has a new **Export CSV**
+button. It downloads exactly the payments on screen — so filter to dues paid
+this year, or to one member, and that is what the spreadsheet holds — with each
+member's name and email, the amount, type, method, note, and who recorded it.
+
+**The member export can include each member's last dues payment.** Two new
+columns, Last Dues Payment Date and Last Dues Payment Amount, sit in the
+Membership group on Export Members, so one spreadsheet answers "who has paid
+this year" without opening every member.
+
 ## [1.5.64] — 2026-10-25
 
 **SocietyPress has a new home: societypress.net.** The project website,

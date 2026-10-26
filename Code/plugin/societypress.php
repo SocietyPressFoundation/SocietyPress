@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.64
+ * Version:     1.5.65
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.64' );
+define( 'SOCIETYPRESS_VERSION', '1.5.65' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -31488,6 +31488,20 @@ function sp_get_export_columns(): array {
             'label' => __( 'Directory: Show Photo', 'societypress' ),
             'value' => fn( $m ) => ( $m->dir_show_photo ?? 0 ) ? 'Yes' : 'No',
         ],
+
+        // ---- Dues ----
+        // WHY: a roll without payment dates can't answer "who paid this year"
+        //      without opening every member. The full history is the Payment
+        //      History export; this is the latest dues payment, attached as
+        //      ->_last_dues in the download handler from one bulk query.
+        'last_dues_date' => [
+            'label' => __( 'Last Dues Payment Date', 'societypress' ),
+            'value' => fn( $m ) => $m->_last_dues->date ?? '',
+        ],
+        'last_dues_amount' => [
+            'label' => __( 'Last Dues Payment Amount', 'societypress' ),
+            'value' => fn( $m ) => $m->_last_dues->amount ?? '',
+        ],
     ];
 
     // ----------------------------------------------------------------
@@ -31631,6 +31645,21 @@ add_action( 'admin_init', function () {
         }
     }
 
+    // Latest dues payment per member, in one query. Rows arrive oldest first,
+    // so the last one written for each member is their most recent.
+    $last_dues_by_user = [];
+    if ( $members && array_intersect( $selected, [ 'last_dues_date', 'last_dues_amount' ] ) ) {
+        $ids = array_map( fn( $m ) => (int) $m->user_id, $members );
+        $ph  = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        foreach ( $wpdb->get_results( $wpdb->prepare(
+            "SELECT user_id, date, amount FROM {$prefix}member_payments
+             WHERE type = 'dues' AND user_id IN ({$ph})
+             ORDER BY date ASC, id ASC", $ids
+        ) ) as $row ) {
+            $last_dues_by_user[ (int) $row->user_id ] = $row;
+        }
+    }
+
     sp_audit( 'members_exported', sprintf( 'Exported %d members to CSV', count( $members ) ), 'member' );
 
     while ( ob_get_level() ) {
@@ -31645,7 +31674,8 @@ add_action( 'admin_init', function () {
     fwrite( $out, "\xEF\xBB\xBF" );
     fputcsv( $out, array_map( fn( $k ) => $columns[ $k ]['label'], $selected ), ',', '"', '\\' );
     foreach ( $members as $m ) {
-        $m->_meta = $meta_by_user[ (int) $m->user_id ] ?? [];
+        $m->_meta      = $meta_by_user[ (int) $m->user_id ] ?? [];
+        $m->_last_dues = $last_dues_by_user[ (int) $m->user_id ] ?? null;
         $line = [];
         foreach ( $selected as $k ) {
             // A name typed on the public Join form as "=..." would otherwise
@@ -31726,7 +31756,7 @@ function sp_render_export_page(): void {
                                                           'prefix', 'first_name', 'preferred_name',
                                                           'middle_name', 'last_name', 'maiden_name', 'suffix',
                                                           'date_of_birth', 'birthday_no_year' ],
-        __( 'Membership', 'societypress' )           => [ 'status', 'tier_name', 'join_date', 'expiration_date' ],
+        __( 'Membership', 'societypress' )           => [ 'status', 'tier_name', 'join_date', 'expiration_date', 'last_dues_date', 'last_dues_amount' ],
         __( 'Contact', 'societypress' )              => [ 'email', 'phone', 'cell', 'website' ],
         __( 'Address', 'societypress' )              => [ 'address_1', 'address_2', 'city', 'state', 'postal_code',
                                                           'country' ],
@@ -39526,6 +39556,134 @@ function sp_render_groups_frontend( $content ): string {
 // ============================================================================
 
 /**
+ * Read the Payment History filters from the query string.
+ *
+ * @return array{type: string, method: string, from: string, to: string, s: string}
+ */
+function sp_finances_filters_from_request(): array {
+    $out = [];
+    foreach ( [ 'type', 'method', 'from', 'to', 's' ] as $key ) {
+        $out[ $key ] = sanitize_text_field( wp_unslash( $_GET[ $key ] ?? '' ) );
+    }
+    return $out;
+}
+
+/**
+ * Build the WHERE clause for Payment History.
+ *
+ * WHY shared: the export has to produce exactly the payments the treasurer is
+ *      looking at. Two copies of this filter would drift, and an export that
+ *      quietly disagrees with the screen is worse than no export.
+ *
+ * Expects the query to alias member_payments as p and wp_users as u.
+ *
+ * @param array $f Output of sp_finances_filters_from_request().
+ * @return array{0: string, 1: array} WHERE SQL with placeholders, and its args.
+ */
+function sp_finances_filter_where( array $f ): array {
+    global $wpdb;
+    $where = [ '1=1' ];
+    $args  = [];
+
+    if ( $f['type'] ) {
+        $where[] = 'p.type = %s';
+        $args[]  = $f['type'];
+    }
+    if ( $f['method'] ) {
+        $where[] = 'p.method = %s';
+        $args[]  = $f['method'];
+    }
+    if ( $f['from'] ) {
+        $where[] = 'p.date >= %s';
+        $args[]  = $f['from'];
+    }
+    if ( $f['to'] ) {
+        $where[] = 'p.date <= %s';
+        $args[]  = $f['to'];
+    }
+    if ( $f['s'] ) {
+        $like    = '%' . $wpdb->esc_like( $f['s'] ) . '%';
+        $where[] = '(u.display_name LIKE %s OR p.note LIKE %s)';
+        $args[]  = $like;
+        $args[]  = $like;
+    }
+
+    return [ implode( ' AND ', $where ), $args ];
+}
+
+/**
+ * Export Payment History as CSV — the payments currently filtered on screen.
+ *
+ * WHY: dues history has to leave the system for the treasurer's books and for
+ *      the annual audit, and a society moving off SocietyPress needs it too.
+ *      One row per payment, with the member's name and email so the sheet can
+ *      be read without looking anyone up.
+ */
+add_action( 'wp_ajax_sp_export_payments', 'sp_ajax_export_payments' );
+function sp_ajax_export_payments(): void {
+    if ( ! check_ajax_referer( 'sp_export_payments', '_wpnonce', false ) ) {
+        wp_die( esc_html__( 'Security check failed. Please refresh the page.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_finances' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ), esc_html__( 'Permission denied', 'societypress' ), [ 'response' => 403, 'back_link' => true ] );
+    }
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    [ $where_sql, $args ] = sp_finances_filter_where( sp_finances_filters_from_request() );
+
+    $sql = "SELECT p.*, u.display_name AS member_name, u.user_email AS member_email,
+                   r.display_name AS recorded_by_name
+            FROM {$prefix}member_payments p
+            LEFT JOIN {$wpdb->users} u ON p.user_id = u.ID
+            LEFT JOIN {$wpdb->users} r ON p.recorded_by = r.ID
+            WHERE {$where_sql}
+            ORDER BY p.date DESC, p.id DESC";
+    if ( $args ) {
+        $sql = $wpdb->prepare( $sql, ...$args );
+    }
+
+    $headers = [
+        __( 'Date', 'societypress' ),
+        __( 'Member', 'societypress' ),
+        __( 'Email', 'societypress' ),
+        __( 'Amount', 'societypress' ),
+        __( 'Type', 'societypress' ),
+        __( 'Method', 'societypress' ),
+        __( 'Note', 'societypress' ),
+        __( 'Recorded By', 'societypress' ),
+        __( 'Recorded At', 'societypress' ),
+    ];
+
+    $filename = 'payments-' . wp_date( 'Y-m-d' ) . '.csv';
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    nocache_headers();
+
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers, ',', '"', '\\' );
+
+    sp_export_stream_csv( $out, $sql, static function ( $p ) {
+        return [
+            $p->date,
+            $p->member_name ?? '',
+            $p->member_email ?? '',
+            $p->amount,
+            sp_localized_status( (string) $p->type, 'payment_type' ),
+            $p->method ? sp_localized_status( (string) $p->method, 'payment_type' ) : '',
+            $p->note ?? '',
+            $p->recorded_by_name ?? '',
+            $p->created_at,
+        ];
+    } );
+
+    fclose( $out );
+    exit;
+}
+
+/**
  * Render the main Finances page — shows all payment transactions across
  * all members, with summary stats, filtering, and search.
  *
@@ -39546,43 +39704,19 @@ function sp_render_finances_page(): void {
     }
 
     // Filters
-    $filter_type   = sanitize_text_field( wp_unslash( $_GET['type'] ?? '' ) );
-    $filter_method = sanitize_text_field( wp_unslash( $_GET['method'] ?? '' ) );
-    $filter_from   = sanitize_text_field( wp_unslash( $_GET['from'] ?? '' ) );
-    $filter_to     = sanitize_text_field( wp_unslash( $_GET['to'] ?? '' ) );
-    $search        = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
+    $filters       = sp_finances_filters_from_request();
+    $filter_type   = $filters['type'];
+    $filter_method = $filters['method'];
+    $filter_from   = $filters['from'];
+    $filter_to     = $filters['to'];
+    $search        = $filters['s'];
     $per_page      = 50;
     $paged         = max( 1, (int) ( $_GET['paged'] ?? 1 ) );
     $offset        = ( $paged - 1 ) * $per_page;
 
-    // Build WHERE clause
-    $where = [ '1=1' ];
-    $args  = [];
+    [ $where_sql, $args ] = sp_finances_filter_where( $filters );
 
-    if ( $filter_type ) {
-        $where[] = 'p.type = %s';
-        $args[]  = $filter_type;
-    }
-    if ( $filter_method ) {
-        $where[] = 'p.method = %s';
-        $args[]  = $filter_method;
-    }
-    if ( $filter_from ) {
-        $where[] = 'p.date >= %s';
-        $args[]  = $filter_from;
-    }
-    if ( $filter_to ) {
-        $where[] = 'p.date <= %s';
-        $args[]  = $filter_to;
-    }
-    if ( $search ) {
-        $like    = '%' . $wpdb->esc_like( $search ) . '%';
-        $where[] = '(u.display_name LIKE %s OR p.note LIKE %s)';
-        $args[]  = $like;
-        $args[]  = $like;
-    }
-
-    $where_sql = implode( ' AND ', $where );
+    $export_url = wp_nonce_url( add_query_arg( array_merge( [ 'action' => 'sp_export_payments' ], array_filter( $filters ) ), admin_url( 'admin-ajax.php' ) ), 'sp_export_payments' );
 
     // Summary stats (for the filtered set)
     $stats_sql = "SELECT
@@ -39654,6 +39788,7 @@ function sp_render_finances_page(): void {
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Payment History', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-payment' ) ); ?>" class="page-title-action"><?php esc_html_e( 'Record Payment', 'societypress' ); ?></a>
+        <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
 
         <?php if ( isset( $_GET['deleted'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Payment deleted.', 'societypress' ); ?></p></div>
@@ -40705,7 +40840,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.64',
+            'version'     => '1.5.65',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40713,7 +40848,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.64',
+            'version'     => '1.5.65',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40721,7 +40856,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.64',
+            'version'     => '1.5.65',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40729,7 +40864,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.64',
+            'version'     => '1.5.65',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40737,7 +40872,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.64',
+            'version'     => '1.5.65',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -20,6 +20,21 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.66] — 2026-10-26
+
+**Records can have photos.** A collection field can now be a **Photos** field —
+headstones, plots, a scanned page — with as many photos per record as you like.
+Visitors see them when they open a record; the search table stays text.
+
+Photos coming from an ENS cemetery or area-deaths export arrive the way member
+photos do: map the spreadsheet's image column to the Photos field, and copy the
+photo files into `wp-content/uploads/sp-record-images/` with your host's File
+Manager, before or after the import. Every photo comes across, including names
+with commas, apostrophes or parentheses in them — the ones ENS's own import
+leaves behind. On a record's edit screen you can add photos from your computer,
+remove one by deleting its line, and see at a glance any name whose file isn't
+there yet.
+
 ## [1.5.65] — 2026-10-26
 
 **Payment history can be exported.** Payment History has a new **Export CSV**

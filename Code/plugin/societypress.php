@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.65
+ * Version:     1.5.66
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.65' );
+define( 'SOCIETYPRESS_VERSION', '1.5.66' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40840,7 +40840,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.65',
+            'version'     => '1.5.66',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40848,7 +40848,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.65',
+            'version'     => '1.5.66',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40856,7 +40856,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.65',
+            'version'     => '1.5.66',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40864,7 +40864,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.65',
+            'version'     => '1.5.66',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40872,7 +40872,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.65',
+            'version'     => '1.5.66',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -95542,7 +95542,7 @@ function sp_render_record_collection_edit_page(): void {
                     'field_slug'    => sanitize_title( $fname ),
                     'field_type'    => sanitize_text_field( $field_types_post[ $i ] ?? 'text' ),
                     'sort_order'    => (int) $i,
-                    'searchable'    => isset( $field_searchable[ $i ] ) ? 1 : 0,
+                    'searchable'    => ( isset( $field_searchable[ $i ] ) && 'photos' !== ( $field_types_post[ $i ] ?? '' ) ) ? 1 : 0, // File names are not something anyone searches for.
                     'is_public'     => isset( $field_public[ $i ] ) ? 1 : 0,
                 ];
 
@@ -95587,6 +95587,7 @@ function sp_render_record_collection_edit_page(): void {
         'textarea' => __( 'Long Text', 'societypress' ),
         'number'   => __( 'Number', 'societypress' ),
         'date'     => __( 'Date', 'societypress' ),
+        'photos'   => __( 'Photos', 'societypress' ),
     ];
     ?>
     <style>
@@ -96768,6 +96769,132 @@ function sp_record_review_assets( int $collection_id ): void {
     <?php
 }
 
+// ============================================================================
+// RECORD PHOTOS — headstones, plots, documents attached to a record
+// ============================================================================
+//
+// WHY file names rather than media-library attachments: an ENS cemetery export
+//      names its photos in a spreadsheet column, and the photos themselves are
+//      a folder the society downloads — often thousands of files, far past what
+//      a shared host lets anyone upload through a browser. The society copies
+//      that folder into uploads/sp-record-images/ with cPanel's File Manager,
+//      the same way member photos arrive, and each record keeps the names it
+//      was imported with. Names are looked up when the record is shown, so the
+//      spreadsheet and the folder can arrive in either order, and re-importing
+//      the same spreadsheet still matches the records already there.
+//
+// WHY the original name is tried first: ENS kept whatever name the photo was
+//      uploaded with — "1351448786_Adkins,_Henry.jpg" included — and its own
+//      import dropped every photo with a comma in the name. The file on disk is
+//      used as it is, and the URL is encoded, so no punctuation is a problem.
+
+/**
+ * Folder that holds record photos, and its public URL.
+ *
+ * @return array{dir: string, url: string}
+ */
+function sp_record_photo_base(): array {
+    $up = wp_upload_dir( null, false );
+    return [
+        'dir' => $up['basedir'] . '/sp-record-images',
+        'url' => $up['baseurl'] . '/sp-record-images',
+    ];
+}
+
+/**
+ * Split a Photos value into its file names.
+ *
+ * Names are separated by new lines, "|" or ";" — never commas, because commas
+ * appear inside real ENS file names.
+ *
+ * @param string $value Stored field value.
+ * @return string[]
+ */
+function sp_record_photo_names( string $value ): array {
+    return array_values( array_filter( array_map( 'trim', preg_split( '/[\r\n|;]+/', $value ) ), 'strlen' ) );
+}
+
+/**
+ * Find a named photo in the record-photo folder.
+ *
+ * Tries the path as written (ENS paths like upload/cemetery/4/x.jpg, if the
+ * folder was copied in whole), then the bare file name at the top of the
+ * folder, then the name WordPress would have given it on upload.
+ *
+ * @param string $name One name from sp_record_photo_names().
+ * @return string Path relative to the photo folder, or '' if not found.
+ */
+function sp_record_photo_find( string $name ): string {
+    $name = ltrim( str_replace( '\\', '/', $name ), '/' );
+    if ( '' === $name || false !== strpos( $name, "\0" ) || preg_match( '#(^|/)\.\.(/|$)#', $name ) ) {
+        return '';
+    }
+    $base = sp_record_photo_base()['dir'];
+    foreach ( array_unique( [ $name, basename( $name ), sanitize_file_name( basename( $name ) ) ] ) as $rel ) {
+        if ( '' !== $rel && is_file( $base . '/' . $rel ) ) {
+            return $rel;
+        }
+    }
+    return '';
+}
+
+/**
+ * Public URL for a found photo, each path segment encoded.
+ *
+ * @param string $rel Path from sp_record_photo_find().
+ */
+function sp_record_photo_url( string $rel ): string {
+    return sp_record_photo_base()['url'] . '/' . implode( '/', array_map( 'rawurlencode', explode( '/', $rel ) ) );
+}
+
+/**
+ * Save photos uploaded on the record edit screen into the photo folder.
+ *
+ * @param string $input Name of the multiple file input.
+ * @return string[] File names saved, relative to the photo folder.
+ */
+function sp_record_photo_save_uploads( string $input ): array {
+    if ( empty( $_FILES[ $input ]['name'] ) || ! is_array( $_FILES[ $input ]['name'] ) ) {
+        return [];
+    }
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+
+    $base = sp_record_photo_base();
+    wp_mkdir_p( $base['dir'] );
+    $to_photo_dir = static function ( $dirs ) use ( $base ) {
+        $dirs['path'] = $base['dir'];
+        $dirs['url']  = $base['url'];
+        return $dirs;
+    };
+    $mimes = [
+        'jpg|jpeg|jpe' => 'image/jpeg',
+        'png'          => 'image/png',
+        'gif'          => 'image/gif',
+        'webp'         => 'image/webp',
+    ];
+
+    $saved = [];
+    add_filter( 'upload_dir', $to_photo_dir );
+    foreach ( $_FILES[ $input ]['name'] as $i => $n ) {
+        if ( UPLOAD_ERR_OK !== ( $_FILES[ $input ]['error'][ $i ] ?? UPLOAD_ERR_NO_FILE ) ) {
+            continue;
+        }
+        $file = [
+            'name'     => $n,
+            'type'     => $_FILES[ $input ]['type'][ $i ],
+            'tmp_name' => $_FILES[ $input ]['tmp_name'][ $i ],
+            'error'    => $_FILES[ $input ]['error'][ $i ],
+            'size'     => $_FILES[ $input ]['size'][ $i ],
+        ];
+        $result = wp_handle_upload( $file, [ 'test_form' => false, 'mimes' => $mimes ] );
+        if ( empty( $result['error'] ) && ! empty( $result['file'] ) ) {
+            $saved[] = basename( $result['file'] );
+        }
+    }
+    remove_filter( 'upload_dir', $to_photo_dir );
+    return $saved;
+}
+
 function sp_render_record_edit_page(): void {
     global $wpdb;
     $prefix        = $wpdb->prefix . 'sp_';
@@ -96811,6 +96938,12 @@ function sp_render_record_edit_page(): void {
         $search_parts = [];
         foreach ( $fields as $f ) {
             $val = sanitize_textarea_field( wp_unslash( $_POST[ 'field_' . $f->id ] ?? '' ) );
+            if ( 'photos' === $f->field_type ) {
+                $val = implode( "\n", array_merge(
+                    sp_record_photo_names( $val ),
+                    sp_record_photo_save_uploads( 'photos_upload_' . $f->id )
+                ) );
+            }
             if ( $val !== '' ) {
                 $wpdb->insert( $prefix . 'record_values', [
                     'record_id'   => $record_id,
@@ -96850,12 +96983,15 @@ function sp_render_record_edit_page(): void {
     ?>
     <style id="sp-record-edit-css">
         .sp-record-edit-form { margin-top: 16px; max-width: 700px; }
+        .sp-record-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+        .sp-record-photos img { max-height: 120px; max-width: 160px; border: 1px solid #c3c4c7; }
+        .sp-record-photo-missing { padding: 4px 8px; background: #fcf0f1; border: 1px solid #d63638; font-size: 12px; }
     </style>
     <div class="wrap">
         <h1><?php echo $record_id ? esc_html__( 'Edit Record', 'societypress' ) : esc_html__( 'Add Record', 'societypress' ); ?></h1>
         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-browse&collection_id=' . $collection_id ) ); ?>">&larr; <?php echo esc_html( $collection->name ); ?></a>
 
-        <form method="post" class="sp-record-edit-form">
+        <form method="post" class="sp-record-edit-form" enctype="multipart/form-data">
             <?php wp_nonce_field( 'sp_record_save' ); ?>
             <table class="form-table">
                 <?php foreach ( $fields as $f ) :
@@ -96866,6 +97002,31 @@ function sp_render_record_edit_page(): void {
                         <td>
                             <?php if ( $f->field_type === 'textarea' ) : ?>
                                 <textarea name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" rows="3" class="large-text"><?php echo esc_textarea( $val ); ?></textarea>
+                            <?php elseif ( $f->field_type === 'photos' ) : ?>
+                                <?php $photo_names = sp_record_photo_names( $val ); ?>
+                                <?php if ( $photo_names ) : ?>
+                                    <div class="sp-record-photos">
+                                        <?php foreach ( $photo_names as $pn ) :
+                                            $found = sp_record_photo_find( $pn ); ?>
+                                            <?php if ( $found ) : ?>
+                                                <a href="<?php echo esc_url( sp_record_photo_url( $found ) ); ?>" target="_blank" rel="noopener"><img src="<?php echo esc_url( sp_record_photo_url( $found ) ); ?>" alt="<?php echo esc_attr( $pn ); ?>" loading="lazy"></a>
+                                            <?php else : ?>
+                                                <span class="sp-record-photo-missing">
+                                                    <?php
+                                                    /* translators: %s: photo file name */
+                                                    echo esc_html( sprintf( __( 'Not found: %s', 'societypress' ), $pn ) );
+                                                    ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                                <textarea name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" rows="3" class="large-text"><?php echo esc_textarea( $val ); ?></textarea>
+                                <p class="description"><?php esc_html_e( 'One photo file name per line. Delete a line to remove that photo from this record.', 'societypress' ); ?></p>
+                                <p>
+                                    <label for="photos_upload_<?php echo esc_attr( $f->id ); ?>"><?php esc_html_e( 'Add photos:', 'societypress' ); ?></label>
+                                    <input type="file" name="photos_upload_<?php echo esc_attr( $f->id ); ?>[]" id="photos_upload_<?php echo esc_attr( $f->id ); ?>" accept="image/jpeg,image/png,image/gif,image/webp" multiple>
+                                </p>
                             <?php elseif ( $f->field_type === 'number' ) : ?>
                                 <input type="number" name="field_<?php echo esc_attr( $f->id ); ?>" id="field_<?php echo esc_attr( $f->id ); ?>" value="<?php echo esc_attr( $val ); ?>" class="regular-text">
                             <?php elseif ( $f->field_type === 'date' ) : ?>
@@ -97446,6 +97607,9 @@ function sp_render_record_import_page(): void {
             <div class="wrap">
                 <h1><?php esc_html_e( 'Import Records — Map Fields', 'societypress' ); ?></h1>
                 <p><?php /* translators: %s: record collection name */ printf( esc_html__( 'Importing into: %s', 'societypress' ), '<strong>' . esc_html( $collection->name ) . '</strong>' ); ?></p>
+                <?php if ( (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$prefix}record_collection_fields WHERE collection_id = %d AND field_type = 'photos'", $collection_id ) ) ) : ?>
+                    <p class="description"><?php esc_html_e( 'Photos: map the column that holds the photo file names to your Photos field. Then copy the photo files themselves into wp-content/uploads/sp-record-images/ with your host\'s File Manager — before or after this import, either works. Names with commas or other punctuation are fine.', 'societypress' ); ?></p>
+                <?php endif; ?>
 
                 <form method="post" class="sp-record-import-map-form">
                     <?php wp_nonce_field( 'sp_record_import' ); ?>
@@ -99727,13 +99891,14 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
     $display_fields = [];
     if ( $coll_filter ) {
         $coll_fields = $wpdb->get_results( $wpdb->prepare(
-            "SELECT id, field_name, is_public
+            "SELECT id, field_name, field_type, is_public
              FROM {$prefix}record_collection_fields
              WHERE collection_id = %d ORDER BY sort_order ASC, id ASC",
             $coll_filter
         ) );
         foreach ( $coll_fields as $cf ) {
-            if ( ! $is_member && ! $cf->is_public ) {
+            // Photos show in the opened record, not as a column of file names.
+            if ( ( ! $is_member && ! $cf->is_public ) || 'photos' === $cf->field_type ) {
                 continue;
             }
             $display_fields[] = $cf;
@@ -99844,7 +100009,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         $cid_placeholders = implode( ',', array_fill( 0, count( $active_coll_ids ), '%d' ) );
         // Only the columns the frontend table/detail rendering reads.
         $all_fields = $wpdb->get_results( $wpdb->prepare(
-            "SELECT id, collection_id, field_name, is_public
+            "SELECT id, collection_id, field_name, field_type, is_public
              FROM {$prefix}record_collection_fields
              WHERE collection_id IN ({$cid_placeholders}) ORDER BY sort_order ASC",
             ...$active_coll_ids
@@ -99903,6 +100068,9 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
         .sp-records-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 32px; }
         .sp-records-detail-grid dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6d7175; margin-bottom: 2px; font-weight: 600; }
         .sp-records-detail-grid dd { margin: 0; font-size: 14px; color: #333; }
+        .sp-records-detail-photos { grid-column: 1 / -1; }
+        .sp-records-detail-photos dd { display: flex; flex-wrap: wrap; gap: 8px; }
+        .sp-records-detail-photos img { max-height: 180px; max-width: 100%; border-radius: 4px; }
         .sp-records-pagination { display: flex; justify-content: center; gap: 4px; margin-top: 20px; flex-wrap: wrap; }
         .sp-records-pagination a, .sp-records-pagination span { display: inline-block; padding: 6px 12px; border: 1px solid #d0d5dd; border-radius: 4px; font-size: 14px; text-decoration: none; color: #333; }
         .sp-records-pagination a:hover { background: #f0f0f0; }
@@ -100008,7 +100176,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
             // reader users know which record they're about to expand.
             $row_label_value = '';
             foreach ( $rec_fields as $rf_label ) {
-                if ( ! empty( $rec_values[ $rf_label->id ] ) ) {
+                if ( 'photos' !== $rf_label->field_type && ! empty( $rec_values[ $rf_label->id ] ) ) {
                     $row_label_value = wp_trim_words( (string) $rec_values[ $rf_label->id ], 6 );
                     break;
                 }
@@ -100033,7 +100201,7 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
                 $summary_parts = [];
                 $shown = 0;
                 foreach ( $rec_fields as $rf ) {
-                    if ( isset( $rec_values[ $rf->id ] ) && $rec_values[ $rf->id ] !== '' ) {
+                    if ( 'photos' !== $rf->field_type && isset( $rec_values[ $rf->id ] ) && $rec_values[ $rf->id ] !== '' ) {
                         $summary_parts[] = wp_trim_words( $rec_values[ $rf->id ], 6 );
                         $shown++;
                         if ( $shown >= 4 ) break;
@@ -100091,6 +100259,19 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
                 $rec_values = $values_map[ $rec->id ] ?? [];
                 $field_list = [];
                 foreach ( $rec_fields as $rf ) {
+                    if ( 'photos' === $rf->field_type ) {
+                        // Only photos actually on disk are sent; a name with no
+                        // file behind it would show the visitor a broken image.
+                        $urls = [];
+                        foreach ( sp_record_photo_names( (string) ( $rec_values[ $rf->id ] ?? '' ) ) as $pn ) {
+                            $found = sp_record_photo_find( $pn );
+                            if ( $found ) {
+                                $urls[] = sp_record_photo_url( $found );
+                            }
+                        }
+                        $field_list[] = [ 'name' => $rf->field_name, 'value' => '', 'photos' => $urls ];
+                        continue;
+                    }
                     $field_list[] = [
                         'name'  => $rf->field_name,
                         'value' => $rec_values[ $rf->id ] ?? '',
@@ -100136,7 +100317,13 @@ function sp_render_records_frontend( array $widget_settings = [] ): void {
 
             var html = '<div class="sp-records-detail"><div class="sp-records-detail-grid">';
             data.fields.forEach(function(f) {
-                if (f.value) {
+                if (f.photos && f.photos.length) {
+                    html += '<dl class="sp-records-detail-photos"><dt>' + escHtml(f.name) + '</dt><dd>';
+                    f.photos.forEach(function(url) {
+                        html += '<a href="' + escHtml(url) + '" target="_blank" rel="noopener"><img src="' + escHtml(url) + '" alt="' + escHtml(f.name) + '" loading="lazy"></a>';
+                    });
+                    html += '</dd></dl>';
+                } else if (f.value) {
                     html += '<dl><dt>' + escHtml(f.name) + '</dt><dd>' + escHtml(f.value) + '</dd></dl>';
                 }
             });

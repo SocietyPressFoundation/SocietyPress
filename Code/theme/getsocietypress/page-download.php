@@ -2,17 +2,26 @@
 /**
  * Download Page Template (page-download.php)
  *
- * The page people came here for. Big download button, what's included,
- * quick-start steps, and links to documentation.
+ * Opens with the one decision every visitor has to make: run SocietyPress
+ * yourself (free), or have us host it (paid service). Only then does it get
+ * into the download itself.
+ *
+ * WHY the fork comes first: people arriving here are deciding how to get
+ * started. A non-technical board member who downloads a PHP file and then
+ * discovers they also need a web host has had a bad first hour. Showing both
+ * paths side by side — with "the software is free either way" above them —
+ * lets them pick before they invest any effort.
  *
  * Sections:
- * 1. Hero — "Download SocietyPress"
- * 2. What's Included — plugin + theme description
- * 3. Quick Start — installer-first, with manual upload as fallback
- * 4. Requirements reminder
+ * 1. Hero — "Two ways to run SocietyPress" (Option A / Option B cards)
+ * 2. Who does what? — shared comparison table (template-parts/hosting-choice.php)
+ * 3. Option A: Download — installer + full bundle
+ * 4. What's Included — plugin + theme description
+ * 5. Quick Start — installer-first, with manual upload as fallback
+ * 6. Requirements reminder
  *
  * @package getsocietypress
- * @version 0.03d
+ * @version 0.04d
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -22,21 +31,93 @@ get_header();
 $sp_ver           = gsp_get_sp_version();
 $sp_download_url  = gsp_get_download_url();
 $sp_installer_url = gsp_get_installer_url();
+$sp_from_price    = gsp_get_hosting_from_price();
 ?>
 
 <!-- ==========================================================================
-     1. DOWNLOAD HERO
-     Two equal paths side-by-side: the installer (recommended for most) and
-     the full bundle (for anyone who'd rather upload files by hand).
+     1. TWO WAYS HERO
+     Two equal cards. Neither is "recommended" — the right answer depends on
+     whether the society has someone comfortable running a website, and we
+     say exactly that under each card.
      ========================================================================== -->
-<section class="dl-hero">
+<section class="dl-hero host-fork">
     <div class="container">
         <div class="dl-hero__content">
 
-            <h1 class="dl-hero__title">Download SocietyPress</h1>
+            <h1 class="dl-hero__title">Two ways to run SocietyPress</h1>
 
             <p class="dl-hero__subtitle">
-                Free. Open source. No account required.
+                The software is free either way. The only question is who takes care of the website.
+            </p>
+
+            <div class="host-fork__choices">
+
+                <!-- Option A: self-host -->
+                <div class="host-fork__card">
+                    <span class="host-fork__label">Option A</span>
+                    <h2 class="host-fork__title">Host it yourself</h2>
+                    <p class="host-fork__price">Free</p>
+                    <p class="host-fork__price-note">plus whatever your web host charges, usually $5&ndash;15 a month</p>
+                    <ul class="host-fork__list">
+                        <li>You pick a web host and pay them</li>
+                        <li>You upload the installer and run it</li>
+                        <li>You install updates and keep backups</li>
+                        <li>Help comes from the docs and forums</li>
+                    </ul>
+                    <p class="host-fork__fit"><strong>Best if</strong> someone in your society is comfortable running a website.</p>
+                    <a href="#download" class="btn btn-outline btn-xl host-fork__btn">Download free</a>
+                </div>
+
+                <!-- Option B: hosted -->
+                <div class="host-fork__card host-fork__card--hosted">
+                    <span class="host-fork__label">Option B</span>
+                    <h2 class="host-fork__title">We host it for you</h2>
+                    <p class="host-fork__price">From $<?php echo esc_html( $sp_from_price ); ?> a month</p>
+                    <p class="host-fork__price-note">hosting, updates, backups and support included</p>
+                    <ul class="host-fork__list">
+                        <li>No web host to find or pay</li>
+                        <li>We install and set it up</li>
+                        <li>We install updates and keep daily backups</li>
+                        <li>You email us when you need help</li>
+                    </ul>
+                    <p class="host-fork__fit"><strong>Best if</strong> you&rsquo;d rather never think about servers.</p>
+                    <a href="<?php echo esc_url( home_url( '/hosting/' ) ); ?>" class="btn btn-primary btn-xl host-fork__btn">See hosting plans</a>
+                </div>
+
+            </div>
+
+            <p class="dl-hero__meta dl-hero__meta--footer">
+                <a href="#compare">Not sure? Compare them side by side &darr;</a>
+            </p>
+
+        </div>
+    </div>
+</section>
+
+
+<!-- ==========================================================================
+     2. WHO DOES WHAT? — shared with the Hosting page
+     ========================================================================== -->
+<?php get_template_part( 'template-parts/hosting-choice' ); ?>
+
+
+<!-- ==========================================================================
+     3. OPTION A: DOWNLOAD
+     Two equal paths side-by-side: the installer (recommended for most) and
+     the full bundle (for anyone who'd rather upload files by hand).
+     ========================================================================== -->
+<section class="dl-hero dl-hero--download" id="download">
+    <div class="container">
+        <div class="dl-hero__content">
+
+            <p class="host-fork__label">Option A &middot; Host it yourself</p>
+
+            <h2 class="dl-hero__title">Download SocietyPress</h2>
+
+            <p class="dl-hero__subtitle">
+                Free. Open source. No account required. You&rsquo;ll need your own
+                <a href="<?php echo esc_url( home_url( '/docs/requirements/' ) ); ?>">web host</a> &mdash;
+                or <a href="<?php echo esc_url( home_url( '/hosting/' ) ); ?>">let us host it for you</a>.
             </p>
 
             <div class="dl-hero__version">
@@ -109,7 +190,7 @@ $sp_installer_url = gsp_get_installer_url();
 
 
 <!-- ==========================================================================
-     2. WHAT'S INCLUDED
+     4. WHAT'S INCLUDED
      Two cards: the plugin and the themes.
      ========================================================================== -->
 <section class="dl-included section">
@@ -178,7 +259,7 @@ $sp_installer_url = gsp_get_installer_url();
 
 
 <!-- ==========================================================================
-     3. QUICK START
+     5. QUICK START
      Installer-first. The one-click installer is the recommended path; the
      manual plugin/theme upload stays as a fallback for anyone who wants it.
      ========================================================================== -->
@@ -270,7 +351,7 @@ $sp_installer_url = gsp_get_installer_url();
 
 
 <!-- ==========================================================================
-     4. REQUIREMENTS REMINDER
+     6. REQUIREMENTS REMINDER
      Light nudge to check requirements before installing.
      ========================================================================== -->
 <section class="dl-req-reminder section">

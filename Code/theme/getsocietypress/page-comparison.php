@@ -339,7 +339,7 @@ get_header();
     <div class="container">
         <div class="cmp-cta__content">
             <h2>Pick the platform that's actually yours.</h2>
-            <p>Free to download, free to run, free forever. No vendor will ever invoice you for it.</p>
+            <p>Free to download, free to run, free forever. No vendor will ever charge you for the software itself.</p>
             <div class="cmp-cta__actions">
                 <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary btn-lg">Download SocietyPress</a>
                 <a href="<?php echo esc_url( home_url( '/features/' ) ); ?>" class="btn btn-secondary btn-lg">See all features</a>

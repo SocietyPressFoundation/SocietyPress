@@ -20,6 +20,26 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.67] — 2026-10-27
+
+**Large mailings no longer lose members to your web host's hourly limit.**
+Most web hosts only allow a certain number of emails per hour — often 500 —
+and quietly throw away anything over it. Until now a newsletter to a big
+membership went out in quick batches, so a 750-member society could lose the
+last few hundred messages without anyone knowing.
+
+SocietyPress now counts every email the site sends and spaces large mailings
+out to stay under the limit. When it's reached, the mailing pauses and picks
+up again on its own; the email's page says when ("paused for your hourly
+email limit, resumes about 3:40 pm"). Renewal reminders, expired-membership
+notices and event reminders wait their turn the same way and finish later
+the same day. Password resets, receipts and other one-off emails are never
+held back.
+
+The limit is set under **Send Email → Sending speed**. The default, 400 an
+hour, suits most web hosts. Societies that send through an email service
+such as Brevo can choose **No limit**.
+
 ## [1.5.66] — 2026-10-26
 
 **Records can have photos.** A collection field can now be a **Photos** field —

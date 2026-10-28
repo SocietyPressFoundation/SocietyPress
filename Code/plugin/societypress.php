@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.66
+ * Version:     1.5.67
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.66' );
+define( 'SOCIETYPRESS_VERSION', '1.5.67' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40840,7 +40840,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.66',
+            'version'     => '1.5.67',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40848,7 +40848,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.66',
+            'version'     => '1.5.67',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40856,7 +40856,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.66',
+            'version'     => '1.5.67',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40864,7 +40864,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.66',
+            'version'     => '1.5.67',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40872,7 +40872,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.66',
+            'version'     => '1.5.67',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -67077,6 +67077,13 @@ function sp_send_event_reminders(): void {
 
                 $html = sp_build_email_html( $heading, $body );
 
+                // Out of hourly allowance — resume later. Already-sent
+                // reminders are recorded below, so the rerun skips them.
+                if ( sp_mail_rate_remaining() < 1 ) {
+                    sp_mail_rate_schedule_resume( 'sp_event_reminder_resume' );
+                    return;
+                }
+
                 add_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
                 wp_mail( $email, $subject, $html );
                 remove_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
@@ -85297,6 +85304,12 @@ function sp_process_renewal_reminders(): void {
     $site_name        = get_bloginfo( 'name' );
     $subject_template = $settings['renewal_reminder_subject'] ?? __( 'Your membership expires soon', 'societypress' );
 
+    // Set when the hourly email limit runs out mid-run. The rest of the job
+    // (including expired notices) then resumes in a single follow-up event —
+    // safe because every send is recorded in renewal_reminders and skipped
+    // on the next pass.
+    $deferred = false;
+
     // ---- Send renewal reminders for each enabled interval ----
     foreach ( $intervals as $days ) {
         // Base on current_time() so "now" matches the site timezone the
@@ -85344,6 +85357,12 @@ function sp_process_renewal_reminders(): void {
             $subject = sp_replace_merge_tags( $subject_template, $member, [ 'days_until_expiration' => $days ] );
             $html    = sp_build_email_html( $subject, $body_html );
 
+            // Out of hourly allowance — stop here and finish later today.
+            if ( sp_mail_rate_remaining() < 1 ) {
+                $deferred = true;
+                break 2;
+            }
+
             wp_mail(
                 $member->user_email,
                 sprintf( '[%s] %s', $site_name, $subject ),
@@ -85361,10 +85380,20 @@ function sp_process_renewal_reminders(): void {
     }
 
     // ---- Send expired membership notices ----
-    sp_process_expired_notices();
+    // Skipped while deferred: expired notices and the status sweep must run
+    // in this order, after the reminders, so the continuation does all three.
+    if ( ! $deferred && ! sp_process_expired_notices() ) {
+        $deferred = true;
+    }
 
     // ---- Keep member statuses accurate regardless of the email toggle ----
-    sp_expire_lapsed_members();
+    if ( ! $deferred ) {
+        sp_expire_lapsed_members();
+    }
+
+    if ( $deferred ) {
+        sp_mail_rate_schedule_resume( 'sp_renewal_reminder_resume' );
+    }
 
     delete_transient( 'sp_notification_batch_running' );
 }
@@ -85421,15 +85450,18 @@ function sp_expire_lapsed_members(): void {
  *      Sent once (day after expiration), tracked in renewal_reminders to prevent
  *      duplicate sends. Also updates member status to 'expired' so the admin
  *      list table reflects reality without manual intervention.
+ *
+ * @return bool False when the hourly email limit stopped it partway, so the
+ *              caller can schedule a continuation; true when it finished.
  */
-function sp_process_expired_notices(): void {
+function sp_process_expired_notices(): bool {
     global $wpdb;
     $prefix   = $wpdb->prefix . 'sp_';
     $settings = sp_settings();
 
     // Only send if expired notices are enabled (default: off)
     if ( empty( $settings['expired_notice_enabled'] ) ) {
-        return;
+        return true;
     }
 
     // Base on current_time() so "yesterday" matches the site timezone the
@@ -85468,6 +85500,11 @@ function sp_process_expired_notices(): void {
         $member_subject = sp_replace_merge_tags( $subject, $member );
         $html           = sp_build_email_html( $member_subject, $body_html );
 
+        // Out of hourly allowance — the caller resumes the job later today.
+        if ( sp_mail_rate_remaining() < 1 ) {
+            return false;
+        }
+
         wp_mail(
             $member->user_email,
             sprintf( '[%s] %s', $site_name, $member_subject ),
@@ -85486,6 +85523,8 @@ function sp_process_expired_notices(): void {
         // on the same daily run and honors the Renewal Grace Period; flipping
         // the status here expired members on day one regardless of it.
     }
+
+    return true;
 }
 
 /**
@@ -86762,6 +86801,20 @@ function sp_render_blast_email_page(): void {
         exit;
     }
 
+    // Save the hourly sending limit (the "Sending speed" box on this screen).
+    // WHY here and not on a Settings tab: it is the bulk-email screen where
+    // the limit actually bites, and the person sending newsletters is the one
+    // who needs to see it. Only the offered values are accepted.
+    if ( isset( $_POST['sp_email_hourly_limit'] ) ) {
+        check_admin_referer( 'sp_save_email_hourly_limit' );
+        $limit = (int) $_POST['sp_email_hourly_limit'];
+        if ( array_key_exists( $limit, sp_mail_hourly_limit_choices() ) ) {
+            update_option( 'sp_email_hourly_limit', $limit, false );
+        }
+        wp_redirect( admin_url( 'admin.php?page=sp-blast-email&speed_saved=1' ) );
+        exit;
+    }
+
     // Clone an existing blast into a fresh draft. WHY: societies send near-identical
     // emails repeatedly (monthly meeting notice, renewal nudge); reusing a past
     // one beats retyping it. Sent blasts are read-only, so this is how you "edit
@@ -86837,6 +86890,10 @@ function sp_render_blast_email_page(): void {
     <style id="sp-blast-email-css">
         .sp-blast-email-tabs { margin: 12px 0; }
         .sp-blast-email-table { margin-top: 16px; clear: both; }
+        .sp-send-speed { background: #fff; border: 1px solid #c3c4c7; border-radius: 4px; padding: 12px 16px; margin: 16px 0; max-width: 800px; }
+        .sp-send-speed h2 { font-size: 14px; margin: 0 0 6px; }
+        .sp-send-speed p { margin: 4px 0 10px; color: #50575e; }
+        .sp-send-speed select { margin-right: 8px; }
     </style>
     <div class="wrap sp-admin-wrap">
         <h1 class="wp-heading-inline"><?php esc_html_e( 'Send Email', 'societypress' ); ?></h1>
@@ -86961,6 +87018,33 @@ function sp_render_blast_email_page(): void {
         <?php if ( isset( $_GET['saved'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Draft saved.', 'societypress' ); ?></p></div>
         <?php endif; ?>
+
+        <?php if ( isset( $_GET['speed_saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Sending speed saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <!-- Sending speed — the hourly email limit (see sp_mail_hourly_limit) -->
+        <form method="post" class="sp-send-speed">
+            <?php wp_nonce_field( 'sp_save_email_hourly_limit' ); ?>
+            <h2><?php esc_html_e( 'Sending speed', 'societypress' ); ?></h2>
+            <p>
+                <?php
+                printf(
+                    /* translators: 1: emails sent in the last hour, 2: hourly limit or "no limit" */
+                    esc_html__( 'Most web hosts only allow a certain number of emails per hour and quietly throw away the rest. SocietyPress spaces large mailings out to stay under your limit, so everyone gets them. Sent in the last hour: %1$s of %2$s.', 'societypress' ),
+                    esc_html( number_format_i18n( sp_mail_rate_sent_last_hour() ) ),
+                    esc_html( sp_mail_hourly_limit() ? number_format_i18n( sp_mail_hourly_limit() ) : __( 'no limit', 'societypress' ) )
+                );
+                ?>
+            </p>
+            <label for="sp-email-hourly-limit" class="screen-reader-text"><?php esc_html_e( 'Emails per hour', 'societypress' ); ?></label>
+            <select id="sp-email-hourly-limit" name="sp_email_hourly_limit">
+                <?php foreach ( sp_mail_hourly_limit_choices() as $value => $label ) : ?>
+                    <option value="<?php echo esc_attr( $value ); ?>" <?php selected( sp_mail_hourly_limit(), $value ); ?>><?php echo esc_html( $label ); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <button type="submit" class="button"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
+        </form>
 
         <!-- Status filter tabs -->
         <ul class="subsubsub sp-blast-email-tabs">
@@ -87247,7 +87331,17 @@ function sp_render_blast_email_detail( int $blast_id ): void {
                         (int) $blast->total_recipients
                     );
                 ?></td></tr>
-                <tr><th scope="row" class="sp-bg-subtle"><?php esc_html_e( 'Status', 'societypress' ); ?></th><td><strong><?php echo esc_html( sp_localized_status( $blast->status ) ); ?></strong></td></tr>
+                <tr><th scope="row" class="sp-bg-subtle"><?php esc_html_e( 'Status', 'societypress' ); ?></th><td><strong><?php echo esc_html( sp_localized_status( $blast->status ) ); ?></strong><?php
+                    // A blast waiting out the hourly limit looks stuck unless we say so.
+                    $resume_at = 'sending' === $blast->status ? (int) get_transient( 'sp_blast_resume_' . (int) $blast->id ) : 0;
+                    if ( $resume_at > time() ) {
+                        echo ' &mdash; ' . esc_html( sprintf(
+                            /* translators: %s: time of day sending resumes, e.g. 3:40 pm */
+                            __( 'paused for your hourly email limit, resumes about %s', 'societypress' ),
+                            wp_date( get_option( 'time_format' ), $resume_at )
+                        ) );
+                    }
+                ?></td></tr>
                 <tr><th scope="row" class="sp-bg-subtle"><?php esc_html_e( 'Sent', 'societypress' ); ?></th><td><?php echo $blast->sent_at ? esc_html( date_i18n( 'F j, Y g:i a', strtotime( $blast->sent_at ) ) ) : '—'; ?></td></tr>
             </tbody>
         </table>
@@ -88035,12 +88129,176 @@ function sp_blast_process_merge_tags( string $body, object $recipient ): string 
     return str_replace( array_keys( $legacy ), array_values( $legacy ), $body );
 }
 
+// ============================================================================
+// HOURLY EMAIL LIMIT — keep bulk sends under the web host's per-hour cap
+//
+// WHY: Most shared hosts limit how many emails one account may send per hour
+//      (Hawk Host allows 500). Mail over the cap is usually DISCARDED, not
+//      queued — so a 750-member newsletter sent in quick batches would silently
+//      never reach the last few hundred members, and nobody would know.
+//
+// HOW: Every successful wp_mail() — SocietyPress, core, other plugins — is
+//      counted into per-minute buckets covering the last hour (a rolling
+//      window, because hosts count "the last 60 minutes", not clock hours).
+//      Bulk senders (blast email, renewal reminders, expired notices, event
+//      reminders) check the remaining allowance before each message and, when
+//      it runs out, pause and resume automatically once older sends age out.
+//      One-off emails — password resets, receipts, welcome emails — are never
+//      held back; the default of 400 leaves headroom for them under a 500 cap.
+//
+//      Setting: the sp_email_hourly_limit option (Send Email → Sending speed).
+//      0 = no limit, for societies sending through a service like Brevo.
+//      Default 400 leaves headroom under a typical 500/hour cap.
+//
+// WHY its own option, not societypress_settings: that array is registered
+//      through the Settings API, so update_option() on it runs
+//      sp_sanitize_settings(), which keeps only keys from the submitting
+//      Settings page and requires sp_manage_settings. A save from the Send
+//      Email screen would be silently dropped. Same reasoning as
+//      sp_menu_layout and the affiliations option.
+// ============================================================================
+
+/**
+ * The society's configured hourly email limit. 0 means "no limit".
+ */
+function sp_mail_hourly_limit(): int {
+    return max( 0, (int) get_option( 'sp_email_hourly_limit', 400 ) );
+}
+
+/**
+ * The hourly limits offered in the Sending speed box.
+ *
+ * WHY a fixed list rather than a number field: the people choosing this are
+ * not going to know their host's exact cap, and each option says in plain
+ * words who it is for.
+ *
+ * @return array<int,string> limit => label
+ */
+function sp_mail_hourly_limit_choices(): array {
+    return [
+        100  => __( '100 an hour — very strict hosts', 'societypress' ),
+        200  => __( '200 an hour', 'societypress' ),
+        400  => __( '400 an hour — recommended for most web hosts', 'societypress' ),
+        800  => __( '800 an hour', 'societypress' ),
+        1500 => __( '1,500 an hour', 'societypress' ),
+        0    => __( 'No limit — we send through an email service like Brevo', 'societypress' ),
+    ];
+}
+
+/**
+ * Per-minute send counts for the last hour, oldest entries pruned.
+ *
+ * Stored as [ minute_timestamp => count ] in a non-autoloaded option. At most
+ * 60 entries, so reading and summing it is trivial.
+ *
+ * @return array<int,int>
+ */
+function sp_mail_rate_buckets(): array {
+    $buckets = get_option( 'sp_mail_rate_buckets', [] );
+    if ( ! is_array( $buckets ) ) {
+        return [];
+    }
+    $cutoff = time() - HOUR_IN_SECONDS;
+    foreach ( $buckets as $minute => $count ) {
+        if ( (int) $minute <= $cutoff ) {
+            unset( $buckets[ $minute ] );
+        }
+    }
+    return $buckets;
+}
+
+/**
+ * Record that $count emails just left the site.
+ */
+function sp_mail_rate_record( int $count ): void {
+    if ( $count < 1 ) {
+        return;
+    }
+    $buckets  = sp_mail_rate_buckets();
+    $minute   = (int) ( floor( time() / MINUTE_IN_SECONDS ) * MINUTE_IN_SECONDS );
+    $buckets[ $minute ] = ( $buckets[ $minute ] ?? 0 ) + $count;
+    update_option( 'sp_mail_rate_buckets', $buckets, false );
+}
+
+/**
+ * How many emails the site has sent in the last 60 minutes.
+ */
+function sp_mail_rate_sent_last_hour(): int {
+    return (int) array_sum( sp_mail_rate_buckets() );
+}
+
+/**
+ * How many more emails a bulk send may use right now.
+ *
+ * Returns PHP_INT_MAX when the limit is switched off.
+ */
+function sp_mail_rate_remaining(): int {
+    $limit = sp_mail_hourly_limit();
+    if ( 0 === $limit ) {
+        return PHP_INT_MAX;
+    }
+    return max( 0, $limit - sp_mail_rate_sent_last_hour() );
+}
+
+/**
+ * Unix time when sending room next opens up: the moment the oldest minute
+ * in the window ages out (plus a minute's margin so we don't wake early).
+ */
+function sp_mail_rate_next_opening(): int {
+    $buckets = sp_mail_rate_buckets();
+    if ( empty( $buckets ) ) {
+        return time() + MINUTE_IN_SECONDS;
+    }
+    return (int) min( array_keys( $buckets ) ) + HOUR_IN_SECONDS + MINUTE_IN_SECONDS;
+}
+
+/**
+ * Schedule a one-off continuation of a paused bulk send, unless one is
+ * already waiting. Used by the daily reminder jobs, which are safe to re-run
+ * because each records who it has already emailed.
+ *
+ * @param string $hook Single-event hook that re-runs the job.
+ */
+function sp_mail_rate_schedule_resume( string $hook ): void {
+    if ( ! wp_next_scheduled( $hook ) ) {
+        wp_schedule_single_event( sp_mail_rate_next_opening(), $hook );
+    }
+}
+
+/**
+ * Count every successfully sent email toward the hourly window.
+ *
+ * WHY count To + Cc + Bcc: hosts count recipients, not wp_mail() calls. A
+ * message to three people uses three of the hourly allowance.
+ *
+ * @param array $mail_data The wp_mail() arguments, as passed to wp_mail_succeeded.
+ */
+function sp_mail_rate_on_sent( $mail_data ): void {
+    $count   = count( (array) ( $mail_data['to'] ?? [] ) );
+    $headers = $mail_data['headers'] ?? [];
+    if ( is_string( $headers ) ) {
+        $headers = explode( "\n", str_replace( "\r\n", "\n", $headers ) );
+    }
+    foreach ( (array) $headers as $header ) {
+        if ( is_string( $header ) && preg_match( '/^\s*(cc|bcc)\s*:(.*)$/i', $header, $m ) ) {
+            $count += count( array_filter( array_map( 'trim', explode( ',', $m[2] ) ) ) );
+        }
+    }
+    sp_mail_rate_record( max( 1, $count ) );
+}
+add_action( 'wp_mail_succeeded', 'sp_mail_rate_on_sent' );
+
+// Continuations for the daily reminder jobs when they hit the hourly limit.
+add_action( 'sp_renewal_reminder_resume', 'sp_process_renewal_reminders' );
+add_action( 'sp_event_reminder_resume', 'sp_send_event_reminders' );
+
 /**
  * WP Cron handler: send a batch of blast emails.
  *
  * WHY: Sending 300+ emails in one PHP request would timeout on shared hosting.
  *      Instead we send in batches of 50 (configurable), then schedule the next
- *      batch via WP cron. Each individual email is logged to sp_email_log for
+ *      batch via WP cron. Batches also respect the hourly email limit — see
+ *      sp_mail_rate_remaining() — and pause until room opens when it's used up. Each individual email is logged to sp_email_log for
  *      the audit trail. Progress is tracked on the sp_blast_emails row.
  *
  * @param int $blast_id The blast email row ID.
@@ -88060,6 +88318,19 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
 
     $settings   = sp_settings();
     $batch_size = (int) ( $settings['blast_batch_size'] ?? 50 );
+
+    // Hourly limit: if the allowance is used up, pause and come back for the
+    // same offset once room opens. The resume time is kept so the blast's
+    // screen can say "paused until about 3:40 PM" instead of looking stuck.
+    $allowance = sp_mail_rate_remaining();
+    if ( $allowance < 1 ) {
+        $resume_at = sp_mail_rate_next_opening();
+        set_transient( 'sp_blast_resume_' . $blast_id, $resume_at, 2 * HOUR_IN_SECONDS );
+        wp_schedule_single_event( $resume_at, 'sp_blast_email_send_batch', [ $blast_id, $offset ] );
+        return;
+    }
+    delete_transient( 'sp_blast_resume_' . $blast_id );
+    $batch_size = min( $batch_size, $allowance );
 
     $recipients = sp_blast_get_recipients(
         $blast->recipient_type,

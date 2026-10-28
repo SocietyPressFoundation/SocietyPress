@@ -31,7 +31,8 @@ defined( 'ABSPATH' ) || exit;
                 <div class="footer-brand__name">Society<span>Press</span></div>
                 <p class="footer-brand__tagline">
                     A free, open-source platform built for genealogical societies.
-                    No pricing. No tiers. Just community software, freely given.
+                    SocietyPress is free, forever. Host it yourself, or
+                    <a href="<?php echo esc_url( home_url( '/hosting/' ) ); ?>">let us host it for you</a>.
                 </p>
                 <p class="footer-brand__demo">
                     <a href="https://demo.getsocietypress.org" target="_blank" rel="noopener">

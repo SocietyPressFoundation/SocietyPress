@@ -84,9 +84,11 @@ get_header();
                 </summary>
                 <div class="faq-item__answer">
                     <p>
-                        Nothing. SocietyPress is completely free. There are no paid tiers, no premium
-                        features, no subscriptions. The only cost is your own web hosting, which
-                        typically runs $5–15/month on a standard shared plan.
+                        The software costs nothing, and never will. There is no premium version and
+                        no locked features. If you host it yourself, your only cost is your own web
+                        hosting, which typically runs $5–15/month on a standard shared plan. If you'd
+                        rather not deal with hosting at all, we offer optional hosted plans that
+                        include updates, backups and support. Same software either way.
                     </p>
                 </div>
             </details>

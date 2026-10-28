@@ -292,20 +292,29 @@ add_filter( 'excerpt_length', 'gsp_excerpt_length' );
 /**
  * Current SocietyPress plugin version.
  *
- * Hardcoded here so every page can cite the same version without a network
- * round-trip. Bump this constant whenever a new release ships — a fresh
- * deploy is already part of the release flow, so this stays in sync
- * naturally.
+ * Reads the version from the SocietyPress plugin running on this same site.
+ * deploy.sh ships the plugin here in the same run that rebuilds
+ * downloads/societypress-latest.zip, so the installed plugin and the bundle
+ * people download carry the same number.
+ *
+ * WHY not a hardcoded string: this used to return a literal that had to be
+ * hand-edited on every release. Nobody did, and the download and features
+ * pages advertised 1.1.11 while the bundle held 1.5.66 — fifty-five releases
+ * stale. Reading the constant means the number can't drift.
+ *
+ * The literal below is only a fallback for when the plugin is deactivated
+ * (e.g. mid-update). It may lag; that's acceptable for a rare edge case.
  *
  * We used to fetch this from GitHub's API, but the repo is private so the
- * request always fell through to the fallback anyway. Removing the fetch
- * saves a per-12h API miss (no log noise, no wasted HTTP timeout budget)
- * and removes one reason for the page to hang if GitHub is slow.
+ * request always fell through to the fallback anyway.
  *
- * Returns the version as a plain string (e.g. "1.0.47"), no "v" prefix.
+ * Returns the version as a plain string (e.g. "1.5.66"), no "v" prefix.
  */
 function gsp_get_sp_version() {
-    return '1.1.11';
+    if ( defined( 'SOCIETYPRESS_VERSION' ) ) {
+        return SOCIETYPRESS_VERSION;
+    }
+    return '1.5.67';
 }
 
 
@@ -386,6 +395,119 @@ function gsp_get_download_url() {
  */
 function gsp_get_installer_url() {
     return home_url( '/downloads/sp-installer.php' );
+}
+
+
+/**
+ * SocietyPress Hosting plans — the single source of truth for prices.
+ *
+ * WHY one function: prices appear on the Hosting page, on the download
+ * page's "Two ways" cards ("from $15/month") and on the homepage. Keeping
+ * them here means a price change is one edit, not a hunt through templates
+ * that is guaranteed to miss one.
+ *
+ * Tiers follow membership size because that is how boards already think
+ * about cost (and how ENS-R bills them), so the comparison is instant.
+ * Annual price = ten months: "two months free" for societies that pay once
+ * a year at the board meeting, which is most of them.
+ *
+ * The SOFTWARE is free either way. These prices are for the hosting
+ * service only — Stricklin Development, LLC runs the servers, updates,
+ * backups and support.
+ *
+ * Email: mailboxes are capped per tier and count toward storage, while
+ * forwarders are unlimited. WHY: every hosted society shares one IP address
+ * on the reseller server, so a single stolen mailbox password that starts
+ * sending spam gets that IP blocklisted for EVERY society's dues reminders
+ * and newsletters. Forwarders (president@ → the president's own inbox) have
+ * no password to steal, use no storage, and are what most societies want.
+ *
+ * @return array[] Each plan: name, members, monthly, annual, storage, mailboxes.
+ */
+function gsp_get_hosting_plans(): array {
+    return array(
+        array(
+            'name'    => 'Small Society',
+            'members' => 'Up to 250 members',
+            'monthly' => 15,
+            'annual'  => 150,
+            'storage' => '1 GB',
+            'mailboxes' => 5,
+        ),
+        array(
+            'name'    => 'Growing Society',
+            'members' => '250 to 750 members',
+            'monthly' => 25,
+            'annual'  => 250,
+            'storage' => '3 GB',
+            'mailboxes' => 10,
+        ),
+        array(
+            'name'    => 'Large Society',
+            'members' => 'More than 750 members',
+            'monthly' => 40,
+            'annual'  => 400,
+            'storage' => '5 GB',
+            'mailboxes' => 20,
+        ),
+    );
+}
+
+
+/**
+ * Lowest monthly hosting price, for "from $15/month" copy.
+ *
+ * Derived from gsp_get_hosting_plans() so the teaser can never quote a
+ * price the Hosting page doesn't offer.
+ */
+function gsp_get_hosting_from_price(): int {
+    return (int) min( wp_list_pluck( gsp_get_hosting_plans(), 'monthly' ) );
+}
+
+
+/**
+ * Last day the done-for-you move-in service is offered (Y-m-d).
+ *
+ * WHY a deadline: the migration service exists for the wave of societies
+ * leaving ENS before ENS-C shuts down on 2027-05-31. Charles doesn't want to
+ * be doing hand migrations indefinitely. After this date the offer drops off
+ * the Hosting page by itself; the free self-serve spreadsheet import remains.
+ * To extend the offer, change this date — nothing else.
+ */
+function gsp_get_hosting_migration_deadline(): string {
+    return '2027-05-31';
+}
+
+
+/**
+ * Is the done-for-you move-in service still offered today?
+ *
+ * Compared in the site's own timezone so the offer runs through the whole
+ * last day, not until midnight UTC.
+ */
+function gsp_hosting_migration_offer_open(): bool {
+    return current_time( 'Y-m-d' ) <= gsp_get_hosting_migration_deadline();
+}
+
+
+/**
+ * Human-readable migration deadline, e.g. "May 31, 2027".
+ */
+function gsp_get_hosting_migration_deadline_label(): string {
+    return wp_date( 'F j, Y', strtotime( gsp_get_hosting_migration_deadline() . ' 12:00:00' ) );
+}
+
+
+/**
+ * Where "Get started with hosting" buttons point.
+ *
+ * For now this is an email to the project inbox: signups are set up by hand
+ * while the WHMCS billing portal is being configured. When WHMCS is live,
+ * change this ONE return value to its order-form URL and every hosting
+ * button on the site follows.
+ */
+function gsp_get_hosting_signup_url(): string {
+    return 'mailto:hello@getsocietypress.org?subject=' . rawurlencode( 'SocietyPress Hosting' );
 }
 
 

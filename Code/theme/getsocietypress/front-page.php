@@ -5,7 +5,7 @@
  * The main landing page for societypress.net. Tells the SocietyPress story
  * in clear, confident sections:
  *
- * 1. Hero — what it is, two CTAs (download + demo)
+ * 1. Hero — what it is, two CTAs (download + demo), one line on hosting
  * 2. Features — 6-card grid showing the real breadth of the platform
  * 3. Demo — see it in action callout
  * 4. Migration — EasyNetSites societies are the target market
@@ -51,6 +51,15 @@ get_header();
                     See the Demo
                 </a>
             </div>
+
+            <!-- The one homepage line about hosting. Says "free" first so no one
+                 reads it as an upsell, then points at the side-by-side choice. -->
+            <p class="hero__hosting-note">
+                Free to download and run yourself &mdash; or
+                <a href="<?php echo esc_url( home_url( '/hosting/' ) ); ?>">let us host it for you</a>
+                from $<?php echo esc_html( gsp_get_hosting_from_price() ); ?> a month.
+                <a href="<?php echo esc_url( home_url( '/download/#compare' ) ); ?>">Compare the two &rarr;</a>
+            </p>
 
         </div>
     </div>

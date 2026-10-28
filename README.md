@@ -4,8 +4,9 @@
 
 **A complete WordPress platform for genealogical and historical societies.**
 
-Free and open source under the GPL. No pricing tiers, no upgrades, no lock-in —
-just the whole thing, given away.
+Free and open source under the GPL. No premium version, no locked features, no lock-in —
+just the whole thing, given away. Host it yourself, or have it hosted for you at
+[societypress.net](https://societypress.net); the software is the same, and free, either way.
 
 [![License: GPL v2+](https://img.shields.io/badge/License-GPL%20v2%2B-blue.svg)](LICENSE)
 [![WordPress: 6.0+](https://img.shields.io/badge/WordPress-6.0%2B-21759b.svg)](https://wordpress.org/)

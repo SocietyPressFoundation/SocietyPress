@@ -314,7 +314,7 @@ function gsp_get_sp_version() {
     if ( defined( 'SOCIETYPRESS_VERSION' ) ) {
         return SOCIETYPRESS_VERSION;
     }
-    return '1.5.67';
+    return '1.5.68';
 }
 
 

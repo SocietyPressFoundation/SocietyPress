@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.68] — 2026-10-27
+
+**Email template changes now save.** Editing a subject or message under
+**Email Templates** and pressing Save showed "Email templates saved." but kept
+the old text. The same problem could lose the "From" name and address entered
+on the last step of the setup wizard, and some other settings saved from
+screens outside Settings. All of them now save as you'd expect. If you edited
+an email template recently and it didn't take, please make the change again.
+
 ## [1.5.67] — 2026-10-27
 
 **Large mailings no longer lose members to your web host's hourly limit.**

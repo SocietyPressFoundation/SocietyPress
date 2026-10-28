@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.67
+ * Version:     1.5.68
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.67' );
+define( 'SOCIETYPRESS_VERSION', '1.5.68' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -34223,6 +34223,24 @@ function sp_render_textarea_field( array $args ): void {
  */
 function sp_sanitize_settings( array $input ): array {
 
+    // ---- Saves made by plugin code, not a Settings screen ----
+    // WHY: register_setting() hooks this sanitizer onto EVERY update_option()
+    //      of societypress_settings during admin requests — not just Settings
+    //      form submissions. The page-key logic below only keeps keys from the
+    //      submitting Settings tab, so a full-array save from anywhere else
+    //      (Email Templates, the setup wizard's final step, theme presets)
+    //      matched no tab and was silently thrown away while the screen said
+    //      "saved". Confirmed on demo 2026-10-27: an Email Templates subject
+    //      change never persisted.
+    //
+    //      Settings forms post through options.php, which always sends
+    //      option_page. Anything else is plugin code writing the whole array;
+    //      those callers do their own nonce/capability checks and sanitize
+    //      each value before saving, so the array is accepted as given.
+    if ( empty( $_POST['option_page'] ) ) {
+        return $input;
+    }
+
     // Belt-and-suspenders cap check. The Settings API now gates each SP
     // settings page on sp_manage_settings via option_page_capability_*
     // filters; this guards the sanitizer in case a caller invokes it
@@ -40840,7 +40858,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.67',
+            'version'     => '1.5.68',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40848,7 +40866,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.67',
+            'version'     => '1.5.68',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40856,7 +40874,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.67',
+            'version'     => '1.5.68',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40864,7 +40882,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.67',
+            'version'     => '1.5.68',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40872,7 +40890,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.67',
+            'version'     => '1.5.68',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -88150,12 +88168,10 @@ function sp_blast_process_merge_tags( string $body, object $recipient ): string 
 //      0 = no limit, for societies sending through a service like Brevo.
 //      Default 400 leaves headroom under a typical 500/hour cap.
 //
-// WHY its own option, not societypress_settings: that array is registered
-//      through the Settings API, so update_option() on it runs
-//      sp_sanitize_settings(), which keeps only keys from the submitting
-//      Settings page and requires sp_manage_settings. A save from the Send
-//      Email screen would be silently dropped. Same reasoning as
-//      sp_menu_layout and the affiliations option.
+// WHY its own option, not societypress_settings: it is saved from the Send
+//      Email screen by people with sp_manage_communications, not the Settings
+//      screens, and a standalone option keeps it independent of the settings
+//      sanitizer. Same pattern as sp_menu_layout and the affiliations option.
 // ============================================================================
 
 /**

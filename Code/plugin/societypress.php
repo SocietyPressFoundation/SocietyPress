@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.71
+ * Version:     1.5.72
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.71' );
+define( 'SOCIETYPRESS_VERSION', '1.5.72' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.71',
+            'version'     => '1.5.72',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.71',
+            'version'     => '1.5.72',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.71',
+            'version'     => '1.5.72',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.71',
+            'version'     => '1.5.72',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.71',
+            'version'     => '1.5.72',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -86168,7 +86168,7 @@ function sp_render_email_templates_page(): void {
                     <?php esc_html_e( 'Available Merge Tags', 'societypress' ); ?>
                 </h3>
                 <p class="description sp-mb-12">
-                    <?php esc_html_e( 'Click a tag to copy it, then paste into the subject or body.', 'societypress' ); ?>
+                    <?php esc_html_e( 'Click a tag to put it in the email body where your cursor is.', 'societypress' ); ?>
                 </p>
                 <?php
                 // WHY this list: These are the tags supported by sp_replace_merge_tags()
@@ -86258,32 +86258,31 @@ function sp_render_email_templates_page(): void {
 
     <script>
     // WHY vanilla JS: Project policy — no jQuery. Two behaviors:
-    // 1. Click-to-copy on merge tags so the admin can paste them into the editor.
+    // 1. Click a merge tag to insert it at the cursor in the email body —
+    //    no copy-and-paste step for the volunteer to get wrong.
     // 2. Reset button loads the default template via a hidden data attribute.
     (function() {
-        // --- Click-to-copy merge tags ---
+        // --- Click-to-insert merge tags ---
+        var bodyId = <?php echo wp_json_encode( $body_key ); ?>;
         document.querySelectorAll('.sp-merge-tag-item').forEach(function(el) {
             el.addEventListener('click', function() {
                 var tag = this.getAttribute('data-tag');
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(tag).then(function() {
-                        // Brief visual feedback
-                        var code = el.querySelector('code');
-                        var orig = code.style.background;
-                        code.style.background = '#e0f0e0';
-                        setTimeout(function() { code.style.background = orig; }, 600);
-                    });
+                var ed  = (typeof tinymce !== 'undefined') ? tinymce.get(bodyId) : null;
+                if (ed && !ed.isHidden()) {
+                    ed.focus();
+                    ed.execCommand('mceInsertContent', false, tag);
                 } else {
-                    // Fallback for older browsers
-                    var ta = document.createElement('textarea');
-                    ta.value = tag;
-                    ta.style.position = 'fixed';
-                    ta.style.left = '-9999px';
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(ta);
+                    var ta = document.getElementById(bodyId);
+                    var s  = ta.selectionStart || 0, e = ta.selectionEnd || 0;
+                    ta.value = ta.value.slice(0, s) + tag + ta.value.slice(e);
+                    ta.focus();
+                    ta.selectionStart = ta.selectionEnd = s + tag.length;
                 }
+                // Brief visual feedback
+                var code = el.querySelector('code');
+                var orig = code.style.background;
+                code.style.background = '#e0f0e0';
+                setTimeout(function() { code.style.background = orig; }, 600);
             });
         });
 
@@ -87691,7 +87690,8 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-attachment-list li  { padding: 3px 0; }
     .sp-blast-attachment-remove   { color: #b32d2e; text-decoration: none; font-weight: 700; margin-left: 4px; }
     .sp-blast-no-groups           { color: #6d7175; }
-    .sp-blast-merge-hint          { margin-bottom: 16px; line-height: 2.2; }
+    .sp-blast-merge-hint          { margin-bottom: 16px; }
+    .sp-blast-insert-tag          { margin: 0 0 4px 6px !important; }
     .sp-blast-submit-row          { display: flex; gap: 8px; align-items: center; }
     .sp-blast-send-btn            { background: #1d6b30; border-color: #1d6b30; }
     </style>
@@ -87832,7 +87832,21 @@ function sp_render_blast_email_compose_page(): void {
                     <th scope="col"><label><?php esc_html_e( 'Email Body', 'societypress' ); ?></label></th>
                     <td>
                         <p class="description sp-blast-merge-hint">
-                            <?php esc_html_e( 'Merge tags:', 'societypress' ); ?> <code>{{first_name}}</code> <code>{{last_name}}</code> <code>{{display_name}}</code> <code>{{organization_name}}</code>
+                            <?php esc_html_e( 'Insert into the email:', 'societypress' ); ?>
+                            <?php
+                            // WHY plain-English buttons: volunteers should never
+                            // have to type or remember {{double_braces}}. Each one
+                            // drops its tag in at the cursor.
+                            $blast_insert_tags = [
+                                '{{first_name}}'        => __( 'First name', 'societypress' ),
+                                '{{last_name}}'         => __( 'Last name', 'societypress' ),
+                                '{{display_name}}'      => __( 'Full name', 'societypress' ),
+                                '{{organization_name}}' => __( 'Society name', 'societypress' ),
+                            ];
+                            foreach ( $blast_insert_tags as $tag => $label ) :
+                            ?>
+                                <button type="button" class="button button-small sp-blast-insert-tag" data-tag="<?php echo esc_attr( $tag ); ?>" title="<?php echo esc_attr( $tag ); ?>"><?php echo esc_html( $label ); ?></button>
+                            <?php endforeach; ?>
                         </p>
                         <?php
                         wp_editor( $blast->body ?? '', 'blast_body', [
@@ -87905,6 +87919,25 @@ function sp_render_blast_email_compose_page(): void {
         // keep the Send confirmation message in sync with the chosen audience so
         // the volunteer sees exactly who (and roughly how many) they're emailing
         // before they commit — counts already live in the recipient labels.
+        // Insert a merge tag at the cursor — in the visual editor when it's
+        // showing, otherwise in the Code tab's textarea.
+        document.querySelectorAll('.sp-blast-insert-tag').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var tag = btn.getAttribute('data-tag');
+                var ed  = (typeof tinymce !== 'undefined') ? tinymce.get('blast_body') : null;
+                if (ed && !ed.isHidden()) {
+                    ed.focus();
+                    ed.execCommand('mceInsertContent', false, tag);
+                    return;
+                }
+                var ta = document.getElementById('blast_body');
+                var s  = ta.selectionStart || 0, e = ta.selectionEnd || 0;
+                ta.value = ta.value.slice(0, s) + tag + ta.value.slice(e);
+                ta.focus();
+                ta.selectionStart = ta.selectionEnd = s + tag.length;
+            });
+        });
+
         // Start from a template: copy the chosen template's subject and body into
         // the form. Ask first if that would overwrite something already typed.
         (function() {

@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.72] — 2026-10-29
+
+**Merge tags in one click.** Above the body on Send Email are buttons in plain
+words — First name, Last name, Full name, Society name. Click one and it goes
+into the email where your cursor is; no typing curly braces. On Email
+Templates, clicking a tag in the sidebar now puts it straight into the body
+too, instead of copying it for you to paste.
+
 ## [1.5.71] — 2026-10-29
 
 **Tidier Send Email body.** The merge tags above the email body no longer crowd

@@ -4,7 +4,7 @@ Theme URI: https://societypress.net
 Author: SocietyPress Contributors
 Author URI: https://societypress.net
 Description: The official theme for societypress.net — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 1.1.27
+Version: 1.1.28
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -1058,6 +1058,11 @@ body {
 
 .updates {
     background-color: var(--color-surface);
+}
+
+.updates__more {
+    text-align: center;
+    margin: var(--spacing-xl) 0 0;
 }
 
 .update-card {
@@ -3127,6 +3132,127 @@ body.bbpress .page-content .container {
 
 .single-post__back a:hover {
     color: var(--color-primary);
+}
+
+/* ---------- Blog follow box (signup + RSS) ---------- */
+
+.blog-follow {
+    padding-top: 0;
+}
+
+.blog-follow__box {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-xl);
+    text-align: center;
+}
+
+.blog-follow__title {
+    font-size: var(--font-size-xl);
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.blog-follow__text {
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-md);
+}
+
+/* The subscribe form is left-aligned by its own styles; center it in the box. */
+.blog-follow__box .sp-subscribe-wrap {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+}
+
+.blog-follow__rss {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-top: var(--spacing-md);
+    margin-bottom: 0;
+}
+
+.blog-follow__rss a {
+    color: var(--color-accent);
+    font-weight: var(--font-weight-medium);
+}
+
+/* ---------- Post comments ---------- */
+
+.comments__title,
+.comments__form-title {
+    font-size: var(--font-size-xl);
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-md);
+}
+
+.comments__list {
+    list-style: none;
+    margin: 0 0 var(--spacing-xl);
+    padding: 0;
+}
+
+.comments__list .comment {
+    border-top: 1px solid var(--color-border);
+    padding: var(--spacing-md) 0;
+}
+
+.comments__list .children {
+    list-style: none;
+    margin-left: var(--spacing-xl);
+    padding: 0;
+}
+
+.comments__list .comment-meta {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.comments__list .comment-author .avatar {
+    border-radius: var(--border-radius-full);
+    vertical-align: middle;
+    margin-right: var(--spacing-xs);
+}
+
+.comments__list .reply a {
+    font-size: var(--font-size-sm);
+    color: var(--color-accent);
+    font-weight: var(--font-weight-medium);
+}
+
+.comments__notes,
+.comments__closed {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+
+.comments__form p {
+    margin-bottom: var(--spacing-md);
+}
+
+.comments__form label {
+    display: block;
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-xs);
+}
+
+.comments__form input[type="text"],
+.comments__form input[type="email"],
+.comments__form input[type="url"],
+.comments__form textarea {
+    width: 100%;
+    padding: var(--spacing-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--border-radius-sm);
+    font-family: var(--font-family);
+    font-size: var(--font-size-base);
+}
+
+.comments__form .comment-form-cookies-consent label {
+    display: inline;
+    font-weight: var(--font-weight-regular);
 }
 
 

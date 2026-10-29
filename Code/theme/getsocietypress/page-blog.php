@@ -1,14 +1,14 @@
 <?php
 /**
- * News & Updates Page Template (page-news.php)
+ * Blog Page Template (page-blog.php)
  *
- * The /news/ page is for project announcements, release notes, conference
- * reports, and general news from the SocietyPress project. This template
- * queries blog posts directly (rather than relying on WordPress's "posts
- * page" setting) so /news/ stays a normal WP page you can also edit in
- * the admin if you want to add intro copy above the post list.
+ * The /blog/ page is where SocietyPress talks about what changed, what's
+ * coming, and what might be possible — release notes sit here too, under
+ * their own category. This template queries posts directly (rather than
+ * relying on WordPress's "posts page" setting) so /blog/ stays a normal WP
+ * page you can also edit in the admin to add intro copy above the list.
  *
- * If post content is entered in the WP admin editor for the /news/ page,
+ * If post content is entered in the WP admin editor for the /blog/ page,
  * it renders above the posts list as an introduction.
  *
  * @package getsocietypress
@@ -32,17 +32,17 @@ $news_query = new WP_Query( array(
 <section class="page-hero">
     <div class="container">
         <div class="page-hero__content">
-            <h1 class="page-hero__title">News &amp; Updates</h1>
+            <h1 class="page-hero__title">Blog</h1>
             <p class="page-hero__subtitle">
-                Release announcements, conference reports, and project news
-                from SocietyPress.
+                What changed, what's coming, and what might be possible
+                for SocietyPress.
             </p>
         </div>
     </div>
 </section>
 
 <?php
-/* Optional admin-written intro — if the /news/ page has editor content,
+/* Optional admin-written intro — if the /blog/ page has editor content,
    render it above the news feed as context. */
 while ( have_posts() ) : the_post();
     $intro = get_the_content();
@@ -100,7 +100,7 @@ wp_reset_postdata();
                 'type'      => 'array',
             ) );
             if ( ! empty( $links ) ) : ?>
-                <nav class="news-pagination" aria-label="News pagination">
+                <nav class="news-pagination" aria-label="Blog pagination">
                     <?php foreach ( $links as $link ) : ?>
                         <?php echo $link; // already escaped by paginate_links ?>
                     <?php endforeach; ?>
@@ -119,8 +119,8 @@ wp_reset_postdata();
                 </div>
                 <h2>No posts yet</h2>
                 <p>
-                    News posts will land here as they're written. Release
-                    notes will also appear at
+                    Posts will land here as they're written. Release
+                    notes also appear at
                     <a href="<?php echo esc_url( home_url( '/changelog/' ) ); ?>">/changelog/</a>
                     and roadmap updates at
                     <a href="<?php echo esc_url( home_url( '/roadmap/' ) ); ?>">/roadmap/</a>.
@@ -135,5 +135,7 @@ wp_reset_postdata();
 
     </div>
 </section>
+
+<?php get_template_part( 'template-parts/blog-follow' ); ?>
 
 <?php get_footer(); ?>

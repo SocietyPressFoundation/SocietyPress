@@ -410,8 +410,8 @@ if ( $recent_posts->have_posts() ) :
     <div class="container">
 
         <div class="section-header">
-            <h2>Latest Updates</h2>
-            <p>News, releases, and project updates.</p>
+            <h2>From the Blog</h2>
+            <p>What changed, what's coming, and what might be possible.</p>
         </div>
 
         <div class="grid-3">
@@ -432,6 +432,10 @@ if ( $recent_posts->have_posts() ) :
                 </article>
             <?php endwhile; ?>
         </div>
+
+        <p class="updates__more">
+            <a href="<?php echo esc_url( home_url( '/blog/' ) ); ?>" class="btn btn-outline">Read the blog &rarr;</a>
+        </p>
 
     </div>
 </section>

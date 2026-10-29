@@ -65,12 +65,27 @@ get_header();
         </nav>
         <?php endif; ?>
 
-        <!-- Back to news link -->
+        <!-- Back to blog link -->
         <div class="single-post__back">
-            <a href="<?php echo esc_url( home_url( '/news/' ) ); ?>">&larr; Back to News</a>
+            <a href="<?php echo esc_url( home_url( '/blog/' ) ); ?>">&larr; Back to the Blog</a>
         </div>
 
     </div>
 </article>
+
+<?php get_template_part( 'template-parts/blog-follow' ); ?>
+
+<?php
+// Comments sit below the follow box so readers who finish the post see how
+// to keep up before the discussion; comments.php renders nothing when a
+// post has comments closed and none exist.
+if ( comments_open() || get_comments_number() ) :
+?>
+<section class="post-comments section">
+    <div class="container container--narrow">
+        <?php comments_template(); ?>
+    </div>
+</section>
+<?php endif; ?>
 
 <?php get_footer(); ?>

@@ -27,6 +27,9 @@ function gsp_theme_setup() {
     /* Enable featured images on posts and pages */
     add_theme_support( 'post-thumbnails' );
 
+    /* Advertise the blog's RSS feeds in <head> so feed readers find them */
+    add_theme_support( 'automatic-feed-links' );
+
     /* Custom logo support for the site header */
     add_theme_support( 'custom-logo', array(
         'height'      => 72,
@@ -2179,3 +2182,21 @@ function gsp_ensure_walkthrough_page() {
     update_option( 'gsp_walkthrough_page_created', 1, true );
 }
 add_action( 'init', 'gsp_ensure_walkthrough_page' );
+
+
+/**
+ * Send the retired /news/ address to /blog/.
+ *
+ * WHY: the blog used to live at /news/, and old links, bookmarks and search
+ *      results still point there. A permanent redirect keeps them working and
+ *      tells search engines the new address. Pagination (/news/page/2/) maps
+ *      across too.
+ */
+function gsp_redirect_news_to_blog(): void {
+    $path = trim( (string) wp_parse_url( $_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH ), '/' );
+    if ( 'news' === $path || 0 === strpos( $path, 'news/' ) ) {
+        wp_safe_redirect( home_url( '/blog/' . substr( $path, 5 ) ), 301 );
+        exit;
+    }
+}
+add_action( 'template_redirect', 'gsp_redirect_news_to_blog', 1 );

@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.70] — 2026-10-29
+
+**Sent Email sits right under Send Email.** In the Newsletters & Email menu the
+two now appear together, so the screen for writing an email and the record of
+what went out are side by side.
+
 ## [1.5.69] — 2026-10-29
 
 **Save your own email templates.** Email Templates has a new **+ Add Template**

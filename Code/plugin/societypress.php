@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.72
+ * Version:     1.5.73
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.72' );
+define( 'SOCIETYPRESS_VERSION', '1.5.73' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.72',
+            'version'     => '1.5.73',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.72',
+            'version'     => '1.5.73',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.72',
+            'version'     => '1.5.73',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.72',
+            'version'     => '1.5.73',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.72',
+            'version'     => '1.5.73',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -86196,15 +86196,6 @@ function sp_render_email_templates_page(): void {
                         '{{site_url}}'                => __( 'Website URL', 'societypress' ),
                         '{{admin_email}}'             => __( 'Admin email address', 'societypress' ),
                     ];
-                } elseif ( $is_custom ) {
-                    // Custom templates are sent through Send Email, which only
-                    // understands the tags sp_blast_process_merge_tags() replaces.
-                    $merge_tags = [
-                        '{{first_name}}'        => __( 'First name', 'societypress' ),
-                        '{{last_name}}'         => __( 'Last name', 'societypress' ),
-                        '{{display_name}}'      => __( 'Display name', 'societypress' ),
-                        '{{organization_name}}' => __( 'Organization name', 'societypress' ),
-                    ];
                 } elseif ( $active_tab === 'donation_acknowledgment' ) {
                     // Donation-specific merge tags — donors aren't always members,
                     // so we use a separate set tailored to donation data.
@@ -87704,28 +87695,54 @@ function sp_render_blast_email_compose_page(): void {
             <input type="hidden" name="sp_blast_action" id="sp-blast-action" value="save_draft">
 
             <table class="form-table sp-blast-form-table">
-                <?php $blast_templates = sp_settings()['custom_email_templates'] ?? []; ?>
+                <?php
+                $sp_tpl_settings = sp_settings();
+                $custom_tpls     = $sp_tpl_settings['custom_email_templates'] ?? [];
+
+                // The built-in emails that are about a member and nothing else.
+                // Donation, subscription and volunteer emails are left out: their
+                // tags need a donation or an opportunity, which a blast doesn't have.
+                $builtin_tpls = [];
+                $builtin_keys = [
+                    'welcome'          => [ 'welcome_email_subject', __( 'Welcome Email', 'societypress' ) ],
+                    'renewal_reminder' => [ 'renewal_reminder_subject', __( 'Renewal Reminder', 'societypress' ) ],
+                    'expired'          => [ 'expired_notice_subject', __( 'Expiration Notice', 'societypress' ) ],
+                ];
+                foreach ( $builtin_keys as $type => [ $subj_key, $label ] ) {
+                    $builtin_tpls[ 'builtin_' . $type ] = [
+                        'name'    => $label,
+                        'subject' => $sp_tpl_settings[ $subj_key ] ?? sp_get_default_email_subject( $type ),
+                        'body'    => $sp_tpl_settings[ 'email_template_' . $type ] ?? sp_get_default_email_template( $type ),
+                    ];
+                }
+                $blast_templates = $custom_tpls + $builtin_tpls;
+                ?>
                 <tr>
                     <th scope="col"><label for="sp-blast-template"><?php esc_html_e( 'Start from a template', 'societypress' ); ?></label></th>
                     <td>
-                        <?php if ( $blast_templates ) : ?>
-                            <select id="sp-blast-template">
-                                <option value=""><?php esc_html_e( '— Choose a template —', 'societypress' ); ?></option>
-                                <?php foreach ( $blast_templates as $tpl_id => $tpl ) : ?>
+                        <select id="sp-blast-template">
+                            <option value=""><?php esc_html_e( '— Choose a template —', 'societypress' ); ?></option>
+                            <?php if ( $custom_tpls ) : ?>
+                                <optgroup label="<?php esc_attr_e( 'Your templates', 'societypress' ); ?>">
+                                    <?php foreach ( $custom_tpls as $tpl_id => $tpl ) : ?>
+                                        <option value="<?php echo esc_attr( $tpl_id ); ?>"><?php echo esc_html( $tpl['name'] ); ?></option>
+                                    <?php endforeach; ?>
+                                </optgroup>
+                            <?php endif; ?>
+                            <optgroup label="<?php esc_attr_e( 'Built-in emails', 'societypress' ); ?>">
+                                <?php foreach ( $builtin_tpls as $tpl_id => $tpl ) : ?>
                                     <option value="<?php echo esc_attr( $tpl_id ); ?>"><?php echo esc_html( $tpl['name'] ); ?></option>
                                 <?php endforeach; ?>
-                            </select>
-                            <p class="description"><?php esc_html_e( 'Fills in the subject and body below. You can still change anything before sending.', 'societypress' ); ?></p>
-                        <?php else : ?>
-                            <p class="description"><?php
-                                printf(
-                                    /* translators: 1: opening <a> tag, 2: closing </a> tag */
-                                    wp_kses_post( __( 'No saved templates yet. %1$sAdd one under Email Templates%2$s.', 'societypress' ) ),
-                                    '<a href="' . esc_url( admin_url( 'admin.php?page=sp-email-templates&tab=new' ) ) . '">',
-                                    '</a>'
-                                );
-                            ?></p>
-                        <?php endif; ?>
+                            </optgroup>
+                        </select>
+                        <p class="description"><?php
+                            printf(
+                                /* translators: 1: opening <a> tag, 2: closing </a> tag */
+                                wp_kses_post( __( 'Fills in the subject and body below. You can still change anything before sending. %1$sAdd your own templates%2$s.', 'societypress' ) ),
+                                '<a href="' . esc_url( admin_url( 'admin.php?page=sp-email-templates&tab=new' ) ) . '">',
+                                '</a>'
+                            );
+                        ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -88294,8 +88311,29 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
  * @return string Body with merge tags replaced.
  */
 function sp_blast_process_merge_tags( string $body, object $recipient ): string {
+    global $wpdb;
     $settings = sp_settings();
     $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+
+    // Members get the full tag set the automatic emails use, so a blast started
+    // from a built-in template (renewal reminder, welcome…) fills in
+    // {{expiration_date}}, {{tier}} and the rest. Cached per member because the
+    // subject and the body are processed separately.
+    static $members = [];
+    $uid = (int) ( $recipient->user_id ?? 0 );
+    if ( $uid > 0 ) {
+        if ( ! array_key_exists( $uid, $members ) ) {
+            $members[ $uid ] = $wpdb->get_row( $wpdb->prepare(
+                "SELECT m.*, u.user_email FROM {$wpdb->prefix}sp_members m
+                 JOIN {$wpdb->users} u ON m.user_id = u.ID
+                 WHERE m.user_id = %d",
+                $uid
+            ) );
+        }
+        if ( $members[ $uid ] ) {
+            $body = sp_replace_merge_tags( $body, $members[ $uid ] );
+        }
+    }
 
     // Use {{double_braces}} to match sp_replace_merge_tags() — unified syntax
     // across all email types (welcome, renewal, blast). Also support legacy
@@ -88581,7 +88619,8 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
 
     foreach ( $recipients as $recipient ) {
         // Process merge tags for this recipient
-        $personalized_body = sp_blast_process_merge_tags( $blast->body, $recipient );
+        $personalized_body    = sp_blast_process_merge_tags( $blast->body, $recipient );
+        $personalized_subject = sp_blast_process_merge_tags( $blast->subject, $recipient );
 
         // Public subscribers carry an unsubscribe token — append a one-click
         // unsubscribe link (CAN-SPAM). Members manage email via their profile,
@@ -88594,15 +88633,15 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         }
 
         // Wrap in the email HTML template
-        $html_body = sp_build_email_html( $blast->subject, $personalized_body );
+        $html_body = sp_build_email_html( $personalized_subject, $personalized_body );
 
         // Send the email (with any attached files)
-        $sent = wp_mail( $recipient->email, $blast->subject, $html_body, $headers, $attachments );
+        $sent = wp_mail( $recipient->email, $personalized_subject, $html_body, $headers, $attachments );
 
         // Log to email log
         sp_email_log_insert(
             $recipient->email,
-            $blast->subject,
+            $personalized_subject,
             $html_body,
             implode( "\n", $headers ),
             $sent ? 'sent' : 'failed',

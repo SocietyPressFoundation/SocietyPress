@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.73] — 2026-10-29
+
+**Built-in emails in the template menu.** On Send Email, **Start from a
+template** now always offers the Welcome Email, Renewal Reminder and Expiration
+Notice, as you've worded them under Email Templates, alongside any templates of
+your own. Send Email also fills in every member merge tag now — expiration
+date, membership tier, preferred name and the rest — in the subject line as
+well as the body.
+
 ## [1.5.72] — 2026-10-29
 
 **Merge tags in one click.** Above the body on Send Email are buttons in plain

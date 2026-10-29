@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.74
+ * Version:     1.5.75
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.74' );
+define( 'SOCIETYPRESS_VERSION', '1.5.75' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.74',
+            'version'     => '1.5.75',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.74',
+            'version'     => '1.5.75',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.74',
+            'version'     => '1.5.75',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.74',
+            'version'     => '1.5.75',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.74',
+            'version'     => '1.5.75',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -85875,6 +85875,65 @@ add_action( 'init', function() {
 // ============================================================================
 
 /**
+ * The built-in automated emails, keyed by template type.
+ *
+ * WHY one list: the Email Templates tabs, their save handler, and Send Email's
+ *      "Start from a template" menu all read this, so a built-in email added
+ *      later shows up in every one of them without anyone remembering to.
+ *
+ * @return array<string, array{label:string, subject_key:string, description:string}>
+ */
+function sp_get_builtin_email_templates(): array {
+    return [
+        'welcome'          => [
+            'label'       => __( 'Welcome Email', 'societypress' ),
+            'subject_key' => 'welcome_email_subject',
+            'description' => __( 'Sent when a new member is approved or created with active status.', 'societypress' ),
+        ],
+        'renewal_reminder' => [
+            'label'       => __( 'Renewal Reminder', 'societypress' ),
+            'subject_key' => 'renewal_reminder_subject',
+            'description' => __( 'Sent automatically at 30, 15, and 7 days before membership expiration (based on your settings).', 'societypress' ),
+        ],
+        'expired'          => [
+            'label'       => __( 'Expiration Notice', 'societypress' ),
+            'subject_key' => 'expired_notice_subject',
+            'description' => __( 'Sent after a membership expires and the member\'s status changes to expired.', 'societypress' ),
+        ],
+        'donation_acknowledgment' => [
+            'label'       => __( 'Donation Acknowledgment', 'societypress' ),
+            'subject_key' => 'donation_acknowledgment_subject',
+            'description' => __( 'Sent to donors when the treasurer clicks "Send Acknowledgment" on one or more donations. Supports donation-specific merge tags.', 'societypress' ),
+        ],
+        'subscribe_confirm' => [
+            'label'       => __( 'Subscription Confirmation', 'societypress' ),
+            'subject_key' => 'subscribe_confirm_subject',
+            'description' => __( 'Sent when someone signs up for your public mailing list, asking them to confirm their address (double opt-in). The confirmation button and disclaimer are added automatically — you only edit the message text. Merge tags: {{name}}, {{organization_name}}.', 'societypress' ),
+        ],
+        'volunteer_signup' => [
+            'label'       => __( 'Volunteer Signup', 'societypress' ),
+            'subject_key' => 'volunteer_signup_subject',
+            'description' => __( 'Sent to a member the moment they take a volunteer spot. The person running the opportunity gets their own plain notice at the same time — that one is not edited here.', 'societypress' ),
+        ],
+        'volunteer_waitlist' => [
+            'label'       => __( 'Volunteer Waitlist', 'societypress' ),
+            'subject_key' => 'volunteer_waitlist_subject',
+            'description' => __( 'Sent when every spot is already taken and the member goes on the waitlist instead.', 'societypress' ),
+        ],
+        'volunteer_promoted' => [
+            'label'       => __( 'Volunteer Spot Opened', 'societypress' ),
+            'subject_key' => 'volunteer_promoted_subject',
+            'description' => __( 'Sent when somebody drops out and a waitlisted member moves up to a confirmed spot.', 'societypress' ),
+        ],
+        'volunteer_cancelled' => [
+            'label'       => __( 'Volunteer Opportunity Cancelled', 'societypress' ),
+            'subject_key' => 'volunteer_cancelled_subject',
+            'description' => __( 'Sent to everyone signed up when you set a volunteer opportunity to Cancelled. Members who turned off email notices do not receive it.', 'societypress' ),
+        ],
+    ];
+}
+
+/**
  * Render the Email Templates admin page.
  *
  * WHY: Three tabbed editors — one per automated email type — with a merge
@@ -85897,17 +85956,7 @@ function sp_render_email_templates_page(): void {
         // WHY wp_kses_post for body: We allow the same HTML subset that WordPress
         // allows in post content — bold, links, lists, headings, etc. — but
         // strip any scripts or dangerous markup.
-        $subject_keys = [
-            'welcome'                  => 'welcome_email_subject',
-            'renewal_reminder'         => 'renewal_reminder_subject',
-            'expired'                  => 'expired_notice_subject',
-            'donation_acknowledgment'  => 'donation_acknowledgment_subject',
-            'subscribe_confirm'        => 'subscribe_confirm_subject',
-            'volunteer_signup'         => 'volunteer_signup_subject',
-            'volunteer_waitlist'       => 'volunteer_waitlist_subject',
-            'volunteer_promoted'       => 'volunteer_promoted_subject',
-            'volunteer_cancelled'      => 'volunteer_cancelled_subject',
-        ];
+        $subject_keys = wp_list_pluck( sp_get_builtin_email_templates(), 'subject_key' );
         foreach ( $subject_keys as $type => $subj_key ) {
             $body_key = 'email_template_' . $type;
             if ( isset( $_POST[ $subj_key ] ) ) {
@@ -85958,10 +86007,9 @@ function sp_render_email_templates_page(): void {
 
     // Determine active tab — default to 'welcome'. 'new' is the Add Template tab.
     $active_tab = $saved_tab ?? sanitize_key( $_GET['tab'] ?? 'welcome' );
-    if ( ! in_array( $active_tab, array_merge( [
-        'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment', 'subscribe_confirm',
-        'volunteer_signup', 'volunteer_waitlist', 'volunteer_promoted', 'volunteer_cancelled', 'new',
-    ], array_keys( $custom_templates ) ), true ) ) {
+    if ( ! in_array( $active_tab, array_merge(
+        array_keys( sp_get_builtin_email_templates() ), [ 'new' ], array_keys( $custom_templates )
+    ), true ) ) {
         $active_tab = 'welcome';
     }
 
@@ -85970,53 +86018,7 @@ function sp_render_email_templates_page(): void {
     // renewal and expiration. The welcome email subject also has an existing key.
     // By sharing the same settings keys, admins can edit the subject from either
     // place without conflicts.
-    $tabs = [
-        'welcome'          => [
-            'label'       => __( 'Welcome Email', 'societypress' ),
-            'subject_key' => 'welcome_email_subject',
-            'description' => __( 'Sent when a new member is approved or created with active status.', 'societypress' ),
-        ],
-        'renewal_reminder' => [
-            'label'       => __( 'Renewal Reminder', 'societypress' ),
-            'subject_key' => 'renewal_reminder_subject',
-            'description' => __( 'Sent automatically at 30, 15, and 7 days before membership expiration (based on your settings).', 'societypress' ),
-        ],
-        'expired'          => [
-            'label'       => __( 'Expiration Notice', 'societypress' ),
-            'subject_key' => 'expired_notice_subject',
-            'description' => __( 'Sent after a membership expires and the member\'s status changes to expired.', 'societypress' ),
-        ],
-        'donation_acknowledgment' => [
-            'label'       => __( 'Donation Acknowledgment', 'societypress' ),
-            'subject_key' => 'donation_acknowledgment_subject',
-            'description' => __( 'Sent to donors when the treasurer clicks "Send Acknowledgment" on one or more donations. Supports donation-specific merge tags.', 'societypress' ),
-        ],
-        'subscribe_confirm' => [
-            'label'       => __( 'Subscription Confirmation', 'societypress' ),
-            'subject_key' => 'subscribe_confirm_subject',
-            'description' => __( 'Sent when someone signs up for your public mailing list, asking them to confirm their address (double opt-in). The confirmation button and disclaimer are added automatically — you only edit the message text. Merge tags: {{name}}, {{organization_name}}.', 'societypress' ),
-        ],
-        'volunteer_signup' => [
-            'label'       => __( 'Volunteer Signup', 'societypress' ),
-            'subject_key' => 'volunteer_signup_subject',
-            'description' => __( 'Sent to a member the moment they take a volunteer spot. The person running the opportunity gets their own plain notice at the same time — that one is not edited here.', 'societypress' ),
-        ],
-        'volunteer_waitlist' => [
-            'label'       => __( 'Volunteer Waitlist', 'societypress' ),
-            'subject_key' => 'volunteer_waitlist_subject',
-            'description' => __( 'Sent when every spot is already taken and the member goes on the waitlist instead.', 'societypress' ),
-        ],
-        'volunteer_promoted' => [
-            'label'       => __( 'Volunteer Spot Opened', 'societypress' ),
-            'subject_key' => 'volunteer_promoted_subject',
-            'description' => __( 'Sent when somebody drops out and a waitlisted member moves up to a confirmed spot.', 'societypress' ),
-        ],
-        'volunteer_cancelled' => [
-            'label'       => __( 'Volunteer Opportunity Cancelled', 'societypress' ),
-            'subject_key' => 'volunteer_cancelled_subject',
-            'description' => __( 'Sent to everyone signed up when you set a volunteer opportunity to Cancelled. Members who turned off email notices do not receive it.', 'societypress' ),
-        ],
-    ];
+    $tabs = sp_get_builtin_email_templates();
 
     $custom_desc = __( 'A starting point for Send Email. Choose it from "Start from a template" when writing an email, then edit before sending.', 'societypress' );
     foreach ( $custom_templates as $id => $tpl ) {
@@ -87703,21 +87705,10 @@ function sp_render_blast_email_compose_page(): void {
                 // need a donation or a volunteer opportunity have nothing to fill
                 // them in a blast, so the volunteer edits those parts by hand.
                 $builtin_tpls = [];
-                $builtin_keys = [
-                    'welcome'                 => [ 'welcome_email_subject', __( 'Welcome Email', 'societypress' ) ],
-                    'renewal_reminder'        => [ 'renewal_reminder_subject', __( 'Renewal Reminder', 'societypress' ) ],
-                    'expired'                 => [ 'expired_notice_subject', __( 'Expiration Notice', 'societypress' ) ],
-                    'donation_acknowledgment' => [ 'donation_acknowledgment_subject', __( 'Donation Acknowledgment', 'societypress' ) ],
-                    'subscribe_confirm'       => [ 'subscribe_confirm_subject', __( 'Subscription Confirmation', 'societypress' ) ],
-                    'volunteer_signup'        => [ 'volunteer_signup_subject', __( 'Volunteer Signup', 'societypress' ) ],
-                    'volunteer_waitlist'      => [ 'volunteer_waitlist_subject', __( 'Volunteer Waitlist', 'societypress' ) ],
-                    'volunteer_promoted'      => [ 'volunteer_promoted_subject', __( 'Volunteer Spot Opened', 'societypress' ) ],
-                    'volunteer_cancelled'     => [ 'volunteer_cancelled_subject', __( 'Volunteer Opportunity Cancelled', 'societypress' ) ],
-                ];
-                foreach ( $builtin_keys as $type => [ $subj_key, $label ] ) {
+                foreach ( sp_get_builtin_email_templates() as $type => $def ) {
                     $builtin_tpls[ 'builtin_' . $type ] = [
-                        'name'    => $label,
-                        'subject' => $sp_tpl_settings[ $subj_key ] ?? sp_get_default_email_subject( $type ),
+                        'name'    => $def['label'],
+                        'subject' => $sp_tpl_settings[ $def['subject_key'] ] ?? sp_get_default_email_subject( $type ),
                         'body'    => $sp_tpl_settings[ 'email_template_' . $type ] ?? sp_get_default_email_template( $type ),
                     ];
                 }

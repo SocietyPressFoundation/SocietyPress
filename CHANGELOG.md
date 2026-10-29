@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.75] — 2026-10-29
+
+**New built-in emails join the template menu on their own.** Email Templates
+and Send Email's **Start from a template** now read from one shared list, so
+any built-in email added in a future release appears in both automatically.
+Templates you add yourself already appear the moment you save them.
+
 ## [1.5.74] — 2026-10-29
 
 **Every built-in email in the template menu.** Start from a template on Send

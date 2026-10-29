@@ -147,6 +147,41 @@ $WP user update societypressrocks --user_pass=societypressrocks 2>/dev/null || \
     $WP user create societypressrocks demo@example.com --role=administrator --user_pass=societypressrocks 2>/dev/null
 
 # ---------------------------------------------------------------------------
+# 4b. Lock the demo down
+# ---------------------------------------------------------------------------
+# WHY: the demo login is published and is an administrator, so visitors see
+#      every screen. An administrator can also install plugins, which is
+#      running arbitrary code on the hosting account — the standard way a public
+#      demo with a published admin login gets taken over. Blocking file changes keeps the full
+#      admin tour while removing the code path. Reasserted nightly so a stray
+#      wp-config edit can't quietly reopen it, and anything planted through
+#      the public login (extra admins, plugins) is swept out by morning.
+
+echo "Locking down demo..."
+$WP config set DISALLOW_FILE_MODS true --raw --type=constant 2>/dev/null
+$WP config set DISALLOW_FILE_EDIT true --raw --type=constant 2>/dev/null
+
+EXTRA_ADMINS=$($WP user list --role=administrator --field=user_login 2>/dev/null | grep -vx societypressrocks)
+if [ -n "$EXTRA_ADMINS" ]; then
+    DEMO_ID=$($WP user get societypressrocks --field=ID 2>/dev/null)
+    for login in $EXTRA_ADMINS; do
+        echo "  Removing unexpected administrator: $login"
+        $WP user delete "$login" --reassign="$DEMO_ID" --yes 2>/dev/null
+    done
+fi
+
+# DISALLOW_FILE_MODS stops new installs, so anything outside this list was
+# planted some other way — remove it rather than leave it inactive.
+ALLOWED_PLUGINS="societypress akismet"
+for plugin in $($WP plugin list --field=name 2>/dev/null); do
+    case " $ALLOWED_PLUGINS " in
+        *" $plugin "*) ;;
+        *) echo "  Removing unexpected plugin: $plugin"
+           rm -rf "$WP_PATH/wp-content/plugins/$plugin" ;;
+    esac
+done
+
+# ---------------------------------------------------------------------------
 # 5. Ensure .htaccess exists (WP core download doesn't create it)
 # ---------------------------------------------------------------------------
 

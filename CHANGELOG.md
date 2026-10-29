@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.78] — 2026-10-29
+
+**A Join Form block for the page builder.** Pages built with the page builder
+can now hold the online membership application — plan choice, contact details
+and payment — so a Join page can let people sign up instead of only describing
+the plans. Plans and prices come from Membership Tiers. Point any button at
+`#join` to jump to the form, or at `?plan=single#join` (any plan's name) to jump
+there with that plan already picked.
+
 ## [1.5.77] — 2026-10-29
 
 **Each email appears once in Sent Email.** Emails from Send Email and donation

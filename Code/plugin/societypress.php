@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.77
+ * Version:     1.5.78
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.77' );
+define( 'SOCIETYPRESS_VERSION', '1.5.78' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.77',
+            'version'     => '1.5.78',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.77',
+            'version'     => '1.5.78',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.77',
+            'version'     => '1.5.78',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.77',
+            'version'     => '1.5.78',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.77',
+            'version'     => '1.5.78',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -64974,6 +64974,22 @@ function sp_render_join_form(): string {
         "SELECT * FROM {$wpdb->prefix}sp_membership_tiers WHERE active = 1 ORDER BY sort_order ASC, name ASC"
     );
 
+    // Pre-pick a plan: what they chose on a failed submit wins, otherwise a
+    // ?plan= link from a "Join — $45" button elsewhere on the site, so the
+    // visitor doesn't have to choose the same plan twice.
+    // The link may name the plan (?plan=single) or give its ID (?plan=14);
+    // names are what a volunteer can actually type into a button's link.
+    $selected_tier = (int) ( $_POST['tier_id'] ?? 0 );
+    if ( ! $selected_tier && isset( $_GET['plan'] ) ) {
+        $want = sanitize_title( wp_unslash( $_GET['plan'] ) );
+        foreach ( $tiers as $tier ) {
+            if ( $want === (string) $tier->id || $want === sanitize_title( $tier->name ) ) {
+                $selected_tier = (int) $tier->id;
+                break;
+            }
+        }
+    }
+
     // Check for form result
     $result = $GLOBALS['sp_join_result'] ?? null;
 
@@ -65073,7 +65089,7 @@ function sp_render_join_form(): string {
             <?php foreach ( $tiers as $tier ) : ?>
                 <label class="sp-tier-option">
                     <input type="radio" name="tier_id" value="<?php echo esc_attr( $tier->id ); ?>"
-                           <?php checked( ( $_POST['tier_id'] ?? '' ), $tier->id ); ?>
+                           <?php checked( $selected_tier, (int) $tier->id ); ?>
                            required class="sp-join-tier-radio">
                     <span class="sp-tier-label">
                         <span class="sp-tier-name"><?php echo esc_html( $tier->name ); ?></span>
@@ -119194,6 +119210,14 @@ add_filter( 'sp_builder_widget_types', function ( array $types ): array {
             ],
         ],
     ];
+    // WHY a block and not only the [societypress_join] shortcode: pages built
+    // with the page builder had no way to hold the join form, so a society's
+    // Join page could describe the plans but never let anyone sign up.
+    $types['join_form'] = [
+        'label'       => __( 'Join Form', 'societypress' ),
+        'description' => __( 'The online membership application: plan choice, contact details and payment. Plans and prices come from Membership Tiers. Link a button to #join to jump here, or to ?plan=single#join (use the plan name) to also pick that plan.', 'societypress' ),
+        'fields'      => [],
+    ];
     $types['picture_wall'] = [
         'label'       => __( 'Picture Wall', 'societypress' ),
         'description' => __( 'Display approved member-submitted photos from a Picture Wall album (e.g., ancestor portraits).', 'societypress' ),
@@ -119237,6 +119261,11 @@ function sp_render_builder_widget_donate( array $s ): void {
     $atts['default_frequency'] = in_array( $s['default_frequency'] ?? 'one_time', [ 'one_time', 'monthly', 'annually' ], true )
         ? $s['default_frequency'] : 'one_time';
     echo do_shortcode( '[sp_donate ' . sp_builder_atts_to_string( $atts ) . ']' );
+}
+
+function sp_render_builder_widget_join_form( array $s ): void {
+    // The id is the jump target for plan buttons elsewhere on the page.
+    echo '<div id="join" class="sp-builder-join-form">' . sp_render_join_form() . '</div>';
 }
 
 function sp_render_builder_widget_picture_wall( array $s ): void {

@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.79] — 2026-10-29
+
+**Online join reaches payment.** Choosing a paid plan on the join form now takes
+the applicant to the card payment page. Before, they were sent to the site's
+admin login instead, and no dues were collected. After paying they now return to
+the join page with a thank-you message (before, they landed on the home page with
+no word that it worked), a cancelled payment says so, and a new member gets the
+welcome email when their payment goes through, if welcome emails are turned on.
+
+**New members no longer get a free extra year.** Paying online counted the
+expiration date set at sign-up as time already owed, and added a full year on
+top. A new member now expires at the end of the membership year they joined in,
+as intended. Renewals still add a year to the time left.
+
 ## [1.5.78] — 2026-10-29
 
 **A Join Form block for the page builder.** Pages built with the page builder

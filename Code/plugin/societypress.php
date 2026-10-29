@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.78
+ * Version:     1.5.79
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.78' );
+define( 'SOCIETYPRESS_VERSION', '1.5.79' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.78',
+            'version'     => '1.5.79',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.78',
+            'version'     => '1.5.79',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.78',
+            'version'     => '1.5.79',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.78',
+            'version'     => '1.5.79',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.78',
+            'version'     => '1.5.79',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -64641,10 +64641,13 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
 
     // Pass the member's current expiration so an early renewal in rolling mode
     // stacks onto any remaining days instead of resetting the clock to today.
-    $current_exp = $wpdb->get_var( $wpdb->prepare(
-        "SELECT expiration_date FROM {$members_table} WHERE user_id = %d LIMIT 1",
+    $current = $wpdb->get_row( $wpdb->prepare(
+        "SELECT status, expiration_date FROM {$members_table} WHERE user_id = %d LIMIT 1",
         $user_id
     ) );
+    // A pending applicant's expiration is only the placeholder the join form
+    // wrote — stacking on it would hand every new member an extra free year.
+    $current_exp = ( $current && $current->status !== 'pending' ) ? $current->expiration_date : null;
     $settings = sp_settings();
     $exp      = sp_membership_compute_expiration( max( 1, $years ), $settings, $current_exp );
 
@@ -64665,6 +64668,13 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
             ? sprintf( __( 'Online dues payment (Stripe: %s)', 'societypress' ), $session_ref )
             : __( 'Online dues payment', 'societypress' ),
     ] );
+
+    // A new applicant was skipped by the welcome email while pending; this is
+    // the moment they become a member. Renewals were already active, so they
+    // don't get welcomed twice.
+    if ( ( $current->status ?? '' ) === 'pending' ) {
+        sp_send_welcome_email( $user_id );
+    }
 
     return true;
 }
@@ -64860,7 +64870,14 @@ add_action( 'init', function () {
         $years     = max( 1, min( $max_years, (int) ( $_POST['membership_years'] ?? 1 ) ) );
         $amount    = round( $dues_price * $years, 2 );
         $currency  = strtolower( $settings['stripe_currency'] ?? 'usd' );
-        $referer   = wp_get_referer() ?: home_url();
+        // WHY the raw referer: the form posts to its own page, and
+        // wp_get_referer() returns false when the referer is the current page —
+        // which sent paying applicants back to the homepage with no message.
+        $referer = wp_get_raw_referer();
+        if ( $referer && 0 === strpos( $referer, '/' ) && 0 !== strpos( $referer, '//' ) ) {
+            $referer = set_url_scheme( 'http://' . wp_parse_url( home_url(), PHP_URL_HOST ) . $referer );
+        }
+        $referer = remove_query_arg( [ 'sp_membership_msg', 'sp_membership_session' ], wp_validate_redirect( (string) $referer, home_url() ) );
         $org_name  = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
 
         $resp = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
@@ -64892,8 +64909,11 @@ add_action( 'init', function () {
 
         if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
             $data = json_decode( wp_remote_retrieve_body( $resp ), true );
-            if ( ! empty( $data['url'] ) ) {
-                wp_safe_redirect( $data['url'] );
+            // WHY not wp_safe_redirect(): it only allows this site's own host,
+            // so it silently sent applicants to /wp-admin/ instead of Stripe.
+            $safe_url = sp_safe_stripe_checkout_url( $data['url'] ?? '' );
+            if ( $safe_url ) {
+                wp_redirect( $safe_url );
                 exit;
             }
         }
@@ -64917,6 +64937,13 @@ add_action( 'init', function () {
  * activates the member. The webhook does the same; both are idempotent.
  */
 add_action( 'init', function () {
+    if ( ( $_GET['sp_membership_msg'] ?? '' ) === 'cancelled' ) {
+        $GLOBALS['sp_join_result'] = [
+            'success' => false,
+            'message' => __( 'Your payment was cancelled, so your membership is not active yet. Please contact us and we will help you finish joining.', 'societypress' ),
+        ];
+        return;
+    }
     if ( empty( $_GET['sp_membership_session'] ) ) {
         return;
     }
@@ -64947,6 +64974,12 @@ add_action( 'init', function () {
         ( (int) ( $session['amount_total'] ?? 0 ) ) / 100,
         $session_id
     );
+    // Shown on every return with a paid session, not only the first, since a
+    // reload (or the webhook arriving first) makes the activation a no-op.
+    $GLOBALS['sp_join_result'] = [
+        'success' => true,
+        'message' => __( 'Thank you! Your payment was received and your membership is now active.', 'societypress' ),
+    ];
 } );
 
 /**

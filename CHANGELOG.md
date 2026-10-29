@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.74] — 2026-10-29
+
+**Every built-in email in the template menu.** Start from a template on Send
+Email now lists all nine built-in emails, including the donation, subscription
+and volunteer ones. Those three kinds mention a donation or a volunteer
+opportunity, which a group email doesn't have, so fill those parts in by hand
+before sending.
+
 ## [1.5.73] — 2026-10-29
 
 **Built-in emails in the template menu.** On Send Email, **Start from a

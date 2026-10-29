@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.71] — 2026-10-29
+
+**Tidier Send Email body.** The merge tags above the email body no longer crowd
+the Add Media button, and when they wrap onto a second line the two rows no
+longer touch.
+
 ## [1.5.70] — 2026-10-29
 
 **Sent Email sits right under Send Email.** In the Newsletters & Email menu the

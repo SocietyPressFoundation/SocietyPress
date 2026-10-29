@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.76] — 2026-10-29
+
+**Wider email editor.** On Send Email the form, and the email body with it, can
+now stretch to 1200 pixels instead of stopping at 800, so long emails need far
+less scrolling on a normal screen.
+
 ## [1.5.75] — 2026-10-29
 
 **New built-in emails join the template menu on their own.** Email Templates

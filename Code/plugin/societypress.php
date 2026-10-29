@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.68
+ * Version:     1.5.69
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.68' );
+define( 'SOCIETYPRESS_VERSION', '1.5.69' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40858,7 +40858,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.68',
+            'version'     => '1.5.69',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40866,7 +40866,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.68',
+            'version'     => '1.5.69',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40874,7 +40874,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.68',
+            'version'     => '1.5.69',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40882,7 +40882,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.68',
+            'version'     => '1.5.69',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40890,7 +40890,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.68',
+            'version'     => '1.5.69',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -85916,21 +85916,50 @@ function sp_render_email_templates_page(): void {
             }
         }
 
+        // Custom templates are starting points for Send Email, not tied to any
+        // automatic event. They live under their own key with generated ids so
+        // they can never collide with the built-in template keys above.
+        $custom      = $settings['custom_email_templates'] ?? [];
+        $custom_id   = sanitize_key( wp_unslash( $_POST['sp_custom_template_id'] ?? '' ) );
+        $saved_notice = __( 'Email templates saved.', 'societypress' );
+
+        if ( ! empty( $_POST['sp_delete_custom_template'] ) && isset( $custom[ $custom_id ] ) ) {
+            unset( $custom[ $custom_id ] );
+            $settings['custom_email_templates'] = $custom;
+            $saved_tab    = 'welcome';
+            $saved_notice = __( 'Template deleted.', 'societypress' );
+        } elseif ( isset( $_POST['sp_custom_template_name'] ) ) {
+            if ( ! isset( $custom[ $custom_id ] ) ) {
+                $custom_id = 'custom_' . strtolower( wp_generate_password( 8, false ) );
+            }
+            $name = sanitize_text_field( wp_unslash( $_POST['sp_custom_template_name'] ) );
+            $custom[ $custom_id ] = [
+                'name'    => $name !== '' ? $name : __( 'Untitled Template', 'societypress' ),
+                'subject' => sanitize_text_field( wp_unslash( $_POST['sp_custom_template_subject'] ?? '' ) ),
+                'body'    => wp_kses_post( wp_unslash( $_POST['sp_custom_template_body'] ?? '' ) ),
+            ];
+            $settings['custom_email_templates'] = $custom;
+            // A brand-new template was posted from the "new" tab; land on its
+            // own tab so the next save updates it instead of creating another.
+            $saved_tab = $custom_id;
+        }
+
         update_option( 'societypress_settings', $settings );
 
         echo '<div class="notice notice-success is-dismissible"><p>'
-           . esc_html__( 'Email templates saved.', 'societypress' )
+           . esc_html( $saved_notice )
            . '</p></div>';
     }
 
-    $settings = sp_settings();
+    $settings         = sp_settings();
+    $custom_templates = $settings['custom_email_templates'] ?? [];
 
-    // Determine active tab — default to 'welcome'
-    $active_tab = sanitize_key( $_GET['tab'] ?? 'welcome' );
-    if ( ! in_array( $active_tab, [
+    // Determine active tab — default to 'welcome'. 'new' is the Add Template tab.
+    $active_tab = $saved_tab ?? sanitize_key( $_GET['tab'] ?? 'welcome' );
+    if ( ! in_array( $active_tab, array_merge( [
         'welcome', 'renewal_reminder', 'expired', 'donation_acknowledgment', 'subscribe_confirm',
-        'volunteer_signup', 'volunteer_waitlist', 'volunteer_promoted', 'volunteer_cancelled',
-    ], true ) ) {
+        'volunteer_signup', 'volunteer_waitlist', 'volunteer_promoted', 'volunteer_cancelled', 'new',
+    ], array_keys( $custom_templates ) ), true ) ) {
         $active_tab = 'welcome';
     }
 
@@ -85987,13 +86016,37 @@ function sp_render_email_templates_page(): void {
         ],
     ];
 
-    $tab_info = $tabs[ $active_tab ];
-    $subj_key = $tab_info['subject_key'];
-    $body_key = 'email_template_' . $active_tab;
+    $custom_desc = __( 'A starting point for Send Email. Choose it from "Start from a template" when writing an email, then edit before sending.', 'societypress' );
+    foreach ( $custom_templates as $id => $tpl ) {
+        $tabs[ $id ] = [
+            'label'       => $tpl['name'],
+            'description' => $custom_desc,
+            'custom'      => true,
+        ];
+    }
+    $tabs['new'] = [
+        'label'       => __( '+ Add Template', 'societypress' ),
+        'description' => $custom_desc,
+        'custom'      => true,
+    ];
 
-    // Load saved values or defaults
-    $subject = $settings[ $subj_key ] ?? sp_get_default_email_subject( $active_tab );
-    $body    = $settings[ $body_key ] ?? sp_get_default_email_template( $active_tab );
+    $tab_info  = $tabs[ $active_tab ];
+    $is_custom = ! empty( $tab_info['custom'] );
+
+    if ( $is_custom ) {
+        $subj_key = 'sp_custom_template_subject';
+        $body_key = 'sp_custom_template_body';
+        $tpl_name = $custom_templates[ $active_tab ]['name'] ?? '';
+        $subject  = $custom_templates[ $active_tab ]['subject'] ?? '';
+        $body     = $custom_templates[ $active_tab ]['body'] ?? '';
+    } else {
+        $subj_key = $tab_info['subject_key'];
+        $body_key = 'email_template_' . $active_tab;
+
+        // Load saved values or defaults
+        $subject = $settings[ $subj_key ] ?? sp_get_default_email_subject( $active_tab );
+        $body    = $settings[ $body_key ] ?? sp_get_default_email_template( $active_tab );
+    }
 
     $page_url = admin_url( 'admin.php?page=sp-email-templates' );
     ?>
@@ -86037,6 +86090,19 @@ function sp_render_email_templates_page(): void {
                     </p>
 
                     <table class="form-table" role="presentation">
+                        <?php if ( $is_custom ) : ?>
+                        <tr>
+                            <th scope="row">
+                                <label for="sp_custom_template_name"><?php esc_html_e( 'Template Name', 'societypress' ); ?></label>
+                            </th>
+                            <td>
+                                <input type="hidden" name="sp_custom_template_id" value="<?php echo esc_attr( $active_tab === 'new' ? '' : $active_tab ); ?>">
+                                <input type="text" id="sp_custom_template_name" name="sp_custom_template_name"
+                                       value="<?php echo esc_attr( $tpl_name ); ?>" class="regular-text" required
+                                       placeholder="<?php esc_attr_e( 'e.g. Monthly Meeting Notice', 'societypress' ); ?>">
+                            </td>
+                        </tr>
+                        <?php endif; ?>
                         <tr>
                             <th scope="row">
                                 <label for="<?php echo esc_attr( $subj_key ); ?>">
@@ -86080,9 +86146,16 @@ function sp_render_email_templates_page(): void {
 
                     <p class="submit sp-email-tpl-submit">
                         <?php submit_button( __( 'Save Template', 'societypress' ), 'primary', 'submit', false ); ?>
+                        <?php if ( ! $is_custom ) : ?>
                         <button type="button" class="button" id="sp-reset-template">
                             <?php esc_html_e( 'Reset to Default', 'societypress' ); ?>
                         </button>
+                        <?php elseif ( $active_tab !== 'new' ) : ?>
+                        <button type="submit" name="sp_delete_custom_template" value="1" class="button" formnovalidate
+                                data-sp-confirm="<?php echo esc_attr__( 'Delete this template? Emails already sent are not affected.', 'societypress' ); ?>">
+                            <?php esc_html_e( 'Delete Template', 'societypress' ); ?>
+                        </button>
+                        <?php endif; ?>
                     </p>
                 </form>
             </div>
@@ -86120,6 +86193,15 @@ function sp_render_email_templates_page(): void {
                         '{{organization_name}}'       => __( 'Organization name', 'societypress' ),
                         '{{site_url}}'                => __( 'Website URL', 'societypress' ),
                         '{{admin_email}}'             => __( 'Admin email address', 'societypress' ),
+                    ];
+                } elseif ( $is_custom ) {
+                    // Custom templates are sent through Send Email, which only
+                    // understands the tags sp_blast_process_merge_tags() replaces.
+                    $merge_tags = [
+                        '{{first_name}}'        => __( 'First name', 'societypress' ),
+                        '{{last_name}}'         => __( 'Last name', 'societypress' ),
+                        '{{display_name}}'      => __( 'Display name', 'societypress' ),
+                        '{{organization_name}}' => __( 'Organization name', 'societypress' ),
                     ];
                 } elseif ( $active_tab === 'donation_acknowledgment' ) {
                     // Donation-specific merge tags — donors aren't always members,
@@ -87620,6 +87702,30 @@ function sp_render_blast_email_compose_page(): void {
             <input type="hidden" name="sp_blast_action" id="sp-blast-action" value="save_draft">
 
             <table class="form-table sp-blast-form-table">
+                <?php $blast_templates = sp_settings()['custom_email_templates'] ?? []; ?>
+                <tr>
+                    <th scope="col"><label for="sp-blast-template"><?php esc_html_e( 'Start from a template', 'societypress' ); ?></label></th>
+                    <td>
+                        <?php if ( $blast_templates ) : ?>
+                            <select id="sp-blast-template">
+                                <option value=""><?php esc_html_e( '— Choose a template —', 'societypress' ); ?></option>
+                                <?php foreach ( $blast_templates as $tpl_id => $tpl ) : ?>
+                                    <option value="<?php echo esc_attr( $tpl_id ); ?>"><?php echo esc_html( $tpl['name'] ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'Fills in the subject and body below. You can still change anything before sending.', 'societypress' ); ?></p>
+                        <?php else : ?>
+                            <p class="description"><?php
+                                printf(
+                                    /* translators: 1: opening <a> tag, 2: closing </a> tag */
+                                    wp_kses_post( __( 'No saved templates yet. %1$sAdd one under Email Templates%2$s.', 'societypress' ) ),
+                                    '<a href="' . esc_url( admin_url( 'admin.php?page=sp-email-templates&tab=new' ) ) . '">',
+                                    '</a>'
+                                );
+                            ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
                 <tr>
                     <th scope="col"><label for="sp-blast-subject"><?php esc_html_e( 'Subject', 'societypress' ); ?> <span class="sp-blast-required-star" aria-hidden="true">*</span></label></th>
                     <td><input type="text" name="blast_subject" id="sp-blast-subject" value="<?php echo esc_attr( $blast->subject ?? '' ); ?>" required class="sp-blast-subject-input"></td>
@@ -87797,6 +87903,38 @@ function sp_render_blast_email_compose_page(): void {
         // keep the Send confirmation message in sync with the chosen audience so
         // the volunteer sees exactly who (and roughly how many) they're emailing
         // before they commit — counts already live in the recipient labels.
+        // Start from a template: copy the chosen template's subject and body into
+        // the form. Ask first if that would overwrite something already typed.
+        (function() {
+            var picker = document.getElementById('sp-blast-template');
+            if (!picker) return;
+            var templates = <?php echo wp_json_encode( (object) $blast_templates ); ?>;
+            var subject   = document.getElementById('sp-blast-subject');
+
+            function getBody() {
+                var ed = (typeof tinymce !== 'undefined') ? tinymce.get('blast_body') : null;
+                return ed && !ed.isHidden() ? ed.getContent() : document.getElementById('blast_body').value;
+            }
+            function apply(tpl) {
+                subject.value = tpl.subject || '';
+                var ed = (typeof tinymce !== 'undefined') ? tinymce.get('blast_body') : null;
+                if (ed) ed.setContent(tpl.body || '');
+                document.getElementById('blast_body').value = tpl.body || '';
+            }
+
+            picker.addEventListener('change', function() {
+                var tpl = templates[picker.value];
+                if (!tpl) return;
+                if (subject.value.trim() === '' && getBody().trim() === '') {
+                    apply(tpl);
+                    return;
+                }
+                spConfirm(<?php echo wp_json_encode( __( 'Replace the subject and body you have already written with this template?', 'societypress' ) ); ?>, function() {
+                    apply(tpl);
+                });
+            });
+        })();
+
         (function() {
             var radios    = document.querySelectorAll('input[name="recipient_type"]');
             var groupsDiv = document.getElementById('sp-blast-groups');

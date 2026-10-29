@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.69] — 2026-10-29
+
+**Save your own email templates.** Email Templates has a new **+ Add Template**
+tab. Give a template a name, a subject and a body — a monthly meeting notice,
+a dues reminder, a newsletter announcement — and it gets its own tab, where you
+can edit it later or delete it. On **Send Email**, a new **Start from a
+template** menu fills in the subject and body from any saved template; you can
+still change anything before sending. Anyone who can send email can use them.
 ## [1.5.68] — 2026-10-27
 
 **Email template changes now save.** Editing a subject or message under

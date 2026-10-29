@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.77] — 2026-10-29
+
+**Each email appears once in Sent Email.** Emails from Send Email and donation
+acknowledgments were listed twice — once plain and once labelled. Now there is
+one entry per email, still labelled with its type and the member it went to.
+
 ## [1.5.76] — 2026-10-29
 
 **Wider email editor.** On Send Email the form, and the email body with it, can

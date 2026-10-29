@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.76
+ * Version:     1.5.77
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.76' );
+define( 'SOCIETYPRESS_VERSION', '1.5.77' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.76',
+            'version'     => '1.5.77',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.76',
+            'version'     => '1.5.77',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.76',
+            'version'     => '1.5.77',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.76',
+            'version'     => '1.5.77',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.76',
+            'version'     => '1.5.77',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -65954,6 +65954,25 @@ function sp_email_should_block(): bool {
 }
 
 /**
+ * Label the next outgoing email for the log.
+ *
+ * WHY: every email is already logged by the pre_wp_mail hook below. Senders
+ *      that want the member and email type recorded used to write a second log
+ *      row of their own after wp_mail(), so each message appeared twice in Sent
+ *      Email. Calling this right before wp_mail() puts the label on the one row
+ *      the hook writes instead.
+ *
+ * @param int|null $member_id  WP user ID the email is about, if any.
+ * @param string   $email_type Short type key, e.g. 'blast'.
+ */
+function sp_email_log_tag( ?int $member_id, string $email_type ): void {
+    $GLOBALS['sp_email_log_context'] = [
+        'member_id'  => $member_id ?: null,
+        'email_type' => $email_type,
+    ];
+}
+
+/**
  * Intercept all outgoing emails via pre_wp_mail.
  *
  * WHY: This is the single hook point for the entire email logging system.
@@ -65984,8 +66003,11 @@ add_filter( 'pre_wp_mail', function ( $null, $atts ) {
     $blocked = sp_email_should_block();
     $status  = $blocked ? 'blocked' : 'pending';
 
-    // Log the email
-    $log_id = sp_email_log_insert( $to, $subject, $message, $headers, $status );
+    // Log the email, with the member and email type if the sender labelled it
+    // via sp_email_log_tag(). The label applies to this one message only.
+    $ctx = $GLOBALS['sp_email_log_context'] ?? [];
+    unset( $GLOBALS['sp_email_log_context'] );
+    $log_id = sp_email_log_insert( $to, $subject, $message, $headers, $status, null, $ctx['member_id'] ?? null, $ctx['email_type'] ?? null );
 
     // Stash the log_id so the success/failure hooks can find it
     if ( $log_id ) {
@@ -88632,20 +88654,9 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         // Wrap in the email HTML template
         $html_body = sp_build_email_html( $personalized_subject, $personalized_body );
 
-        // Send the email (with any attached files)
+        // Send the email (with any attached files). The pre_wp_mail hook logs it.
+        sp_email_log_tag( (int) $recipient->user_id, 'blast' );
         $sent = wp_mail( $recipient->email, $personalized_subject, $html_body, $headers, $attachments );
-
-        // Log to email log
-        sp_email_log_insert(
-            $recipient->email,
-            $personalized_subject,
-            $html_body,
-            implode( "\n", $headers ),
-            $sent ? 'sent' : 'failed',
-            $sent ? null : 'wp_mail() returned false',
-            (int) $recipient->user_id,
-            'blast'
-        );
 
         if ( $sent ) {
             $sent_count++;
@@ -90005,19 +90016,9 @@ function sp_send_donation_acknowledgments( array $donation_ids ): void {
             $body_html
         );
 
+        // The pre_wp_mail hook logs it.
+        sp_email_log_tag( $donation->user_id ? (int) $donation->user_id : null, 'donation_acknowledgment' );
         $sent = wp_mail( $donation->donor_email, $subject, $full_html, $headers );
-
-        // Log to email log
-        sp_email_log_insert(
-            $donation->donor_email,
-            $subject,
-            $full_html,
-            implode( "\n", $headers ),
-            $sent ? 'sent' : 'failed',
-            $sent ? null : 'wp_mail() returned false',
-            $donation->user_id ? (int) $donation->user_id : null,
-            'donation_acknowledgment'
-        );
 
         // Mark as acknowledged
         if ( $sent ) {

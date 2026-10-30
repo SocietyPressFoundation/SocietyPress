@@ -1801,6 +1801,113 @@ function gsp_add_installs_page(): void {
 }
 add_action( 'admin_menu', 'gsp_add_installs_page' );
 
+/*
+ * Site tools — the admin home for this site.
+ *
+ * WHY: The SocietyPress plugin hides WordPress's own menus and takes over the
+ * dashboard, which suits a society volunteer but not this site. Here the work
+ * is blog posts, comment moderation, updates and the hosting panels. The plugin
+ * has to stay active, because the email signup form and the donate page run on
+ * it, so this hides its admin instead of switching it off.
+ */
+const GSP_SERVER_HOST = 'dal205.arandomserver.com';
+const GSP_WHMCS_URL   = 'https://account.societypress.net/admin/';
+
+function gsp_add_site_tools_menu(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    remove_menu_page( 'societypress' );
+
+    add_menu_page( 'Site tools', 'Site tools', 'manage_options', 'gsp-site-tools', 'gsp_render_site_tools_page', 'dashicons-admin-tools', 2 );
+
+    // SocietyPress removed these at priority 999; a slug that names a core
+    // screen links straight to it, and its own submenu comes back with it.
+    $pending = (int) wp_count_comments()->moderated;
+    $updates = (int) wp_get_update_data()['counts']['total'];
+    $bubble  = static fn( int $n ): string => $n ? ' <span class="awaiting-mod">' . $n . '</span>' : '';
+    add_menu_page( 'Posts', 'Posts', 'edit_posts', 'edit.php', '', 'dashicons-admin-post', 4 );
+    add_menu_page( 'Comments', 'Comments' . $bubble( $pending ), 'moderate_comments', 'edit-comments.php', '', 'dashicons-admin-comments', 5 );
+    add_menu_page( 'Updates', 'Updates' . $bubble( $updates ), 'update_core', 'update-core.php', '', 'dashicons-update', 6 );
+
+    add_submenu_page( 'gsp-site-tools', 'Donations', 'Donations', 'manage_options', 'admin.php?page=sp-donations' );
+    add_submenu_page( 'gsp-site-tools', 'Email subscribers', 'Email subscribers', 'manage_options', 'admin.php?page=sp-subscribers' );
+}
+add_action( 'admin_menu', 'gsp_add_site_tools_menu', 1000 );
+
+/**
+ * Send administrators to Site tools instead of the SocietyPress dashboard.
+ *
+ * WHY priority 1: the plugin redirects the WordPress dashboard to its own on
+ * admin_init at the default priority, so this has to get there first.
+ */
+function gsp_redirect_to_site_tools(): void {
+    global $pagenow;
+    if ( wp_doing_ajax() || ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $on_sp_dashboard = 'admin.php' === $pagenow && 'societypress' === ( $_GET['page'] ?? '' );
+    if ( 'index.php' === $pagenow || $on_sp_dashboard ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=gsp-site-tools' ) );
+        exit;
+    }
+}
+add_action( 'admin_init', 'gsp_redirect_to_site_tools', 1 );
+
+function gsp_site_tools_login_redirect( $redirect_to, $requested, $user ) {
+    if ( $user instanceof WP_User && user_can( $user, 'manage_options' ) && ( '' === (string) $requested || admin_url() === $requested ) ) {
+        return admin_url( 'admin.php?page=gsp-site-tools' );
+    }
+    return $redirect_to;
+}
+add_filter( 'login_redirect', 'gsp_site_tools_login_redirect', 100, 3 );
+
+function gsp_render_site_tools_page(): void {
+    $pending = (int) wp_count_comments()->moderated;
+    $updates = (int) wp_get_update_data()['counts']['total'];
+    $host    = 'https://' . GSP_SERVER_HOST;
+
+    $groups = [
+        'This site' => [
+            [ 'Write a blog post', admin_url( 'post-new.php' ) ],
+            [ 'All posts', admin_url( 'edit.php' ) ],
+            [ sprintf( 'Comments to approve (%d)', $pending ), admin_url( 'edit-comments.php?comment_status=moderated' ) ],
+            [ sprintf( 'WordPress updates (%d)', $updates ), admin_url( 'update-core.php' ) ],
+            [ 'Donations', admin_url( 'admin.php?page=sp-donations' ) ],
+            [ 'Email subscribers', admin_url( 'admin.php?page=sp-subscribers' ) ],
+            [ 'Forums', admin_url( 'edit.php?post_type=forum' ) ],
+            [ 'Installs', admin_url( 'admin.php?page=gsp-installs' ) ],
+        ],
+        'Hosting' => [
+            [ 'WHM', $host . ':2087/', true ],
+            [ 'WHMCS', GSP_WHMCS_URL, true ],
+            [ 'cPanel', $host . ':2083/', true ],
+            // cPanel's login honors goto_uri, so this lands in phpMyAdmin
+            // after signing in rather than on the cPanel home screen.
+            [ 'phpMyAdmin', $host . ':2083/?goto_uri=' . rawurlencode( '/3rdparty/phpMyAdmin/' ), true ],
+        ],
+    ];
+    ?>
+    <div class="wrap">
+        <h1>Site tools</h1>
+        <?php foreach ( $groups as $heading => $links ) : ?>
+            <div class="card">
+                <h2 class="title"><?php echo esc_html( $heading ); ?></h2>
+                <ul>
+                    <?php foreach ( $links as $link ) : ?>
+                        <li><a href="<?php echo esc_url( $link[1] ); ?>"<?php echo empty( $link[2] ) ? '' : ' target="_blank" rel="noopener"'; ?>><?php echo esc_html( $link[0] ); ?></a></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endforeach; ?>
+        <div class="card">
+            <h2 class="title">Community Pulse</h2>
+            <?php gsp_dashboard_pulse_render(); ?>
+        </div>
+    </div>
+    <?php
+}
+
 /**
  * Render the register.
  */

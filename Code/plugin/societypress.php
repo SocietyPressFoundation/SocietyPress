@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.80
+ * Version:     1.5.81
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.80' );
+define( 'SOCIETYPRESS_VERSION', '1.5.81' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -17439,7 +17439,7 @@ function sp_get_dashboard_tiles(): array {
             // tile and the report can never disagree in front of a treasurer.
             'value'      => static fn() => (float) $wpdb->get_var( $wpdb->prepare(
                 "SELECT COALESCE(SUM(amount),0) FROM {$prefix}donations
-                  WHERE date >= %s AND status NOT IN ('pending','failed')", $year_start
+                  WHERE date >= %s AND status NOT IN (" . sp_donation_unreceived_statuses() . ")", $year_start
             ) ),
         ],
         'orders_awaiting' => [
@@ -22949,6 +22949,17 @@ function sp_insights_stats_governance( array $window ): array {
     return [ 'label' => $label, 'value' => $total, 'value_kind' => 'hours', 'sparkline' => $sparkline ];
 }
 
+/**
+ * Donation statuses that mean no money arrived, as a quoted SQL list.
+ *
+ * WHY one list: each donation total kept its own copy, and none of them knew
+ * about 'expired' (a Stripe checkout opened and abandoned) — so dashboards
+ * counted gifts that were never made.
+ */
+function sp_donation_unreceived_statuses(): string {
+    return "'pending','failed','expired','cancelled','refunded'";
+}
+
 function sp_insights_stats_store( array $window ): array {
     $r = sp_insights_bucket_counts(
         'orders',
@@ -22994,7 +23005,7 @@ function sp_insights_stats_donations( array $window ): array {
 
     // Statuses we count as actual revenue. 'recorded' = manual cash/check entry,
     // 'paid' = Stripe one-time, 'subscription_active' = Stripe recurring.
-    $exclude = "status NOT IN ('failed','pending','cancelled','refunded')";
+    $exclude = "status NOT IN (" . sp_donation_unreceived_statuses() . ")";
 
     // One query instead of 1 total + 12 per-bucket SUM()s: pull every
     // (timestamp, amount) row in the window and aggregate in PHP.
@@ -40860,7 +40871,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.80',
+            'version'     => '1.5.81',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40879,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.80',
+            'version'     => '1.5.81',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40887,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.80',
+            'version'     => '1.5.81',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40895,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.80',
+            'version'     => '1.5.81',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40903,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.80',
+            'version'     => '1.5.81',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -74110,7 +74121,7 @@ function sp_render_reports_page(): void {
     // Donation stats for this year
     $year_start     = wp_date( 'Y-01-01' );
     $donations_year = (float) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s AND status NOT IN ('pending','failed')", $year_start
+        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s AND status NOT IN (" . sp_donation_unreceived_statuses() . ")", $year_start
     ) );
     $donor_count    = (int) $wpdb->get_var( $wpdb->prepare(
         "SELECT COUNT(DISTINCT donor_email) FROM {$prefix}donations WHERE date >= %s AND donor_email IS NOT NULL AND donor_email != ''", $year_start
@@ -74121,7 +74132,7 @@ function sp_render_reports_page(): void {
         "SELECT c.name, SUM(d.amount) AS raised
          FROM {$prefix}donations d
          JOIN {$prefix}campaigns c ON d.campaign_id = c.id
-         WHERE d.date >= %s AND d.status NOT IN ('pending','failed')
+         WHERE d.date >= %s AND d.status NOT IN (" . sp_donation_unreceived_statuses() . ")
          GROUP BY d.campaign_id
          ORDER BY raised DESC
          LIMIT 1", $year_start
@@ -89511,7 +89522,7 @@ function sp_render_donations_page(): void {
     // failed payments, matching the campaign "raised" figures).
     $year_start = wp_date( 'Y-01-01' );
     $year_total = (float) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s AND status NOT IN ('pending','failed')",
+        "SELECT COALESCE(SUM(amount), 0) FROM {$prefix}donations WHERE date >= %s AND status NOT IN (" . sp_donation_unreceived_statuses() . ")",
         $year_start
     ) );
 
@@ -90128,8 +90139,8 @@ function sp_render_campaigns_page(): void {
     $campaigns = $wpdb->get_results(
         "SELECT c.*,
                 u.display_name AS created_by_name,
-                COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.status NOT IN ('pending','failed')), 0) AS raised,
-                (SELECT COUNT(*) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.status NOT IN ('pending','failed')) AS donation_count
+                COALESCE((SELECT SUM(d.amount) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.status NOT IN (" . sp_donation_unreceived_statuses() . ")), 0) AS raised,
+                (SELECT COUNT(*) FROM {$prefix}donations d WHERE d.campaign_id = c.id AND d.status NOT IN (" . sp_donation_unreceived_statuses() . ")) AS donation_count
          FROM {$prefix}campaigns c
          LEFT JOIN {$wpdb->users} u ON c.created_by = u.ID
          ORDER BY c.status ASC, c.created_at DESC"

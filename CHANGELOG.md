@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.81] — 2026-10-29
+
+**Donation totals count only money received.** A Stripe donation that someone
+started and never finished is marked expired, and the dashboard, reports and
+campaign totals were counting those as gifts. They now leave out expired,
+cancelled and refunded donations along with failed and pending ones.
+
 ## [1.5.80] — 2026-10-29
 
 **Join form asks for the plan first.** The join form now opens with just the

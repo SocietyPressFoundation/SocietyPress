@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.80] — 2026-10-29
+
+**Join form asks for the plan first.** The join form now opens with just the
+list of plans. Once a plan is picked, the name, contact and payment fields
+appear below it. A link that already names a plan (`?plan=single`) opens with
+the fields showing.
+
 ## [1.5.79] — 2026-10-29
 
 **Online join reaches payment.** Choosing a paid plan on the join form now takes

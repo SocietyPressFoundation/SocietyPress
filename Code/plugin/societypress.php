@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.79
+ * Version:     1.5.80
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.79' );
+define( 'SOCIETYPRESS_VERSION', '1.5.80' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40860,7 +40860,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.79',
+            'version'     => '1.5.80',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40868,7 +40868,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.79',
+            'version'     => '1.5.80',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40876,7 +40876,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.79',
+            'version'     => '1.5.80',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40884,7 +40884,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.79',
+            'version'     => '1.5.80',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40892,7 +40892,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.79',
+            'version'     => '1.5.80',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -65139,6 +65139,9 @@ function sp_render_join_form(): string {
             <?php endforeach; ?>
         </fieldset>
 
+        <!-- Everything below waits for a plan choice (revealed by the script after the form) -->
+        <div id="sp-join-details" class="sp-join-details">
+
         <?php $sp_max_years = max( 1, (int) ( sp_settings()['membership_max_years'] ?? 1 ) ); ?>
         <?php if ( $sp_max_years > 1 ) : ?>
         <!-- Membership Term (multi-year, online dues only) -->
@@ -65295,7 +65298,28 @@ function sp_render_join_form(): string {
         </fieldset>
 
         <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
+        </div>
     </form>
+
+    <!-- Plan first: hide the data-entry fields until a plan is chosen -->
+    <script>
+    (function() {
+        'use strict';
+        // WHY hide from script rather than in the markup: if JS fails, the
+        // whole form stays usable instead of being stuck behind the plan list.
+        var details = document.getElementById('sp-join-details');
+        if (!details) return;
+        var form = details.closest('form');
+        function reveal() {
+            details.hidden = !form.querySelector('input[name="tier_id"]:checked');
+        }
+        form.querySelectorAll('input[name="tier_id"]').forEach(function(radio) {
+            radio.addEventListener('change', reveal);
+        });
+        // A ?plan= link or a failed submit arrives with a plan already checked.
+        reveal();
+    })();
+    </script>
 
     <!-- Joint member fieldset visibility toggle based on selected tier -->
     <script>

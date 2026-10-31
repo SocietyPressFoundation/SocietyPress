@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.84] — 2026-10-31
+
+**No "Not Available" count for reference libraries.** A library that doesn't lend
+(Library settings, lending unticked — the default) no longer shows a red "Not
+Available" figure on the dashboard. Nothing in a reference collection is ever out,
+so the figure was the whole catalog.
+
 ## [1.5.83] — 2026-10-31
 
 **Account links in the phone menu.** On a phone, Log In — or My Account, Admin

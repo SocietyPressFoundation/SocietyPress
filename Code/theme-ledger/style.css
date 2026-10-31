@@ -7,7 +7,7 @@ Description: A modern dashboard-style theme with card-based layouts, clean navig
              and professional spacing. Charcoal and ivory with a deep burgundy accent
              evoke courthouses, ledger books, and official records. For societies that
              want to project authority and permanence.
-Version: 1.5.82
+Version: 1.5.83
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
@@ -882,6 +882,21 @@ h1, h2, h3, h4, h5, h6 {
 
     .ledger-navigation.ledger-nav-open {
         display: block;
+    }
+
+    /* Ledger opens its panel with its own class, so it shows the plugin's
+       account links itself, and drops the header account slot that sat
+       between the logo and the menu button as a stray "Log In". */
+    .ledger-nav-open .sp-nav-account {
+        display: block;
+    }
+
+    .ledger-nav-open .sp-nav-account-first {
+        border-top: 2px solid rgba(127, 127, 127, 0.4);
+    }
+
+    header:has(.ledger-navigation .sp-nav-account) .sp-user-menu {
+        display: none;
     }
 
     .ledger-navigation > ul {

@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.5.82
+Version: 1.5.83
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -1023,6 +1023,21 @@ img {
 
 .sp-user-menu {
     position: relative;
+}
+
+/* Account links the plugin adds to the end of the primary menu. They belong to
+   the phone menu panel only, so they stay hidden until the panel opens; on a
+   wide screen the header account menu already does this job. */
+.sp-nav-account {
+    display: none;
+}
+
+.sp-nav-open .sp-nav-account {
+    display: block;
+}
+
+.sp-nav-open .sp-nav-account-first {
+    border-top: 2px solid rgba(127, 127, 127, 0.4);
 }
 
 /* The dropdown anchors to the li inside the user menu nav */
@@ -2681,6 +2696,15 @@ input[type="date"]:focus {
 
     /* On mobile, hide the name and just show the avatar to save space */
     .sp-user-name {
+        display: none;
+    }
+
+    /* WHY hide the header account slot once the menu carries the account
+       links: at phone width it wedged "Log In" between the logo and the menu
+       button, and signed in it was a bare silhouette nobody read as Log Out.
+       The :has() guard keeps it for any menu without those links — no menu
+       assigned yet, or a theme that puts its navigation elsewhere. */
+    .header-nav-area:has(.main-navigation .sp-nav-account) .sp-user-menu {
         display: none;
     }
 

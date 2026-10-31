@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.83] — 2026-10-31
+
+**Account links in the phone menu.** On a phone, Log In — or My Account, Admin
+and Log Out once signed in — now sit at the bottom of the menu panel as plain
+words. The header no longer squeezes "Log In" between the logo and the menu
+button, and a member without a profile photo can find Log Out.
+
 ## [1.5.82] — 2026-10-31
 
 **Access areas open their screens.** A volunteer given an access area — Library,

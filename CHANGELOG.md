@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.82] — 2026-10-31
+
+**Access areas open their screens.** A volunteer given an access area — Library,
+Reports, Leadership & Volunteers and the rest — now sees those screens in the
+sidebar and can open them. Before, every screen was refused to anyone who was
+not a full administrator, so access areas granted nothing. A committee chair who
+also holds access areas keeps them, along with the Help Desk, instead of being
+narrowed to the chair screens, and sees every event, meeting and volunteer opening
+those areas cover rather than only their own committee's.
+
 ## [1.5.81] — 2026-10-29
 
 **Donation totals count only money received.** A Stripe donation that someone

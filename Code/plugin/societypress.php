@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.81
+ * Version:     1.5.82
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.81' );
+define( 'SOCIETYPRESS_VERSION', '1.5.82' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7782,7 +7782,7 @@ add_action( 'admin_menu', function () {
     // the one built for her — was the one page she could not reach.
     // -----------------------------------------------------------------
     if ( sp_user_is_chair() ) {
-        add_submenu_page(
+        sp_add_admin_page(
             'societypress',
             __( 'My Committee — SocietyPress', 'societypress' ),
             __( 'My Committee', 'societypress' ),
@@ -7808,7 +7808,7 @@ add_action( 'admin_menu', function () {
     //      ask that the moment you sign in. The page itself is unchanged and
     //      the dashboard panel links straight to it.
     // -----------------------------------------------------------------
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Notepad — SocietyPress', 'societypress' ),
         __( 'Notepad', 'societypress' ),
@@ -7846,7 +7846,7 @@ add_action( 'admin_menu', function () {
     // nothing to tell them apart. Naming it for the thing it edits removes the
     // guess. It also moved out of the Website group for the same reason — see
     // sp_default_menu_config().
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Admin Sidebar — SocietyPress', 'societypress' ),
         __( 'Admin Sidebar', 'societypress' ),
@@ -7861,7 +7861,7 @@ add_action( 'admin_menu', function () {
     //      get grouped into a "Members" flyout by the JS below.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Members — SocietyPress', 'societypress' ),
         __( 'Members', 'societypress' ),
@@ -7870,7 +7870,7 @@ add_action( 'admin_menu', function () {
         'sp_render_members_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Shared Addresses — SocietyPress', 'societypress' ),
         __( 'Shared Addresses', 'societypress' ),
@@ -7879,7 +7879,7 @@ add_action( 'admin_menu', function () {
         'sp_render_shared_addresses_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Members — SocietyPress', 'societypress' ),
         __( 'Import Members', 'societypress' ),
@@ -7888,7 +7888,7 @@ add_action( 'admin_menu', function () {
         'sp_render_import_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Export Members — SocietyPress', 'societypress' ),
         __( 'Export Members', 'societypress' ),
@@ -7901,7 +7901,7 @@ add_action( 'admin_menu', function () {
     // WHY: Harold needs a place to add, rename, reprice, and reorder the
     //      membership tiers that appear in the member edit dropdown. Without
     //      this page the only way to manage tiers was direct DB access.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Membership Plans — SocietyPress', 'societypress' ),
         __( 'Membership Plans', 'societypress' ),
@@ -7911,7 +7911,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Groups — casual interest groups (SIGs) that members self-join
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Groups — SocietyPress', 'societypress' ),
         __( 'Groups', 'societypress' ),
@@ -7921,7 +7921,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Edit Group page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Group — SocietyPress', 'societypress' ),
         __( 'Edit Group', 'societypress' ),
@@ -7931,7 +7931,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Member Edit — hidden (no sidebar link, accessed via row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Member — SocietyPress', 'societypress' ),
         __( 'Edit Member', 'societypress' ),
@@ -7952,7 +7952,7 @@ add_action( 'admin_menu', function () {
     if ( $pending_count > 0 ) {
         $pending_label .= sprintf( ' <span class="awaiting-mod">%d</span>', $pending_count );
     }
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Pending Profile Changes — SocietyPress', 'societypress' ),
         $pending_label,
@@ -7967,7 +7967,7 @@ add_action( 'admin_menu', function () {
     //      Full CRUD for events with registration, categories, speakers.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Events — SocietyPress', 'societypress' ),
         __( 'Events', 'societypress' ),
@@ -7976,7 +7976,7 @@ add_action( 'admin_menu', function () {
         'sp_render_events_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Event Categories — SocietyPress', 'societypress' ),
         __( 'Event Categories', 'societypress' ),
@@ -7985,7 +7985,7 @@ add_action( 'admin_menu', function () {
         'sp_render_event_categories_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Events — SocietyPress', 'societypress' ),
         __( 'Import Events', 'societypress' ),
@@ -7994,7 +7994,7 @@ add_action( 'admin_menu', function () {
         'sp_render_import_events_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Speakers — SocietyPress', 'societypress' ),
         __( 'Speakers', 'societypress' ),
@@ -8007,7 +8007,7 @@ add_action( 'admin_menu', function () {
     // WHY: Societies often partner with other organizations. Rather than
     //      manually re-entering events from those groups, Harold can subscribe
     //      to their iCal feeds and events appear automatically.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'External Calendars — SocietyPress', 'societypress' ),
         __( 'External Calendars', 'societypress' ),
@@ -8017,7 +8017,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Event Edit — hidden (no sidebar link, accessed via row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Event — SocietyPress', 'societypress' ),
         __( 'Edit Event', 'societypress' ),
@@ -8027,7 +8027,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Speaker Edit — hidden (accessed via row actions on speakers list)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Speaker — SocietyPress', 'societypress' ),
         __( 'Edit Speaker', 'societypress' ),
@@ -8042,7 +8042,7 @@ add_action( 'admin_menu', function () {
     //      The old Governance placeholder is now a real volunteer roster.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Officers — SocietyPress', 'societypress' ),
         __( 'Officers', 'societypress' ),
@@ -8052,7 +8052,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Committees — first-class committee management
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Committees — SocietyPress', 'societypress' ),
         __( 'Committees', 'societypress' ),
@@ -8062,7 +8062,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Committee add/edit page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Committee — SocietyPress', 'societypress' ),
         '',
@@ -8072,7 +8072,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Meetings & Minutes — board / membership / committee meetings
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Meetings & Minutes — SocietyPress', 'societypress' ),
         __( 'Meetings & Minutes', 'societypress' ),
@@ -8082,7 +8082,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Meeting add/edit page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Meeting — SocietyPress', 'societypress' ),
         '',
@@ -8094,7 +8094,7 @@ add_action( 'admin_menu', function () {
     // WHY: The volunteer roster is now a separate page from Leadership & Committees.
     // Officers and committee members are managed on the Leadership page; day-to-day
     // volunteer role assignments live here on their own dedicated roster page.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Volunteer Roster — SocietyPress', 'societypress' ),
         __( 'Volunteer Roster', 'societypress' ),
@@ -8103,7 +8103,7 @@ add_action( 'admin_menu', function () {
         'sp_render_volunteers_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Volunteer Hours — SocietyPress', 'societypress' ),
         __( 'Volunteer Hours', 'societypress' ),
@@ -8112,7 +8112,7 @@ add_action( 'admin_menu', function () {
         'sp_render_volunteer_hours_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Volunteer Opportunities — SocietyPress', 'societypress' ),
         __( 'Opportunities', 'societypress' ),
@@ -8122,7 +8122,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden page for editing a single opportunity
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Opportunity — SocietyPress', 'societypress' ),
         '',
@@ -8134,7 +8134,7 @@ add_action( 'admin_menu', function () {
     // Voting & Elections — ballot management within the Governance group
     // WHY: Ballots are a governance function — board elections, bylaw amendments,
     //      and member votes. They live alongside committees and volunteers.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Ballots — SocietyPress', 'societypress' ),
         __( 'Ballots', 'societypress' ),
@@ -8144,8 +8144,8 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden pages for ballot editing and results
-    add_submenu_page( '', __( 'Edit Ballot — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-edit', 'sp_render_ballot_edit_page' );
-    add_submenu_page( '', __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
+    sp_add_admin_page( '', __( 'Edit Ballot — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-edit', 'sp_render_ballot_edit_page' );
+    sp_add_admin_page( '', __( 'Ballot Results — SocietyPress', 'societypress' ), '', 'manage_options', 'sp-ballot-results', 'sp_render_ballot_results_page' );
 
     // -----------------------------------------------------------------
     // GALLERY GROUP — Photo album management
@@ -8156,7 +8156,7 @@ add_action( 'admin_menu', function () {
     // their contents. "Add Images" named one action taken on it, so a volunteer
     // looking for photos they had already uploaded had no reason to think this
     // was the place.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Photos & Albums — SocietyPress', 'societypress' ),
         __( 'Photos & Albums', 'societypress' ),
@@ -8166,7 +8166,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Gallery album edit — hidden (accessed via row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Album — SocietyPress', 'societypress' ),
         __( 'Edit Album', 'societypress' ),
@@ -8180,7 +8180,7 @@ add_action( 'admin_menu', function () {
     // WHY: Everything research-related lives under Library.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Resource Links — SocietyPress', 'societypress' ),
         __( 'Resource Links', 'societypress' ),
@@ -8189,7 +8189,7 @@ add_action( 'admin_menu', function () {
         'sp_render_resources_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Resource Categories — SocietyPress', 'societypress' ),
         __( 'Resource Categories', 'societypress' ),
@@ -8198,7 +8198,7 @@ add_action( 'admin_menu', function () {
         'sp_render_resource_categories_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Library Catalog — SocietyPress', 'societypress' ),
         __( 'Library Catalog', 'societypress' ),
@@ -8209,7 +8209,7 @@ add_action( 'admin_menu', function () {
 
     // Catalog Options — the Media Type / Subject / Location lists catalogers
     // pick from, and which columns the public results table shows.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Catalog Options — SocietyPress', 'societypress' ),
         __( 'Catalog Options', 'societypress' ),
@@ -8222,7 +8222,7 @@ add_action( 'admin_menu', function () {
     // rather than in one "Import" corner: somebody looking at an empty
     // Volunteers screen is looking for the way to fill it, and that is where
     // they are looking.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Volunteers & Officers — SocietyPress', 'societypress' ),
         __( 'Import Volunteers', 'societypress' ),
@@ -8231,7 +8231,7 @@ add_action( 'admin_menu', function () {
         'sp_render_import_volunteers_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Committees — SocietyPress', 'societypress' ),
         __( 'Import Committees', 'societypress' ),
@@ -8240,7 +8240,7 @@ add_action( 'admin_menu', function () {
         'sp_render_import_committees_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Volunteer Openings — SocietyPress', 'societypress' ),
         __( 'Import Openings', 'societypress' ),
@@ -8249,7 +8249,7 @@ add_action( 'admin_menu', function () {
         'sp_render_import_openings_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Library — SocietyPress', 'societypress' ),
         __( 'Import Library', 'societypress' ),
@@ -8263,7 +8263,7 @@ add_action( 'admin_menu', function () {
     //      ISBNs were universal and almost never has cover images. This tool
     //      queries Open Library's API using LCCN, then title+author fallback,
     //      to populate cover_url and isbn fields automatically.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Fill In Book Details — SocietyPress', 'societypress' ),
         __( 'Fill In Book Details', 'societypress' ),
@@ -8275,7 +8275,7 @@ add_action( 'admin_menu', function () {
     // WHY separate import page: Resource links come from a different CSV format
     //     than library items (EasyNetSites links export vs. catalog export), so
     //     they need their own field mapping and processing logic.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Links — SocietyPress', 'societypress' ),
         __( 'Import Links', 'societypress' ),
@@ -8284,7 +8284,7 @@ add_action( 'admin_menu', function () {
         'sp_render_links_import_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Research Help — SocietyPress', 'societypress' ),
         __( 'Research Help', 'societypress' ),
@@ -8294,7 +8294,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Forms — volunteer-built contact / request forms.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Forms — SocietyPress', 'societypress' ),
         __( 'Forms', 'societypress' ),
@@ -8304,7 +8304,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Surveys — questions for the membership, answers added up.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Surveys — SocietyPress', 'societypress' ),
         __( 'Surveys', 'societypress' ),
@@ -8314,7 +8314,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Survey Edit — hidden (accessed via Add New Survey / a survey's name)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Survey — SocietyPress', 'societypress' ),
         __( 'Edit Survey', 'societypress' ),
@@ -8324,7 +8324,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Form Edit — hidden (accessed via Add New / Edit row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Form — SocietyPress', 'societypress' ),
         __( 'Edit Form', 'societypress' ),
@@ -8334,7 +8334,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Form Submissions — hidden (accessed via the Submissions row action)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Form Submissions — SocietyPress', 'societypress' ),
         __( 'Form Submissions', 'societypress' ),
@@ -8346,7 +8346,7 @@ add_action( 'admin_menu', function () {
     // Newsletter Archive — PDF newsletter archive with cover thumbnails.
     // WHY: Admins upload PDF newsletters and the system auto-generates cover
     //      thumbnails. Members can browse, preview, and download past issues.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Newsletter Archive — SocietyPress', 'societypress' ),
         __( 'Newsletter Archive', 'societypress' ),
@@ -8356,7 +8356,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Newsletter Edit — hidden (accessed via Add New / Edit row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Newsletter — SocietyPress', 'societypress' ),
         __( 'Edit Newsletter', 'societypress' ),
@@ -8370,7 +8370,7 @@ add_action( 'admin_menu', function () {
     // bylaws, policies, etc.) with per-document access control.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Documents — SocietyPress', 'societypress' ),
         __( 'Documents', 'societypress' ),
@@ -8380,7 +8380,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Files — every uploaded file in one place, in folders the society keeps.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Files — SocietyPress', 'societypress' ),
         __( 'Files', 'societypress' ),
@@ -8389,7 +8389,7 @@ add_action( 'admin_menu', function () {
         'sp_render_files_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Document Sections — SocietyPress', 'societypress' ),
         __( 'Document Sections', 'societypress' ),
@@ -8399,7 +8399,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Document Edit — hidden (accessed via Add New / Edit row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Document — SocietyPress', 'societypress' ),
         __( 'Edit Document', 'societypress' ),
@@ -8409,7 +8409,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Document Bulk Upload — hidden (accessed via Bulk Upload button on Documents list)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Upload Many Documents — SocietyPress', 'societypress' ),
         __( 'Upload Many Documents', 'societypress' ),
@@ -8424,7 +8424,7 @@ add_action( 'admin_menu', function () {
     // significant ancestors. One module covers any number of programs.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Lineage Programs — SocietyPress', 'societypress' ),
         __( 'Lineage Programs', 'societypress' ),
@@ -8433,7 +8433,7 @@ add_action( 'admin_menu', function () {
         'sp_render_lineage_programs_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Lineage Applications — SocietyPress', 'societypress' ),
         __( 'Lineage Applications', 'societypress' ),
@@ -8443,7 +8443,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden — Edit / add a lineage program (accessed via row action)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Lineage Program — SocietyPress', 'societypress' ),
         __( 'Edit Lineage Program', 'societypress' ),
@@ -8453,7 +8453,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden — Review / edit a single lineage application
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Review Lineage Application — SocietyPress', 'societypress' ),
         __( 'Review Lineage Application', 'societypress' ),
@@ -8466,7 +8466,7 @@ add_action( 'admin_menu', function () {
     // RESEARCH SERVICES — Paid research-case workflow (opt-in)
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Research Cases — SocietyPress', 'societypress' ),
         __( 'Research Cases', 'societypress' ),
@@ -8476,7 +8476,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden — Single case review (accessed via row action)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Review Research Case — SocietyPress', 'societypress' ),
         __( 'Review Research Case', 'societypress' ),
@@ -8486,7 +8486,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Library item edit — hidden (accessed via row actions)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Library Item — SocietyPress', 'societypress' ),
         __( 'Edit Library Item', 'societypress' ),
@@ -8499,7 +8499,7 @@ add_action( 'admin_menu', function () {
     // GENEALOGICAL RECORDS — Transcribed record collections
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Record Collections — SocietyPress', 'societypress' ),
         __( 'Record Collections', 'societypress' ),
@@ -8508,7 +8508,7 @@ add_action( 'admin_menu', function () {
         'sp_render_record_collections_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Records — SocietyPress', 'societypress' ),
         __( 'Import Records', 'societypress' ),
@@ -8518,7 +8518,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden pages — accessed via row actions, not visible in sidebar
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Collection — SocietyPress', 'societypress' ),
         __( 'Edit Collection', 'societypress' ),
@@ -8527,7 +8527,7 @@ add_action( 'admin_menu', function () {
         'sp_render_record_collection_edit_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Browse Records — SocietyPress', 'societypress' ),
         __( 'Browse Records', 'societypress' ),
@@ -8536,7 +8536,7 @@ add_action( 'admin_menu', function () {
         'sp_render_record_browse_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Review Records — SocietyPress', 'societypress' ),
         __( 'Review Records', 'societypress' ),
@@ -8545,7 +8545,7 @@ add_action( 'admin_menu', function () {
         'sp_render_record_review_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Record — SocietyPress', 'societypress' ),
         __( 'Edit Record', 'societypress' ),
@@ -8558,7 +8558,7 @@ add_action( 'admin_menu', function () {
     // FINANCES — Transaction ledger and payment management
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Payment History — SocietyPress', 'societypress' ),
         __( 'Payment History', 'societypress' ),
@@ -8568,7 +8568,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden page for recording a new payment (linked from finances page)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Record Payment — SocietyPress', 'societypress' ),
         __( 'Record Payment', 'societypress' ),
@@ -8578,7 +8578,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Donations — charitable giving tracker, separate from dues payments
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Donations — SocietyPress', 'societypress' ),
         __( 'Donations', 'societypress' ),
@@ -8588,7 +8588,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Donation edit/record page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Record Donation — SocietyPress', 'societypress' ),
         __( 'Record Donation', 'societypress' ),
@@ -8598,7 +8598,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Campaigns — fundraising campaign management
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Campaigns — SocietyPress', 'societypress' ),
         __( 'Campaigns', 'societypress' ),
@@ -8608,7 +8608,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Campaign edit page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Campaign — SocietyPress', 'societypress' ),
         __( 'Edit Campaign', 'societypress' ),
@@ -8618,7 +8618,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Store Products — non-library merchandise (apparel, pins, etc.)
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Store Products — SocietyPress', 'societypress' ),
         __( 'Store Products', 'societypress' ),
@@ -8628,7 +8628,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Store Product add/edit page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Store Product — SocietyPress', 'societypress' ),
         '',
@@ -8638,7 +8638,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Store Orders — purchase order management
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Store Orders — SocietyPress', 'societypress' ),
         __( 'Store Orders', 'societypress' ),
@@ -8648,7 +8648,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Order detail page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Order Detail — SocietyPress', 'societypress' ),
         '',
@@ -8666,7 +8666,7 @@ add_action( 'admin_menu', function () {
     //      sending; Email Log provides the audit trail.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Send Email — SocietyPress', 'societypress' ),
         __( 'Send Email', 'societypress' ),
@@ -8675,7 +8675,7 @@ add_action( 'admin_menu', function () {
         'sp_render_blast_email_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Subscribers — SocietyPress', 'societypress' ),
         __( 'Subscribers', 'societypress' ),
@@ -8685,7 +8685,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Hidden: Compose/edit blast email page
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Compose Email — SocietyPress', 'societypress' ),
         __( 'Compose Email', 'societypress' ),
@@ -8694,7 +8694,7 @@ add_action( 'admin_menu', function () {
         'sp_render_blast_email_compose_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Email Templates — SocietyPress', 'societypress' ),
         __( 'Email Templates', 'societypress' ),
@@ -8703,7 +8703,7 @@ add_action( 'admin_menu', function () {
         'sp_render_email_templates_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Sent Email — SocietyPress', 'societypress' ),
         __( 'Sent Email', 'societypress' ),
@@ -8722,7 +8722,7 @@ add_action( 'admin_menu', function () {
 
     // Appearance — the single door to how the site looks. Theme, colors and
     // fonts, and presets are tabs on this one screen.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Appearance — SocietyPress', 'societypress' ),
         __( 'Appearance', 'societypress' ),
@@ -8735,7 +8735,7 @@ add_action( 'admin_menu', function () {
     // off the menu, but still valid pages, so the admin_init redirect that sends
     // their old URLs to the right tab has something to redirect FROM rather than
     // WordPress refusing the page before the redirect runs.
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Themes — SocietyPress', 'societypress' ),
         '',
@@ -8744,7 +8744,7 @@ add_action( 'admin_menu', function () {
         'sp_render_themes_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Pages — SocietyPress', 'societypress' ),
         __( 'Pages', 'societypress' ),
@@ -8754,7 +8754,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Page Edit — hidden (no sidebar link, accessed via row actions or Add New)
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Edit Page — SocietyPress', 'societypress' ),
         __( 'Edit Page', 'societypress' ),
@@ -8763,7 +8763,7 @@ add_action( 'admin_menu', function () {
         'sp_render_page_edit'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Media', 'societypress' ),
         __( 'Media', 'societypress' ),
@@ -8783,7 +8783,7 @@ add_action( 'admin_menu', function () {
     // screen stays reachable by direct link for the importer redirect and the
     // "create a menu" buttons; it just no longer sits in the sidebar.
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Widgets', 'societypress' ),
         __( 'Widgets', 'societypress' ),
@@ -8807,7 +8807,7 @@ add_action( 'admin_menu', function () {
     //      Replaces the old placeholder with real reporting.
     // -----------------------------------------------------------------
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Overview — SocietyPress', 'societypress' ),
         __( 'Overview', 'societypress' ),
@@ -8816,7 +8816,7 @@ add_action( 'admin_menu', function () {
         'sp_render_reports_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Annual Report — SocietyPress', 'societypress' ),
         __( 'Annual Report', 'societypress' ),
@@ -8825,7 +8825,7 @@ add_action( 'admin_menu', function () {
         'sp_render_annual_report_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Membership Reports — SocietyPress', 'societypress' ),
         __( 'Membership Reports', 'societypress' ),
@@ -8846,7 +8846,7 @@ add_action( 'admin_menu', function () {
     // footer. Registered next to the other website-content screens because
     // that is where somebody goes looking for something that appears on every
     // page of their site.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Affiliations — SocietyPress', 'societypress' ),
         __( 'Affiliations', 'societypress' ),
@@ -8860,7 +8860,7 @@ add_action( 'admin_menu', function () {
     // places. This screen holds the site's title, tagline, admin email,
     // timezone, date and time formats, homepage and visibility — basics, not
     // the look, which is Website -> Design.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Site Basics — SocietyPress', 'societypress' ),
         __( 'Site Basics', 'societypress' ),
@@ -8869,7 +8869,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_website_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Organization Settings — SocietyPress', 'societypress' ),
         __( 'Organization', 'societypress' ),
@@ -8878,7 +8878,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_organization_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Membership Settings — SocietyPress', 'societypress' ),
         __( 'Membership', 'societypress' ),
@@ -8887,7 +8887,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_membership_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Directory Settings — SocietyPress', 'societypress' ),
         __( 'Directory', 'societypress' ),
@@ -8896,7 +8896,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_directory_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Events Settings — SocietyPress', 'societypress' ),
         __( 'Events', 'societypress' ),
@@ -8905,7 +8905,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_events_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Privacy Settings — SocietyPress', 'societypress' ),
         __( 'Privacy', 'societypress' ),
@@ -8914,7 +8914,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_privacy_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Export & Backup — SocietyPress', 'societypress' ),
         __( 'Export & Backup', 'societypress' ),
@@ -8929,7 +8929,7 @@ add_action( 'admin_menu', function () {
     //      section). Since we hide the native Settings menu, Harold has no
     //      way to reach it. Linking directly to the WP core page here keeps
     //      it accessible without us rebuilding what WordPress already provides.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Privacy Policy Builder', 'societypress' ),
         __( 'Privacy Policy Builder', 'societypress' ),
@@ -8937,7 +8937,7 @@ add_action( 'admin_menu', function () {
         'privacy-policy-guide.php'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Design — SocietyPress', 'societypress' ),
         '',
@@ -8946,7 +8946,7 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_design_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Features — SocietyPress', 'societypress' ),
         __( 'Features', 'societypress' ),
@@ -8959,7 +8959,7 @@ add_action( 'admin_menu', function () {
     // WHY: This is how Harold delegates admin tasks to board members,
     //      volunteers, and staff without giving them full WordPress
     //      administrator access. They see only what they need.
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Who Can Do What — SocietyPress', 'societypress' ),
         __( 'Who Can Do What', 'societypress' ),
@@ -8981,7 +8981,7 @@ add_action( 'admin_menu', function () {
     //      blank row at the bottom of the menu. An empty parent registers the
     //      page without listing it, which is what "hidden" was meant to be.
     // -----------------------------------------------------------------
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         '',
         '',
@@ -9049,6 +9049,30 @@ add_action( 'admin_menu', function () {
 //      (registered with null/empty parent) live in $submenu[''] and are
 //      also remapped.
 // ============================================================================
+
+/**
+ * Register a SocietyPress admin screen with its access-area capability.
+ *
+ * WHY this wrapper exists: add_submenu_page() checks current_user_can() on the
+ *      capability it is handed at the moment of registration, and when that
+ *      check fails it records the page as forbidden and drops it — it never
+ *      enters $submenu at all. Our screens register with a placeholder
+ *      manage_options, so for every delegated user (Librarian, Treasurer,
+ *      Reports) the screens were refused before the remap pass below could
+ *      touch them. Access areas granted nothing in the sidebar, and the same
+ *      forbidden list made the screens refuse a direct URL too. Applying the
+ *      map here, at registration, is the only point where it can work.
+ *
+ * @return string|false The page hook, or false if the user may not see it.
+ */
+function sp_add_admin_page( $parent_slug, $page_title, $menu_title, $capability, $menu_slug, $callback = '', $position = null ) {
+    $map = sp_get_menu_capability_map();
+    if ( isset( $map[ $menu_slug ] ) ) {
+        $capability = $map[ $menu_slug ];
+    }
+
+    return add_submenu_page( $parent_slug, $page_title, $menu_title, $capability, $menu_slug, $callback, $position );
+}
 
 /**
  * Map menu slugs to their required SocietyPress capability.
@@ -9357,10 +9381,25 @@ add_action( 'admin_menu', function () {
         'sp-volunteer-opportunity-edit',   // Opportunity editor (guard enforces committee)
     ];
 
+    // WHY the chair's own access areas are exempt: the trim exists to hide what
+    // chairing *lends* someone, not to take back what the society gave them on
+    // purpose. A chair who is also the Librarian lost the whole Library menu
+    // to this pass, along with the Help Desk every staffer gets.
+    $own_areas = get_user_meta( get_current_user_id(), 'sp_access_areas', true );
+    $own_caps  = array_values( array_intersect_key(
+        sp_get_access_area_caps(),
+        array_flip( is_array( $own_areas ) ? $own_areas : [] )
+    ) );
+    $chair_visible[] = 'sp-tickets';
+    $chair_visible[] = 'sp-ticket-new';
+
     global $submenu;
     if ( isset( $submenu['societypress'] ) ) {
         foreach ( $submenu['societypress'] as $key => $item ) {
             $slug = $item[2] ?? '';
+            if ( in_array( $item[1] ?? '', $own_caps, true ) ) {
+                continue;
+            }
             if ( $slug && ! in_array( $slug, $chair_visible, true ) ) {
                 remove_submenu_page( 'societypress', $slug );
             }
@@ -19939,7 +19978,7 @@ add_action( 'admin_menu', function () {
         return;
     }
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'News — SocietyPress', 'societypress' ),
         __( 'News', 'societypress' ),
@@ -21351,7 +21390,7 @@ add_action( 'admin_menu', function () {
         return;
     }
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Help Desk — SocietyPress', 'societypress' ),
         __( 'Help Desk', 'societypress' ),
@@ -21360,7 +21399,7 @@ add_action( 'admin_menu', function () {
         'sp_render_tickets_page'
     );
 
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Ask for Help — SocietyPress', 'societypress' ),
         __( 'Ask for Help', 'societypress' ),
@@ -21370,7 +21409,7 @@ add_action( 'admin_menu', function () {
     );
 
     // Registered without a menu row: you reach one ticket from the list.
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Ticket — SocietyPress', 'societypress' ),
         __( 'Ticket', 'societypress' ),
@@ -22524,7 +22563,7 @@ add_action( 'in_admin_header', function () {
 // ============================================================================
 
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'How We\'re Doing — SocietyPress', 'societypress' ),
         __( 'How We\'re Doing', 'societypress' ),
@@ -34689,7 +34728,7 @@ function sp_sanitize_settings( array $input ): array {
  * Register the hidden wizard admin page.
  */
 function sp_register_wizard_page(): void {
-    add_submenu_page(
+    sp_add_admin_page(
         '', // Hidden — no menu link
         'SocietyPress Setup',
         'Setup Wizard',
@@ -35697,7 +35736,7 @@ add_action( 'init', function () {
  * Add Audit Log admin menu item under Reports.
  */
 function sp_register_audit_log_menu(): void {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Change History — SocietyPress', 'societypress' ),
         __( 'Change History', 'societypress' ),
@@ -36197,7 +36236,7 @@ add_action( 'sp_daily_maintenance', 'sp_prune_access_log' );
  * Add Access Log admin menu item under Reports.
  */
 function sp_register_access_log_menu(): void {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Sign-In History — SocietyPress', 'societypress' ),
         __( 'Sign-In History', 'societypress' ),
@@ -40871,7 +40910,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.81',
+            'version'     => '1.5.82',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40879,7 +40918,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.81',
+            'version'     => '1.5.82',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40887,7 +40926,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.81',
+            'version'     => '1.5.82',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40895,7 +40934,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.81',
+            'version'     => '1.5.82',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40903,7 +40942,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.81',
+            'version'     => '1.5.82',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -53819,7 +53858,7 @@ class SP_Events_List_Table extends WP_List_Table {
         // Chair scope: non-admin chairs see only events tagged to one of
         // their committees. Admins see everything. This is the same scope
         // rule enforced on the edit pages.
-        if ( ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+        if ( ! sp_user_can( 'events' ) && sp_user_is_chair() ) {
             $chair_ids = sp_user_chaired_committee_ids();
             if ( ! empty( $chair_ids ) ) {
                 $id_list   = implode( ',', array_map( 'intval', $chair_ids ) );
@@ -54174,7 +54213,7 @@ add_action( 'admin_init', function () {
     // Chair scope: non-admin chairs may only save events tagged to a committee
     // they chair, and may only edit events that already belong to one. Admins
     // skip this check entirely.
-    if ( ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+    if ( ! sp_user_can( 'events' ) && sp_user_is_chair() ) {
         $chair_ids        = sp_user_chaired_committee_ids();
         $posted_committee = (int) ( $_POST['event_committee_id'] ?? 0 );
 
@@ -54502,7 +54541,7 @@ function sp_render_event_edit_page(): void {
     // tagged to committees they chair. A chair creating a new event is fine —
     // the edit form restricts the committee dropdown, and save will reject an
     // unauthorized committee_id anyway.
-    if ( $event && ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+    if ( $event && ! sp_user_can( 'events' ) && sp_user_is_chair() ) {
         $chair_ids = sp_user_chaired_committee_ids();
         $event_cid = (int) ( $event->committee_id ?? 0 );
         if ( ! $event_cid || ! in_array( $event_cid, $chair_ids, true ) ) {
@@ -81762,7 +81801,7 @@ function sp_render_volunteer_opportunities_page(): void {
     // Chair scope: non-admin chairs see only opportunities tagged to their
     // committees. Admins see everything including society-wide (null committee).
     $chair_scope_sql = '';
-    if ( ! current_user_can( 'manage_options' ) && sp_user_is_chair() ) {
+    if ( ! sp_user_can( 'governance' ) && sp_user_is_chair() ) {
         $chair_ids = sp_user_chaired_committee_ids();
         if ( ! empty( $chair_ids ) ) {
             $id_list         = implode( ',', array_map( 'intval', $chair_ids ) );
@@ -81910,7 +81949,7 @@ function sp_handle_volunteer_opportunity_save(): void {
     // Chair scope: a non-admin chair may only touch opportunities tagged to a
     // committee they chair — on the row they are editing and on the one they
     // are posting to.
-    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $is_chair_only = ! sp_user_can( 'governance' ) && sp_user_is_chair();
     $chair_ids     = $is_chair_only ? sp_user_chaired_committee_ids() : [];
     $posted_cid    = ! empty( $_POST['opp_committee_id'] ) ? (int) $_POST['opp_committee_id'] : null;
 
@@ -81996,7 +82035,7 @@ function sp_render_volunteer_opportunity_edit_page(): void {
 
     // Chair scope: non-admin chairs only see/edit opportunities tagged to
     // committees they chair.
-    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $is_chair_only = ! sp_user_can( 'governance' ) && sp_user_is_chair();
     $chair_ids     = $is_chair_only ? sp_user_chaired_committee_ids() : [];
 
     if ( $is_chair_only && $opp_id > 0 ) {
@@ -82233,7 +82272,7 @@ function sp_render_meetings_page(): void {
 
     // Chair scope: non-admin chairs see only meetings tied to committees
     // they chair. Admins see all three meeting types across every committee.
-    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $is_chair_only = ! sp_user_can( 'governance' ) && sp_user_is_chair();
     if ( $is_chair_only ) {
         $chair_ids = sp_user_chaired_committee_ids();
         if ( ! empty( $chair_ids ) ) {
@@ -82362,7 +82401,7 @@ function sp_render_meeting_edit_page(): void {
 
     // Chair scope: non-admin chairs may only view/edit committee meetings for
     // committees they chair. Load the row early so the guard can check it.
-    $is_chair_only = ! current_user_can( 'manage_options' ) && sp_user_is_chair();
+    $is_chair_only = ! sp_user_can( 'governance' ) && sp_user_is_chair();
     $chair_ids     = $is_chair_only ? sp_user_chaired_committee_ids() : [];
     if ( $is_chair_only && $mid ) {
         $existing = $wpdb->get_row( $wpdb->prepare(
@@ -115815,7 +115854,7 @@ add_shortcode( 'sp_picture_wall_submit', function ( $atts ) {
  * accessed via the Notifications dot or direct URL.
  */
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Picture Wall — Pending Submissions', 'societypress' ),
         __( 'Picture Wall Pending', 'societypress' ),
@@ -117806,7 +117845,7 @@ function sp_stripe_verify_webhook_signature( string $payload, string $sig_header
 // ============================================================================
 
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Research Subscriptions — SocietyPress', 'societypress' ),
         __( 'Research Subscriptions', 'societypress' ),
@@ -117818,7 +117857,7 @@ add_action( 'admin_menu', function () {
 
 
 add_action( 'admin_init', function () {
-    if ( ! current_user_can( 'manage_options' ) ) return;
+    if ( ! sp_user_can( 'library' ) ) return;
 
     if ( ! empty( $_POST['sp_save_db_subscription'] ) ) {
         check_admin_referer( 'sp_save_db_subscription', 'sp_dbs_nonce' );
@@ -117873,7 +117912,7 @@ add_action( 'admin_init', function () {
 
 
 function sp_render_database_subscriptions_page(): void {
-    if ( ! current_user_can( 'manage_options' ) ) wp_die( __( 'Insufficient permissions.', 'societypress' ) );
+    if ( ! sp_user_can( 'library' ) ) wp_die( __( 'Insufficient permissions.', 'societypress' ) );
 
     $settings = sp_settings();
     $list     = $settings['database_subscriptions'] ?? [];
@@ -117995,7 +118034,7 @@ function sp_render_database_subscriptions_page(): void {
 // ============================================================================
 
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Research Guides — SocietyPress', 'societypress' ),
         __( 'Research Guides', 'societypress' ),
@@ -122990,7 +123029,7 @@ function sp_theme_preset_apply( array $payload ) {
  * Admin menu — Theme Presets page under the SocietyPress menu.
  */
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Saved Looks — SocietyPress', 'societypress' ),
         '',
@@ -124944,7 +124983,7 @@ add_action( 'admin_init', function () {
 // ============================================================================
 
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         '',
         __( 'Help Request Tags — SocietyPress', 'societypress' ),
         __( 'Help Request Tags', 'societypress' ),
@@ -125651,7 +125690,7 @@ function sp_ens_import_rows( array $rows, string $menu_name ): array {
  * Register the ENS Pages importer admin submenu.
  */
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import from EasyNetSites — SocietyPress', 'societypress' ),
         __( 'Import from EasyNetSites', 'societypress' ),
@@ -126898,7 +126937,7 @@ function sp_newsletters_insert_row( array $row, int $file_id, int $cover_id, int
  * Register the Import Newsletters admin submenu.
  */
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Newsletters — SocietyPress', 'societypress' ),
         __( 'Import Newsletters', 'societypress' ),
@@ -127633,7 +127672,7 @@ function sp_records_bulk_import_csv( string $csv_path, string $col_name, string 
 }
 
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Records in Bulk — SocietyPress', 'societypress' ),
         __( 'Import Records in Bulk', 'societypress' ),
@@ -128290,7 +128329,7 @@ function sp_gallery_import_fetch_url( string $url ) {
 }
 
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Import Gallery — SocietyPress', 'societypress' ),
         __( 'Import Gallery', 'societypress' ),
@@ -129607,7 +129646,7 @@ add_action( 'template_redirect', function () {
  * Admin: SocietyPress → Short Links submenu (under Website group).
  */
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Short Links — SocietyPress', 'societypress' ),
         __( 'Short Links', 'societypress' ),
@@ -135696,7 +135735,7 @@ add_filter( 'wp_nav_menu_objects', 'sp_filter_nav_by_visibility', 11 );
  *      to a content volunteer without also handing over the theme customiser.
  */
 add_action( 'admin_menu', function () {
-    add_submenu_page(
+    sp_add_admin_page(
         'societypress',
         __( 'Menus — SocietyPress', 'societypress' ),
         __( 'Menus', 'societypress' ),

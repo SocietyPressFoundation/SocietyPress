@@ -55,6 +55,7 @@ Misc/
 Sample Data/
 scripts/deploy.local.sh
 scripts/build.local.sh
+scripts/browser-test.local.json
 
 # Brand, print and talk material — kept locally, deliberately out of the repo.
 # These are finished output, not source the project builds from: print masters

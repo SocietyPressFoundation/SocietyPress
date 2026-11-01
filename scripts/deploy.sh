@@ -331,6 +331,22 @@ case "${1:-plugin}" in
         ;;
 esac
 
+# Cross-browser check after anything that changes what a society's site looks
+# like. WHY it reports rather than fails the deploy: the files are already on
+# the server by now, so a red result means "go look", not "this didn't ship".
+# Skipped quietly where the test isn't set up (no browsers installed, or no
+# private config with the site list and test logins).
+BT_DIR="$LOCAL_BASE/scripts/browser-test"
+case "${1:-plugin}" in
+    plugin|theme|heritage|coastline|prairie|ledger|parlor|all)
+        if [ $OVERALL_STATUS -eq 0 ] && [ -d "$BT_DIR/node_modules" ] && [ -f "$LOCAL_BASE/scripts/browser-test.local.json" ] && [ -z "$SP_SKIP_BROWSER_TEST" ]; then
+            echo ""
+            echo "Running browser test (set SP_SKIP_BROWSER_TEST=1 to skip)..."
+            ( cd "$BT_DIR" && node run.mjs ) || echo "  Browser test found problems — open the report linked above."
+        fi
+        ;;
+esac
+
 if [ $OVERALL_STATUS -ne 0 ]; then
     echo ""
     echo "One or more deploys FAILED. See messages above."

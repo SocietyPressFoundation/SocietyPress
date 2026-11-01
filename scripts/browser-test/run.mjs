@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const here   = dirname( fileURLToPath( import.meta.url ) );
 const config = JSON.parse( readFileSync( join( here, '..', 'browser-test.local.json' ), 'utf8' ) );
@@ -107,6 +108,62 @@ async function discoverPages( site ) {
     const origin = new URL( site.url ).origin;
     const paths = [ ...new Set( hrefs.filter( h => h.startsWith( origin ) ).map( h => new URL( h ).pathname ) ) ];
     return [ '/', ...paths.filter( p => p !== '/' ) ].slice( 0, 7 );
+}
+
+
+// ---- Committee-chair checks -------------------------------------------------
+//
+// WHY a swap: a chair is whoever a committee record names, one per committee,
+// and a live society has no spare committee to lend a test account. Where the
+// config gives a chairSwap, the test account takes that committee's chair for
+// the minute the checks need and the real chair is put straight back. The
+// original is written to disk before the swap, so a run that dies midway is
+// undone by the next run before it does anything else.
+function remoteWp( sw, args ) {
+    return execFileSync( 'ssh', [ sw.ssh, `${ sw.wp } ${ args }` ], { stdio: [ 'ignore', 'pipe', 'ignore' ] } ).toString().trim();
+}
+function setChair( sw, userId ) {
+    remoteWp( sw, `db query "UPDATE \$(wp db prefix)sp_committees SET chair_user_id = ${ Number( userId ) } WHERE id = ${ Number( sw.committee ) }"` );
+}
+function swapFile( site ) {
+    return join( root, `chair-swap-${ site.label }.json` );
+}
+function restoreLeftoverSwap( site ) {
+    if ( ! site.chairSwap || ! existsSync( swapFile( site ) ) ) return;
+    const { original } = JSON.parse( readFileSync( swapFile( site ), 'utf8' ) );
+    setChair( site.chairSwap, original );
+    rmSync( swapFile( site ) );
+    console.log( `${ site.label }: restored committee ${ site.chairSwap.committee } chair left over from an interrupted run` );
+}
+async function withChair( site, fn ) {
+    const sw = site.chairSwap;
+    if ( ! sw ) return fn();
+    const original = remoteWp( sw, `db query "SELECT chair_user_id FROM \$(wp db prefix)sp_committees WHERE id = ${ Number( sw.committee ) }" --skip-column-names` );
+    const testId   = remoteWp( sw, `user get ${ sw.testUser } --field=ID` );
+    writeFileSync( swapFile( site ), JSON.stringify( { original } ) );
+    setChair( sw, testId );
+    try {
+        return await fn();
+    } finally {
+        setChair( sw, original );
+        rmSync( swapFile( site ) );
+    }
+}
+async function checkChair( site, state ) {
+    for ( const [ name, type ] of [ [ 'Chrome', chromium ], [ 'Firefox', firefox ], [ 'WebKit', webkit ] ] ) {
+        const b = await type.launch( name === 'Chrome' ? { channel: 'chrome' } : {} );
+        try {
+            const page = await ( await b.newContext( { ...DESKTOP, storageState: state } ) ).newPage();
+            await page.goto( site.url + '/wp-admin/admin.php?page=societypress', { waitUntil: 'load', timeout: 90000 } );
+            const ok = await page.locator( 'a[href*="page=sp-chair"]' ).filter( { visible: true } ).count();
+            record( { site: site.label, browser: name, size: 'desktop', who: 'chair', path: 'admin sidebar', status: ok ? 'pass' : 'fail',
+                notes: ok ? [] : [ 'My Committee missing from sidebar' ], shot: '' } );
+        } catch ( e ) {
+            record( { site: site.label, browser: name, size: 'desktop', who: 'chair', path: 'admin sidebar', status: 'fail', notes: [ e.message.split( '\n' )[ 0 ] ], shot: '' } );
+        } finally {
+            await b.close();
+        }
+    }
 }
 
 const results = [];
@@ -207,6 +264,7 @@ async function runSafari( site, pages ) {
 }
 
 for ( const site of sites ) {
+    restoreLeftoverSwap( site );
     const pages = await discoverPages( site ).catch( () => [ '/' ] );
     console.log( `${site.label}: ${pages.join( ' ' )}` );
 
@@ -246,6 +304,7 @@ for ( const site of sites ) {
     // out, with a dozen browsers hitting it at once.
     const pool = Array.from( { length: 2 }, async () => { while ( jobs.length ) await jobs.shift()(); } );
     await Promise.all( pool );
+    if ( sessions.chair ) await withChair( site, () => checkChair( site, sessions.chair ) );
     await runSafari( site, pages );
 }
 

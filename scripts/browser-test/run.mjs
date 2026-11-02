@@ -273,7 +273,10 @@ for ( const site of sites ) {
     // reads as an attack and answers by blocking the address. One login per
     // account, reused everywhere, looks like what it is.
     const sessions = {};
-    for ( const [ who, account ] of Object.entries( config.accounts ) ) {
+    // A site with "signIn": false in the config has no test accounts, so it is
+    // checked signed out only instead of reporting failed logins on every run.
+    const accounts = site.signIn === false ? {} : config.accounts;
+    for ( const [ who, account ] of Object.entries( accounts ) ) {
         const b = await chromium.launch();
         const ctx = await b.newContext();
         const page = await ctx.newPage();

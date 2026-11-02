@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.86] — 2026-11-01
+
+**Parlor's menu button looks like a menu button.** On phones its three bars drew
+side by side as one flat line. They now stack.
+
+**Ledger's header stays on the screen.** Between tablet and desktop widths, a long
+menu ran off the right edge and took Log In with it. The menu now wraps onto a
+second row when it doesn't fit.
+
 ## [1.5.85] — 2026-11-01
 
 **"Log In" is back in view on phones.** Anyone signed out now sees "Log In" in the

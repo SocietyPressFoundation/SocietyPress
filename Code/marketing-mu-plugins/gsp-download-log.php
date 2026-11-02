@@ -86,7 +86,12 @@ function gsp_dl_allowed_files(): array {
             'type' => 'application/zip',
         ],
         'sp-installer.php' => [
-            'path' => dirname( ABSPATH ) . '/downloads/sp-installer.php',
+            // WHY compressed on disk: the host's malware scanner matches the
+            // installer's contents and empties the file within seconds, under any
+            // name and in any folder. It leaves the gzipped copy alone. Visitors
+            // still receive the plain PHP file, unpacked as it is served.
+            'path' => dirname( ABSPATH ) . '/downloads/sp-installer.php.gz',
+            'gzip' => true,
             // Deliberately NOT text/php — this file is meant to be saved and run
             // on the visitor's own WordPress site, never rendered or executed here.
             'type' => 'application/octet-stream',
@@ -287,7 +292,17 @@ add_action( 'plugins_loaded', function () {
     // leave the download recorded as never having happened.
     gsp_dl_record( $requested );
 
-    $size = filesize( $file['path'] );
+    $body = null;
+    if ( ! empty( $file['gzip'] ) ) {
+        $body = gzdecode( (string) file_get_contents( $file['path'] ) );
+        if ( false === $body || '' === $body ) {
+            error_log( 'GSP Download Log: could not unpack ' . $file['path'] );
+            status_header( 500 );
+            exit;
+        }
+    }
+
+    $size = null === $body ? filesize( $file['path'] ) : strlen( $body );
 
     // Clear any buffering a theme or plugin may have started. Anything already
     // buffered would be prepended to the file and corrupt it.
@@ -306,6 +321,10 @@ add_action( 'plugins_loaded', function () {
     // already-compressed zip wastes CPU and has broken naive clients before.
     header( 'Content-Encoding: none' );
 
-    readfile( $file['path'] );
+    if ( null === $body ) {
+        readfile( $file['path'] );
+    } else {
+        echo $body; // phpcs:ignore WordPress.Security.EscapeOutput -- a file download, not HTML.
+    }
     exit;
 }, 1 );

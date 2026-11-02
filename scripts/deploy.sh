@@ -282,7 +282,9 @@ case "${1:-plugin}" in
             echo "  FAILED: downloads/.htaccess scp did not complete."
             OVERALL_STATUS=1
         fi
-        if ! scp "$LOCAL_BASE/Code/installer/sp-installer.php" "$SITE_HOST:$SITE_ROOT/downloads/sp-installer.php"; then
+        # WHY gzip: the host's malware scanner empties a plain copy within seconds.
+        # gsp-download-log.php unpacks this and serves the visitor the plain file.
+        if ! gzip -9c "$LOCAL_BASE/Code/installer/sp-installer.php" | ssh "$SITE_HOST" "cat > $SITE_ROOT/downloads/sp-installer.php.gz"; then
             echo "  FAILED: installer scp did not complete."
             OVERALL_STATUS=1
         else

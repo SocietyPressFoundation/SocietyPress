@@ -1,20 +1,32 @@
 #!/bin/bash
 # SocietyPress Demo Nightly Rebuild
 #
-# Resets demo.getsocietypress.org to a clean state every night.
+# Resets demo.societypress.net to a clean state every night.
 # Truncates all SP tables, re-seeds defaults, then populates with
 # sample data for "Kindred Genealogical Society" — the fictional society
 # seed-demo.php builds, which also overwrites the WordPress site title.
 #
-# Designed to run unattended via cron at 3 AM Central. The server clock is US
-# Eastern (one hour ahead of Central), so the cron fires at 04:00 server time:
-#   0 4 * * * /home/charle24/rebuild-demo.sh >> /home/charle24/rebuild-demo.log 2>&1
+# Designed to run unattended via cron at about 3 AM Central. The server clock is
+# UTC, so the cron fires at 09:00 server time (4 AM during daylight saving):
+#   0 9 * * * /home/societyp/rebuild-demo.sh >> /home/societyp/rebuild-demo.log 2>&1
 #
 # Can also be run manually (no confirmation prompt like reset-demo.sh).
 
-WP_PATH="/home/charle24/domains/getsocietypress.org/public_html/demo"
-WP="php -d disable_functions='' /usr/local/bin/wp --path=$WP_PATH"
+WP_PATH="/home/societyp/demo.societypress.net"
+WP="/usr/local/bin/wp --path=$WP_PATH"
 SEED_SCRIPT="$WP_PATH/sample-data/seed-demo.php"
+
+# WHY the PATH: cron's default finds /usr/bin/php, which on cPanel is a CGI
+# wrapper. WP-CLI fails under it and prints HTTP headers instead of data.
+export PATH="/usr/local/bin:$PATH"
+
+# WHY stop here: the steps below delete whatever users and plugins WP-CLI lists,
+# so a broken WP-CLI must never get far enough for its error text to be read as
+# a list of names.
+if ! $WP core is-installed 2>/dev/null; then
+    echo "ERROR: WP-CLI cannot reach WordPress at $WP_PATH. Nothing was changed."
+    exit 1
+fi
 
 echo ""
 echo "=== SocietyPress Demo Rebuild — $(date) ==="

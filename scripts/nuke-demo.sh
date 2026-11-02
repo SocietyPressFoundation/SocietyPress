@@ -10,15 +10,13 @@
 #   ./scripts/nuke-demo.sh              Nuke everything + upload fresh installer
 #   ./scripts/nuke-demo.sh --no-prompt  Skip confirmation (for scripted use)
 
-HOST="skystra"
-DEMO_PATH="~/domains/getsocietypress.org/public_html/demo"
-WP="php -d disable_functions='' /usr/local/bin/wp"
+HOST="societypress-net"
+DEMO_PATH="~/demo.societypress.net"
+WP="/usr/local/bin/wp"
 INSTALLER_SRC="$(cd "$(dirname "$0")/.." && pwd)/Code/installer/sp-installer.php"
-SSH_KEY="$HOME/.ssh/claude_code_rsa"
-REMOTE_HOST="charle24@axm97k5-compute.skystra.com"
 
 echo "=== SocietyPress Demo NUKE ==="
-echo "Target: demo.getsocietypress.org"
+echo "Target: demo.societypress.net"
 echo ""
 echo "This will DESTROY everything:"
 echo "  - All database tables"
@@ -46,7 +44,7 @@ fi
 
 # Step 2: Delete all files
 echo "Deleting all files..."
-ssh "$HOST" "rm -rf ${DEMO_PATH}/* ${DEMO_PATH}/.htaccess ${DEMO_PATH}/.maintenance 2>/dev/null"
+ssh "$HOST" "rm -rf ${DEMO_PATH}/* ${DEMO_PATH}/.htaccess ${DEMO_PATH}/.maintenance ${DEMO_PATH}/.user.ini 2>/dev/null"
 
 # Step 3: Verify empty
 file_count=$(ssh "$HOST" "ls -1A ${DEMO_PATH}/ 2>/dev/null | wc -l")
@@ -62,8 +60,8 @@ if [ ! -f "$INSTALLER_SRC" ]; then
     echo "ERROR: Installer not found at $INSTALLER_SRC"
     exit 1
 fi
-scp -i "$SSH_KEY" "$INSTALLER_SRC" "${REMOTE_HOST}:${DEMO_PATH}/sp-installer.php" 2>/dev/null
+scp "$INSTALLER_SRC" "$HOST:${DEMO_PATH}/sp-installer.php" 2>/dev/null
 
 echo ""
 echo "Done. Fresh installer ready at:"
-echo "  https://demo.getsocietypress.org/sp-installer.php"
+echo "  https://demo.societypress.net/sp-installer.php"

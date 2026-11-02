@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 global $wpdb;
 $prefix  = $wpdb->prefix . 'sp_';
-$base    = '/home/charle24/domains/getsocietypress.org/public_html/demo/sample-data/newsletters/';
+$base    = ABSPATH . 'sample-data/newsletters/';
 
 // Map season/year to filenames — must match generate-newsletters.py output
 $file_map = [

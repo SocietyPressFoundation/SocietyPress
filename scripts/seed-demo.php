@@ -2,7 +2,7 @@
 /**
  * SocietyPress Demo Seed Script
  *
- * Populates the demo site (demo.getsocietypress.org) with realistic sample data
+ * Populates the demo site (demo.societypress.net) with realistic sample data
  * for "Kindred Genealogical Society" — a fictional county-rooted, statewide
  * North Dakota genealogical society based in Kindred, Cass County.
  *
@@ -100,8 +100,8 @@ $settings = array_merge( $settings, [
 	// on this server even though siteurl is https://, causing mixed content
 	// blocking on the video. Hardcoding avoids that.
 	'homepage_hero_type'           => 'video',
-	'homepage_hero_media'          => 'https://demo.getsocietypress.org/wp-content/themes/societypress/assets/hero-background.mp4',
-	'homepage_hero_poster'         => 'https://demo.getsocietypress.org/wp-content/themes/societypress/assets/hero-background-poster.jpg',
+	'homepage_hero_media'          => home_url( '/wp-content/themes/societypress/assets/hero-background.mp4' ),
+	'homepage_hero_poster'         => home_url( '/wp-content/themes/societypress/assets/hero-background-poster.jpg' ),
 	'homepage_hero_headline'       => 'Kindred Genealogical Society',
 	'homepage_hero_subtitle'       => 'Tracing North Dakota Roots Since 1995.',
 	'homepage_hero_cta_text'       => 'Upcoming Events',
@@ -195,7 +195,7 @@ $member_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}members" );
 if ( $member_count > 0 ) {
 	WP_CLI::log( '  Members already exist, skipping.' );
 } else {
-	$csv_path = '/home/charle24/domains/getsocietypress.org/public_html/demo/sample-data/members/members.csv';
+	$csv_path = ABSPATH . 'sample-data/members/members.csv';
 
 	if ( ! file_exists( $csv_path ) ) {
 		WP_CLI::warning( "  Member CSV not found: $csv_path" );
@@ -650,7 +650,7 @@ $rec_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$prefix}record_collect
 if ( $rec_count > 0 ) {
 	WP_CLI::log( '  Record collections already exist, skipping.' );
 } else {
-	$csv_dir = '/home/charle24/domains/getsocietypress.org/public_html/demo/sample-data/records/';
+	$csv_dir = ABSPATH . 'sample-data/records/';
 
 	$collections = [
 		[ 'cemetery-burial-index.csv',      'Cass County Cemetery Index',              'cemetery',     'Tombstone inscriptions from cemeteries across the county.',          '1875-2000', 'Cass County, North Dakota' ],
@@ -739,7 +739,7 @@ if ( $rec_count > 0 ) {
 
 WP_CLI::log( 'Loading Hart Island GENRECORD dataset...' );
 
-$gr_path = '/home/charle24/domains/getsocietypress.org/public_html/demo/sample-data/records/hart-island-burials.gedrec';
+$gr_path = ABSPATH . 'sample-data/records/hart-island-burials.gedrec';
 if ( ! file_exists( $gr_path ) ) {
 	WP_CLI::log( '  Skipping — file not present at ' . $gr_path );
 } elseif ( ! function_exists( 'sp_parse_genrecord_file' ) ) {

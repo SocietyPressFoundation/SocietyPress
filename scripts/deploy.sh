@@ -1,6 +1,6 @@
 #!/bin/bash
 # SocietyPress Deploy Script
-# Deploys plugin and/or themes to demo.getsocietypress.org.
+# Deploys plugin and/or themes to demo.societypress.net.
 #
 # Usage:
 #   ./scripts/deploy.sh              Deploy plugin only
@@ -26,7 +26,7 @@
 set -o pipefail
 
 HOST="skystra"
-DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
+DEMO_BASE="~/demo.societypress.net/wp-content"
 
 # Two more sites on the primary host run the plugin, and until now nothing
 # deployed to either. Both drifted a month behind — the marketing site was
@@ -48,6 +48,10 @@ DEMO_BASE="~/domains/getsocietypress.org/public_html/demo/wp-content"
 SITE_HOST="societypress-net"
 SITE_ROOT="~/public_html"
 MARKETING_BASE="$SITE_ROOT/wp/wp-content"
+
+# WHY the demo uses SITE_HOST: it moved to its own folder and database on the
+# societypress.net account, beside the public site rather than inside it.
+DEMO_HOST="$SITE_HOST"
 ENSDEMO_BASE="~/domains/getsocietypress.org/public_html/ensdemo/wp-content"
 
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -168,7 +172,7 @@ deploy_theme_to() {
 # the optional secondary target if one is configured via deploy.local.sh.
 # ----------------------------------------------------------------------------
 deploy_plugin_all_sites() {
-    deploy_plugin_to "$DEMO_BASE" "demo.getsocietypress.org"
+    deploy_plugin_to "$DEMO_BASE" "demo.societypress.net" "$DEMO_HOST"
     deploy_plugin_to "$MARKETING_BASE" "societypress.net" "$SITE_HOST"
     deploy_plugin_to "$ENSDEMO_BASE" "getsocietypress.org/ensdemo"
     if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
@@ -179,7 +183,7 @@ deploy_plugin_all_sites() {
 deploy_theme_all_sites() {
     local local_dir="$1"
     local theme_name="$2"
-    deploy_theme_to "$local_dir" "$theme_name" "$DEMO_BASE" "demo.getsocietypress.org"
+    deploy_theme_to "$local_dir" "$theme_name" "$DEMO_BASE" "demo.societypress.net" "$DEMO_HOST"
     if [ -n "$SECONDARY_BASE" ] && [ -n "$SECONDARY_LABEL" ]; then
         deploy_theme_to "$local_dir" "$theme_name" "$SECONDARY_BASE" "$SECONDARY_LABEL" "${SECONDARY_HOST:-$HOST}"
     fi

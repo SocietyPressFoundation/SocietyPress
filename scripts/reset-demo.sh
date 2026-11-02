@@ -1,6 +1,6 @@
 #!/bin/bash
 # SocietyPress Demo Reset Script
-# Truncates all SP tables on demo.getsocietypress.org and re-seeds defaults.
+# Truncates all SP tables on demo.societypress.net and re-seeds defaults.
 #
 # WHY: Evaluators exploring the demo site will create test data. This script
 #      wipes everything back to a clean slate so the next person gets a fresh
@@ -11,13 +11,13 @@
 #   ./scripts/reset-demo.sh --full   Same, but also deactivate/reactivate the plugin
 #                             (fires all activation hooks, rebuilds tables)
 
-HOST="skystra"
-WP_PATH="~/domains/getsocietypress.org/public_html/demo"
+HOST="societypress-net"
+WP_PATH="/home/societyp/demo.societypress.net"
 WP="/usr/local/bin/wp --path=$WP_PATH"
 REMOTE_SCRIPT="/tmp/sp-demo-reset-$$.php"
 
 echo "=== SocietyPress Demo Reset ==="
-echo "Target: demo.getsocietypress.org"
+echo "Target: demo.societypress.net"
 echo ""
 echo "This will DELETE all SocietyPress data (members, events, library, etc.)"
 echo "and restore only the default seed data (tiers, categories)."
@@ -115,4 +115,4 @@ fi
 
 echo ""
 echo "=== Reset complete ==="
-echo "Visit https://demo.getsocietypress.org/wp-admin/ to verify."
+echo "Visit https://demo.societypress.net/wp-admin/ to verify."

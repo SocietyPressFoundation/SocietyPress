@@ -81,7 +81,7 @@ and the catalog entry renders a broken image against its own description, with
 no build error to warn you.
 
 Eight 600×400 screenshots are also present, captured from
-demo.getsocietypress.org:
+demo.societypress.net:
 
 | File | Shows |
 |---|---|

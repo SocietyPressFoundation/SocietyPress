@@ -105,7 +105,7 @@ get_header();
         <footer class="onepager__footer">
             <p>
                 <strong>See it in action:</strong>
-                <a href="https://demo.getsocietypress.org">demo.getsocietypress.org</a>
+                <a href="https://demo.societypress.net">demo.societypress.net</a>
                 (fully functional, 1,100+ sample members, 19,000+ library items)
             </p>
             <p>

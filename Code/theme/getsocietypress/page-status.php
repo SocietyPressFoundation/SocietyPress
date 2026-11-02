@@ -34,7 +34,7 @@ $gsp_components = array(
     array( 'name' => 'societypress.net website',      'status' => 'operational' ),
     array( 'name' => 'Download endpoint (latest .zip)', 'status' => 'operational' ),
     array( 'name' => 'Installer (sp-installer.php)',     'status' => 'operational' ),
-    array( 'name' => 'Demo site (demo.getsocietypress.org)', 'status' => 'operational' ),
+    array( 'name' => 'Demo site (demo.societypress.net)', 'status' => 'operational' ),
     array( 'name' => 'Documentation',                     'status' => 'operational' ),
 );
 

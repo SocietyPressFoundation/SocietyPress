@@ -139,7 +139,7 @@ $gsp_testimonials = array(
             </p>
 
             <p class="testimonials-empty__cta">
-                <a href="https://demo.getsocietypress.org" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                <a href="https://demo.societypress.net" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
                     Try the demo &rarr;
                 </a>
             </p>

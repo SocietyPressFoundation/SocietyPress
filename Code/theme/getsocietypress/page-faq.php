@@ -495,7 +495,7 @@ get_header();
                         attention from the maintainer that later adopters
                         will not. They get input into priorities. Their bug
                         reports get fixed in days, not quarters. The
-                        <a href="https://demo.getsocietypress.org">live demo</a>
+                        <a href="https://demo.societypress.net">live demo</a>
                         runs every feature against real settings every day,
                         so what you see is what you get. The risk you are
                         actually weighing is whether the platform you switch
@@ -520,7 +520,7 @@ get_header();
                         rather than a feature gate. The
                         <a href="/changelog/">changelog</a> shows the actual
                         rate of progress, and the
-                        <a href="https://demo.getsocietypress.org">demo</a>
+                        <a href="https://demo.societypress.net">demo</a>
                         shows the actual surface area. Don't read 1.0 as a
                         ship date &mdash; read the changelog and the demo.
                     </p>

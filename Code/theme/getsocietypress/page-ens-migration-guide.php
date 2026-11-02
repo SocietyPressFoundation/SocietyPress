@@ -25,7 +25,7 @@ get_header();
 
 /*
  * Load the guide. Canonical source on the server:
- *   ~/domains/getsocietypress.org/public_html/sp-docs-source/ENS-MIGRATION-GUIDE.md
+ *   ~/public_html/sp-docs-source/ENS-MIGRATION-GUIDE.md
  *
  * The directory is intentionally not called "docs/" — WordPress owns
  * the /docs/ URL (it's the Documentation hub page), and a real server

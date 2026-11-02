@@ -76,7 +76,7 @@ get_header();
             <li>The five bundled child themes (Heritage, Coastline, Prairie, Ledger, Parlor).</li>
             <li>The one-click installer (<code>sp-installer.php</code>).</li>
             <li>The societypress.net marketing website itself.</li>
-            <li>The demo site at <code>demo.getsocietypress.org</code>.</li>
+            <li>The demo site at <code>demo.societypress.net</code>.</li>
         </ul>
 
         <h2>Out of scope</h2>
@@ -145,7 +145,7 @@ get_header();
 
         <ul>
             <li>Run security tests on your own SocietyPress installation.</li>
-            <li>Run security tests on the demo site at <code>demo.getsocietypress.org</code> &mdash; but please reset it after (there's a reset button) and avoid actions that could affect other testers.</li>
+            <li>Run security tests on the demo site at <code>demo.societypress.net</code> &mdash; but please reset it after (there's a reset button) and avoid actions that could affect other testers.</li>
             <li>Inspect the source code, which is available under the GPL.</li>
         </ul>
 

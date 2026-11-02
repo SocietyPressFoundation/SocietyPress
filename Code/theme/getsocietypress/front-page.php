@@ -47,7 +47,7 @@ get_header();
                 <a href="<?php echo esc_url( home_url( '/download/' ) ); ?>" class="btn btn-primary btn-lg">
                     Download SocietyPress
                 </a>
-                <a href="https://demo.getsocietypress.org" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
+                <a href="https://demo.societypress.net" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
                     See the Demo
                 </a>
             </div>
@@ -223,7 +223,7 @@ get_header();
                     members, events, a library catalog, genealogical record
                     collections, and more. Log in, click around, break things.
                 </p>
-                <a href="https://demo.getsocietypress.org" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                <a href="https://demo.societypress.net" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
                     Visit the Demo
                 </a>
             </div>

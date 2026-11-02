@@ -47,7 +47,7 @@ get_header();
                 <a href="#start" class="btn btn-primary btn-lg">
                     Read the Migration Guide
                 </a>
-                <a href="https://demo.getsocietypress.org" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
+                <a href="https://demo.societypress.net" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
                     Try the Demo
                 </a>
             </div>

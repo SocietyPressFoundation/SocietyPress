@@ -14,7 +14,7 @@ just the whole thing, given away. Host it yourself, or have it hosted for you at
 [![Version](https://img.shields.io/badge/Plugin-v1.0.72-brightgreen.svg)](CHANGELOG.md)
 
 [**societypress.net**](https://societypress.net) &nbsp;·&nbsp;
-[**Live demo**](https://demo.getsocietypress.org) &nbsp;·&nbsp;
+[**Live demo**](https://demo.societypress.net) &nbsp;·&nbsp;
 [**Documentation**](docs/) &nbsp;·&nbsp;
 [**Report a bug**](https://github.com/SocietyPressFoundation/SocietyPress/issues)
 

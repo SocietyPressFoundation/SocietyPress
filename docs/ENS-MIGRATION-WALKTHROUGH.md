@@ -275,7 +275,7 @@ demo. That is the recommended way to do your own first pass: a scratch
 install, a real file, and no consequences. When you are satisfied the
 result is right, do it again on the site you actually intend to keep.
 
-The demo site at [demo.getsocietypress.org](https://demo.getsocietypress.org)
+The demo site at [demo.societypress.net](https://demo.societypress.net)
 carries a different dataset and is not part of this walkthrough. The
 Cedar County file can be rebuilt with
 `scripts/generate-ens-walkthrough-fixture.py` in the SocietyPress

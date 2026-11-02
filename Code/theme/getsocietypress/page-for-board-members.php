@@ -116,14 +116,14 @@ get_header();
                 <dd>Charles Stricklin &mdash; a software developer who created, writes, and maintains SocietyPress entirely on his own.</dd>
 
                 <dt>How do we evaluate it?</dt>
-                <dd>Visit the fully-functional demo at demo.getsocietypress.org. Log in, click around, break things. No account, no form, no demo-request call required.</dd>
+                <dd>Visit the fully-functional demo at demo.societypress.net. Log in, click around, break things. No account, no form, no demo-request call required.</dd>
             </dl>
         </section>
 
         <footer class="onepager__footer">
             <p>
                 <strong>Evaluation demo:</strong>
-                <a href="https://demo.getsocietypress.org">demo.getsocietypress.org</a>
+                <a href="https://demo.societypress.net">demo.societypress.net</a>
             </p>
             <p>
                 <strong>Questions for the board:</strong>

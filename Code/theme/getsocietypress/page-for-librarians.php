@@ -114,7 +114,7 @@ get_header();
         <footer class="onepager__footer">
             <p>
                 <strong>See the library module on the demo:</strong>
-                <a href="https://demo.getsocietypress.org">demo.getsocietypress.org</a>
+                <a href="https://demo.societypress.net">demo.societypress.net</a>
                 (the demo library has 19,000+ catalog items to poke around in)
             </p>
             <p>

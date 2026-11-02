@@ -129,7 +129,7 @@ foreach ( $gsp_screenshots as $group ) {
             <p>
                 We'd rather show you a working product than a picture of
                 one. The live demo at
-                <a href="https://demo.getsocietypress.org">demo.getsocietypress.org</a>
+                <a href="https://demo.societypress.net">demo.societypress.net</a>
                 is fully functional &mdash; log in, click around, see it
                 all for yourself.
             </p>
@@ -141,7 +141,7 @@ foreach ( $gsp_screenshots as $group ) {
             </p>
 
             <div class="screenshots-empty__actions">
-                <a href="https://demo.getsocietypress.org" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                <a href="https://demo.societypress.net" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
                     Visit the Demo
                 </a>
                 <a href="<?php echo esc_url( home_url( '/features/' ) ); ?>" class="btn btn-outline btn-lg">
@@ -189,7 +189,7 @@ foreach ( $gsp_screenshots as $group ) {
                 <?php else : ?>
                     <p class="screenshots-module__pending">
                         <em>Screenshots pending. In the meantime,
-                        <a href="https://demo.getsocietypress.org" target="_blank" rel="noopener">see this module live on the demo</a>.</em>
+                        <a href="https://demo.societypress.net" target="_blank" rel="noopener">see this module live on the demo</a>.</em>
                     </p>
                 <?php endif; ?>
 

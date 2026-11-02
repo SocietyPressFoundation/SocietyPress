@@ -35,7 +35,7 @@ defined( 'ABSPATH' ) || exit;
                     <a href="<?php echo esc_url( home_url( '/hosting/' ) ); ?>">let us host it for you</a>.
                 </p>
                 <p class="footer-brand__demo">
-                    <a href="https://demo.getsocietypress.org" target="_blank" rel="noopener">
+                    <a href="https://demo.societypress.net" target="_blank" rel="noopener">
                         &rarr; Try the live demo
                     </a>
                 </p>

@@ -119,7 +119,7 @@ get_header();
         <footer class="onepager__footer">
             <p>
                 <strong>See the treasurer views on the demo:</strong>
-                <a href="https://demo.getsocietypress.org">demo.getsocietypress.org</a>
+                <a href="https://demo.societypress.net">demo.societypress.net</a>
                 (log in with the treasurer demo account to see only the
                 financial surfaces)
             </p>

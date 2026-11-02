@@ -8,7 +8,7 @@ Description: A "Traditional" layout archetype — the comfortable, familiar layo
              optional right sidebar, classic organizational homepage with "Next Meeting"
              callout, upcoming events, and recent news. Deep plum, warm ivory, and
              rose gold create a sense of grace and sophistication.
-Version: 1.5.84
+Version: 1.5.85
 Template: societypress
 Requires at least: 6.0
 Tested up to: 6.7
@@ -846,10 +846,27 @@ h1, h2, h3 {
     }
 
     /* The menu panel now carries the account links (the parent theme shows
-       them once sp-nav-open is set), so the header account slot goes — it sat
-       between the banner and the menu button as a stray "Log In". */
-    .parlor-nav-inner:has(.main-navigation .sp-nav-account) .sp-user-menu {
+       them once sp-nav-open is set), so the signed-in header slot goes. */
+    .parlor-nav-inner:has(.main-navigation .sp-nav-account) .sp-user-menu:has(.sp-user-trigger) {
         display: none;
+    }
+
+    /* "Log In" stays on show when signed out, on the far side of the menu
+       button. WHY the resets: the user menu also carries .main-navigation, so
+       the panel rules above would hide it and pull it out of the bar. */
+    .parlor-nav-bar .main-navigation.sp-user-menu:has(.sp-user-login-link) {
+        display: block;
+        position: static;
+        flex: none;
+        width: auto;
+        margin-left: auto;
+        box-shadow: none;
+        background: none;
+        order: 100;
+    }
+
+    .parlor-nav-bar .sp-user-login-link {
+        color: #fff;
     }
 
     .parlor-nav-bar .main-navigation ul {

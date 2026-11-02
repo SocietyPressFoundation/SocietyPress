@@ -5,7 +5,7 @@ Author: Stricklin Development
 Author URI: https://stricklindevelopment.com/
 Description: A clean, readable theme for genealogical and historical societies.
              Designed for ease of use with large fonts, high contrast, and simple navigation.
-Version: 1.5.84
+Version: 1.5.85
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 8.0
@@ -2699,13 +2699,22 @@ input[type="date"]:focus {
         display: none;
     }
 
-    /* WHY hide the header account slot once the menu carries the account
-       links: at phone width it wedged "Log In" between the logo and the menu
-       button, and signed in it was a bare silhouette nobody read as Log Out.
-       The :has() guard keeps it for any menu without those links — no menu
+    /* WHY hide the signed-in account slot once the menu carries the account
+       links: at phone width it was a bare silhouette nobody read as Log Out.
+       The first :has() keeps it for any menu without those links — no menu
        assigned yet, or a theme that puts its navigation elsewhere. */
-    .header-nav-area:has(.main-navigation .sp-nav-account) .sp-user-menu {
+    .header-nav-area:has(.main-navigation .sp-nav-account) .sp-user-menu:has(.sp-user-trigger) {
         display: none;
+    }
+
+    /* WHY "Log In" stays on show when signed out: a member arriving on a phone
+       should not have to guess it is inside the menu. It goes on the far side
+       of the menu button because wedged between the logo and the button it read
+       as a stray word. The hamburger guard leaves alone any theme that has not
+       collapsed its menu at this width, where the margin would overflow it. */
+    .header-nav-area:has(> .sp-hamburger) .sp-user-menu:has(.sp-user-login-link) {
+        order: 100;
+        margin-left: auto;
     }
 
     .sp-user-trigger {

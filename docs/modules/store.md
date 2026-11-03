@@ -4,7 +4,6 @@ Sell your society's publications, merchandise, and back issues online. Stripe + 
 
 ## What you can do
 
-- Sell society-published books from the [Library](library.md) catalog (one tick box on each item).
 - Sell non-library merchandise — apparel, lapel pins, maps, anything — from a separate Store Products list.
 - Per-item shipping fees (multiplied by quantity at checkout).
 - Stock tracking (set a quantity, decrements on purchase, "Sold out" badge when zero).
@@ -17,13 +16,7 @@ Sell your society's publications, merchandise, and back issues online. Stripe + 
 
 ## How to add your first product
 
-Two paths depending on what you're selling:
-
-**Society-published books** (county histories, family genealogies, transcribed records): use the Library. **Library → Library Catalog → [item] → Edit.** In the Store Listing section, tick **List this item for sale in the Store**, make sure Value is above 0 — that's its price — set the shipping fee per copy, and save. Recording a value on its own never puts an item in the Store, so things held in the collection stay out of it.
-
-**Other merchandise** (T-shirts, pins, maps, anything that isn't a book): **Money → Store Products → Add New.** Title, SKU, description, price, shipping fee, image URL, store category, optional stock quantity. Save.
-
-The storefront shows both sources merged together — buyers don't know (or care) which source a product came from.
+**Books, T-shirts, pins, maps, anything else:** **Money → Store Products → Add New.** Title, SKU, description, price, shipping fee, image URL, store category, optional stock quantity. Save.
 
 ## How to set up a storefront page
 
@@ -91,13 +84,10 @@ When an order is paid, stock decrements by the purchased quantity. When an order
 
 **Buyer says they paid but never got an order confirmation email.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test; if it never arrives, see [Email Setup](email-setup.md). Buyer's email address is captured during checkout — check the order detail to confirm it's right.
 
-**A library item shows up in the store but shouldn't.** Open the library item and untick **List this item for sale in the Store**. Only ticked items are sold.
-
 **There's no Show 20 / 50 / All control.** It only appears once the list runs past 40 items. Below that everything fits in a page or two and the pager alone does the job. Filtering to a small category hides it too — the count that matters is the one being shown.
 
 **The category list slides under my site header.** SocietyPress measures a pinned header and parks the list below it, but only for a header it can recognize — a `header` element, `.site-header`, or `#masthead` — that is actually stuck to the top of the window. If your theme's header is none of those, set `--sp-store-sticky-top` in your theme's CSS to the height you want cleared, plus a little breathing room.
 
 ## Related guides
 
-- [Library](library.md) — sell society-published books from the catalog
 - [Donations](donations.md) — same Stripe path is reused

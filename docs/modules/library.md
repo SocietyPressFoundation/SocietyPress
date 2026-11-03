@@ -9,15 +9,14 @@ Catalog of every book, periodical, microfilm and CD in your physical library. Me
 - Tag each item with one or more Media Types, Subjects and Locations from word lists you control.
 - Let visitors search by title, author, call number, description, county, state or surname — or all at once — and narrow by year.
 - Show the catalog on your public site, to everyone or members only.
-- Sell society-published books from the same catalog — tick a box and the item appears in the Store.
 - Import an existing catalog from a spreadsheet (CSV), mapping its columns as you go.
 - Fill in missing publishers, years and covers from Open Library by ISBN.
 
 ## How to add your first item
 
-**Library → Library Catalog → Add New Item.** Title, author, publisher, year, call number and shelf location; pick its Media Type, Subjects and Location. Save.
+**Library → Library Catalog → Add New Item.** The screen has six tabs: **Resource Info**, **Cataloging**, **Acquisition**, **Media Type**, **Subject** and **Location**. Only the Title is required. Press **Save** to keep your work and stay on the item, or **Cancel & Close** to return to the catalog without saving.
 
-If the item has an ISBN, add it, and **Fill In Book Details** (below) can look up the rest.
+To add a Media Type, Subject or Location that isn't listed, go to **Library → Catalog Options**.
 
 ## How to import a whole catalog
 
@@ -51,23 +50,13 @@ SocietyPress makes a **Library** page when it's first switched on. You can also 
 
 Visitors search by title, author, call number, description, county, state, surname, or all of them, and open a row to see the full record.
 
-## How to sell a society publication from the catalog
+## How to sell a society publication
 
-For books your society has published — county histories, family genealogies, transcribed records:
-
-1. Open the item's edit page and find the **Store Listing** section.
-2. Tick **List this item for sale in the Store**.
-3. Make sure **Value** is above 0 — it's the sale price.
-4. Optionally pick a Store Category and write a Store Description (separate from the catalog description).
-5. Set the shipping fee per copy, and save.
-
-The item now appears in the Store (if the [Store](store.md) feature is on) and stays in the catalog. A value on its own never puts an item in the Store, so things held in the collection stay out of it.
+Add it as a product at **Money → Store Products → Add New**. See [Store](store.md).
 
 ## If something looks wrong
 
 **Covers aren't loading.** Open Library limits how fast it can be asked and sometimes times out. Run **Fill In Book Details** again — it skips items that already have a cover.
-
-**An item shows up in the Store but shouldn't.** Open it and untick **List this item for sale in the Store**.
 
 **Search isn't finding a known item.** Check which field you're searching. Choose **All Listed Fields** to look in all of them at once.
 

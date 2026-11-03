@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.87] — 2026-11-03
+
+**The catalog's item screen is now six tabs.** Adding or editing a library item
+now uses Resource Info, Cataloging, Acquisition, Media Type, Subject and Location
+tabs, with Cancel & Close and Save at the top. Media types, subjects and locations
+are shown in full as tick boxes. New terms are added at Library → Catalog Options.
+
+**Fields removed from the item screen.** ISBN, cover image, condition, lending,
+legacy system ID and the store listing are gone from this screen. Values already
+saved on an item are kept. To sell something new, add it under Store Products.
+
+**Pressing Save twice no longer adds a book twice.** After adding an item, a second
+Save or a browser refresh could create a duplicate. Both now stay on the same item.
+
+**Imported acquisition codes survive a save.** A code outside the standard list used
+to be blanked when the item was saved.
+
 ## [1.5.86] — 2026-11-01
 
 **Parlor's menu button looks like a menu button.** On phones its three bars drew

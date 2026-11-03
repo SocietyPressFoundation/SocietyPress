@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.86
+ * Version:     1.5.87
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.86' );
+define( 'SOCIETYPRESS_VERSION', '1.5.87' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40958,7 +40958,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.86',
+            'version'     => '1.5.87',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40966,7 +40966,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.86',
+            'version'     => '1.5.87',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40974,7 +40974,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.86',
+            'version'     => '1.5.87',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40982,7 +40982,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.86',
+            'version'     => '1.5.87',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40990,7 +40990,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.86',
+            'version'     => '1.5.87',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -77336,45 +77336,6 @@ function sp_library_list_choices( string $kind, string $current = '' ): array {
 }
 
 /**
- * Add one value to a list if it is not already there.
- *
- * Called when a cataloger types a new value into the "Add new" box on the item
- * form, so the next person to catalog gets it as a ready-made choice.
- */
-function sp_library_list_add( string $kind, string $value ): void {
-    $value = trim( wp_strip_all_tags( $value ) );
-    if ( $value === '' || ! isset( sp_library_list_kinds()[ $kind ] ) ) {
-        return;
-    }
-
-    $lists = sp_get_library_lists();
-
-    foreach ( $lists[ $kind ] as $existing ) {
-        if ( strcasecmp( $existing, $value ) === 0 ) {
-            return;
-        }
-    }
-
-    $lists[ $kind ][] = $value;
-    $lists[ $kind ]   = sp_clean_library_list( $lists[ $kind ] );
-
-    update_option( 'sp_library_lists', $lists );
-    delete_transient( 'sp_library_inuse_v2_' . $kind );
-}
-
-/**
- * Render one controlled-list field on the item edit form.
- *
- * A dropdown of the managed values, plus an "Add new" choice that opens a box
- * right there. WHY not send the cataloger to the list screen first: they are
- * mid-record with a book in their hand, and a trip to another screen to add
- * one word is how free-typed near-duplicates got into the catalog in the first
- * place. Anything typed here joins the list for everyone on save.
- *
- * @param string $kind    One of sp_library_list_kinds().
- * @param string $current The value currently on the item.
- */
-/**
  * How several values share one catalog field.
  *
  * WHY a pipe and not a comma: a comma is already inside the vocabulary. "Alamo,
@@ -77538,9 +77499,15 @@ function sp_library_value_match_sql( string $column, string $value ): string {
     );
 }
 
+/**
+ * Render one controlled-list field on the item edit form.
+ *
+ * Societies change the terms themselves at Library > Catalog Options.
+ *
+ * @param string $kind    One of sp_library_list_kinds().
+ * @param string $current The value currently on the item.
+ */
 function sp_library_list_field( string $kind, string $current ): void {
-    static $script_printed = false;
-
     $kinds = sp_library_list_kinds();
     if ( ! isset( $kinds[ $kind ] ) ) {
         return;
@@ -77548,8 +77515,7 @@ function sp_library_list_field( string $kind, string $current ): void {
 
     $choices  = sp_library_list_choices( $kind, $current );
     $selected = sp_library_split_values( $current, $kind );
-    ?>
-    <?php
+
     // WHY tick boxes rather than one dropdown: a book about Texas cemeteries
     //      during the Civil War is all three subjects, and a volume that is
     //      both a periodical and a rare book is both. Forcing one choice made
@@ -77557,18 +77523,7 @@ function sp_library_list_field( string $kind, string $current ): void {
     //      is why the public filters offered "Book, Rare Books" and "Rare
     //      Books, Book" as if they were different collections.
     ?>
-    <?php
-    // WHY a filter box: the Subject list runs to several hundred terms once a
-    //      society has catalogued for a few decades. Scrolling that to find
-    //      "Cemeteries" is the sort of chore that makes a volunteer give up and
-    //      leave the field blank, which is how a catalog ends up unsearchable.
-    ?>
-    <?php if ( count( $choices ) > 12 ) : ?>
-        <input type="search" class="sp-liblist-filter regular-text"
-               placeholder="<?php esc_attr_e( 'Type to narrow this list…', 'societypress' ); ?>"
-               aria-label="<?php esc_attr_e( 'Narrow the list below', 'societypress' ); ?>">
-    <?php endif; ?>
-    <fieldset class="sp-liblist-boxes" data-kind="<?php echo esc_attr( $kind ); ?>">
+    <fieldset class="sp-liblist-boxes" data-kind="<?php echo esc_attr( $kind ); ?>" aria-label="<?php echo esc_attr( $kinds[ $kind ]['label'] ); ?>">
         <?php foreach ( $choices as $choice ) : ?>
             <label class="sp-liblist-box">
                 <input type="checkbox" name="<?php echo esc_attr( $kind ); ?>[]"
@@ -77578,73 +77533,11 @@ function sp_library_list_field( string $kind, string $current ): void {
             </label>
         <?php endforeach; ?>
     </fieldset>
-    <p class="sp-liblist-addnew">
-        <button type="button" class="button-link sp-liblist-addnew-toggle"><?php esc_html_e( '+ Add one that is not listed', 'societypress' ); ?></button>
-    </p>
-    <span class="sp-liblist-new" hidden>
-        <label class="screen-reader-text" for="<?php echo esc_attr( $kind ); ?>__new">
-            <?php
-            printf(
-                /* translators: %s: the name of the list, e.g. Subject. */
-                esc_html__( 'New %s', 'societypress' ),
-                esc_html( $kinds[ $kind ]['label'] )
-            );
-            ?>
-        </label>
-        <input type="text" name="<?php echo esc_attr( $kind ); ?>__new"
-               id="<?php echo esc_attr( $kind ); ?>__new" class="regular-text"
-               placeholder="<?php esc_attr_e( 'Type it here and save', 'societypress' ); ?>">
-    </span>
-    <?php
-
-    // One copy of the behavior for however many of these fields the form has.
-    if ( $script_printed ) {
-        return;
-    }
-    $script_printed = true;
-    ?>
-    <style>
-        .sp-liblist-boxes { max-height: 220px; overflow-y: auto; border: 1px solid #dcdcde; background: #fff; border-radius: 4px; padding: 8px 10px; max-width: 460px; }
-        .sp-liblist-box { display: block; padding: 2px 0; }
-        .sp-liblist-box.sp-liblist-hidden { display: none; }
-        .sp-liblist-filter { max-width: 460px; margin: 0 0 6px; display: block; }
-        .sp-liblist-addnew { margin: 6px 0 0; }
-    </style>
-    <script>
-    (function () {
-        // Narrowing hides rows; it never unticks one, so a term chosen earlier
-        // stays chosen even while it is filtered out of sight.
-        document.addEventListener('input', function (e) {
-            if (!e.target.matches('.sp-liblist-filter')) return;
-            var box = e.target.parentNode.querySelector('.sp-liblist-boxes');
-            if (!box) return;
-            var needle = e.target.value.trim().toLowerCase();
-            box.querySelectorAll('.sp-liblist-box').forEach(function (row) {
-                var hit = !needle || row.textContent.toLowerCase().indexOf(needle) !== -1;
-                row.classList.toggle('sp-liblist-hidden', !hit && !row.querySelector('input').checked);
-            });
-        });
-        document.addEventListener('click', function (e) {
-            if (!e.target.matches('.sp-liblist-addnew-toggle')) return;
-            var wrap = e.target.closest('p').parentNode;
-            var box = wrap.querySelector('.sp-liblist-new');
-            if (!box) return;
-            box.hidden = !box.hidden;
-            if (!box.hidden) {
-                var field = box.querySelector('input');
-                if (field) field.focus();
-            }
-        });
-    })();
-    </script>
     <?php
 }
 
 /**
  * Work out what to store for a controlled-list field on save.
- *
- * Returns the chosen value, or the newly typed one — which it also adds to the
- * list so the next cataloger finds it waiting.
  *
  * @param string $kind One of sp_library_list_kinds().
  * @return string
@@ -77655,15 +77548,6 @@ function sp_library_list_posted_value( string $kind ): string {
         'sanitize_text_field',
         array_map( 'wp_unslash', (array) ( $_POST[ $kind ] ?? [] ) )
     );
-
-    // Anything typed into "add one that is not listed" joins the vocabulary so
-    // the next cataloger finds it already there.
-    $new = sanitize_text_field( wp_unslash( $_POST[ $kind . '__new' ] ?? '' ) );
-    $new = trim( $new );
-    if ( $new !== '' ) {
-        sp_library_list_add( $kind, $new );
-        $chosen[] = $new;
-    }
 
     return sp_library_join_values( $chosen );
     // phpcs:enable WordPress.Security.NonceVerification.Missing
@@ -78473,7 +78357,6 @@ function sp_render_library_item_edit_page(): void {
         };
 
         $data = [
-            'system_id'           => $parse_int( $_POST['system_id'] ?? '' ),
             'title'               => sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) ),
             'author'              => sanitize_text_field( wp_unslash( $_POST['author'] ?? '' ) ) ?: null,
             'description'         => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ) ?: null,
@@ -78482,12 +78365,9 @@ function sp_render_library_item_edit_page(): void {
             'pub_year'            => $parse_int( $_POST['pub_year'] ?? '' ),
             'pub_month'           => $parse_int( $_POST['pub_month'] ?? '' ),
             'pub_day'             => $parse_int( $_POST['pub_day'] ?? '' ),
-            // The three controlled lists: the posted value is either a pick
-            // from the list or a brand-new entry typed into the "Add new" box,
-            // which sp_library_list_posted_value() also files into the list.
+            // The three controlled lists, each posted as a set of tick boxes.
             'media_type'          => sp_library_list_posted_value( 'media_type' ) ?: null,
             'use_serials'         => ! empty( $_POST['use_serials'] ) ? 1 : 0,
-            'isbn'                => sanitize_text_field( wp_unslash( $_POST['isbn'] ?? '' ) ) ?: null,
             'call_number'         => sanitize_text_field( wp_unslash( $_POST['call_number'] ?? '' ) ) ?: null,
             'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
             'shelf_location'      => sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ?: null,
@@ -78499,27 +78379,11 @@ function sp_render_library_item_edit_page(): void {
             'acq_code'            => sanitize_text_field( wp_unslash( $_POST['acq_code'] ?? '' ) ) ?: null,
             'donor'               => sanitize_text_field( wp_unslash( $_POST['donor'] ?? '' ) ) ?: null,
             'item_value'          => $parse_decimal( $_POST['item_value'] ?? '' ),
-            'shipping_fee'        => max( 0, round( (float) ( $_POST['shipping_fee'] ?? 0 ), 2 ) ),
             'county'              => sanitize_text_field( wp_unslash( $_POST['county'] ?? '' ) ) ?: null,
             'state'               => sanitize_text_field( wp_unslash( $_POST['state'] ?? '' ) ) ?: null,
             'surname'             => sanitize_text_field( wp_unslash( $_POST['surname'] ?? '' ) ) ?: null,
             'subject'             => sp_library_list_posted_value( 'subject' ) ?: null,
             'librarian_notes'     => sanitize_textarea_field( wp_unslash( $_POST['librarian_notes'] ?? '' ) ) ?: null,
-            'item_condition'      => sanitize_text_field( wp_unslash( $_POST['item_condition'] ?? 'good' ) ),
-            // An unticked box and an absent field look identical in POST, so a
-            // non-lending library would zero this on every save. It only moves
-            // when the question was actually asked; otherwise the stored value
-            // stands, so switching lending back on finds it as it was left.
-            'available'           => sp_library_lends()
-                ? ( ! empty( $_POST['available'] ) ? 1 : 0 )
-                : ( $item_id ? (int) $wpdb->get_var( $wpdb->prepare( "SELECT available FROM {$prefix}library_items WHERE id = %d", $item_id ) ) : 0 ),
-            'cover_url'           => esc_url_raw( wp_unslash( $_POST['cover_url'] ?? '' ) ) ?: null,
-            // Store-only fields. Set independently from library metadata so a
-            // for-sale item can carry marketing copy without polluting the
-            // catalog's physical/bibliographic description.
-            'for_sale'            => ! empty( $_POST['for_sale'] ) ? 1 : 0,
-            'store_category'      => sanitize_text_field( wp_unslash( $_POST['store_category'] ?? '' ) ) ?: null,
-            'store_description'   => sanitize_textarea_field( wp_unslash( $_POST['store_description'] ?? '' ) ) ?: null,
         ];
 
         if ( ! empty( $data['title'] ) ) {
@@ -78532,11 +78396,10 @@ function sp_render_library_item_edit_page(): void {
                 echo '<div class="notice notice-success"><p>' . esc_html__( 'Item added.', 'societypress' ) . '</p></div>';
             }
 
-            // Record the cover so it appears in Files with the catalog item
-            // named as what is using it.
-            sp_link_file( (string) ( $data['cover_url'] ?? '' ), 'library_item', (int) $item_id, 'cover_url' );
-
             delete_transient( 'sp_library_catalog_stats' );
+        } else {
+            // A title of only spaces gets past the browser's required check.
+            echo '<div class="notice notice-error"><p>' . esc_html__( 'Please enter a title. The item was not saved.', 'societypress' ) . '</p></div>';
         }
     }
 
@@ -78546,301 +78409,302 @@ function sp_render_library_item_edit_page(): void {
     ?>
     <style>
     /*
-     * sp-lib-edit-* CSS classes — migrated from inline styles in
-     * sp_render_library_item_edit_page() to keep inline styles out of templates.
-     * WHY: The theme prohibits inline styles in PHP templates; all presentational
-     * values belong in a single <style> block that is easy to find and change.
+     * sp-lib-edit-* classes for sp_render_library_item_edit_page().
+     * WHY a style block: the plugin keeps inline styles out of its templates, so
+     * every presentational value for this screen lives here.
      */
-
-    /* Form container: give the edit form breathing room and cap its width */
-    .sp-lib-edit-form {
-        margin-top: 16px;
-        max-width: 900px;
+    .sp-lib-edit-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
     }
-
-    /*
-     * Date-field rows (Publication Date, Acquisition Date).
-     * WHY: Using flex lets the three numeric inputs (year/month/day) sit
-     * side-by-side with consistent spacing without a full grid.
-     */
+    .sp-lib-edit-header h1 {
+        padding: 0;
+    }
+    .sp-lib-edit-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .sp-lib-edit-tabs .nav-tab {
+        cursor: pointer;
+    }
+    .sp-lib-edit-panel[hidden] {
+        display: none;
+    }
+    .sp-lib-edit-panel .form-table th {
+        text-align: right;
+        width: 150px;
+    }
     .sp-lib-edit-date-row {
         display: flex;
+        flex-wrap: wrap;
         gap: 8px;
         align-items: center;
     }
-
-    /* Year field — wider to fit a four-digit year */
     .sp-lib-edit-year {
-        width: 80px;
+        width: 90px;
     }
-
-    /* Month and Day fields — compact two-digit inputs */
-    .sp-lib-edit-month,
     .sp-lib-edit-day {
-        width: 60px;
+        width: 64px;
     }
-
-    /*
-     * Medium-width text inputs (ISBN, LCCN, Call Number, Media Type).
-     * WHY: These identifiers are short and don't need full-width inputs;
-     * 200 px is wide enough for the longest standard codes.
-     */
     .sp-lib-edit-medium-input {
-        width: 200px;
+        width: 100%;
+        max-width: 400px;
     }
-
-    /*
-     * Short-width numeric inputs (Acquisition #, Item Value, System ID).
-     * WHY: These are purely numeric fields; 120 px prevents them from
-     * stretching awkwardly across the table cell.
-     */
     .sp-lib-edit-short-input {
-        width: 120px;
-    }
-
-    /* Wrapper div for the cover-image preview thumbnail */
-    .sp-lib-edit-cover-preview {
-        margin-top: 8px;
+        width: 130px;
     }
 
     /*
-     * The cover image itself.
-     * WHY: Cap height so very tall covers don't push the form out of shape;
-     * the light border and radius give it a polished card-like appearance.
+     * WHY newspaper columns and no scroll box: the whole vocabulary is on view at
+     * once, reading down each column in order, so a cataloger scans the page for
+     * every term that fits a book instead of hunting inside a small window.
      */
-    .sp-lib-edit-cover-img {
-        max-height: 150px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
+    .sp-liblist-boxes {
+        column-count: 4;
+        column-gap: 24px;
+        margin: 16px 0;
+        padding: 0;
+        border: 0;
+    }
+    .sp-liblist-box {
+        display: block;
+        padding: 3px 0;
+        break-inside: avoid;
+    }
+    @media screen and (max-width: 1024px) {
+        .sp-liblist-boxes { column-count: 3; }
+    }
+    @media screen and (max-width: 782px) {
+        .sp-liblist-boxes { column-count: 2; }
+        .sp-lib-edit-panel .form-table th { text-align: left; width: auto; }
+    }
+    @media screen and (max-width: 480px) {
+        .sp-liblist-boxes { column-count: 1; }
     }
     </style>
-    <div class="wrap">
-        <h1><?php echo $item ? esc_html__( 'Edit Library Item', 'societypress' ) : esc_html__( 'Add Library Item', 'societypress' ); ?></h1>
-        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>"><?php esc_html_e( '&larr; Back to Catalog', 'societypress' ); ?></a>
+    <?php
+    // WHY the form posts to the item's own address: without it, the page that
+    // follows adding an item still points at the blank Add address, so pressing
+    // Save a second time would create a second copy of the book.
+    $form_url = admin_url( 'admin.php?page=sp-library-item-edit' . ( $item ? '&item_id=' . (int) $item->id : '' ) );
 
-        <form method="post" class="sp-lib-edit-form">
+    // WHY an item's existing code is added to the choices: imported catalogs hold
+    // codes outside this list, and a dropdown without the stored value would
+    // silently blank it the next time the item is saved.
+    $acq_codes = [ 'Donation', 'Exchange', 'Gift', 'Memorial', 'Purchase', 'Society Publication' ];
+    if ( ! empty( $item->acq_code ) && ! in_array( $item->acq_code, $acq_codes, true ) ) {
+        $acq_codes[] = $item->acq_code;
+    }
+
+    $date_hint = __( 'Formatted as Year / Mo. / Day, each field is optional -- may use Year / Mo. or Year only.', 'societypress' );
+
+    $tabs = [
+        'info'        => __( 'Resource Info', 'societypress' ),
+        'cataloging'  => __( 'Cataloging', 'societypress' ),
+        'acquisition' => __( 'Acquisition', 'societypress' ),
+        'media'       => __( 'Media Type', 'societypress' ),
+        'subject'     => __( 'Subject', 'societypress' ),
+        'location'    => __( 'Location', 'societypress' ),
+    ];
+
+    // Publication and acquisition dates share one layout, and the month is a
+    // named list rather than a number because "March" is harder to mistype.
+    $date_fields = static function ( string $name, $year, $month, $day ) use ( $date_hint ): void {
+        global $wp_locale;
+        ?>
+        <div class="sp-lib-edit-date-row">
+            <input type="number" name="<?php echo esc_attr( $name ); ?>_year" class="sp-lib-edit-year" value="<?php echo esc_attr( (string) $year ); ?>" min="1000" max="2100" aria-label="<?php esc_attr_e( 'Year', 'societypress' ); ?>">
+            <span aria-hidden="true">/</span>
+            <select name="<?php echo esc_attr( $name ); ?>_month" aria-label="<?php esc_attr_e( 'Month', 'societypress' ); ?>">
+                <option value=""></option>
+                <?php for ( $m = 1; $m <= 12; $m++ ) : ?>
+                    <option value="<?php echo (int) $m; ?>" <?php selected( (int) $month, $m ); ?>><?php echo esc_html( $wp_locale->get_month( $m ) ); ?></option>
+                <?php endfor; ?>
+            </select>
+            <span aria-hidden="true">/</span>
+            <input type="number" name="<?php echo esc_attr( $name ); ?>_day" class="sp-lib-edit-day" value="<?php echo esc_attr( (string) $day ); ?>" min="1" max="31" aria-label="<?php esc_attr_e( 'Day', 'societypress' ); ?>">
+            <span class="description"><?php echo esc_html( $date_hint ); ?></span>
+        </div>
+        <?php
+    };
+    ?>
+    <div class="wrap">
+        <form method="post" action="<?php echo esc_url( $form_url ); ?>" class="sp-lib-edit-form">
             <?php wp_nonce_field( 'sp_library_item_save' ); ?>
 
-            <!-- ====== BASIC INFO ====== -->
-            <h2><?php esc_html_e( 'Basic Information', 'societypress' ); ?></h2>
-            <table class="form-table">
-                <tr>
-                    <th scope="col"><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="title" id="title" class="large-text" value="<?php echo esc_attr( $item->title ?? '' ); ?>" required></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="author"><?php esc_html_e( 'Author', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="author" id="author" class="regular-text" value="<?php echo esc_attr( $item->author ?? '' ); ?>"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
-                    <td><textarea name="description" id="description" rows="3" class="large-text"><?php echo esc_textarea( $item->description ?? '' ); ?></textarea>
-                    <p class="description"><?php esc_html_e( 'Physical description: pages, index, illustrations, binding, etc.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="media_type"><?php esc_html_e( 'Media Type', 'societypress' ); ?></label></th>
-                    <td><?php sp_library_list_field( 'media_type', (string) ( $item->media_type ?? '' ) ); ?>
-                    <p class="description"><?php esc_html_e( 'Managed at Library → Catalog Options.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="subject"><?php esc_html_e( 'Subject Tags', 'societypress' ); ?></label></th>
-                    <td><?php sp_library_list_field( 'subject', (string) ( $item->subject ?? '' ) ); ?>
-                    <p class="description"><?php esc_html_e( 'Comma-separated subject tags.', 'societypress' ); ?></p></td>
-                </tr>
-            </table>
+            <div class="sp-lib-edit-header">
+                <h1><?php echo $item ? esc_html__( 'Edit Library Item', 'societypress' ) : esc_html__( 'Add Library Item', 'societypress' ); ?></h1>
+                <div class="sp-lib-edit-actions">
+                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="button"><?php esc_html_e( 'Cancel & Close', 'societypress' ); ?></a>
+                    <input type="submit" name="sp_save_library_item" class="button button-primary" value="<?php esc_attr_e( 'Save', 'societypress' ); ?>">
+                </div>
+            </div>
 
-            <!-- ====== PUBLICATION ====== -->
-            <h2><?php esc_html_e( 'Publication', 'societypress' ); ?></h2>
-            <table class="form-table">
-                <tr>
-                    <th scope="col"><label for="publisher"><?php esc_html_e( 'Publisher', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="publisher" id="publisher" class="regular-text" value="<?php echo esc_attr( $item->publisher ?? '' ); ?>"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="publisher_location"><?php esc_html_e( 'Publisher Location', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="publisher_location" id="publisher_location" class="regular-text" value="<?php echo esc_attr( $item->publisher_location ?? '' ); ?>"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><?php esc_html_e( 'Publication Date', 'societypress' ); ?></th>
-                    <td class="sp-lib-edit-date-row">
-                        <input type="number" name="pub_year" value="<?php echo esc_attr( $item->pub_year ?? '' ); ?>" class="sp-lib-edit-year" placeholder="<?php esc_attr_e( 'Year', 'societypress' ); ?>" min="1000" max="2100">
-                        <input type="number" name="pub_month" value="<?php echo esc_attr( $item->pub_month ?? '' ); ?>" class="sp-lib-edit-month" placeholder="<?php esc_attr_e( 'Mo', 'societypress' ); ?>" min="1" max="12">
-                        <input type="number" name="pub_day" value="<?php echo esc_attr( $item->pub_day ?? '' ); ?>" class="sp-lib-edit-day" placeholder="<?php esc_attr_e( 'Day', 'societypress' ); ?>" min="1" max="31">
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="isbn"><?php esc_html_e( 'ISBN', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="isbn" id="isbn" value="<?php echo esc_attr( $item->isbn ?? '' ); ?>" class="sp-lib-edit-medium-input"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="lccn"><?php esc_html_e( 'LCCN', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="lccn" id="lccn" value="<?php echo esc_attr( $item->lccn ?? '' ); ?>" class="sp-lib-edit-medium-input">
-                    <p class="description"><?php esc_html_e( 'Library of Congress Control Number.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="cover_url"><?php esc_html_e( 'Cover Image URL', 'societypress' ); ?></label></th>
-                    <td>
-                        <input type="url" name="cover_url" id="cover_url" class="large-text" value="<?php echo esc_attr( $item->cover_url ?? '' ); ?>" placeholder="https://...">
-                        <p class="description"><?php esc_html_e( 'Web address of the book cover image. Fill In Book Details can find this for you.', 'societypress' ); ?></p>
-                        <?php if ( ! empty( $item->cover_url ) ) : ?>
-                            <div class="sp-lib-edit-cover-preview">
-                                <img src="<?php /* translators: %s: catalog item title */ echo esc_url( $item->cover_url ); ?>" alt="<?php echo esc_attr( sprintf( __( 'Cover image for %s', 'societypress' ), $item->title ) ); ?>" class="sp-lib-edit-cover-img">
-                            </div>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-            </table>
+            <div class="nav-tab-wrapper sp-lib-edit-tabs" role="tablist">
+                <?php $first = true; ?>
+                <?php foreach ( $tabs as $slug => $label ) : ?>
+                    <button type="button" role="tab" id="sp-lib-tab-<?php echo esc_attr( $slug ); ?>" class="nav-tab<?php echo $first ? ' nav-tab-active' : ''; ?>" aria-controls="sp-lib-panel-<?php echo esc_attr( $slug ); ?>" aria-selected="<?php echo $first ? 'true' : 'false'; ?>"><?php echo esc_html( $label ); ?></button>
+                    <?php $first = false; ?>
+                <?php endforeach; ?>
+            </div>
 
-            <!-- ====== LOCATION & CLASSIFICATION ====== -->
-            <h2><?php esc_html_e( 'Location & Classification', 'societypress' ); ?></h2>
-            <table class="form-table">
-                <tr>
-                    <th scope="col"><label for="call_number"><?php esc_html_e( 'Call Number', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="call_number" id="call_number" value="<?php echo esc_attr( $item->call_number ?? '' ); ?>" class="sp-lib-edit-medium-input"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="shelf_location"><?php esc_html_e( 'Shelf Location', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="shelf_location" id="shelf_location" class="regular-text" value="<?php echo esc_attr( $item->shelf_location ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., TEXAS, REFERENCE, FAMILY HISTORY', 'societypress' ); ?>">
-                    <p class="description"><?php esc_html_e( 'Physical section/room in the library.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="geographic_location"><?php esc_html_e( 'Geographic Coverage', 'societypress' ); ?></label></th>
-                    <td><?php sp_library_list_field( 'geographic_location', (string) ( $item->geographic_location ?? '' ) ); ?>
-                    <p class="description"><?php esc_html_e( 'Region(s) this item covers.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="county"><?php esc_html_e( 'County', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="county" id="county" class="regular-text" value="<?php echo esc_attr( $item->county ?? '' ); ?>"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="state"><?php esc_html_e( 'State', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="state" id="state" class="regular-text" value="<?php echo esc_attr( $item->state ?? '' ); ?>"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="surname"><?php esc_html_e( 'Surname', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="surname" id="surname" class="regular-text" value="<?php echo esc_attr( $item->surname ?? '' ); ?>">
-                    <p class="description"><?php esc_html_e( 'Family surname this item relates to.', 'societypress' ); ?></p></td>
-                </tr>
-            </table>
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-info" role="tabpanel" aria-labelledby="sp-lib-tab-info">
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="title"><?php esc_html_e( 'Title', 'societypress' ); ?></label></th>
+                        <td><textarea name="title" id="title" rows="2" class="large-text" required aria-describedby="title-required"><?php echo esc_textarea( $item->title ?? '' ); ?></textarea>
+                        <p class="description" id="title-required"><?php esc_html_e( 'Required', 'societypress' ); ?></p></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="author"><?php esc_html_e( 'Author', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="author" id="author" class="large-text" value="<?php echo esc_attr( $item->author ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="description"><?php esc_html_e( 'Description', 'societypress' ); ?></label></th>
+                        <td><textarea name="description" id="description" rows="2" class="large-text"><?php echo esc_textarea( $item->description ?? '' ); ?></textarea></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="publisher"><?php esc_html_e( 'Publisher', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="publisher" id="publisher" class="large-text" value="<?php echo esc_attr( $item->publisher ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="publisher_location"><?php esc_html_e( 'Publisher Location', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="publisher_location" id="publisher_location" class="large-text" value="<?php echo esc_attr( $item->publisher_location ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Publication Date', 'societypress' ); ?></th>
+                        <td><?php $date_fields( 'pub', $item->pub_year ?? '', $item->pub_month ?? 0, $item->pub_day ?? '' ); ?></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="county"><?php esc_html_e( 'County', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="county" id="county" class="large-text" value="<?php echo esc_attr( $item->county ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="state"><?php esc_html_e( 'State', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="state" id="state" class="large-text" value="<?php echo esc_attr( $item->state ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="surname"><?php esc_html_e( 'Surname', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="surname" id="surname" class="large-text" value="<?php echo esc_attr( $item->surname ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="librarian_notes"><?php esc_html_e( 'Librarian Notes', 'societypress' ); ?></label></th>
+                        <td><textarea name="librarian_notes" id="librarian_notes" rows="8" class="large-text"><?php echo esc_textarea( $item->librarian_notes ?? '' ); ?></textarea></td>
+                    </tr>
+                </table>
+            </div>
 
-            <!-- ====== ACQUISITION ====== -->
-            <h2><?php esc_html_e( 'Acquisition', 'societypress' ); ?></h2>
-            <table class="form-table">
-                <tr>
-                    <th scope="col"><label for="acq_code"><?php esc_html_e( 'How Acquired', 'societypress' ); ?></label></th>
-                    <td>
-                        <select name="acq_code" id="acq_code">
-                            <option value=""><?php esc_html_e( '— Unknown —', 'societypress' ); ?></option>
-                            <?php foreach ( [ 'Donation', 'Exchange', 'Gift', 'Memorial', 'Purchase', 'Society Publication' ] as $code ) : ?>
-                                <option value="<?php echo esc_attr( $code ); ?>" <?php selected( $item->acq_code ?? '', $code ); ?>><?php echo esc_html( $code ); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="col"><?php esc_html_e( 'Acquisition Date', 'societypress' ); ?></th>
-                    <td class="sp-lib-edit-date-row">
-                        <input type="number" name="acq_year" value="<?php echo esc_attr( $item->acq_year ?? '' ); ?>" class="sp-lib-edit-year" placeholder="<?php esc_attr_e( 'Year', 'societypress' ); ?>">
-                        <input type="number" name="acq_month" value="<?php echo esc_attr( $item->acq_month ?? '' ); ?>" class="sp-lib-edit-month" placeholder="<?php esc_attr_e( 'Mo', 'societypress' ); ?>" min="1" max="12">
-                        <input type="number" name="acq_day" value="<?php echo esc_attr( $item->acq_day ?? '' ); ?>" class="sp-lib-edit-day" placeholder="<?php esc_attr_e( 'Day', 'societypress' ); ?>" min="1" max="31">
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="acquisition_number"><?php esc_html_e( 'Acquisition #', 'societypress' ); ?></label></th>
-                    <td><input type="number" name="acquisition_number" id="acquisition_number" value="<?php echo esc_attr( $item->acquisition_number ?? '' ); ?>" class="sp-lib-edit-short-input"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="donor"><?php esc_html_e( 'Donor', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="donor" id="donor" class="regular-text" value="<?php echo esc_attr( $item->donor ?? '' ); ?>"></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="item_value"><?php esc_html_e( 'Value ($)', 'societypress' ); ?></label></th>
-                    <td><input type="number" name="item_value" id="item_value" value="<?php echo esc_attr( $item->item_value ?? '' ); ?>" step="0.01" min="0" class="sp-lib-edit-short-input">
-                    <p class="description"><?php esc_html_e( 'Setting a value above 0 makes this item available for sale in the public Store.', 'societypress' ); ?></p></td>
-                </tr>
-            </table>
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-cataloging" role="tabpanel" aria-labelledby="sp-lib-tab-cataloging" hidden>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="use_serials"><?php esc_html_e( 'Use Serials', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="use_serials" id="use_serials">
+                                <option value="0" <?php selected( (int) ( $item->use_serials ?? 0 ), 0 ); ?>><?php esc_html_e( 'No', 'societypress' ); ?></option>
+                                <option value="1" <?php selected( (int) ( $item->use_serials ?? 0 ), 1 ); ?>><?php esc_html_e( 'Yes', 'societypress' ); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="call_number"><?php esc_html_e( 'Call Number', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="call_number" id="call_number" class="sp-lib-edit-medium-input" value="<?php echo esc_attr( $item->call_number ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="lccn"><?php esc_html_e( 'LCCN', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="lccn" id="lccn" value="<?php echo esc_attr( $item->lccn ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="shelf_location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="shelf_location" id="shelf_location" class="sp-lib-edit-medium-input" value="<?php echo esc_attr( $item->shelf_location ?? '' ); ?>"></td>
+                    </tr>
+                </table>
+            </div>
 
-            <!-- ====== STORE LISTING ====== -->
-            <h2><?php esc_html_e( 'Store Listing', 'societypress' ); ?></h2>
-            <p class="description sp-lib-edit-store-help">
-                <?php esc_html_e( 'Only items you tick below are offered for sale. Recording what an item is worth does not put it in the Store. These fields are separate from the catalog Description above, so marketing copy stays apart from physical and bibliographic notes.', 'societypress' ); ?>
-            </p>
-            <table class="form-table">
-                <tr>
-                    <th scope="col"><?php esc_html_e( 'Offer for sale', 'societypress' ); ?></th>
-                    <td><label><input type="checkbox" name="for_sale" value="1" <?php checked( $item->for_sale ?? 0 ); ?>> <?php esc_html_e( 'List this item for sale in the Store', 'societypress' ); ?></label>
-                    <p class="description"><?php esc_html_e( 'Needs a Value above 0 to have a price. Leave unticked for anything held in the collection — a value recorded for insurance or accession is not a price.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="store_category"><?php esc_html_e( 'Store Category', 'societypress' ); ?></label></th>
-                    <td><input type="text" name="store_category" id="store_category" class="regular-text" value="<?php echo esc_attr( $item->store_category ?? '' ); ?>" placeholder="<?php esc_attr_e( 'e.g., Books, Apparel, Pins, Maps', 'societypress' ); ?>">
-                    <p class="description"><?php esc_html_e( 'Groups items in the storefront sidebar. Free-form — type the same value across items to group them.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="shipping_fee"><?php esc_html_e( 'Shipping (per unit)', 'societypress' ); ?></label></th>
-                    <td><input type="number" name="shipping_fee" id="shipping_fee" value="<?php echo esc_attr( number_format( (float) ( $item->shipping_fee ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-lib-edit-short-input">
-                    <p class="description"><?php esc_html_e( 'Shipping fee per copy. Multiplied by quantity at checkout. Set to 0 for digital or shipping-included items.', 'societypress' ); ?></p></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="store_description"><?php esc_html_e( 'Store Description', 'societypress' ); ?></label></th>
-                    <td><textarea name="store_description" id="store_description" rows="4" class="large-text"><?php echo esc_textarea( $item->store_description ?? '' ); ?></textarea>
-                    <p class="description"><?php esc_html_e( 'Marketing copy for the storefront product card. Sell it. If left blank, the catalog Description above is shown instead.', 'societypress' ); ?></p></td>
-                </tr>
-            </table>
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-acquisition" role="tabpanel" aria-labelledby="sp-lib-tab-acquisition" hidden>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="acquisition_number"><?php esc_html_e( 'Number', 'societypress' ); ?></label></th>
+                        <td><input type="number" name="acquisition_number" id="acquisition_number" class="sp-lib-edit-medium-input" value="<?php echo esc_attr( $item->acquisition_number ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Date', 'societypress' ); ?></th>
+                        <td><?php $date_fields( 'acq', $item->acq_year ?? '', $item->acq_month ?? 0, $item->acq_day ?? '' ); ?></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="acq_code"><?php esc_html_e( 'Code', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="acq_code" id="acq_code">
+                                <option value=""></option>
+                                <?php foreach ( $acq_codes as $code ) : ?>
+                                    <option value="<?php echo esc_attr( $code ); ?>" <?php selected( $item->acq_code ?? '', $code ); ?>><?php echo esc_html( $code ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="donor"><?php esc_html_e( 'Donor(s)', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="donor" id="donor" class="large-text" value="<?php echo esc_attr( $item->donor ?? '' ); ?>"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="item_value"><?php esc_html_e( 'Value', 'societypress' ); ?></label></th>
+                        <td><input type="number" name="item_value" id="item_value" class="sp-lib-edit-short-input" value="<?php echo esc_attr( $item->item_value ?? '' ); ?>" step="0.01" min="0" aria-describedby="item-value-hint">
+                        <span class="description" id="item-value-hint"><?php esc_html_e( 'Format using numbers only, no currency indicators (example: 100.00).', 'societypress' ); ?></span></td>
+                    </tr>
+                </table>
+            </div>
 
-            <!-- ====== STATUS & NOTES ====== -->
-            <h2><?php esc_html_e( 'Status & Notes', 'societypress' ); ?></h2>
-            <table class="form-table">
-                <tr>
-                    <th scope="col"><label for="item_condition"><?php esc_html_e( 'Condition', 'societypress' ); ?></label></th>
-                    <td>
-                        <select name="item_condition" id="item_condition">
-                            <option value="good" <?php selected( $item->item_condition ?? 'good', 'good' ); ?>><?php esc_html_e( 'Good', 'societypress' ); ?></option>
-                            <option value="fair" <?php selected( $item->item_condition ?? '', 'fair' ); ?>><?php esc_html_e( 'Fair', 'societypress' ); ?></option>
-                            <option value="poor" <?php selected( $item->item_condition ?? '', 'poor' ); ?>><?php esc_html_e( 'Poor', 'societypress' ); ?></option>
-                            <option value="reference" <?php selected( $item->item_condition ?? '', 'reference' ); ?>><?php esc_html_e( 'Reference Only', 'societypress' ); ?></option>
-                        </select>
-                    </td>
-                </tr>
-                <?php
-                // WHY this row can vanish entirely: a reference-only library
-                //      never lends anything, so asking a cataloger about it on
-                //      every single item is a question with one answer. The
-                //      society says once, at Library > Catalog Options, whether
-                //      it lends at all; only then is it worth asking per item.
-                //
-                // WHY a new item starts unticked even in a lending library:
-                //      defaulting to "can be checked out" quietly declares the
-                //      whole collection lendable, and a cataloger adding a book
-                //      has no reason to notice. Existing items keep what they
-                //      have; only the blank form starts empty.
-                ?>
-                <?php if ( sp_library_lends() ) : ?>
-                <tr>
-                    <th scope="col"><?php esc_html_e( 'Lending', 'societypress' ); ?></th>
-                    <td><label><input type="checkbox" name="available" value="1" <?php checked( $item->available ?? 0 ); ?>> <?php esc_html_e( 'Item can be checked out', 'societypress' ); ?></label></td>
-                </tr>
-                <?php endif; ?>
-                <tr>
-                    <th scope="col"><?php esc_html_e( 'Use Serials', 'societypress' ); ?></th>
-                    <td><label><input type="checkbox" name="use_serials" value="1" <?php checked( $item->use_serials ?? 0 ); ?>> <?php esc_html_e( 'Track as serial/periodical', 'societypress' ); ?></label></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="librarian_notes"><?php esc_html_e( 'Librarian Notes', 'societypress' ); ?></label></th>
-                    <td><textarea name="librarian_notes" id="librarian_notes" rows="3" class="large-text"><?php echo esc_textarea( $item->librarian_notes ?? '' ); ?></textarea></td>
-                </tr>
-                <tr>
-                    <th scope="col"><label for="system_id"><?php esc_html_e( 'Legacy System ID', 'societypress' ); ?></label></th>
-                    <td><input type="number" name="system_id" id="system_id" value="<?php echo esc_attr( $item->system_id ?? '' ); ?>" class="sp-lib-edit-short-input">
-                    <p class="description"><?php esc_html_e( 'Original catalog ID from a previous system. Used for import deduplication.', 'societypress' ); ?></p></td>
-                </tr>
-            </table>
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-media" role="tabpanel" aria-labelledby="sp-lib-tab-media" hidden>
+                <?php sp_library_list_field( 'media_type', (string) ( $item->media_type ?? '' ) ); ?>
+            </div>
 
-            <p class="submit">
-                <input type="submit" name="sp_save_library_item" class="button button-primary" value="<?php echo esc_attr( $item ? __( 'Update Item', 'societypress' ) : __( 'Add Item', 'societypress' ) ); ?>">
-            </p>
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-subject" role="tabpanel" aria-labelledby="sp-lib-tab-subject" hidden>
+                <?php sp_library_list_field( 'subject', (string) ( $item->subject ?? '' ) ); ?>
+            </div>
+
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-location" role="tabpanel" aria-labelledby="sp-lib-tab-location" hidden>
+                <?php sp_library_list_field( 'geographic_location', (string) ( $item->geographic_location ?? '' ) ); ?>
+            </div>
         </form>
     </div>
+    <script>
+    (function () {
+        var form = document.querySelector('.sp-lib-edit-form');
+        if (!form) return;
+
+        // After Add, the address bar still says Add. Pointing it at the new item
+        // keeps a browser refresh from submitting the same book again.
+        window.history.replaceState(null, '', form.getAttribute('action'));
+
+        var tabs = form.querySelectorAll('.sp-lib-edit-tabs [role="tab"]');
+
+        function show(panelId) {
+            tabs.forEach(function (tab) {
+                var on = tab.getAttribute('aria-controls') === panelId;
+                tab.classList.toggle('nav-tab-active', on);
+                tab.setAttribute('aria-selected', on ? 'true' : 'false');
+                document.getElementById(tab.getAttribute('aria-controls')).hidden = !on;
+            });
+        }
+
+        tabs.forEach(function (tab) {
+            tab.addEventListener('click', function () {
+                show(tab.getAttribute('aria-controls'));
+            });
+        });
+
+        // WHY: pressing Save with a problem on another tab would otherwise do
+        // nothing visible, because the browser cannot point at a hidden field.
+        // Invalid events do not bubble, so this listens during capture.
+        form.addEventListener('invalid', function (e) {
+            var panel = e.target.closest('.sp-lib-edit-panel');
+            if (panel && panel.hidden) show(panel.id);
+        }, true);
+    })();
+    </script>
     <?php
 }
 

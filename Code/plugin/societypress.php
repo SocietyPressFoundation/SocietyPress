@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.88
+ * Version:     1.5.89
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.88' );
+define( 'SOCIETYPRESS_VERSION', '1.5.89' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40958,7 +40958,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.88',
+            'version'     => '1.5.89',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40966,7 +40966,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.88',
+            'version'     => '1.5.89',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40974,7 +40974,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.88',
+            'version'     => '1.5.89',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40982,7 +40982,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.88',
+            'version'     => '1.5.89',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40990,7 +40990,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.88',
+            'version'     => '1.5.89',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -78110,6 +78110,9 @@ function sp_render_library_catalog_page(): void {
         $export_url = wp_nonce_url( add_query_arg( $export_args, admin_url( 'admin-ajax.php' ) ), 'sp_export_library' );
         ?>
         <a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action"><?php esc_html_e( 'Export CSV', 'societypress' ); ?></a>
+        <?php if ( class_exists( 'ZipArchive' ) ) : ?>
+            <a href="<?php echo esc_url( add_query_arg( 'format', 'xlsx', $export_url ) ); ?>" class="page-title-action"><?php esc_html_e( 'Export .xlsx', 'societypress' ); ?></a>
+        <?php endif; ?>
         <hr class="wp-header-end">
 
         <?php
@@ -78370,7 +78373,9 @@ function sp_render_library_item_edit_page(): void {
             'use_serials'         => ! empty( $_POST['use_serials'] ) ? 1 : 0,
             'call_number'         => sanitize_text_field( wp_unslash( $_POST['call_number'] ?? '' ) ) ?: null,
             'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
-            'shelf_location'      => sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ?: null,
+            // WHY uppercase: "Texas" and "TEXAS" would otherwise file as two
+            // locations. The catalog import already stores them this way.
+            'shelf_location'      => mb_strtoupper( sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ) ?: null,
             'geographic_location' => sp_library_list_posted_value( 'geographic_location' ) ?: null,
             'acquisition_number'  => $parse_int( $_POST['acquisition_number'] ?? '' ),
             'acq_year'            => $parse_int( $_POST['acq_year'] ?? '' ),
@@ -78456,6 +78461,10 @@ function sp_render_library_item_edit_page(): void {
     }
     .sp-lib-edit-short-input {
         width: 130px;
+    }
+    /* Shows capitals while typing. The save handler is what stores them. */
+    .sp-lib-edit-uppercase {
+        text-transform: uppercase;
     }
 
     /*
@@ -78620,8 +78629,8 @@ function sp_render_library_item_edit_page(): void {
                         <td><input type="text" name="lccn" id="lccn" value="<?php echo esc_attr( $item->lccn ?? '' ); ?>"></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="shelf_location"><?php esc_html_e( 'Location', 'societypress' ); ?></label></th>
-                        <td><input type="text" name="shelf_location" id="shelf_location" class="sp-lib-edit-medium-input" value="<?php echo esc_attr( $item->shelf_location ?? '' ); ?>"></td>
+                        <th scope="row"><label for="shelf_location"><?php esc_html_e( 'Physical Location', 'societypress' ); ?></label></th>
+                        <td><input type="text" name="shelf_location" id="shelf_location" class="sp-lib-edit-medium-input sp-lib-edit-uppercase" value="<?php echo esc_attr( $item->shelf_location ?? '' ); ?>"></td>
                     </tr>
                 </table>
             </div>
@@ -91657,7 +91666,7 @@ function sp_ajax_library_item_detail(): void {
 }
 
 // ============================================================================
-// AJAX: CSV Export of Library Catalog (admin)
+// AJAX: CSV or Excel Export of Library Catalog (admin)
 //
 // WHY: Admins need to export their catalog for backup, sharing with other
 //      societies, or migration. This mirrors the import field mapping so
@@ -91723,19 +91732,7 @@ function sp_ajax_export_library(): void {
         'Condition', 'Available', 'Cover URL',
     ];
 
-    $filename = 'library-catalog-' . gmdate( 'Y-m-d' ) . '.csv';
-
-    // Stream CSV output directly — no buffering the whole result set
-    header( 'Content-Type: text/csv; charset=utf-8' );
-    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
-    nocache_headers();
-
-    $out = fopen( 'php://output', 'w' );
-    // BOM for Excel UTF-8 compatibility
-    fwrite( $out, "\xEF\xBB\xBF" );
-    fputcsv( $out, $headers, ',', '"', '\\' );
-
-    sp_export_stream_csv( $out, $sql, static function ( $item ) {
+    $to_row = static function ( $item ) {
         return [
             $item->system_id,
             $item->title,
@@ -91771,7 +91768,30 @@ function sp_ajax_export_library(): void {
             $item->available,
             $item->cover_url,
         ];
-    } );
+    };
+
+    if ( 'xlsx' === ( $_GET['format'] ?? '' ) ) {
+        // Only the columns that are truly quantities are written as numbers. An
+        // ISBN or call number has to stay text, or a spreadsheet drops its
+        // leading zeros. Positions refer to $headers.
+        $numeric_columns = [ 0, 6, 7, 8, 10, 16, 17, 18, 19, 22, 31 ];
+        sp_export_send_xlsx( 'library-catalog-' . gmdate( 'Y-m-d' ) . '.xlsx', __( 'Library Catalog', 'societypress' ), $headers, $sql, $to_row, $numeric_columns );
+        exit;
+    }
+
+    $filename = 'library-catalog-' . gmdate( 'Y-m-d' ) . '.csv';
+
+    // Stream CSV output directly — no buffering the whole result set
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    nocache_headers();
+
+    $out = fopen( 'php://output', 'w' );
+    // BOM for Excel UTF-8 compatibility
+    fwrite( $out, "\xEF\xBB\xBF" );
+    fputcsv( $out, $headers, ',', '"', '\\' );
+
+    sp_export_stream_csv( $out, $sql, $to_row );
 
     fclose( $out );
     exit;
@@ -91819,6 +91839,119 @@ function sp_export_stream_csv( $out, string $base_sql, callable $to_row, int $ba
         unset( $rows );
         $offset += $batch;
     } while ( $fetched === $batch );
+}
+
+/**
+ * Column letters for a zero-based position: 0 is A, 26 is AA.
+ */
+function sp_xlsx_index_to_col( int $index ): string {
+    $letters = '';
+    for ( $index++; $index > 0; $index = (int) ( ( $index - 1 ) / 26 ) ) {
+        $letters = chr( 65 + ( $index - 1 ) % 26 ) . $letters;
+    }
+    return $letters;
+}
+
+/**
+ * One row of worksheet XML.
+ *
+ * WHY every other cell is an inline string: a spreadsheet never evaluates one,
+ *      so a catalog entry that happens to start with "=" stays plain text.
+ *
+ * @param int   $row_number      One-based row.
+ * @param array $cells           Values in column order.
+ * @param int[] $numeric_columns Zero-based columns written as numbers.
+ */
+function sp_xlsx_row_xml( int $row_number, array $cells, array $numeric_columns = [] ): string {
+    $xml = '<row r="' . $row_number . '">';
+    foreach ( array_values( $cells ) as $i => $value ) {
+        $value = (string) $value;
+        if ( $value === '' ) {
+            continue;
+        }
+        $ref = sp_xlsx_index_to_col( $i ) . $row_number;
+        if ( in_array( $i, $numeric_columns, true ) && is_numeric( $value ) ) {
+            $xml .= '<c r="' . $ref . '"><v>' . $value . '</v></c>';
+            continue;
+        }
+        // XML forbids most control characters outright, so one stray byte in an
+        // old imported record would make the whole workbook refuse to open.
+        // 32,767 is the most text one spreadsheet cell can hold.
+        $value = wp_check_invalid_utf8( $value, true );
+        $value = preg_replace( '/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u', '', $value );
+        $value = mb_substr( (string) $value, 0, 32767 );
+        $xml  .= '<c r="' . $ref . '" t="inlineStr"><is><t xml:space="preserve">'
+            . htmlspecialchars( $value, ENT_XML1 | ENT_QUOTES, 'UTF-8' )
+            . '</t></is></c>';
+    }
+    return $xml . '</row>';
+}
+
+/**
+ * Send a query's results to the browser as an Excel workbook, then stop.
+ *
+ * WHY written by hand: an .xlsx file is a zip of XML, and PHP's ZipArchive is all
+ *      it takes, so the plugin stays free of outside libraries. The sheet goes to
+ *      a temporary file rather than memory because a society's catalog can run to
+ *      twenty thousand rows on a small shared host.
+ *
+ * SECURITY: as with sp_export_stream_csv(), $base_sql is run verbatim. The caller
+ * prepares any dynamic WHERE clause.
+ *
+ * @param string   $filename        Download name.
+ * @param string   $sheet_name      Tab name inside the workbook.
+ * @param string[] $headers         First-row labels.
+ * @param string   $base_sql        Full SELECT with a stable ORDER BY and no LIMIT.
+ * @param callable $to_row          Maps one DB row object to an array of cells.
+ * @param int[]    $numeric_columns Zero-based columns written as numbers.
+ * @param int      $batch           Rows per fetch.
+ */
+function sp_export_send_xlsx( string $filename, string $sheet_name, array $headers, string $base_sql, callable $to_row, array $numeric_columns = [], int $batch = 500 ): void {
+    global $wpdb;
+
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        wp_die( esc_html__( 'This web host does not have the feature needed to create Excel files. Please use Export CSV instead.', 'societypress' ) );
+    }
+
+    $sheet_path = tempnam( get_temp_dir(), 'sp-xlsx' );
+    $zip_path   = tempnam( get_temp_dir(), 'sp-xlsx' );
+    $sheet      = fopen( $sheet_path, 'w' );
+
+    fwrite( $sheet, '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' );
+    fwrite( $sheet, sp_xlsx_row_xml( 1, $headers ) );
+
+    $row_number = 1;
+    $offset     = 0;
+    do {
+        $rows    = $wpdb->get_results( $base_sql . $wpdb->prepare( ' LIMIT %d OFFSET %d', $batch, $offset ) );
+        $fetched = is_array( $rows ) ? count( $rows ) : 0;
+        foreach ( (array) $rows as $row ) {
+            fwrite( $sheet, sp_xlsx_row_xml( ++$row_number, $to_row( $row ), $numeric_columns ) );
+        }
+        unset( $rows );
+        $offset += $batch;
+    } while ( $fetched === $batch );
+
+    fwrite( $sheet, '</sheetData></worksheet>' );
+    fclose( $sheet );
+
+    $zip = new ZipArchive();
+    $zip->open( $zip_path, ZipArchive::OVERWRITE );
+    $zip->addFromString( '[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>' );
+    $zip->addFromString( '_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>' );
+    $zip->addFromString( 'xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' . htmlspecialchars( mb_substr( $sheet_name, 0, 31 ), ENT_XML1 | ENT_QUOTES, 'UTF-8' ) . '" sheetId="1" r:id="rId1"/></sheets></workbook>' );
+    $zip->addFromString( 'xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>' );
+    $zip->addFile( $sheet_path, 'xl/worksheets/sheet1.xml' );
+    $zip->close();
+
+    header( 'Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
+    header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+    header( 'Content-Length: ' . filesize( $zip_path ) );
+    nocache_headers();
+    readfile( $zip_path );
+
+    unlink( $sheet_path );
+    unlink( $zip_path );
 }
 
 

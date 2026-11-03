@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.89] — 2026-11-03
+
+**Export the library catalog to Excel.** The catalog now has an Export .xlsx button
+beside Export CSV. It exports the same filtered list and the same columns.
+
+**Physical Location.** The Cataloging tab's Location field is now called Physical
+Location, and whatever is typed there is saved in capitals.
+
 ## [1.5.88] — 2026-11-03
 
 **Cancel & Close and Save stay at the top right of the item screen.** A notice at the

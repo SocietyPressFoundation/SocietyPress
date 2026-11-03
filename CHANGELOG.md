@@ -20,6 +20,11 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.88] — 2026-11-03
+
+**Cancel & Close and Save stay at the top right of the item screen.** A notice at the
+top of the page could push them to the left.
+
 ## [1.5.87] — 2026-11-03
 
 **The catalog's item screen is now six tabs.** Adding or editing a library item

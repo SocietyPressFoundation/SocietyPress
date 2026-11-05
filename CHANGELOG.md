@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.91] — 2026-11-05
+
+**Enter your Tax ID.** Organization settings now has a Tax ID (EIN) field. Donation
+receipts have always included the 501(c)(3) statement when a Tax ID was set, but until
+now no screen let anyone enter one.
+
 ## [1.5.90] — 2026-11-05
 
 **No more blank screen after deleting a form submission.** Deleting a submission now

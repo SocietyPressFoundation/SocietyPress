@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.90
+ * Version:     1.5.91
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.90' );
+define( 'SOCIETYPRESS_VERSION', '1.5.91' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -67,6 +67,7 @@ register_activation_hook( __FILE__, function () {
             'organization_address'    => '',
             'organization_phone'      => '',
             'organization_email'      => '',
+            'tax_id'                  => '',
             'membership_period_type'  => 'annual',
             'membership_start_month'  => 7,
             'late_join_months'        => 5,
@@ -32930,6 +32931,23 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // --- Tax ID ---
+    // WHY: donation receipts print the 501(c)(3) statement only when this is
+    // set, and donors need that statement for their taxes. The receipts always
+    // read this value, but no screen ever let anyone enter it.
+    add_settings_field(
+        'tax_id',
+        __( 'Tax ID (EIN)', 'societypress' ),
+        'sp_render_text_field',
+        'sp-settings-org',
+        'sp_org_section',
+        [
+            'key'         => 'tax_id',
+            'placeholder' => '12-3456789',
+            'description' => __( 'Fill this in only if your society is a 501(c)(3). Donation receipts then state that your society is tax-exempt and show this number.', 'societypress' ),
+        ]
+    );
+
     // --- Community Forum URL ---
     // WHY: Many societies have an external discussion forum (Facebook group,
     //      Google Group, Discourse, etc.). This setting lets Harold link to it
@@ -34462,7 +34480,8 @@ function sp_sanitize_settings( array $input ): array {
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
         'organization_phone'      => fn() => sanitize_text_field( $input['organization_phone'] ?? '' ),
         'organization_email'      => fn() => sanitize_email( $input['organization_email'] ?? '' ),
-        'community_forum_url'     => fn() => esc_url_raw( $input['community_forum_url'] ?? '' ),
+        'tax_id'                  => fn() => sanitize_text_field( $input['tax_id'] ?? '' ),
+        'community_forum_url'    => fn() => esc_url_raw( $input['community_forum_url'] ?? '' ),
         'help_requests_notify_all'=> fn() => ! empty( $input['help_requests_notify_all'] ) ? 1 : 0,
         // Currency — symbol and position for all monetary displays
         'currency_symbol'         => fn() => sanitize_text_field( $input['currency_symbol'] ?? '$' ),
@@ -34644,7 +34663,7 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'organization_name', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'organization_name', 'organization_address', 'organization_phone',
-            'organization_email', 'community_forum_url', 'help_requests_notify_all',
+            'organization_email', 'tax_id', 'community_forum_url', 'help_requests_notify_all',
             'currency_symbol', 'currency_position',
             'store_acq_code', 'store_intro_text', 'store_flat_shipping',
             'store_tax_rate', 'store_tax_label', 'store_tax_physical_only',
@@ -40966,7 +40985,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.90',
+            'version'     => '1.5.91',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40974,7 +40993,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.90',
+            'version'     => '1.5.91',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40982,7 +41001,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.90',
+            'version'     => '1.5.91',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40990,7 +41009,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.90',
+            'version'     => '1.5.91',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40998,7 +41017,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.90',
+            'version'     => '1.5.91',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

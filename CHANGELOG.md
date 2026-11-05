@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.90] — 2026-11-05
+
+**No more blank screen after deleting a form submission.** Deleting a submission now
+returns to the submissions list with the menu in place. The same fix covers every
+SocietyPress admin screen that moves on after a link is clicked.
+
+**A page's address follows its title.** Renaming a published page now changes its
+address to match, and the old address keeps redirecting to it. Addresses set by hand
+are left alone, as are the home page, pages with sub-pages, and the few pages
+SocietyPress finds by address.
+
+**A Donate page type.** Donate is now in the page type list, and the Donations screen
+offers to create the page if the site has none. It takes payment by card and sends the
+donor a thank-you email with the amount. Signed-in members get their name and email
+filled in.
+
+**A warning on forms that ask for money.** A form with a donation, payment or amount
+field now says that forms cannot take payment, and points to the Donate page.
+
 ## [1.5.89] — 2026-11-03
 
 **Export the library catalog to Excel.** The catalog now has an Export .xlsx button

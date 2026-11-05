@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.89
+ * Version:     1.5.90
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.89' );
+define( 'SOCIETYPRESS_VERSION', '1.5.90' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6819,6 +6819,7 @@ function sp_template_module_map(): array {
         'sp-library-catalog'    => 'library',
         'sp-newsletter-archive' => 'newsletters',
         'sp-resources'          => 'resources',
+        'sp-donate'             => 'donations',
         'sp-groups'             => 'governance',
         'sp-store'              => 'store',
         'sp-cart'               => 'store',
@@ -13108,7 +13109,12 @@ add_filter( 'submenu_file', function ( $submenu_file ) {
  */
 add_action( 'admin_init', function (): void {
     $page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-    if ( $page !== '' && str_starts_with( $page, 'sp-' ) && ! ob_get_level() ) {
+    // WHY no ob_get_level() test: a host running output_buffering already has a
+    // buffer open by now, so "is one open?" answered yes and this stepped aside.
+    // That buffer is only about 4KB and spills partway through the admin head,
+    // so a redirect from a plain link click, such as deleting a form submission,
+    // still failed and left a blank screen. Only a buffer of our own is unbounded.
+    if ( $page !== '' && str_starts_with( $page, 'sp-' ) ) {
         ob_start();
     }
 }, 0 );
@@ -13137,9 +13143,9 @@ add_action( 'admin_init', function (): void {
  * does not justify that risk in a single change.
  *
  * This is NOT the blanket ob_start() that entry warns against. It is deliberately
- * narrow: only SocietyPress screens, and only when the request is a POST, which
- * is the only time one of these redirects runs. Ordinary page views are left
- * exactly as they were. Nothing in this plugin streams output — there is not a
+ * narrow: only SocietyPress screens, and this one only for POST requests; the
+ * hook above covers redirects from plain link clicks. Nothing in this plugin
+ * streams output — there is not a
  * single flush() or ob_flush() call — so there is no progressive rendering for a
  * buffer to interfere with. PHP releases the buffer at shutdown on its own.
  */
@@ -20360,6 +20366,7 @@ function sp_screen_public_pages(): array {
         'sp-library'          => [ 'template' => 'sp-resources',       'title' => __( 'Resource Links', 'societypress' ),     'module' => 'resources' ],
         'sp-newsletter-archive' => [ 'template' => 'sp-newsletter-archive', 'title' => __( 'Newsletters', 'societypress' ),   'module' => 'newsletters' ],
         'sp-ballots'          => [ 'template' => 'sp-voting',          'title' => __( 'Voting', 'societypress' ),             'module' => 'voting' ],
+        'sp-donations'        => [ 'template' => 'sp-donate',          'title' => __( 'Donate', 'societypress' ),             'module' => 'donations' ],
     ];
 }
 
@@ -38249,6 +38256,7 @@ function sp_get_page_type_labels(): array {
          */
         'sp-store'           => __( 'Store', 'societypress' ),
         'sp-cart'            => __( 'Shopping Cart', 'societypress' ),
+        'sp-donate'          => __( 'Donate', 'societypress' ),
         'sp-records'         => __( 'Genealogical Records Search', 'societypress' ),
 
         /*
@@ -40958,7 +40966,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.89',
+            'version'     => '1.5.90',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40966,7 +40974,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.89',
+            'version'     => '1.5.90',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -40974,7 +40982,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.89',
+            'version'     => '1.5.90',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -40982,7 +40990,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.89',
+            'version'     => '1.5.90',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -40990,7 +40998,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.89',
+            'version'     => '1.5.90',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -75643,6 +75651,10 @@ add_filter( 'theme_page_templates', function( $templates ) {
     $templates['sp-cart']            = __( 'Shopping Cart', 'societypress' );
     $templates['sp-documents']       = __( 'Documents', 'societypress' );
     $templates['sp-news']            = __( 'News', 'societypress' );
+    // WHY a template: the real donation form was reachable only by knowing its
+    // shortcode, so a society wanting a Donate page built one with the Forms
+    // tool, which can collect an amount and email it but can never take payment.
+    $templates['sp-donate']          = __( 'Donate', 'societypress' );
     return $templates;
 } );
 
@@ -75650,7 +75662,7 @@ add_filter( 'template_include', function( $template ) {
     if ( ! is_page() ) return $template;
 
     $page_template = get_page_template_slug();
-    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-surnames', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-news' ], true ) ) {
+    if ( ! in_array( $page_template, [ 'sp-help-requests', 'sp-resources', 'sp-library-catalog', 'sp-vertical-files', 'sp-surnames', 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-news', 'sp-donate' ], true ) ) {
         return $template;
     }
 
@@ -75660,7 +75672,7 @@ add_filter( 'template_include', function( $template ) {
     // Surnames joins the public list for the same reason vertical files did:
     // an outsider finding their family name in the registry is how the society
     // gets found. The registry never shows a member's address either way.
-    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files', 'sp-surnames', 'sp-news' ], true ) && ! is_user_logged_in() ) {
+    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files', 'sp-surnames', 'sp-news', 'sp-donate' ], true ) && ! is_user_logged_in() ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -75729,6 +75741,13 @@ add_filter( 'template_include', function( $template ) {
             break;
         case 'sp-documents':
             sp_frontend_documents();
+            break;
+        case 'sp-donate':
+            // A page adopted into this template may already carry the shortcode
+            // in its own text, and two donation forms would collide on their ids.
+            if ( ! $sp_tpl_post || ! has_shortcode( (string) $sp_tpl_post->post_content, 'sp_donate' ) ) {
+                echo do_shortcode( '[sp_donate]' );
+            }
             break;
     }
 
@@ -126117,6 +126136,59 @@ function sp_newsletters_display_title( array $parsed ): string {
 // ============================================================================
 
 /**
+ * Let a published page's address follow its title.
+ *
+ * WHY: WordPress freezes the address the first time a page is published, so a
+ * volunteer who renames "Library Volunteers" to "Our Volunteers" is left with an
+ * address that still says the old thing, and no idea where to change it. The
+ * redirect below keeps every old link working, so following the title costs
+ * nothing.
+ *
+ * WHY each exception: a slug that did not come from the old title was chosen by
+ * someone, on purpose. The home and posts pages are not reached by their slug.
+ * A parent's rename would strand its children, because the redirect matches only
+ * the last segment of an address. And the plugin looks a few pages up by slug
+ * outright, or posts to them, where a redirect would not save it.
+ */
+add_filter( 'wp_insert_post_data', function ( $data, $postarr ) {
+    $post_id = (int) ( $postarr['ID'] ?? 0 );
+    if ( ! $post_id || 'page' !== $data['post_type'] || 'publish' !== $data['post_status'] ) {
+        return $data;
+    }
+
+    $before = get_post( $post_id );
+    if ( ! $before || 'page' !== $before->post_type || 'publish' !== $before->post_status ) {
+        return $data;
+    }
+
+    $title = wp_unslash( $data['post_title'] );
+    if ( $title === $before->post_title || $data['post_name'] !== $before->post_name ) {
+        return $data;   // title unchanged, or the address was edited by hand in this save
+    }
+
+    $from_title = sanitize_title( $before->post_title );
+    if ( $before->post_name !== $from_title && preg_replace( '/-\d+$/', '', $before->post_name ) !== $from_title ) {
+        return $data;
+    }
+
+    $fixed_slugs = [ 'home', 'join', 'leadership', 'member-portal', 'my-account', 'privacy-policy' ];
+    if ( in_array( $before->post_name, $fixed_slugs, true )
+        || (int) get_option( 'page_on_front' ) === $post_id
+        || (int) get_option( 'page_for_posts' ) === $post_id ) {
+        return $data;
+    }
+
+    $children = get_children( [ 'post_parent' => $post_id, 'post_type' => 'page', 'numberposts' => 1, 'fields' => 'ids' ] );
+    $new_slug = sanitize_title( $title );
+    if ( $children || '' === $new_slug ) {
+        return $data;
+    }
+
+    $data['post_name'] = wp_unique_post_slug( $new_slug, $post_id, 'publish', 'page', (int) $data['post_parent'] );
+    return $data;
+}, 10, 2 );
+
+/**
  * Record a page's previous slug whenever it changes.
  *
  * Deliberately mirrors core's meta key so anything else that understands
@@ -130299,6 +130371,29 @@ function sp_render_form_edit_page(): void {
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Form saved.', 'societypress' ); ?></p></div>
         <?php endif; ?>
 
+        <?php
+        // WHY warn here: a form asking for a donation amount looks finished and
+        // even collects the number, so nobody learns until a donor asks why no
+        // payment was taken. Forms only ever send a message.
+        $sp_asks_for_money = false;
+        foreach ( $fields as $sp_field ) {
+            if ( preg_match( '/\b(donat\w*|payment|amount)\b/i', (string) ( $sp_field['label'] ?? '' ) ) ) {
+                $sp_asks_for_money = true;
+                break;
+            }
+        }
+        if ( $sp_asks_for_money ) :
+            ?>
+            <div class="notice notice-warning">
+                <p>
+                    <?php esc_html_e( 'This form looks like it asks for money, but forms can only send a message. They cannot take a payment.', 'societypress' ); ?>
+                    <?php if ( sp_module_enabled( 'donations' ) ) : ?>
+                        <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>"><?php esc_html_e( 'Set up a Donate page instead.', 'societypress' ); ?></a>
+                    <?php endif; ?>
+                </p>
+            </div>
+        <?php endif; ?>
+
         <form method="post" id="sp-form-edit-form">
             <?php wp_nonce_field( 'sp_save_form' ); ?>
 
@@ -130843,7 +130938,7 @@ function sp_render_form_submissions_page(): void {
         exit;
     }
 
-    $list_url = esc_url( admin_url( 'admin.php?page=sp-form-submissions&form_id=' . $form_id ) );
+    $list_url = admin_url( 'admin.php?page=sp-form-submissions&form_id=' . $form_id );
 
     // Single-submission delete (nonce-guarded link).
     if ( 'delete' === ( $_GET['action'] ?? '' ) && isset( $_GET['submission_id'] ) ) {

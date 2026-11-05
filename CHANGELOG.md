@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.93] — 2026-11-05
+
+**Donors are never charged for a gift that wasn't recorded.** If a donation can't be
+saved, the Donate form now stops with an error instead of going on to payment. A save
+can fail between a plugin update and the first admin visit, because database upgrades
+run on that visit.
+
+**Privacy exports include donations again.** The donation exporter looked for a table
+that doesn't exist, so every export came back with no donation history.
+
 ## [1.5.92] — 2026-11-05
 
 **Donors can give a mailing address.** The Donate form now has optional address fields,

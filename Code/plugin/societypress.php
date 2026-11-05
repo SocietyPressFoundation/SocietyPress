@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.92
+ * Version:     1.5.93
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.92' );
+define( 'SOCIETYPRESS_VERSION', '1.5.93' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40994,7 +40994,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.92',
+            'version'     => '1.5.93',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41002,7 +41002,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.92',
+            'version'     => '1.5.93',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41010,7 +41010,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.92',
+            'version'     => '1.5.93',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41018,7 +41018,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.92',
+            'version'     => '1.5.93',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41026,7 +41026,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.92',
+            'version'     => '1.5.93',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -91518,7 +91518,7 @@ function sp_privacy_export_donation_data( string $email_address, int $page = 1 )
     $donations = $wpdb->get_results( $wpdb->prepare(
         "SELECT d.*, c.name AS campaign_name
          FROM {$prefix}donations d
-         LEFT JOIN {$prefix}donation_campaigns c ON d.campaign_id = c.id
+         LEFT JOIN {$prefix}campaigns c ON d.campaign_id = c.id
          WHERE d.user_id = %d OR d.donor_email = %s
          ORDER BY d.date DESC",
         $user_id, $email_address
@@ -117416,6 +117416,14 @@ add_action( 'init', function () {
         ] );
         $check_donation_id = (int) $wpdb->insert_id;
 
+        // WHY: without a row the donor would get a slip for a gift the treasurer
+        // can't see. See the Stripe path below for how a save can fail.
+        if ( ! $check_donation_id ) {
+            error_log( 'SocietyPress donation not saved: ' . $wpdb->last_error );
+            wp_safe_redirect( add_query_arg( 'sp_donate_err', 'checkout_failed', $referer ) );
+            exit;
+        }
+
         // Let the society know a mailed check is on its way.
         if ( $check_donation_id ) {
             $d_row = $wpdb->get_row( $wpdb->prepare(
@@ -117479,6 +117487,15 @@ add_action( 'init', function () {
         'status'           => 'pending',
     ] );
     $donation_id = (int) $wpdb->insert_id;
+
+    // WHY stop here: a donor must never be charged for a gift with no record.
+    // Schema upgrades run on the first wp-admin visit after an update, so until
+    // then a new column can make this save fail on a public request.
+    if ( ! $donation_id ) {
+        error_log( 'SocietyPress donation not saved: ' . $wpdb->last_error );
+        wp_safe_redirect( add_query_arg( 'sp_donate_err', 'checkout_failed', $referer ) );
+        exit;
+    }
 
     // Build success/cancel URLs back to the donate page
     $success_url = add_query_arg( [
@@ -118765,6 +118782,12 @@ function sp_donate_paypal_create_order(): void {
         'status'           => 'pending',
     ] );
     $donation_id = (int) $wpdb->insert_id;
+
+    // WHY: same rule as the Stripe path, no payment for a gift with no record.
+    if ( ! $donation_id ) {
+        error_log( 'SocietyPress donation not saved: ' . $wpdb->last_error );
+        wp_send_json_error( [ 'message' => __( 'We could not start your donation, and you have not been charged. Please try again later.', 'societypress' ) ] );
+    }
 
     // Build the redirect URLs for after PayPal capture (used by JS, not PayPal itself)
     $referer = wp_get_referer() ?: home_url();

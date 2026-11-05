@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.91
+ * Version:     1.5.92
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.91' );
+define( 'SOCIETYPRESS_VERSION', '1.5.92' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -600,7 +600,10 @@ function sp_maybe_create_default_pages(): void {
     ];
 
     foreach ( $sp_pages as $sp_page ) {
-        $id = wp_insert_post( [
+        // WHY reuse: the Events page is created earlier with starter text, so
+        // inserting another gave every new site a second page at /events-2/.
+        $sp_existing = get_page_by_path( $sp_page['slug'] );
+        $id = $sp_existing ? $sp_existing->ID : wp_insert_post( [
             'post_title'  => $sp_page['title'],
             'post_content'=> '',
             'post_status' => 'publish',
@@ -2305,6 +2308,12 @@ function sp_create_tables(): void {
         user_id                BIGINT(20) UNSIGNED NULL,
         donor_name             VARCHAR(255)        NOT NULL,
         donor_email            VARCHAR(255)        NULL,
+        donor_address_1        VARCHAR(512)        NULL,
+        donor_address_2        VARCHAR(512)        NULL,
+        donor_city             VARCHAR(100)        NULL,
+        donor_state            VARCHAR(100)        NULL,
+        donor_postal_code      VARCHAR(20)         NULL,
+        donor_country          VARCHAR(100)        NULL,
         amount                 DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
         frequency              VARCHAR(20)         NOT NULL DEFAULT 'one_time',
         cover_fees             TINYINT(1)          NOT NULL DEFAULT 0,
@@ -40985,7 +40994,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.91',
+            'version'     => '1.5.92',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -40993,7 +41002,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.91',
+            'version'     => '1.5.92',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41001,7 +41010,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.91',
+            'version'     => '1.5.92',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41009,7 +41018,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.91',
+            'version'     => '1.5.92',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41017,7 +41026,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.91',
+            'version'     => '1.5.92',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -86310,6 +86319,7 @@ function sp_render_email_templates_page(): void {
                     $merge_tags = [
                         '{{donor_name}}'        => __( 'Donor name', 'societypress' ),
                         '{{donor_email}}'       => __( 'Donor email', 'societypress' ),
+                        '{{donor_address}}'     => __( 'Donor mailing address', 'societypress' ),
                         '{{amount}}'            => __( 'Donation amount (formatted)', 'societypress' ),
                         '{{campaign}}'          => __( 'Campaign name', 'societypress' ),
                         '{{donation_date}}'     => __( 'Date of donation', 'societypress' ),
@@ -89844,6 +89854,7 @@ function sp_render_donation_edit_page(): void {
         $member_id   = (int) ( $_POST['member_id'] ?? 0 );
         $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
         $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );
+        $address     = sp_donation_address_from_post();
 
         // If a member was selected, pull their name/email
         if ( $member_id ) {
@@ -89857,9 +89868,28 @@ function sp_render_donation_edit_page(): void {
                 $donor_name  = trim( $member->first_name . ' ' . $member->last_name );
                 $donor_email = $member->user_email;
             }
+
+            // WHY only when blank: a typed address may be where this gift's
+            // letter should actually go. The stored address_1 and address_2 are
+            // already encrypted, and sp_members and sp_donations share the format.
+            if ( '' === implode( '', $address ) ) {
+                $full = $wpdb->get_row( $wpdb->prepare(
+                    "SELECT address_1, address_2, city, state, postal_code, country FROM {$prefix}members WHERE user_id = %d", $member_id
+                ) );
+                if ( $full ) {
+                    $address = [
+                        'donor_address_1'   => (string) $full->address_1,
+                        'donor_address_2'   => (string) $full->address_2,
+                        'donor_city'        => (string) $full->city,
+                        'donor_state'       => (string) $full->state,
+                        'donor_postal_code' => (string) $full->postal_code,
+                        'donor_country'     => (string) $full->country,
+                    ];
+                }
+            }
         }
 
-        $data = [
+        $data = $address + [
             'campaign_id'         => (int) ( $_POST['campaign_id'] ?? 0 ) ?: null,
             'user_id'             => $member_id ?: null,
             'donor_name'          => $donor_name,
@@ -89947,6 +89977,23 @@ function sp_render_donation_edit_page(): void {
                     <th scope="col"><label for="sp-d-email"><?php esc_html_e( 'Donor Email', 'societypress' ); ?></label></th>
                     <td><input type="email" name="donor_email" id="sp-d-email" value="<?php echo esc_attr( $donation->donor_email ?? '' ); ?>" class="sp-full-width"></td>
                 </tr>
+                <?php
+                $sp_address_values = sp_donation_address_parts( $donation ?? null );
+                $sp_address_rows   = [
+                    'address_1'   => [ 'donor_address_1', __( 'Street Address', 'societypress' ) ],
+                    'address_2'   => [ 'donor_address_2', __( 'Apartment, Suite, etc.', 'societypress' ) ],
+                    'city'        => [ 'donor_city', __( 'City', 'societypress' ) ],
+                    'state'       => [ 'donor_state', __( 'State or Province', 'societypress' ) ],
+                    'postal_code' => [ 'donor_postal_code', __( 'ZIP or Postal Code', 'societypress' ) ],
+                    'country'     => [ 'donor_country', __( 'Country', 'societypress' ) ],
+                ];
+                foreach ( $sp_address_rows as $sp_part => [ $sp_input, $sp_label ] ) :
+                    ?>
+                    <tr>
+                        <th scope="col"><label for="sp-d-<?php echo esc_attr( $sp_input ); ?>"><?php echo esc_html( $sp_label ); ?></label></th>
+                        <td><input type="text" name="<?php echo esc_attr( $sp_input ); ?>" id="sp-d-<?php echo esc_attr( $sp_input ); ?>" value="<?php echo esc_attr( $sp_address_values[ $sp_part ] ); ?>" class="sp-full-width"></td>
+                    </tr>
+                <?php endforeach; ?>
                 <tr>
                     <th scope="col"><label for="sp-d-amount"><?php esc_html_e( 'Amount', 'societypress' ); ?></label></th>
                     <td><input type="number" name="amount" id="sp-d-amount" value="<?php echo esc_attr( number_format( (float) ( $donation->amount ?? 0 ), 2, '.', '' ) ); ?>" step="0.01" min="0" class="sp-w-150"></td>
@@ -90039,6 +90086,7 @@ function sp_replace_donation_merge_tags( string $content, object $donation ): st
     $tags = [
         '{{donor_name}}'          => $donation->donor_name ?? '',
         '{{donor_email}}'         => $donation->donor_email ?? '',
+        '{{donor_address}}'       => nl2br( esc_html( sp_donation_address_text( $donation ) ) ),
         '{{amount}}'              => $amount_display,
         '{{campaign}}'            => $campaign_display,
         '{{donation_date}}'       => ! empty( $donation->date ) ? sp_format_wall_clock( $donation->date, 'F j, Y' ) : '',
@@ -91480,6 +91528,7 @@ function sp_privacy_export_donation_data( string $email_address, int $page = 1 )
         $data = [
             [ 'name' => __( 'Donor Name',  'societypress' ), 'value' => $don->donor_name ],
             [ 'name' => __( 'Donor Email', 'societypress' ), 'value' => $don->donor_email ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Mailing Address', 'societypress' ), 'value' => sp_donation_address_text( $don ) ?: __( '(none)', 'societypress' ) ],
             [ 'name' => __( 'Amount',      'societypress' ), 'value' => sp_format_currency( $don->amount ) ],
             [ 'name' => __( 'Type',        'societypress' ), 'value' => sp_localized_status( $don->type, 'payment_type' ) ],
             [ 'name' => __( 'Campaign',    'societypress' ), 'value' => $don->campaign_name ?: __( 'General / Unrestricted', 'societypress' ) ],
@@ -91548,6 +91597,12 @@ function sp_privacy_erase_donation_data( string $email_address, int $page = 1 ):
             [
                 'donor_name'   => __( 'Anonymous Donor', 'societypress' ),
                 'donor_email'  => '',
+                'donor_address_1'   => '',
+                'donor_address_2'   => '',
+                'donor_city'        => '',
+                'donor_state'       => '',
+                'donor_postal_code' => '',
+                'donor_country'     => '',
                 'user_id'      => null,
                 'note'         => '',
                 'is_anonymous' => 1,
@@ -92074,7 +92129,8 @@ add_action( 'wp_ajax_sp_export_donations', function () {
          ORDER BY d.date DESC, d.id DESC";
 
     $headers = [
-        'ID', 'Donor Name', 'Donor Email', 'Amount', 'Type', 'Date',
+        'ID', 'Donor Name', 'Donor Email', 'Address', 'Address 2', 'City', 'State',
+        'Postal Code', 'Country', 'Amount', 'Type', 'Date',
         'Campaign', 'In-Kind Description', 'Anonymous', 'Acknowledgment Sent',
         'Acknowledgment Date', 'Note', 'Recorded By', 'Created At',
     ];
@@ -92089,8 +92145,11 @@ add_action( 'wp_ajax_sp_export_donations', function () {
     fputcsv( $out, $headers, ',', '"', '\\' );
 
     sp_export_stream_csv( $out, $sql, static function ( $d ) {
+        $a = sp_donation_address_parts( $d );
         return [
-            $d->id, $d->donor_name, $d->donor_email, $d->amount,
+            $d->id, $d->donor_name, $d->donor_email,
+            $a['address_1'], $a['address_2'], $a['city'], $a['state'], $a['postal_code'], $a['country'],
+            $d->amount,
             $d->type, $d->date, $d->campaign_name ?? '',
             $d->in_kind_description, $d->is_anonymous ? 'Yes' : 'No',
             $d->acknowledgment_sent ? 'Yes' : 'No', $d->acknowledgment_date,
@@ -116445,6 +116504,12 @@ add_action( 'admin_init', function () {
         'status'                 => "ALTER TABLE {$table} ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'recorded' AFTER payment_method, ADD KEY status (status)",
         'stripe_subscription_id' => "ALTER TABLE {$table} ADD COLUMN stripe_subscription_id VARCHAR(255) NULL AFTER stripe_session_id, ADD KEY stripe_subscription_id (stripe_subscription_id)",
         'paypal_subscription_id' => "ALTER TABLE {$table} ADD COLUMN paypal_subscription_id VARCHAR(255) NULL AFTER paypal_capture_id",
+        'donor_address_1'        => "ALTER TABLE {$table} ADD COLUMN donor_address_1 VARCHAR(512) NULL AFTER donor_email",
+        'donor_address_2'        => "ALTER TABLE {$table} ADD COLUMN donor_address_2 VARCHAR(512) NULL AFTER donor_address_1",
+        'donor_city'             => "ALTER TABLE {$table} ADD COLUMN donor_city VARCHAR(100) NULL AFTER donor_address_2",
+        'donor_state'            => "ALTER TABLE {$table} ADD COLUMN donor_state VARCHAR(100) NULL AFTER donor_city",
+        'donor_postal_code'      => "ALTER TABLE {$table} ADD COLUMN donor_postal_code VARCHAR(20) NULL AFTER donor_state",
+        'donor_country'          => "ALTER TABLE {$table} ADD COLUMN donor_country VARCHAR(100) NULL AFTER donor_postal_code",
     ];
     foreach ( $cols as $col => $sql ) {
         $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
@@ -116470,6 +116535,55 @@ function sp_donation_calculate_fee( float $amount ): float {
     return round( $gross - $amount, 2 );
 }
 
+
+/**
+ * A donor's mailing address, ready to store, from the fields in $_POST.
+ *
+ * WHY the street lines are encrypted: they get the same protection as a
+ * member's street address in sp_members, and a donor is owed no less.
+ *
+ * WHY every field is optional: an address is only needed for a mailed letter,
+ * and a required one would turn away a donor who would rather not give it.
+ */
+function sp_donation_address_from_post(): array {
+    $line_1 = sanitize_text_field( wp_unslash( $_POST['donor_address_1'] ?? '' ) );
+    $line_2 = sanitize_text_field( wp_unslash( $_POST['donor_address_2'] ?? '' ) );
+    return [
+        'donor_address_1'   => $line_1 !== '' ? sp_encrypt( $line_1 ) : '',
+        'donor_address_2'   => $line_2 !== '' ? sp_encrypt( $line_2 ) : '',
+        'donor_city'        => sanitize_text_field( wp_unslash( $_POST['donor_city'] ?? '' ) ),
+        'donor_state'       => sanitize_text_field( wp_unslash( $_POST['donor_state'] ?? '' ) ),
+        'donor_postal_code' => sanitize_text_field( wp_unslash( $_POST['donor_postal_code'] ?? '' ) ),
+        'donor_country'     => sanitize_text_field( wp_unslash( $_POST['donor_country'] ?? '' ) ),
+    ];
+}
+
+/**
+ * A donation's address fields in readable form, for screens and exports.
+ */
+function sp_donation_address_parts( ?object $donation ): array {
+    $line = static function ( string $column ) use ( $donation ): string {
+        $value = (string) ( $donation->{$column} ?? '' );
+        return $value !== '' ? (string) sp_decrypt( $value ) : '';
+    };
+    return [
+        'address_1'   => $line( 'donor_address_1' ),
+        'address_2'   => $line( 'donor_address_2' ),
+        'city'        => (string) ( $donation->donor_city ?? '' ),
+        'state'       => (string) ( $donation->donor_state ?? '' ),
+        'postal_code' => (string) ( $donation->donor_postal_code ?? '' ),
+        'country'     => (string) ( $donation->donor_country ?? '' ),
+    ];
+}
+
+/**
+ * A donation's address as lines of plain text, or '' if the donor gave none.
+ */
+function sp_donation_address_text( object $donation ): string {
+    $a        = sp_donation_address_parts( $donation );
+    $locality = trim( $a['city'] . ( $a['city'] !== '' && $a['state'] !== '' ? ', ' : '' ) . $a['state'] . ' ' . $a['postal_code'] );
+    return implode( "\n", array_filter( [ $a['address_1'], $a['address_2'], $locality, $a['country'] ], 'strlen' ) );
+}
 
 /**
  * Get configured preset donation amounts. Default is reasonable for a small
@@ -116784,11 +116898,15 @@ add_shortcode( 'sp_donate', function ( $atts ) {
     $current_user = wp_get_current_user();
     $name  = '';
     $email = '';
+    $donor_address = array_fill_keys( [ 'address_1', 'address_2', 'city', 'state', 'postal_code', 'country' ], '' );
     if ( $current_user->ID ) {
         $email  = $current_user->user_email;
         $member = sp_get_member_by_user_id( $current_user->ID );
         if ( $member ) {
             $name = trim( ( $member->first_name ?? '' ) . ' ' . ( $member->last_name ?? '' ) );
+            foreach ( $donor_address as $field => $unused ) {
+                $donor_address[ $field ] = (string) ( $member->{$field} ?? '' );
+            }
         }
         if ( $name === '' ) {
             $name = trim( $current_user->display_name );
@@ -116854,6 +116972,10 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             .sp-donate-form textarea { min-height: 60px; }
             .sp-donate-row { display: flex; gap: 10px; }
             .sp-donate-row > div { flex: 1; }
+            .sp-donate-address { border: 0; margin: 0 0 18px; padding: 0; }
+            .sp-donate-address legend { padding: 0; }
+            .sp-donate-address label { display: block; font-size: 14px; margin: 8px 0 3px; }
+            .sp-donate-address-help { color: #555; font-size: 14px; margin: 0; }
             .sp-donate-cover { background: #f6f6f6; border-left: 3px solid #c9973a; padding: 10px 12px; border-radius: 0 4px 4px 0; }
             .sp-donate-cover label { display: block; cursor: pointer; }
             .sp-donate-cover .sp-donate-cover-help { color: #666; font-size: 13px; margin-top: 2px; }
@@ -116981,6 +117103,35 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                     <input type="email" id="sp-donate-email" name="donor_email" value="<?php echo esc_attr( $email ); ?>" required>
                 </div>
             </div>
+
+            <fieldset class="sp-donate-section sp-donate-address">
+                <legend class="sp-donate-label"><?php esc_html_e( 'Mailing address (optional)', 'societypress' ); ?></legend>
+                <p class="sp-donate-address-help"><?php esc_html_e( 'So we can mail you a thank-you letter.', 'societypress' ); ?></p>
+                <label for="sp-donate-address-1"><?php esc_html_e( 'Street address', 'societypress' ); ?></label>
+                <input type="text" id="sp-donate-address-1" name="donor_address_1" autocomplete="address-line1" value="<?php echo esc_attr( $donor_address['address_1'] ); ?>">
+                <label for="sp-donate-address-2"><?php esc_html_e( 'Apartment, suite, etc.', 'societypress' ); ?></label>
+                <input type="text" id="sp-donate-address-2" name="donor_address_2" autocomplete="address-line2" value="<?php echo esc_attr( $donor_address['address_2'] ); ?>">
+                <div class="sp-donate-row">
+                    <div>
+                        <label for="sp-donate-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
+                        <input type="text" id="sp-donate-city" name="donor_city" autocomplete="address-level2" value="<?php echo esc_attr( $donor_address['city'] ); ?>">
+                    </div>
+                    <div>
+                        <label for="sp-donate-state"><?php esc_html_e( 'State or province', 'societypress' ); ?></label>
+                        <input type="text" id="sp-donate-state" name="donor_state" autocomplete="address-level1" value="<?php echo esc_attr( $donor_address['state'] ); ?>">
+                    </div>
+                </div>
+                <div class="sp-donate-row">
+                    <div>
+                        <label for="sp-donate-postal"><?php esc_html_e( 'ZIP or postal code', 'societypress' ); ?></label>
+                        <input type="text" id="sp-donate-postal" name="donor_postal_code" autocomplete="postal-code" value="<?php echo esc_attr( $donor_address['postal_code'] ); ?>">
+                    </div>
+                    <div>
+                        <label for="sp-donate-country"><?php esc_html_e( 'Country', 'societypress' ); ?></label>
+                        <input type="text" id="sp-donate-country" name="donor_country" autocomplete="country-name" value="<?php echo esc_attr( $donor_address['country'] ); ?>">
+                    </div>
+                </div>
+            </fieldset>
 
             <?php if ( $atts['show_dedication'] === '1' ) : ?>
                 <div class="sp-donate-section">
@@ -117248,6 +117399,7 @@ add_action( 'init', function () {
             'user_id'          => get_current_user_id() ?: null,
             'donor_name'       => $donor_name,
             'donor_email'      => $donor_email,
+        ] + sp_donation_address_from_post() + [
             'amount'           => $amount,
             'frequency'        => 'one_time',
             'cover_fees'       => 0,
@@ -117312,6 +117464,7 @@ add_action( 'init', function () {
         'user_id'          => $user_id,
         'donor_name'       => $donor_name,
         'donor_email'      => $donor_email,
+    ] + sp_donation_address_from_post() + [
         'amount'           => $amount,
         'frequency'        => $frequency,
         'cover_fees'       => $cover_fees ? 1 : 0,
@@ -117551,6 +117704,11 @@ function sp_donation_notify_society( object $d, array $settings, bool $is_pledge
         /* translators: %s: donor email address */
         $body .= sprintf( __( 'Email: %s', 'societypress' ), $d->donor_email ) . "\n";
     }
+    $sp_donor_address = $anon ? '' : sp_donation_address_text( $d );
+    if ( $sp_donor_address !== '' ) {
+        /* translators: %s: donor mailing address, one or more lines */
+        $body .= sprintf( __( "Mailing address:\n%s", 'societypress' ), $sp_donor_address ) . "\n";
+    }
     if ( ! empty( $d->payment_method ) ) {
         /* translators: %s: payment method */
         $body .= sprintf( __( 'Method: %s', 'societypress' ), $d->payment_method ) . "\n";
@@ -117742,6 +117900,12 @@ function sp_donations_handle_stripe_webhook( WP_REST_Request $request ) {
                     'user_id'                => $original->user_id,
                     'donor_name'             => $original->donor_name,
                     'donor_email'            => $original->donor_email,
+                    'donor_address_1'        => $original->donor_address_1,
+                    'donor_address_2'        => $original->donor_address_2,
+                    'donor_city'             => $original->donor_city,
+                    'donor_state'            => $original->donor_state,
+                    'donor_postal_code'      => $original->donor_postal_code,
+                    'donor_country'          => $original->donor_country,
                     'amount'                 => $amount_paid - (float) $original->fee_amount,
                     'frequency'              => $original->frequency,
                     'cover_fees'             => $original->cover_fees,
@@ -118586,6 +118750,7 @@ function sp_donate_paypal_create_order(): void {
         'user_id'          => $user_id,
         'donor_name'       => $donor_name,
         'donor_email'      => $donor_email,
+    ] + sp_donation_address_from_post() + [
         'amount'           => $amount,
         'frequency'        => 'one_time',
         'cover_fees'       => $cover_fees ? 1 : 0,

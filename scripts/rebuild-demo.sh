@@ -194,13 +194,18 @@ for plugin in $($WP plugin list --field=name 2>/dev/null); do
 done
 
 # ---------------------------------------------------------------------------
-# 5. Ensure .htaccess exists (WP core download doesn't create it)
+# 5. Ensure .htaccess has the WordPress rules (WP core download doesn't add them)
+#
+# WHY test for the rules rather than the file: cPanel writes its own block into
+# .htaccess, so the file can exist with no rewrite rules in it. Testing for the
+# file left every page but the home page returning 404, with nothing in this log.
+# WHY append: replacing the file would wipe cPanel's PHP settings.
 # ---------------------------------------------------------------------------
 
 HTACCESS="$WP_PATH/.htaccess"
-if [ ! -f "$HTACCESS" ]; then
-    echo "Creating .htaccess..."
-    cat > "$HTACCESS" << 'HTEOF'
+if ! grep -q "# BEGIN WordPress" "$HTACCESS" 2>/dev/null; then
+    echo "Adding WordPress rules to .htaccess..."
+    cat >> "$HTACCESS" << 'HTEOF'
 # BEGIN WordPress
 <IfModule mod_rewrite.c>
 RewriteEngine On
@@ -213,7 +218,7 @@ RewriteRule . /index.php [L]
 </IfModule>
 # END WordPress
 HTEOF
-    echo "  .htaccess created."
+    echo "  WordPress rules added."
 fi
 
 echo ""

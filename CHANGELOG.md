@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.92] — 2026-11-05
+
+**Donors can give a mailing address.** The Donate form now has optional address fields,
+filled in automatically for signed-in members. The address appears on the donation
+screen, in the notice to the society and in the donations export, and is available to
+acknowledgment templates as `{{donor_address}}`. Street lines are encrypted, and
+privacy exports and erasures include the address.
+
+**New sites get one Events page.** A new install was creating a second page at
+`/events-2/`.
+
 ## [1.5.91] — 2026-11-05
 
 **Enter your Tax ID.** Organization settings now has a Tax ID (EIN) field. Donation

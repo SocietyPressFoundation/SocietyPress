@@ -871,6 +871,20 @@ if ( $demo_user ) {
 // prompts are left untouched so a fresh install still guides the admin.
 // ---------------------------------------------------------------------------
 
+// WHY: sp_maybe_create_default_pages() does nothing once any published page
+// exists, and the rebuild keeps pages between runs. A demo that picked up just the
+// Store, Cart and Records pages therefore never got Events, Join or Library, and
+// the home page's own buttons led to 404s. Clearing the few strays lets the plugin
+// build the full set and the menu, exactly as a new install gets them, rather
+// than this script keeping a second copy of that list.
+if ( ! get_page_by_path( 'events' ) ) {
+	WP_CLI::log( 'Default pages are missing; building the full set...' );
+	foreach ( get_pages() as $stray_page ) {
+		wp_delete_post( $stray_page->ID, true );
+	}
+	sp_maybe_create_default_pages();
+}
+
 // The plugin now ships a Records page, but sp_maybe_create_default_pages()
 // returns early the moment any published page exists, so an already-built demo
 // never receives it. Create it here as well, idempotently, and add it to the

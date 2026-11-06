@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.94] — 2026-11-06
+
+**Delete library items in bulk.** The Library Catalog now has a checkbox on every row
+and a Delete Selected button. Tick "Select all", then "Select all N items, not just
+this page" to delete every item that matches the current search and filters — or,
+with no filters, empty the catalog completely before a fresh import. A confirmation
+says exactly how many items will go.
+
 ## [1.5.93] — 2026-11-05
 
 **Donors are never charged for a gift that wasn't recorded.** If a donation can't be

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.93
+ * Version:     1.5.94
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.93' );
+define( 'SOCIETYPRESS_VERSION', '1.5.94' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40994,7 +40994,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.93',
+            'version'     => '1.5.94',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41002,7 +41002,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.93',
+            'version'     => '1.5.94',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41010,7 +41010,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.93',
+            'version'     => '1.5.94',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41018,7 +41018,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.93',
+            'version'     => '1.5.94',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41026,7 +41026,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.93',
+            'version'     => '1.5.94',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -77963,14 +77963,6 @@ function sp_render_library_catalog_page(): void {
     $acq_filter   = isset( $_GET['acq_code'] ) ? sanitize_text_field( wp_unslash( $_GET['acq_code'] ) ) : '';
     $year_filter  = absint( $_GET['acq_year'] ?? 0 );
 
-    // Get distinct values for filter dropdowns
-    $media_types     = array_keys( sp_library_value_counts( 'media_type', 'media_type' ) );
-    sort( $media_types );
-    $shelf_locations = $wpdb->get_col( "SELECT DISTINCT shelf_location FROM {$prefix}library_items WHERE shelf_location IS NOT NULL AND shelf_location != '' ORDER BY shelf_location ASC" );
-    $acq_codes       = $wpdb->get_col( "SELECT DISTINCT acq_code FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' ORDER BY acq_code ASC" );
-    // Newest first: "what came in this year" is the question a librarian asks.
-    $acq_years       = $wpdb->get_col( "SELECT DISTINCT acq_year FROM {$prefix}library_items WHERE acq_year > 0 ORDER BY acq_year DESC" );
-
     // Build WHERE clause
     $where = [ '1=1' ];
     // Same rule the public catalog follows: all the words, anywhere in the
@@ -77997,6 +77989,37 @@ function sp_render_library_catalog_page(): void {
         $where[] = $wpdb->prepare( 'li.acq_year = %d', $year_filter );
     }
     $where_sql = implode( ' AND ', $where );
+
+    // Handle bulk delete
+    // WHY here, after the filters and before anything is counted: "every
+    //      matching item" must mean exactly the list the librarian is looking
+    //      at, so it reuses this page's own WHERE (the form posts back to the
+    //      same filtered URL). And it runs before the stats and dropdowns are
+    //      read, so an emptied catalog doesn't render with yesterday's numbers.
+    //      The usual reason for it: starting a catalog import over from scratch.
+    if ( ( $_POST['action'] ?? '' ) === 'bulk_delete' ) {
+        check_admin_referer( 'sp_bulk_delete_library_items' );
+        $deleted = 0;
+        if ( ! empty( $_POST['all_matching'] ) ) {
+            $deleted = (int) $wpdb->query( "DELETE li FROM {$prefix}library_items li WHERE {$where_sql}" );
+        } else {
+            $ids = array_filter( array_map( 'absint', (array) ( $_POST['item_ids'] ?? [] ) ) );
+            if ( $ids ) {
+                $deleted = (int) $wpdb->query( "DELETE FROM {$prefix}library_items WHERE id IN (" . implode( ',', $ids ) . ')' );
+            }
+        }
+        delete_transient( 'sp_library_catalog_stats' );
+        /* translators: %s: number of catalog items deleted */
+        echo '<div class="notice notice-success"><p>' . esc_html( sprintf( _n( '%s item deleted.', '%s items deleted.', $deleted, 'societypress' ), number_format_i18n( $deleted ) ) ) . '</p></div>';
+    }
+
+    // Get distinct values for filter dropdowns
+    $media_types     = array_keys( sp_library_value_counts( 'media_type', 'media_type' ) );
+    sort( $media_types );
+    $shelf_locations = $wpdb->get_col( "SELECT DISTINCT shelf_location FROM {$prefix}library_items WHERE shelf_location IS NOT NULL AND shelf_location != '' ORDER BY shelf_location ASC" );
+    $acq_codes       = $wpdb->get_col( "SELECT DISTINCT acq_code FROM {$prefix}library_items WHERE acq_code IS NOT NULL AND acq_code != '' ORDER BY acq_code ASC" );
+    // Newest first: "what came in this year" is the question a librarian asks.
+    $acq_years       = $wpdb->get_col( "SELECT DISTINCT acq_year FROM {$prefix}library_items WHERE acq_year > 0 ORDER BY acq_year DESC" );
 
     // Sorting
     $allowed_orderby = [ 'title', 'author', 'media_type', 'shelf_location', 'call_number', 'pub_year', 'acq_code', 'acq_date' ];
@@ -78139,6 +78162,24 @@ function sp_render_library_catalog_page(): void {
         padding: 0;
         font: inherit;
         text-decoration: underline;
+    }
+
+    /* ---- Library Catalog: select-and-delete bar ---- */
+    .sp-catalog-bulkbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin: 8px 0;
+    }
+    .sp-catalog-bulkbar .sp-catalog-selection {
+        margin: 0;
+    }
+    .sp-catalog-bulk-delete {
+        color: #b32d2e;
+    }
+    .sp-catalog-col-check {
+        width: 2.2em;
     }
     </style>
 
@@ -78310,9 +78351,29 @@ function sp_render_library_catalog_page(): void {
 
         <p class="description"><?php /* translators: %d: number of catalog items found */ echo sprintf( _n( '%d item found.', '%d items found.', $total, 'societypress' ), $total ); ?></p>
 
+        <?php if ( $items ) : ?>
+        <?php
+        // WHY the checkboxes sit outside this form and join it through form="":
+        //      each row already has its own little Delete form, and forms can't
+        //      nest. The form posts back to this same filtered URL so "every
+        //      matching item" is resolved on the server from the live filters,
+        //      not from a list of 20,000 ids shipped to the browser.
+        ?>
+        <form method="post" id="sp-catalog-bulk-form" class="sp-catalog-bulkbar" action="<?php echo esc_url( remove_query_arg( 'paged' ) ); ?>">
+            <?php wp_nonce_field( 'sp_bulk_delete_library_items' ); ?>
+            <input type="hidden" name="action" value="bulk_delete">
+            <input type="hidden" name="all_matching" id="sp-catalog-all-matching" value="0">
+            <label><input type="checkbox" id="sp-catalog-select-all"> <?php esc_html_e( 'Select all', 'societypress' ); ?></label>
+            <button type="button" class="button-link" id="sp-catalog-select-every" hidden></button>
+            <p class="sp-catalog-selection" id="sp-catalog-selection" aria-live="polite"></p>
+            <button type="submit" class="button sp-catalog-bulk-delete" id="sp-catalog-bulk-delete" disabled><?php esc_html_e( 'Delete Selected', 'societypress' ); ?></button>
+        </form>
+        <?php endif; ?>
+
         <table class="wp-list-table widefat striped">
             <thead>
                 <tr>
+                    <th scope="col" class="sp-catalog-col-check"><span class="screen-reader-text"><?php esc_html_e( 'Select', 'societypress' ); ?></span></th>
                     <th scope="col"><?php echo $sort_link( 'title', __( 'Title', 'societypress' ) ); ?></th>
                     <th scope="col"><?php echo $sort_link( 'author', __( 'Author', 'societypress' ) ); ?></th>
                     <th scope="col"><?php echo $sort_link( 'media_type', __( 'Type', 'societypress' ) ); ?></th>
@@ -78325,13 +78386,14 @@ function sp_render_library_catalog_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="8"><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
+                    <tr><td colspan="9"><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $item ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library-item-edit&item_id=' . $item->id );
                         // delete handled via POST form in row actions
                     ?>
                         <tr>
+                            <td class="sp-catalog-col-check"><input type="checkbox" class="sp-catalog-check" name="item_ids[]" value="<?php echo (int) $item->id; ?>" form="sp-catalog-bulk-form" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: catalog item title */ __( 'Select %s', 'societypress' ), $item->title ) ); ?>"></td>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $item->title ); ?></a></strong>
                                 <div class="row-actions">
@@ -78380,6 +78442,86 @@ function sp_render_library_catalog_page(): void {
             </div></div>
         <?php endif; ?>
     </div>
+    <?php if ( $items ) : ?>
+    <script>
+    (function () {
+        var form = document.getElementById('sp-catalog-bulk-form');
+        if (!form) { return; }
+        var total     = <?php echo (int) $total; ?>;
+        var filtered  = <?php echo ( $search || $media_filter || $shelf_filter || $acq_filter || $year_filter ) ? 'true' : 'false'; ?>;
+        var i18n = {
+            selectEvery: <?php /* translators: %s: number of catalog items */ echo wp_json_encode( __( 'Select all %s items, not just this page', 'societypress' ) ); ?>,
+            clearSel:    <?php echo wp_json_encode( __( 'Clear selection', 'societypress' ) ); ?>,
+            selected:    <?php /* translators: %s: number of catalog items */ echo wp_json_encode( __( '%s selected', 'societypress' ) ); ?>,
+            confirmSome: <?php /* translators: %s: number of catalog items */ echo wp_json_encode( __( 'Delete %s catalog items? This cannot be undone.', 'societypress' ) ); ?>,
+            confirmAll:  <?php echo wp_json_encode( __( 'Delete every item in the library catalog? This cannot be undone. If you might want them back, use Export CSV first.', 'societypress' ) ); ?>,
+            confirmMatch: <?php /* translators: %s: number of catalog items */ echo wp_json_encode( __( 'Delete all %s items that match your search and filters? This cannot be undone.', 'societypress' ) ); ?>,
+            confirmBtn:  <?php echo wp_json_encode( __( 'Delete', 'societypress' ) ); ?>
+        };
+        var boxes     = Array.prototype.slice.call(document.querySelectorAll('.sp-catalog-check'));
+        var selectAll = document.getElementById('sp-catalog-select-all');
+        var every     = document.getElementById('sp-catalog-select-every');
+        var allField  = document.getElementById('sp-catalog-all-matching');
+        var note      = document.getElementById('sp-catalog-selection');
+        var delBtn    = document.getElementById('sp-catalog-bulk-delete');
+        /* True once "select all N items" is clicked: the selection is then
+           every item matching the filters, including other pages. */
+        var everything = false;
+
+        function count() {
+            if (everything) { return total; }
+            return boxes.filter(function (b) { return b.checked; }).length;
+        }
+
+        function refresh() {
+            var n = count();
+            var onPage = boxes.filter(function (b) { return b.checked; }).length;
+            allField.value = everything ? '1' : '0';
+            delBtn.disabled = n === 0;
+            note.textContent = n ? i18n.selected.replace('%s', n.toLocaleString()) : '';
+            selectAll.checked = everything || onPage === boxes.length;
+            selectAll.indeterminate = !everything && onPage > 0 && onPage < boxes.length;
+            every.hidden = !(selectAll.checked && total > boxes.length);
+            every.textContent = everything ? i18n.clearSel : i18n.selectEvery.replace('%s', total.toLocaleString());
+        }
+
+        function checkPage(on) {
+            boxes.forEach(function (b) { b.checked = on; });
+        }
+
+        boxes.forEach(function (b) {
+            b.addEventListener('change', function () { everything = false; refresh(); });
+        });
+        selectAll.addEventListener('change', function () {
+            everything = false;
+            checkPage(selectAll.checked);
+            refresh();
+        });
+        every.addEventListener('click', function () {
+            everything = !everything;
+            if (!everything) { checkPage(false); }
+            refresh();
+        });
+
+        /* WHY our own confirm rather than data-sp-confirm: the message has to
+           say how many items are about to go, and that number changes with
+           every tick of a checkbox. */
+        var confirmed = false;
+        form.addEventListener('submit', function (e) {
+            if (confirmed) { return; }
+            e.preventDefault();
+            var n = count();
+            if (!n) { return; }
+            var msg = !everything ? i18n.confirmSome.replace('%s', n.toLocaleString())
+                    : (filtered ? i18n.confirmMatch.replace('%s', n.toLocaleString()) : i18n.confirmAll);
+            spConfirm(msg, function () {
+                confirmed = true;
+                form.submit();
+            }, { confirmText: i18n.confirmBtn, type: 'danger' });
+        });
+    })();
+    </script>
+    <?php endif; ?>
     <?php
 }
 

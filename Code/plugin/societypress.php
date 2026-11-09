@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.96
+ * Version:     1.5.97
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.96' );
+define( 'SOCIETYPRESS_VERSION', '1.5.97' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -40999,7 +40999,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.96',
+            'version'     => '1.5.97',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41007,7 +41007,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.96',
+            'version'     => '1.5.97',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41015,7 +41015,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.96',
+            'version'     => '1.5.97',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41023,7 +41023,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.96',
+            'version'     => '1.5.97',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41031,7 +41031,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.96',
+            'version'     => '1.5.97',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -78575,7 +78575,9 @@ function sp_render_library_item_edit_page(): void {
             'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
             // WHY uppercase: "Texas" and "TEXAS" would otherwise file as two
             // locations. The catalog import already stores them this way.
-            'shelf_location'      => mb_strtoupper( sanitize_text_field( wp_unslash( $_POST['shelf_location'] ?? '' ) ) ) ?: null,
+            'shelf_location'      => mb_strtoupper( sanitize_text_field( wp_unslash(
+                ( ( $_POST['shelf_location'] ?? '' ) === '__new__' ) ? ( $_POST['shelf_location_new'] ?? '' ) : ( $_POST['shelf_location'] ?? '' )
+            ) ) ) ?: null,
             'geographic_location' => sp_library_list_posted_value( 'geographic_location' ) ?: null,
             'acquisition_number'  => $parse_int( $_POST['acquisition_number'] ?? '' ),
             'acq_year'            => $parse_int( $_POST['acq_year'] ?? '' ),
@@ -78830,7 +78832,29 @@ function sp_render_library_item_edit_page(): void {
                     </tr>
                     <tr>
                         <th scope="row"><label for="shelf_location"><?php esc_html_e( 'Physical Location', 'societypress' ); ?></label></th>
-                        <td><input type="text" name="shelf_location" id="shelf_location" class="sp-lib-edit-medium-input sp-lib-edit-uppercase" value="<?php echo esc_attr( $item->shelf_location ?? '' ); ?>"></td>
+                        <td>
+                            <?php
+                            // WHY a dropdown of what is already used: typed by hand, one shelf
+                            //      became "VERTICAL FILES SCANNED FOLDER" and "...FOLDERS".
+                            //      Picking from the list keeps one spelling per shelf; a new
+                            //      shelf is still one click away.
+                            $current_shelf = (string) ( $item->shelf_location ?? '' );
+                            $shelves       = $wpdb->get_col( "SELECT DISTINCT shelf_location FROM {$prefix}library_items WHERE shelf_location IS NOT NULL AND shelf_location != '' ORDER BY shelf_location ASC" );
+                            if ( $current_shelf !== '' && ! in_array( $current_shelf, $shelves, true ) ) {
+                                $shelves[] = $current_shelf;
+                            }
+                            ?>
+                            <select name="shelf_location" id="shelf_location" class="sp-lib-edit-medium-input">
+                                <option value=""><?php esc_html_e( '— None —', 'societypress' ); ?></option>
+                                <?php foreach ( $shelves as $shelf ) : ?>
+                                    <option value="<?php echo esc_attr( $shelf ); ?>" <?php selected( $current_shelf, $shelf ); ?>><?php echo esc_html( $shelf ); ?></option>
+                                <?php endforeach; ?>
+                                <option value="__new__"><?php esc_html_e( 'Add a new location…', 'societypress' ); ?></option>
+                            </select>
+                            <input type="text" name="shelf_location_new" id="shelf_location_new" class="sp-lib-edit-medium-input sp-lib-edit-uppercase"
+                                   aria-label="<?php esc_attr_e( 'New location name', 'societypress' ); ?>"
+                                   placeholder="<?php esc_attr_e( 'Type the new location', 'societypress' ); ?>" hidden>
+                        </td>
                     </tr>
                 </table>
             </div>
@@ -78914,6 +78938,17 @@ function sp_render_library_item_edit_page(): void {
             var panel = e.target.closest('.sp-lib-edit-panel');
             if (panel && panel.hidden) show(panel.id);
         }, true);
+
+        var shelfPick = document.getElementById('shelf_location');
+        var shelfNew  = document.getElementById('shelf_location_new');
+        if (shelfPick && shelfNew) {
+            shelfPick.addEventListener('change', function () {
+                var adding = shelfPick.value === '__new__';
+                shelfNew.hidden   = !adding;
+                shelfNew.required = adding;
+                if (adding) shelfNew.focus();
+            });
+        }
     })();
     </script>
     <?php

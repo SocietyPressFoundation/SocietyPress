@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.97] — 2026-11-08
+
+**Pick a library item's Physical Location from a list.** On the item form, Physical
+Location is now a dropdown of every location already used in the catalog, so the
+same shelf isn't typed two different ways. To add a shelf that isn't listed yet,
+choose "Add a new location…" and type it in.
+
 ## [1.5.96] — 2026-11-08
 
 **Styled tables show up on Page Builder pages.** A table styled in a Rich Text

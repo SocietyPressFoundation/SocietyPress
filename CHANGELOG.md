@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.95] — 2026-11-08
+
+**People can join even if their sign-in changed mid-form.** A visitor who wasn't
+logged in could fill out the whole Join form and be turned away with "Security check
+failed" — for instance after logging out in another tab, or coming back to a tab left
+open. Visitors who aren't logged in are no longer stopped by that check; the spam trap
+and per-visitor attempt limit still apply. Logged-in visitors still get the check,
+with a plain explanation and their answers kept on the form.
+
 ## [1.5.94] — 2026-11-06
 
 **Delete library items in bulk.** The Library Catalog now has a checkbox on every row

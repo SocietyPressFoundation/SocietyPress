@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.96] — 2026-11-08
+
+**Styled tables show up on Page Builder pages.** A table styled in a Rich Text
+widget looked right in the editor but appeared on the live page with no borders or
+shading. The same applied to highlighted text and font choices. They now look the
+same on the page as in the editor.
+
+**The cart only offers member pricing when there is some.** Visitors who aren't
+logged in were told to log in for member pricing even when nothing in their cart had
+a member price. The note now appears only when logging in would lower the total.
+
+**The cart's quantity buttons are visible again.** The − and + buttons beside each
+item's quantity had white text on a white background and showed as empty boxes.
+
 ## [1.5.95] — 2026-11-08
 
 **People can join even if their sign-in changed mid-form.** A visitor who wasn't

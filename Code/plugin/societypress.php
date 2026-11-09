@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.95
+ * Version:     1.5.96
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.95' );
+define( 'SOCIETYPRESS_VERSION', '1.5.96' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -38836,6 +38836,11 @@ add_action( 'wp_enqueue_scripts', function (): void {
     }
     $post = get_post();
     $content = $post ? (string) $post->post_content : '';
+    // WHY the builder widgets too: a Page Builder page keeps its Rich Text in
+    // post meta, not post_content, so a styled table there rendered bare.
+    if ( $post ) {
+        $content .= maybe_serialize( get_post_meta( $post->ID, '_sp_page_widgets', true ) );
+    }
     if ( str_contains( $content, 'sp-content-table' )
         || str_contains( $content, 'sp-font-' )
         || str_contains( $content, 'sp-highlight' ) ) {
@@ -40994,7 +40999,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.95',
+            'version'     => '1.5.96',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41002,7 +41007,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.95',
+            'version'     => '1.5.96',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41010,7 +41015,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.95',
+            'version'     => '1.5.96',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41018,7 +41023,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.95',
+            'version'     => '1.5.96',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41026,7 +41031,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.95',
+            'version'     => '1.5.96',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -102513,6 +102518,23 @@ add_action( 'wp_login', function ( $login, $user ) {
 }, 10, 2 );
 
 /**
+ * Would logging in as a member lower the price of anything in this cart?
+ *
+ * Mirrors sp_store_effective_price(): a member price counts only when it is
+ * set and below the regular price. Library items carry no member price.
+ */
+function sp_cart_has_member_discount( ?int $user_id = null ): bool {
+    foreach ( sp_get_cart( $user_id ) as $entry ) {
+        $data = sp_store_lookup( (string) ( $entry['source'] ?? '' ), (int) ( $entry['id'] ?? 0 ) );
+        if ( $data && isset( $data['member_price'] ) && $data['member_price'] >= 0
+            && $data['member_price'] < $data['regular_price'] ) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Get the total number of items in the cart (sum of quantities).
  */
 function sp_cart_total_items( ?int $user_id = null ): int {
@@ -104070,7 +104092,7 @@ function sp_render_cart_page(): void {
         .sp-cart-item-title { font-weight:600; font-size:14px; }
         .sp-cart-item-author { font-size:12px; color:#6d7175; margin-top:2px; }
         .sp-cart-qty-wrap { display:flex; align-items:center; gap:6px; }
-        .sp-cart-qty-btn { width:28px; height:28px; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:16px; display:flex; align-items:center; justify-content:center; }
+        .sp-cart-qty-btn { width:28px; height:28px; padding:0; border:1px solid #ddd; border-radius:4px; background:#fff; color:#1a1a1a; cursor:pointer; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center; }
         .sp-cart-qty-btn:hover { background:#f5f5f5; }
         .sp-cart-qty-val { width:36px; text-align:center; font-weight:600; font-size:14px; }
         .sp-cart-remove { color:#c00; cursor:pointer; font-size:13px; text-decoration:none; }
@@ -104136,10 +104158,13 @@ function sp_render_cart_page(): void {
             </div>
         <?php endif; ?>
 
-        <?php if ( ! is_user_logged_in() ) : ?>
+        <?php if ( ! is_user_logged_in() && sp_cart_has_member_discount() ) : ?>
             <?php // WHY an offer and not a wall: a visitor may buy without an
                   // account, but a member who forgot to sign in would silently
-                  // pay list price. This is the one place to catch that. ?>
+                  // pay list price. This is the one place to catch that.
+                  // WHY only with a discount in the cart: promising member
+                  // pricing on a cart that has none sends people off to log in
+                  // for nothing. ?>
             <div class="sp-cart-member-hint">
                 <p><?php printf(
                     /* translators: %s: login URL */

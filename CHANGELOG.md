@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.99] — 2026-11-10
+
+**Clearer label for retired plans.** On a member's screen, a plan that has been
+switched off now reads "(no longer offered)" instead of "(Inactive)", so it no
+longer looks like the member is inactive.
+
 ## [1.5.98] — 2026-11-09
 
 **Join and Renew side by side.** The join page now offers "Already a member? Renew"

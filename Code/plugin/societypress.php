@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.97
+ * Version:     1.5.98
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.97' );
+define( 'SOCIETYPRESS_VERSION', '1.5.98' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -72,6 +72,7 @@ register_activation_hook( __FILE__, function () {
             'membership_start_month'  => 7,
             'late_join_months'        => 5,
             'membership_max_years'    => 1,
+            'membership_email'        => '',
             'groups_auto_remove_expired' => 0,
             'grace_period_months'     => 2,
             // Directory — what shows up on the membership listing page
@@ -33280,6 +33281,27 @@ add_action( 'admin_init', function () {
         'sp_membership_section'
     );
 
+    // --- Membership Contact Email ---
+    // WHY: join and renewal messages used to say "contact us" with no way to
+    // do it. Many societies route membership questions to a different person
+    // than the general inbox, so this gets its own address, falling back to
+    // the organization's Contact Email when left blank.
+    add_settings_field(
+        'sp_membership_email',
+        __( 'Membership Contact Email', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="email" name="societypress_settings[membership_email]" value="%s" class="regular-text" placeholder="%s">',
+                esc_attr( $settings['membership_email'] ?? '' ),
+                esc_attr__( 'membership@mygenealogy.org', 'societypress' )
+            );
+            echo '<p class="description">' . esc_html__( 'Shown to people joining or renewing when they need help, and told when someone joins who might already be a member. Leave blank to use the organization\'s Contact Email.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_membership_section'
+    );
+
     // --- Name Prefix / Suffix picklists ---
     // WHY: The titles offered in the Prefix/Suffix dropdowns on member forms
     //      used to be hardcoded. Societies vary (military ranks, clergy titles,
@@ -34503,6 +34525,7 @@ function sp_sanitize_settings( array $input ): array {
         'membership_start_month'  => fn() => max( 1, min( 12, (int) ( $input['membership_start_month'] ?? 7 ) ) ),
         'late_join_months'        => fn() => max( 0, min( 11, (int) ( $input['late_join_months'] ?? 3 ) ) ),
         'membership_max_years'    => fn() => max( 1, min( 10, (int) ( $input['membership_max_years'] ?? 1 ) ) ),
+        'membership_email'        => fn() => sanitize_email( $input['membership_email'] ?? '' ),
         'groups_auto_remove_expired' => fn() => ! empty( $input['groups_auto_remove_expired'] ) ? 1 : 0,
         'grace_period_months'     => fn() => max( 0, min( 11, (int) ( $input['grace_period_months'] ?? 2 ) ) ),
         'renewal_reminder_30d'    => fn() => ! empty( $input['renewal_reminder_30d'] ) ? 1 : 0,
@@ -34683,7 +34706,7 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'membership_period_type', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'membership_period_type', 'membership_start_month', 'late_join_months',
-            'membership_max_years', 'groups_auto_remove_expired',
+            'membership_max_years', 'membership_email', 'groups_auto_remove_expired',
             'grace_period_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
             'renewal_reminder_7d', 'renewal_reminder_subject',
         ]);
@@ -40999,7 +41022,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.97',
+            'version'     => '1.5.98',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41007,7 +41030,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.97',
+            'version'     => '1.5.98',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41015,7 +41038,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.97',
+            'version'     => '1.5.98',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41023,7 +41046,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.97',
+            'version'     => '1.5.98',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41031,7 +41054,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.97',
+            'version'     => '1.5.98',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -64819,6 +64842,383 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
 }
 
 /**
+ * The address people should write to about joining or renewing.
+ *
+ * WHY a chain: a society may name a membership inbox, else its general
+ * Contact Email, else the WordPress admin address — so a "need help?" line
+ * always has somewhere real to point.
+ */
+function sp_membership_contact_email(): string {
+    $settings = sp_settings();
+    foreach ( [ $settings['membership_email'] ?? '', $settings['organization_email'] ?? '', get_option( 'admin_email' ) ] as $candidate ) {
+        $candidate = trim( (string) $candidate );
+        if ( is_email( $candidate ) ) {
+            return $candidate;
+        }
+    }
+    return '';
+}
+
+/**
+ * "Need help? Email us at …" as safe HTML, with the address as a mailto link.
+ */
+function sp_membership_help_html(): string {
+    $email = sp_membership_contact_email();
+    if ( ! $email ) {
+        return '';
+    }
+    return sprintf(
+        /* translators: %s: membership contact email address, as a link */
+        esc_html__( 'Need help? Email us at %s.', 'societypress' ),
+        '<a href="mailto:' . esc_attr( $email ) . '">' . esc_html( $email ) . '</a>'
+    );
+}
+
+/**
+ * A no-password renewal link token for one member.
+ *
+ * WHY stateless and signed: nothing to store or clean up, and folding the
+ * member's current expiration into the signature means the link stops
+ * working the moment they renew — it can't be replayed to reach the page
+ * again after it has done its job.
+ */
+function sp_membership_renew_token( int $user_id, int $expires = 0 ): string {
+    global $wpdb;
+    $expires = $expires ?: time() + 7 * DAY_IN_SECONDS;
+    $current = (string) $wpdb->get_var( $wpdb->prepare(
+        "SELECT CONCAT_WS( '|', status, IFNULL( expiration_date, '' ) ) FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+        $user_id
+    ) );
+    $sig = substr( hash_hmac( 'sha256', $user_id . '|' . $expires . '|' . $current, wp_salt( 'auth' ) ), 0, 32 );
+    return $user_id . '-' . $expires . '-' . $sig;
+}
+
+/**
+ * The member a renewal token belongs to, or 0 if it is bad or expired.
+ */
+function sp_membership_renew_token_user( string $token ): int {
+    if ( ! preg_match( '/^(\d+)-(\d+)-([a-f0-9]{32})$/', $token, $m ) ) {
+        return 0;
+    }
+    $user_id = (int) $m[1];
+    $expires = (int) $m[2];
+    if ( $expires < time() || ! sp_get_member_by_user_id( $user_id ) ) {
+        return 0;
+    }
+    return hash_equals( sp_membership_renew_token( $user_id, $expires ), $token ) ? $user_id : 0;
+}
+
+/**
+ * Email a member their renewal link.
+ *
+ * @param int    $user_id  Member's WP user ID.
+ * @param string $page_url The join page, which also hosts renewals.
+ */
+function sp_membership_send_renew_link( int $user_id, string $page_url ): void {
+    $user   = get_userdata( $user_id );
+    $member = sp_get_member_by_user_id( $user_id );
+    if ( ! $user || ! $member || ! is_email( $user->user_email ) ) {
+        return;
+    }
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $url      = add_query_arg( 'sp_renew', sp_membership_renew_token( $user_id ), $page_url );
+    $subject  = __( 'Renew your membership', 'societypress' );
+    $help     = sp_membership_help_html();
+
+    $body = '<p>' . sprintf(
+                /* translators: %s: member's first name */
+                esc_html__( 'Hello %s,', 'societypress' ),
+                esc_html( $member->preferred_name ?: $member->first_name )
+            ) . '</p>'
+          . '<p>' . sprintf(
+                /* translators: %s: society name */
+                esc_html__( 'Here is your link to renew your %s membership. No password needed — it works for the next 7 days.', 'societypress' ),
+                esc_html( $org_name )
+            ) . '</p>'
+          . '<p><a href="' . esc_url( $url ) . '">' . esc_html__( 'Renew my membership', 'societypress' ) . '</a></p>'
+          . '<p>' . esc_html__( 'If you didn\'t ask for this, you can ignore this email.', 'societypress' ) . ( $help ? ' ' . $help : '' ) . '</p>';
+
+    wp_mail(
+        $user->user_email,
+        sprintf( '[%s] %s', $org_name, $subject ),
+        sp_build_email_html( $subject, $body ),
+        sp_get_email_headers()
+    );
+}
+
+/**
+ * The page a join/renew form was submitted from, without our query args.
+ *
+ * WHY: the join shortcode can live on any page; renewal links and payment
+ * returns must come back to that same page.
+ */
+function sp_membership_form_page_url(): string {
+    $url = home_url( wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ) );
+    return remove_query_arg( [ 'sp_renew', 'sp_renew_sent', 'sp_membership_msg', 'sp_membership_session' ], $url );
+}
+
+/**
+ * Existing members who look like the person filling in the join form.
+ *
+ * WHY: people who should renew keep joining again, creating a second record
+ * every year. An exact email match is handled separately (it can't be a new
+ * person); this catches the near misses — same name, phone, or street
+ * address — across every status, lapsed members most of all.
+ *
+ * @return array<int, string[]> user_id => what matched ('name', 'phone', 'address').
+ */
+function sp_join_find_possible_members( array $applicant ): array {
+    global $wpdb;
+
+    $norm_name  = static fn( $f, $l ) => strtolower( trim( preg_replace( '/\s+/', ' ', $f . ' ' . $l ) ) );
+    $norm_phone = static function ( $p ) {
+        $digits = preg_replace( '/\D/', '', (string) $p );
+        return strlen( $digits ) >= 7 ? substr( $digits, -10 ) : '';
+    };
+    $norm_addr  = static fn( $a ) => strlen( $x = preg_replace( '/[^a-z0-9]/', '', strtolower( (string) $a ) ) ) >= 5 ? $x : '';
+
+    $name   = $norm_name( $applicant['first_name'] ?? '', $applicant['last_name'] ?? '' );
+    $phones = array_filter( [ $norm_phone( $applicant['phone'] ?? '' ), $norm_phone( $applicant['cell'] ?? '' ) ] );
+    $addr   = $norm_addr( $applicant['address_1'] ?? '' );
+    $zip    = substr( preg_replace( '/\D/', '', (string) ( $applicant['postal_code'] ?? '' ) ), 0, 5 );
+
+    $rows = sp_member_decrypt_rows( $wpdb->get_results(
+        "SELECT user_id, first_name, last_name, joint_first_name, joint_last_name, phone, cell, joint_phone, address_1, postal_code
+         FROM {$wpdb->prefix}sp_members"
+    ) ?: [] );
+
+    $matches = [];
+    foreach ( $rows as $row ) {
+        $why = [];
+        if ( $name !== '' && ( $name === $norm_name( $row->first_name, $row->last_name )
+                || $name === $norm_name( (string) $row->joint_first_name, (string) $row->joint_last_name ) ) ) {
+            $why[] = 'name';
+        }
+        if ( $phones && array_intersect( $phones, array_filter( [ $norm_phone( $row->phone ), $norm_phone( $row->cell ), $norm_phone( $row->joint_phone ) ] ) ) ) {
+            $why[] = 'phone';
+        }
+        // A shared street line only counts in the same ZIP (when both have one) —
+        // "101 Main St" exists in every town.
+        $row_zip = substr( preg_replace( '/\D/', '', (string) $row->postal_code ), 0, 5 );
+        if ( $addr !== '' && $addr === $norm_addr( $row->address_1 ) && ( $zip === '' || $row_zip === '' || $zip === $row_zip ) ) {
+            $why[] = 'address';
+        }
+        if ( $why ) {
+            $matches[ (int) $row->user_id ] = $why;
+        }
+    }
+    return $matches;
+}
+
+/**
+ * Record that a new applicant may duplicate an existing member, and tell
+ * the membership contact.
+ *
+ * WHY both: the note lives on the new record where whoever reviews it will
+ * see it; the email makes sure someone actually looks before a second dues
+ * payment and a second directory listing go unnoticed.
+ *
+ * @param array<int, string[]> $possible user_id => what matched.
+ */
+function sp_join_flag_possible_duplicate( int $new_user_id, string $new_name, array $possible ): void {
+    global $wpdb;
+    $labels = [
+        'name'    => __( 'name', 'societypress' ),
+        'phone'   => __( 'phone', 'societypress' ),
+        'address' => __( 'address', 'societypress' ),
+    ];
+    $lines = [];
+    foreach ( $possible as $uid => $why ) {
+        $m = sp_get_member_by_user_id( (int) $uid );
+        if ( ! $m ) {
+            continue;
+        }
+        $lines[] = sprintf(
+            /* translators: 1: member name, 2: member status, 3: comma-separated list of what matched (name, phone, address) */
+            __( '%1$s (%2$s) — same %3$s', 'societypress' ),
+            trim( $m->first_name . ' ' . $m->last_name ),
+            $m->status,
+            implode( ', ', array_map( static fn( $w ) => $labels[ $w ] ?? $w, $why ) )
+        );
+    }
+    if ( ! $lines ) {
+        return;
+    }
+    $note = __( 'Possible duplicate: joined online after being asked whether they were already a member, and said they were new. Looks like:', 'societypress' )
+          . "\n" . implode( "\n", $lines );
+
+    $wpdb->insert( $wpdb->prefix . 'sp_member_notes', [
+        'user_id'    => $new_user_id,
+        'content'    => $note,
+        'author_id'  => 0,
+        'created_at' => current_time( 'mysql' ),
+    ] );
+
+    $to = sp_membership_contact_email();
+    if ( ! $to ) {
+        return;
+    }
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    /* translators: %s: new applicant's name */
+    $subject  = sprintf( __( 'Possible duplicate member: %s', 'societypress' ), $new_name );
+    $edit_url = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $new_user_id );
+    $body     = '<p>' . sprintf(
+                    /* translators: %s: new applicant's name */
+                    esc_html__( '%s just joined online. They were asked whether they were already a member and said no, but they look like:', 'societypress' ),
+                    esc_html( $new_name )
+                ) . '</p><ul><li>' . implode( '</li><li>', array_map( 'esc_html', $lines ) ) . '</li></ul>'
+              . '<p>' . esc_html__( 'If it\'s the same person, merge or remove the new record before their dues are counted twice.', 'societypress' ) . '</p>'
+              . '<p><a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Open the new member\'s record', 'societypress' ) . '</a></p>';
+
+    wp_mail( $to, sprintf( '[%s] %s', $org_name, $subject ), sp_build_email_html( $subject, $body ), sp_get_email_headers() );
+}
+
+/**
+ * Start a Stripe checkout for membership dues — new joins and renewals alike.
+ *
+ * @return string|null Checkout URL to redirect to, or null if it couldn't be made.
+ */
+function sp_membership_checkout_url( int $user_id, string $email, object $tier, int $years, string $return_url ): ?string {
+    $settings   = sp_settings();
+    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
+    $dues_price = (float) ( $tier->price ?? 0 );
+    if ( $dues_price <= 0 || ! $secret_key ) {
+        return null;
+    }
+    $max_years = max( 1, (int) ( $settings['membership_max_years'] ?? 1 ) );
+    $years     = max( 1, min( $max_years, $years ) );
+    $amount    = round( $dues_price * $years, 2 );
+    $currency  = strtolower( $settings['stripe_currency'] ?? 'usd' );
+    $org_name  = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+
+    $resp = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
+        'timeout' => 30,
+        'headers' => [
+            'Authorization' => 'Bearer ' . $secret_key,
+            'Content-Type'  => 'application/x-www-form-urlencoded',
+        ],
+        'body' => [
+            'mode'                                  => 'payment',
+            'success_url'                           => add_query_arg( [ 'sp_membership_session' => '{CHECKOUT_SESSION_ID}' ], $return_url ),
+            'cancel_url'                            => add_query_arg( [ 'sp_membership_msg' => 'cancelled' ], $return_url ),
+            'customer_email'                        => $email,
+            'metadata[membership_user_id]'          => (string) $user_id,
+            'metadata[membership_tier_id]'          => (string) $tier->id,
+            'metadata[membership_years]'            => (string) $years,
+            'metadata[site_url]'                    => home_url(),
+            'payment_method_types[0]'               => 'card',
+            'line_items[0][quantity]'               => 1,
+            'line_items[0][price_data][currency]'   => $currency,
+            'line_items[0][price_data][unit_amount]'=> (int) round( $amount * 100 ),
+            'line_items[0][price_data][product_data][name]' => sprintf(
+                /* translators: 1: society name, 2: number of years */
+                _n( '%1$s membership dues', '%1$s membership dues (%2$d years)', $years, 'societypress' ),
+                $org_name, $years
+            ),
+        ],
+    ] );
+
+    if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
+        $data = json_decode( wp_remote_retrieve_body( $resp ), true );
+        // WHY not wp_safe_redirect() at the caller: it only allows this site's
+        // own host, so it silently sent applicants to /wp-admin/ instead of Stripe.
+        $safe_url = sp_safe_stripe_checkout_url( $data['url'] ?? '' );
+        if ( $safe_url ) {
+            return $safe_url;
+        }
+    }
+    error_log( 'SocietyPress membership checkout error: ' . ( is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_body( $resp ) ) );
+    return null;
+}
+
+/**
+ * Handle the Renew side of the join page: asking for a link, and paying.
+ *
+ * WHY on init: like the join handler, it may redirect (to Stripe, or back
+ * to the page) before anything is drawn.
+ */
+add_action( 'init', function () {
+    if ( empty( $_POST['sp_renew_action'] ) ) {
+        return;
+    }
+    if ( ! empty( $_POST['sp_website_url'] ) ) {
+        return; // Honeypot.
+    }
+    global $wpdb;
+    $action   = sanitize_key( wp_unslash( $_POST['sp_renew_action'] ) );
+    $page_url = sp_membership_form_page_url();
+
+    // ---- Send me a renewal link ---------------------------------------------
+    if ( $action === 'request' || $action === 'match' ) {
+        if ( sp_rate_limit_hit( 'sp_renew_rate_' . md5( sp_get_remote_ip() ), 5, HOUR_IN_SECONDS ) ) {
+            $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Too many attempts. Please try again later.', 'societypress' ) ];
+            return;
+        }
+        $user_ids = [];
+        if ( $action === 'request' ) {
+            $email = sanitize_email( wp_unslash( $_POST['renew_email'] ?? '' ) );
+            if ( $email ) {
+                $user_ids[] = (int) $wpdb->get_var( $wpdb->prepare(
+                    "SELECT m.user_id FROM {$wpdb->prefix}sp_members m
+                     INNER JOIN {$wpdb->users} u ON m.user_id = u.ID
+                     WHERE u.user_email = %s LIMIT 1",
+                    $email
+                ) );
+            }
+        } else {
+            // From the "you may already be a member" pause: the matches were kept
+            // server-side so the page never names anyone else's record.
+            $key      = preg_replace( '/[^a-zA-Z0-9]/', '', (string) wp_unslash( $_POST['sp_match_key'] ?? '' ) );
+            $user_ids = $key ? (array) get_transient( 'sp_join_match_' . $key ) : [];
+        }
+        foreach ( array_filter( array_map( 'intval', $user_ids ) ) as $uid ) {
+            sp_membership_send_renew_link( $uid, $page_url );
+        }
+        // Same answer whether or not we found anyone, so the form can't be used
+        // to test which addresses belong to members.
+        wp_safe_redirect( add_query_arg( 'sp_renew_sent', $action === 'match' ? 'match' : '1', $page_url ) );
+        exit;
+    }
+
+    // ---- Renew and pay -------------------------------------------------------
+    if ( $action === 'pay' ) {
+        $token   = sanitize_text_field( wp_unslash( $_POST['sp_renew_token'] ?? '' ) );
+        $user_id = $token !== '' ? sp_membership_renew_token_user( $token ) : 0;
+        // A signed-in member renews themselves; their login is the proof, so the
+        // nonce guards against someone else's page submitting for them.
+        if ( ! $user_id && is_user_logged_in() && sp_is_member()
+                && wp_verify_nonce( $_POST['sp_renew_nonce'] ?? '', 'sp_renew_self' ) ) {
+            $user_id = get_current_user_id();
+        }
+        if ( ! $user_id ) {
+            $GLOBALS['sp_join_result'] = [ 'success' => false, 'html' => true, 'message' => esc_html__( 'This renewal link has expired or was already used. Ask for a new one below.', 'societypress' ) ];
+            return;
+        }
+        $tier = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}sp_membership_tiers WHERE id = %d AND active = 1",
+            absint( $_POST['tier_id'] ?? 0 )
+        ) );
+        if ( ! $tier ) {
+            $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Invalid membership level selected.', 'societypress' ) ];
+            return;
+        }
+        $user = get_userdata( $user_id );
+        $url  = sp_membership_checkout_url( $user_id, $user ? $user->user_email : '', $tier, (int) ( $_POST['membership_years'] ?? 1 ), $page_url );
+        if ( $url ) {
+            wp_redirect( $url );
+            exit;
+        }
+        $GLOBALS['sp_join_result'] = [
+            'success' => false,
+            'html'    => true,
+            'message' => esc_html__( 'Online payment isn\'t available right now, so we couldn\'t take your renewal here.', 'societypress' ) . ' ' . sp_membership_help_html(),
+        ];
+    }
+} );
+
+/**
  * Process join form submission on init (before any output).
  *
  * WHY: Must run before rendering so we can set result messages and
@@ -64852,10 +65252,11 @@ add_action( 'init', function () {
     // Rate limiting — prevent spam submissions and Stripe API abuse
     // WHY: Without throttling, a bot or bad actor could submit hundreds of
     //      join forms per minute, creating orphaned member records and
-    //      potentially racking up Stripe API calls. Three attempts per IP
-    //      per hour is generous for legitimate use.
+    //      potentially racking up Stripe API calls. Five per IP per hour
+    //      leaves room for the "already a member?" pause, which costs a
+    //      legitimate applicant a second submit.
     $rate_key = 'sp_join_rate_' . md5( sp_get_remote_ip() );
-    if ( sp_rate_limit_hit( $rate_key, 3, HOUR_IN_SECONDS ) ) {
+    if ( sp_rate_limit_hit( $rate_key, 5, HOUR_IN_SECONDS ) ) {
         $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Too many attempts. Please try again later.', 'societypress' ) ];
         return;
     }
@@ -64886,7 +65287,26 @@ add_action( 'init', function () {
         $email
     ) );
     if ( $existing ) {
-        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'A member with this email address already exists. Please contact us if you need help.', 'societypress' ) ];
+        // Almost always a member who meant to renew — offer exactly that.
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'type' => 'existing_email', 'email' => $email ];
+        return;
+    }
+
+    // Near misses: same name, phone, or address as someone already on file.
+    // Pause once and ask; if they say they're new, let them through and tell
+    // the membership chair so a real duplicate gets caught.
+    $possible = sp_join_find_possible_members( [
+        'first_name'  => $first_name,
+        'last_name'   => $last_name,
+        'phone'       => wp_unslash( $_POST['phone'] ?? '' ),
+        'cell'        => wp_unslash( $_POST['cell'] ?? '' ),
+        'address_1'   => wp_unslash( $_POST['address_1'] ?? '' ),
+        'postal_code' => wp_unslash( $_POST['postal_code'] ?? '' ),
+    ] );
+    if ( $possible && empty( $_POST['sp_join_confirm_new'] ) ) {
+        $key = wp_generate_password( 20, false );
+        set_transient( 'sp_join_match_' . $key, array_keys( $possible ), HOUR_IN_SECONDS );
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'type' => 'possible_member', 'match_key' => $key ];
         return;
     }
 
@@ -65003,68 +65423,29 @@ add_action( 'init', function () {
         }
     }
 
+    if ( $possible ) {
+        sp_join_flag_possible_duplicate( $user_id, $first_name . ' ' . $last_name, $possible );
+    }
+
     // If this tier has dues and Stripe is configured, send the applicant to
     // checkout for (price × chosen years). On return/webhook the member is
     // activated and their expiration set (sp_membership_activate_from_payment).
     // Free tiers, or societies collecting dues offline (no Stripe key), fall
-    // through to the existing pending-application behavior below.
-    $dues_price = (float) ( $tier->price ?? 0 );
-    $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
-    if ( $dues_price > 0 && $secret_key ) {
-        $max_years = max( 1, (int) ( $settings['membership_max_years'] ?? 1 ) );
-        $years     = max( 1, min( $max_years, (int) ( $_POST['membership_years'] ?? 1 ) ) );
-        $amount    = round( $dues_price * $years, 2 );
-        $currency  = strtolower( $settings['stripe_currency'] ?? 'usd' );
-        // WHY the raw referer: the form posts to its own page, and
-        // wp_get_referer() returns false when the referer is the current page —
-        // which sent paying applicants back to the homepage with no message.
-        $referer = wp_get_raw_referer();
-        if ( $referer && 0 === strpos( $referer, '/' ) && 0 !== strpos( $referer, '//' ) ) {
-            $referer = set_url_scheme( 'http://' . wp_parse_url( home_url(), PHP_URL_HOST ) . $referer );
-        }
-        $referer = remove_query_arg( [ 'sp_membership_msg', 'sp_membership_session' ], wp_validate_redirect( (string) $referer, home_url() ) );
-        $org_name  = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
-
-        $resp = wp_remote_post( 'https://api.stripe.com/v1/checkout/sessions', [
-            'timeout' => 30,
-            'headers' => [
-                'Authorization' => 'Bearer ' . $secret_key,
-                'Content-Type'  => 'application/x-www-form-urlencoded',
-            ],
-            'body' => [
-                'mode'                                  => 'payment',
-                'success_url'                           => add_query_arg( [ 'sp_membership_session' => '{CHECKOUT_SESSION_ID}' ], $referer ),
-                'cancel_url'                            => add_query_arg( [ 'sp_membership_msg' => 'cancelled' ], $referer ),
-                'customer_email'                        => $email,
-                'metadata[membership_user_id]'          => (string) $user_id,
-                'metadata[membership_tier_id]'          => (string) $tier_id,
-                'metadata[membership_years]'            => (string) $years,
-                'metadata[site_url]'                    => home_url(),
-                'payment_method_types[0]'               => 'card',
-                'line_items[0][quantity]'               => 1,
-                'line_items[0][price_data][currency]'   => $currency,
-                'line_items[0][price_data][unit_amount]'=> (int) round( $amount * 100 ),
-                'line_items[0][price_data][product_data][name]' => sprintf(
-                    /* translators: 1: society name, 2: number of years */
-                    _n( '%1$s membership dues', '%1$s membership dues (%2$d years)', $years, 'societypress' ),
-                    $org_name, $years
-                ),
-            ],
-        ] );
-
-        if ( ! is_wp_error( $resp ) && wp_remote_retrieve_response_code( $resp ) === 200 ) {
-            $data = json_decode( wp_remote_retrieve_body( $resp ), true );
-            // WHY not wp_safe_redirect(): it only allows this site's own host,
-            // so it silently sent applicants to /wp-admin/ instead of Stripe.
-            $safe_url = sp_safe_stripe_checkout_url( $data['url'] ?? '' );
-            if ( $safe_url ) {
-                wp_redirect( $safe_url );
-                exit;
-            }
-        }
-        // Couldn't create the session — fall through so the application isn't
-        // lost; the society can follow up for payment.
-        error_log( 'SocietyPress membership checkout error: ' . ( is_wp_error( $resp ) ? $resp->get_error_message() : wp_remote_retrieve_body( $resp ) ) );
+    // through to the existing pending-application behavior below — as does a
+    // checkout that couldn't be created, so the application isn't lost.
+    //
+    // WHY the raw referer: the form posts to its own page, and
+    // wp_get_referer() returns false when the referer is the current page —
+    // which sent paying applicants back to the homepage with no message.
+    $referer = wp_get_raw_referer();
+    if ( $referer && 0 === strpos( $referer, '/' ) && 0 !== strpos( $referer, '//' ) ) {
+        $referer = set_url_scheme( 'http://' . wp_parse_url( home_url(), PHP_URL_HOST ) . $referer );
+    }
+    $referer = remove_query_arg( [ 'sp_membership_msg', 'sp_membership_session' ], wp_validate_redirect( (string) $referer, home_url() ) );
+    $checkout = sp_membership_checkout_url( $user_id, $email, $tier, (int) ( $_POST['membership_years'] ?? 1 ), $referer );
+    if ( $checkout ) {
+        wp_redirect( $checkout );
+        exit;
     }
 
     // Send welcome email
@@ -65085,7 +65466,8 @@ add_action( 'init', function () {
     if ( ( $_GET['sp_membership_msg'] ?? '' ) === 'cancelled' ) {
         $GLOBALS['sp_join_result'] = [
             'success' => false,
-            'message' => __( 'Your payment was cancelled, so your membership is not active yet. Please contact us and we will help you finish joining.', 'societypress' ),
+            'html'    => true,
+            'message' => esc_html__( 'Your payment was cancelled, so nothing was charged and your membership is not active yet. Press the button again when you\'re ready.', 'societypress' ) . ' ' . sp_membership_help_html(),
         ];
         return;
     }
@@ -65128,6 +65510,142 @@ add_action( 'init', function () {
 } );
 
 /**
+ * The message box at the top of the join page.
+ *
+ * WHY role/aria-live: errors and success notices both need to be announced
+ * to screen readers. Errors interrupt (alert/assertive) so they're not
+ * missed; the success notice and the "already a member?" question are
+ * announced politely.
+ */
+function sp_join_notice_html( array $result ): string {
+    $type    = $result['type'] ?? '';
+    $success = ! empty( $result['success'] );
+    $help    = sp_membership_help_html();
+
+    if ( $type === 'existing_email' ) {
+        $inner = '<p class="sp-m-0"><strong>' . esc_html__( 'You\'re already a member with this email address — no need to join again.', 'societypress' ) . '</strong> '
+               . esc_html__( 'To renew, we\'ll email you a link. No password needed.', 'societypress' ) . '</p>'
+               . '<div class="sp-join-pause-actions"><form method="post" class="sp-join-form">'
+               . '<input type="hidden" name="sp_renew_action" value="request">'
+               . '<input type="hidden" name="renew_email" value="' . esc_attr( $result['email'] ?? '' ) . '">'
+               . '<button type="submit" class="sp-submit">' . esc_html__( 'Email me a renewal link', 'societypress' ) . '</button>'
+               . '</form></div>'
+               . ( $help ? '<p>' . $help . '</p>' : '' );
+        return '<div class="sp-join-result sp-join-result--error" role="alert" aria-live="assertive">' . $inner . '</div>';
+    }
+
+    if ( $type === 'possible_member' ) {
+        $inner = '<p class="sp-m-0"><strong>' . esc_html__( 'It looks like you may already be a member.', 'societypress' ) . '</strong> '
+               . esc_html__( 'Are you trying to renew?', 'societypress' ) . '</p>'
+               . '<div class="sp-join-pause-actions">'
+               . '<form method="post" class="sp-join-form">'
+               . '<input type="hidden" name="sp_renew_action" value="match">'
+               . '<input type="hidden" name="sp_match_key" value="' . esc_attr( $result['match_key'] ?? '' ) . '">'
+               . '<button type="submit" class="sp-submit">' . esc_html__( 'Yes, email me a renewal link', 'societypress' ) . '</button>'
+               . '</form>'
+               // Submits the join form below, answers and all, with "I'm new" attached.
+               . '<span class="sp-join-form"><button type="submit" form="sp-join-form" name="sp_join_confirm_new" value="1" class="sp-submit sp-submit-secondary">'
+               . esc_html__( 'No, I\'m new — keep joining', 'societypress' ) . '</button></span>'
+               . '</div>'
+               . ( $help ? '<p>' . $help . '</p>' : '' );
+        return '<div class="sp-join-result sp-join-result--success" role="status" aria-live="polite">' . $inner . '</div>';
+    }
+
+    $message = ! empty( $result['html'] ) ? wp_kses_post( $result['message'] ?? '' ) : esc_html( $result['message'] ?? '' );
+    return '<div class="sp-join-result sp-join-result--' . ( $success ? 'success' : 'error' ) . '" role="' . ( $success ? 'status' : 'alert' ) . '" aria-live="' . ( $success ? 'polite' : 'assertive' ) . '">'
+         . '<p class="sp-m-0">' . $message . '</p></div>';
+}
+
+/**
+ * The renewal panel: who is renewing, when they expire, plan and term, pay.
+ *
+ * @param int    $user_id Member renewing.
+ * @param string $token   Their renewal-link token, or '' when signed in.
+ * @param array  $tiers   Active membership tiers.
+ */
+function sp_render_renew_panel( int $user_id, string $token, array $tiers ): string {
+    $member = sp_get_member_by_user_id( $user_id );
+    if ( ! $member ) {
+        return '';
+    }
+    $name     = trim( ( $member->preferred_name ?: $member->first_name ) . ' ' . $member->last_name );
+    $settings = sp_settings();
+    $exp      = $member->expiration_date ? strtotime( $member->expiration_date ) : 0;
+    $date     = $exp ? date_i18n( get_option( 'date_format' ), $exp ) : '';
+    $help     = sp_membership_help_html();
+    $online   = function_exists( 'sp_stripe_get_secret_key' ) && sp_stripe_get_secret_key( $settings );
+
+    ob_start();
+    ?>
+    <div class="sp-renew-panel">
+        <h2><?php esc_html_e( 'Renew your membership', 'societypress' ); ?></h2>
+        <p>
+            <?php
+            /* translators: %s: member's name */
+            printf( esc_html__( 'Renewing for %s.', 'societypress' ), '<strong>' . esc_html( $name ) . '</strong>' );
+            echo ' ';
+            if ( ! $exp && $member->status === 'active' ) {
+                esc_html_e( 'Your membership never expires, so there is nothing to renew.', 'societypress' );
+            } elseif ( $exp && $exp < current_time( 'timestamp' ) ) {
+                /* translators: %s: date */
+                printf( esc_html__( 'Your membership expired on %s.', 'societypress' ), esc_html( $date ) );
+            } elseif ( $exp ) {
+                /* translators: %s: date */
+                printf( esc_html__( 'Your membership runs through %s.', 'societypress' ), esc_html( $date ) );
+            }
+            ?>
+        </p>
+
+        <?php if ( ! $exp && $member->status === 'active' ) : ?>
+            <?php // Lifetime — nothing more to show. ?>
+        <?php elseif ( ! $online ) : ?>
+            <p><?php esc_html_e( 'Online payment isn\'t set up, so renewals are handled by the society directly.', 'societypress' ); ?> <?php echo $help; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?></p>
+        <?php else : ?>
+            <form method="post" class="sp-join-form">
+                <input type="hidden" name="sp_renew_action" value="pay">
+                <?php if ( $token !== '' ) : ?>
+                    <input type="hidden" name="sp_renew_token" value="<?php echo esc_attr( $token ); ?>">
+                <?php else : ?>
+                    <?php wp_nonce_field( 'sp_renew_self', 'sp_renew_nonce' ); ?>
+                <?php endif; ?>
+                <fieldset>
+                    <legend><?php esc_html_e( 'Membership Level', 'societypress' ); ?></legend>
+                    <?php foreach ( $tiers as $tier ) : ?>
+                        <?php if ( (float) $tier->price <= 0 ) { continue; } // Nothing to pay online. ?>
+                        <label class="sp-tier-option">
+                            <input type="radio" name="tier_id" value="<?php echo esc_attr( $tier->id ); ?>"
+                                   <?php checked( (int) $member->tier_id, (int) $tier->id ); ?>
+                                   required class="sp-join-tier-radio">
+                            <span class="sp-tier-label">
+                                <span class="sp-tier-name"><?php echo esc_html( $tier->name ); ?></span>
+                                <span class="sp-tier-price"><?php echo esc_html( sp_format_currency( $tier->price ) ); ?>/<?php esc_html_e( 'year', 'societypress' ); ?></span>
+                            </span>
+                        </label>
+                    <?php endforeach; ?>
+                </fieldset>
+                <?php $max_years = max( 1, (int) ( $settings['membership_max_years'] ?? 1 ) ); ?>
+                <?php if ( $max_years > 1 ) : ?>
+                    <div class="sp-field">
+                        <label for="sp-renew-years"><?php esc_html_e( 'Pay for how many years?', 'societypress' ); ?></label>
+                        <select name="membership_years" id="sp-renew-years">
+                            <?php for ( $y = 1; $y <= $max_years; $y++ ) : ?>
+                                <option value="<?php echo (int) $y; ?>"><?php /* translators: %d: number of years */ echo esc_html( sprintf( _n( '%d year', '%d years', $y, 'societypress' ), $y ) ); ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                <?php endif; ?>
+                <button type="submit" class="sp-submit"><?php esc_html_e( 'Continue to payment', 'societypress' ); ?></button>
+            </form>
+            <?php if ( $help ) : ?>
+                <p class="sp-field-help"><?php echo $help; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?></p>
+            <?php endif; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
  * Render the [societypress_join] shortcode form.
  *
  * WHY: This is what the prospective member sees. Clean, simple form with
@@ -65137,13 +65655,20 @@ add_action( 'init', function () {
  * @return string Form HTML.
  */
 function sp_render_join_form(): string {
-    // If already logged in and already a member, show a message
-    if ( is_user_logged_in() && sp_is_member() ) {
-        $account_url = sp_get_my_account_url();
-        return '<div class="sp-join-already-member">'
-             /* translators: %s: link to the My Account page */
-             . '<p>' . sprintf( esc_html__( 'You are already a member. %s.', 'societypress' ), '<a href="' . esc_url( $account_url ) . '">' . esc_html__( 'Go to My Account', 'societypress' ) . '</a>' ) . '</p>'
-             . '</div>';
+    // Renewing instead of joining: an emailed renewal link, or a member who
+    // is already signed in (who has no business seeing the join form).
+    $renew_token = sanitize_text_field( wp_unslash( $_GET['sp_renew'] ?? '' ) );
+    $renew_uid   = $renew_token !== '' ? sp_membership_renew_token_user( $renew_token ) : 0;
+    if ( ! $renew_uid ) {
+        if ( is_user_logged_in() && sp_is_member() ) {
+            $renew_uid = get_current_user_id();
+        } elseif ( $renew_token !== '' && empty( $GLOBALS['sp_join_result'] ) ) {
+            $GLOBALS['sp_join_result'] = [
+                'success' => false,
+                'message' => __( 'This renewal link has expired or was already used. Ask for a new one below.', 'societypress' ),
+            ];
+        }
+        $renew_token = '';
     }
 
     // Get active tiers
@@ -65170,6 +65695,17 @@ function sp_render_join_form(): string {
 
     // Check for form result
     $result = $GLOBALS['sp_join_result'] ?? null;
+    $sent   = sanitize_key( wp_unslash( $_GET['sp_renew_sent'] ?? '' ) );
+    if ( ! $result && $sent !== '' ) {
+        $result = [
+            'success' => true,
+            'html'    => true,
+            'message' => ( $sent === 'match'
+                    ? esc_html__( 'We\'ve emailed a renewal link to the address we have on file for you.', 'societypress' )
+                    : esc_html__( 'If that email address belongs to a member, a renewal link is on its way.', 'societypress' ) )
+                . ' ' . esc_html__( 'It may take a few minutes — check your spam folder too.', 'societypress' ) . ' ' . sp_membership_help_html(),
+        ];
+    }
 
     ob_start();
 
@@ -65185,12 +65721,7 @@ function sp_render_join_form(): string {
            . '.sp-join-result--success { background: #edfaef; border-color: #1d6b30; }'
            . '.sp-join-result--error   { background: #fcf0f1; border-color: #d63638; }'
            . '</style>';
-        $class    = $result['success'] ? 'sp-join-result sp-join-result--success' : 'sp-join-result sp-join-result--error';
-        $role     = $result['success'] ? 'status' : 'alert';
-        $polite   = $result['success'] ? 'polite' : 'assertive';
-        echo '<div class="' . esc_attr( $class ) . '" role="' . esc_attr( $role ) . '" aria-live="' . esc_attr( $polite ) . '">';
-        echo '<p class="sp-m-0">' . esc_html( $result['message'] ) . '</p>';
-        echo '</div>';
+        echo sp_join_notice_html( $result ); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
 
         if ( $result['success'] ) {
             // Don't show the form again after successful submission
@@ -65248,9 +65779,49 @@ function sp_render_join_form(): string {
         .sp-join-field-zip { max-width: 120px; }
         /* State input — uppercase display only (value remains as typed) */
         .sp-join-state-input { text-transform: uppercase; }
+        /* Join beside Renew. Renew comes first in the page so it sits on top on
+           a phone; on a wide screen the long join form takes the left column. */
+        .sp-join-layout { display: grid; gap: 24px; }
+        .sp-renew-box { padding: 20px; border: 1px solid #c3c4c7; border-radius: 4px; background: #f6f7f7; align-self: start; }
+        .sp-renew-box h2, .sp-join-main > h2, .sp-renew-panel h2 { margin-top: 0; }
+        .sp-renew-box input[type="email"] { width: 100%; box-sizing: border-box; margin-bottom: 12px; }
+        .sp-renew-box .sp-join-form .sp-submit { padding: 10px 20px; font-size: 15px; }
+        .sp-join-pause-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+        .sp-join-pause-actions form { margin: 0; }
+        .sp-join-form .sp-submit-secondary { background: #fff; color: #2271b1; border: 2px solid #2271b1; }
+        .sp-join-form .sp-submit-secondary:hover { background: #f0f6fc; color: #135e96; }
+        @media (min-width: 900px) {
+            .sp-join-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+            .sp-renew-box { grid-column: 2; grid-row: 1; }
+            .sp-join-main { grid-column: 1; grid-row: 1; }
+        }
     </style>
 
-    <form method="post" class="sp-join-form">
+    <?php
+    if ( $renew_uid ) {
+        echo sp_render_renew_panel( $renew_uid, $renew_token, $tiers ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped inside.
+        return ob_get_clean();
+    }
+    ?>
+
+    <div class="sp-join-layout">
+    <aside class="sp-renew-box">
+        <h2><?php esc_html_e( 'Already a member?', 'societypress' ); ?></h2>
+        <p><?php esc_html_e( 'Renew here instead of joining again. We\'ll email you a link — no password needed.', 'societypress' ); ?></p>
+        <form method="post" class="sp-join-form">
+            <input type="hidden" name="sp_renew_action" value="request">
+            <label for="sp-renew-email"><?php esc_html_e( 'Your email address', 'societypress' ); ?></label>
+            <input type="email" id="sp-renew-email" name="renew_email" required autocomplete="email">
+            <button type="submit" class="sp-submit"><?php esc_html_e( 'Email me a renewal link', 'societypress' ); ?></button>
+        </form>
+        <?php if ( $sp_help = sp_membership_help_html() ) : ?>
+            <p class="sp-field-help"><?php echo $sp_help; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?></p>
+        <?php endif; ?>
+    </aside>
+
+    <div class="sp-join-main">
+    <h2><?php esc_html_e( 'New here? Join', 'societypress' ); ?></h2>
+    <form method="post" class="sp-join-form" id="sp-join-form">
         <?php wp_nonce_field( 'sp_join_form', 'sp_join_nonce' ); ?>
 
         <p class="sp-join-required-note"><span class="required" aria-hidden="true">*</span> <?php esc_html_e( 'Required field', 'societypress' ); ?></p>
@@ -65445,6 +66016,8 @@ function sp_render_join_form(): string {
         <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
         </div>
     </form>
+    </div><!-- .sp-join-main -->
+    </div><!-- .sp-join-layout -->
 
     <!-- Plan first: hide the data-entry fields until a plan is chosen -->
     <script>

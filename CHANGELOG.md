@@ -20,6 +20,26 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.98] — 2026-11-09
+
+**Join and Renew side by side.** The join page now offers "Already a member? Renew"
+next to the join form. A member types their email address and gets a renewal link
+by email: no password needed, good for seven days. The link opens a page showing
+their membership and when it runs out, where they pick a level and pay online. A
+member who is already signed in sees that renewal page instead of the join form.
+
+**Catches members who join when they meant to renew.** Using an existing member's
+email address now offers a renewal link instead of a dead end. If the name, phone
+number or street address matches someone already on file, including lapsed members,
+the page asks "It looks like you may already be a member. Are you trying to renew?"
+before anything is charged. Anyone who answers "No, I'm new" can still join, but
+the new record gets a note naming the likely match and the membership contact gets
+an email, so a duplicate is caught before dues are counted twice.
+
+**A real address instead of "contact us."** A new Membership Contact Email setting
+(Settings → Membership) appears as a clickable email link on join and renewal
+messages. If it's left blank, the organization's Contact Email is used.
+
 ## [1.5.97] — 2026-11-08
 
 **Pick a library item's Physical Location from a list.** On the item form, Physical

@@ -85,8 +85,9 @@ each one goes. Two things need more than the import:
 1. Log in to your ENS administrator panel.
 2. Find the **Membership** or **Members** section. The exact menu name varies by ENS version.
 3. Look for an **Export** or **Download CSV** button. (If your ENS panel doesn't show one, contact ENS support and ask for a full member export.)
-4. Save the CSV file somewhere you'll find it again. A folder on your Desktop named something like `Society Migration` is fine.
-5. While you're in ENS, also export anything else you can:
+4. Make sure the export includes **every** member — inactive, lapsed and deceased as well as current. If ENS offers a status filter on the export, choose all statuses. Leaving former members behind loses their history, and they can't be brought back once ENS is gone.
+5. Save the CSV file somewhere you'll find it again. A folder on your Desktop named something like `Society Migration` is fine.
+6. While you're in ENS, also export anything else you can:
    - Events / calendar
    - Newsletter archive (PDFs)
    - Library/holdings catalog (CSV if available)

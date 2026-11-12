@@ -20,6 +20,32 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.100] — 2026-11-11
+
+**Renewal opens a set time before the year ends.** With an annual membership
+year, members could renew at any point, even months before the new year
+started. A new setting under Settings → Membership, *Renewal Opens*, sets how
+many months before the year ends renewal becomes available. It defaults to
+3, so a year ending June 30 opens for renewal on April 1. Before then, a
+signed-in member sees when their membership runs through and when renewal
+opens, and no payment form. Set it to 0 to allow renewal at any time.
+
+**Member filters grouped by where people are in the year.** The status filter
+on the Members list now offers Current, Renewal Due, Past Due (in the grace
+period), Expired for less or more than a year, Inactive and Deceased, plus
+who joined or renewed last month or in the last 30 days, lifetime members, and
+this month's birthdays.
+
+**Deceased members show under Deceased.** Members imported as deceased were
+missing from the Deceased status filter, because the import records a death
+with the Deceased flag and the filter only looked at the status.
+
+**Migration guide: export every member.** The ENS migration guide now says to
+include inactive, lapsed and deceased members in the export, so their history
+comes across.
+
+---
+
 ## [1.5.99] — 2026-11-10
 
 **Clearer label for retired plans.** On a member's screen, a plan that has been

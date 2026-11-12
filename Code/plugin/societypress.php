@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.99
+ * Version:     1.5.100
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.99' );
+define( 'SOCIETYPRESS_VERSION', '1.5.100' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -75,6 +75,7 @@ register_activation_hook( __FILE__, function () {
             'membership_email'        => '',
             'groups_auto_remove_expired' => 0,
             'grace_period_months'     => 2,
+            'renewal_opens_months'    => 3,
             // Directory — what shows up on the membership listing page
             'dir_show_city_state'     => 1,
             'dir_show_phone'          => 1,
@@ -9779,6 +9780,121 @@ function sp_get_font_family_css( ?string $font_key = null ): string {
 //      single canonical source prevents drift and ensures every dropdown/filter
 //      shows the same options.
 // ============================================================================
+
+/**
+ * The Members list's status-filter choices, grouped.
+ *
+ * WHY: Societies coming from EasyNetSites ask about members by where they are
+ *      in the renewal cycle (current, renewal due, past due, expired a while)
+ *      and by recent activity, not by the raw status column. Values that
+ *      start with "view_" are worked out from dates by
+ *      sp_member_list_view_where(); the rest are plain statuses.
+ *
+ * @return array<string, array<string, string>> Group label => [ value => label ].
+ */
+function sp_member_list_views(): array {
+    $prev_month = date_i18n( 'F', strtotime( 'first day of last month', current_time( 'timestamp' ) ) );
+    $this_month = date_i18n( 'F', current_time( 'timestamp' ) );
+    return [
+        __( 'Active', 'societypress' ) => [
+            'active'           => __( 'All Active (includes grace period)', 'societypress' ),
+            'view_current'     => __( 'Current (before expiration date)', 'societypress' ),
+            'view_renewal_due' => __( 'Renewal Due (renewal is open)', 'societypress' ),
+            'view_past_due'    => __( 'Past Due (in grace period)', 'societypress' ),
+        ],
+        __( 'Not Active', 'societypress' ) => [
+            'expired'             => __( 'All Expired', 'societypress' ),
+            'view_expired_recent' => __( 'Expired (less than 1 year)', 'societypress' ),
+            'view_expired_old'    => __( 'Expired (longer than 1 year)', 'societypress' ),
+            'inactive'            => __( 'Inactive', 'societypress' ),
+            'deceased'            => __( 'Deceased', 'societypress' ),
+        ],
+        __( 'New (by join date)', 'societypress' ) => [
+            /* translators: %s: name of last month */
+            'view_new_last_month' => sprintf( __( 'Joined in %s', 'societypress' ), $prev_month ),
+            'view_new_30'         => __( 'Joined in the last 30 days', 'societypress' ),
+        ],
+        __( 'Renewed (by date paid)', 'societypress' ) => [
+            /* translators: %s: name of last month */
+            'view_renewed_last_month' => sprintf( __( 'Renewed in %s', 'societypress' ), $prev_month ),
+            'view_renewed_30'         => __( 'Renewed in the last 30 days', 'societypress' ),
+        ],
+        __( 'Other', 'societypress' ) => [
+            'pending'       => __( 'Pending', 'societypress' ),
+            'view_lifetime' => __( 'Lifetime', 'societypress' ),
+            /* translators: %s: name of this month */
+            'view_birthdays' => sprintf( __( 'Birthdays in %s', 'societypress' ), $this_month ),
+        ],
+    ];
+}
+
+/**
+ * SQL condition for one of the date-based Members list views.
+ *
+ * WHY: Members stay "active" through the grace period (sp_expire_lapsed_members
+ *      only flips them once it ends), so current vs. past due has to be read
+ *      from the expiration date rather than the status column.
+ *
+ * @param string $view A value from sp_member_list_views().
+ * @return string|null WHERE fragment on alias m, or null for a plain status.
+ */
+function sp_member_list_view_where( string $view ): ?string {
+    global $wpdb;
+    $now      = current_time( 'timestamp' );
+    $today    = gmdate( 'Y-m-d', $now );
+    $settings = sp_settings();
+    $not_lifetime = "m.lifetime = 0 AND m.expiration_date IS NOT NULL AND m.expiration_date > '0000-00-00'";
+    $lapsed       = "m.status IN ('expired','lapsed') AND m.deceased = 0";
+    $last_first   = gmdate( 'Y-m-d', strtotime( 'first day of last month', $now ) );
+    $last_end     = gmdate( 'Y-m-d', strtotime( 'last day of last month', $now ) );
+    $minus_30     = gmdate( 'Y-m-d', strtotime( '-30 days', $now ) );
+    $year_ago     = gmdate( 'Y-m-d', strtotime( '-1 year', $now ) );
+    // Renewal is open for anyone whose paid-through date falls within the
+    // Renewal Opens window; with the window off, a month is the closest
+    // equivalent to "coming due".
+    $months   = max( 0, min( 11, (int) ( $settings['renewal_opens_months'] ?? 3 ) ) ) ?: 1;
+    $due_by   = gmdate( 'Y-m-d', strtotime( "+{$months} months -1 day", $now ) );
+    // A renewal is a dues payment after the day they joined, so a new
+    // member's first payment doesn't count as renewing.
+    $renewed  = "m.user_id IN (SELECT p.user_id FROM {$wpdb->prefix}sp_member_payments p
+                 WHERE p.type = 'dues' AND p.date > m.join_date AND p.date BETWEEN %s AND %s)";
+
+    switch ( $view ) {
+        case 'active':
+            return "m.status IN ('active','grace')";
+        case 'expired':
+            return $lapsed;
+        case 'deceased':
+            // A death is recorded two ways: the importer sets the Deceased flag
+            // and leaves the status Inactive, while the edit form can set the
+            // status itself. Matching only the status hid every imported one.
+            return "(m.status = 'deceased' OR m.deceased = 1)";
+        case 'view_current':
+            return "m.status = 'active' AND ( m.lifetime = 1 OR m.expiration_date IS NULL OR m.expiration_date = '0000-00-00' OR m.expiration_date >= '{$today}' )";
+        case 'view_renewal_due':
+            return "m.status = 'active' AND {$not_lifetime} AND m.expiration_date BETWEEN '{$today}' AND '{$due_by}'";
+        case 'view_past_due':
+            return "m.status IN ('active','grace') AND {$not_lifetime} AND m.expiration_date < '{$today}'";
+        case 'view_expired_recent':
+            return "{$lapsed} AND m.expiration_date >= '{$year_ago}'";
+        case 'view_expired_old':
+            return "{$lapsed} AND ( m.expiration_date IS NULL OR m.expiration_date < '{$year_ago}' )";
+        case 'view_new_last_month':
+            return "m.join_date BETWEEN '{$last_first}' AND '{$last_end}'";
+        case 'view_new_30':
+            return "m.join_date >= '{$minus_30}'";
+        case 'view_renewed_last_month':
+            return $wpdb->prepare( $renewed, $last_first, $last_end );
+        case 'view_renewed_30':
+            return $wpdb->prepare( $renewed, $minus_30, $today );
+        case 'view_lifetime':
+            return 'm.lifetime = 1';
+        case 'view_birthdays':
+            $month = (int) gmdate( 'n', $now );
+            return "m.deceased = 0 AND ( MONTH(m.date_of_birth) = {$month} OR m.birth_month = {$month} )";
+    }
+    return null;
+}
 
 /**
  * Get the canonical list of member statuses with translated labels.
@@ -23681,18 +23797,23 @@ class SP_Members_List_Table extends WP_List_Table {
         $current_tier   = $_GET['member_tier'] ?? '';
         $current_type   = $_GET['member_type'] ?? '';
 
-        // Status filter — uses the canonical status list so every dropdown
-        // in the system shows the same options
+        // Status filter, grouped the way a membership chair asks the question
+        // ("who's past due?", "who joined last month?") rather than by the raw
+        // status values. Plain statuses stay valid values so older links work.
         echo '<div class="alignleft actions">';
         echo '<select name="member_status" aria-label="' . esc_attr__( 'Filter by status', 'societypress' ) . '">';
-        echo '<option value="">' . esc_html__( 'All Statuses', 'societypress' ) . '</option>';
-        foreach ( sp_get_member_statuses() as $s => $label ) {
-            printf(
-                '<option value="%s" %s>%s</option>',
-                esc_attr( $s ),
-                selected( $current_status, $s, false ),
-                esc_html( $label )
-            );
+        echo '<option value="">' . esc_html__( 'All Records', 'societypress' ) . '</option>';
+        foreach ( sp_member_list_views() as $group => $views ) {
+            echo '<optgroup label="' . esc_attr( $group ) . '">';
+            foreach ( $views as $value => $label ) {
+                printf(
+                    '<option value="%s" %s>%s</option>',
+                    esc_attr( $value ),
+                    selected( $current_status, $value, false ),
+                    esc_html( $label )
+                );
+            }
+            echo '</optgroup>';
         }
         echo '</select>';
 
@@ -23791,7 +23912,10 @@ class SP_Members_List_Table extends WP_List_Table {
 
         // Status filter
         $status_filter = $_GET['member_status'] ?? '';
-        if ( ! empty( $status_filter ) ) {
+        $view_sql = sp_member_list_view_where( (string) $status_filter );
+        if ( $view_sql !== null ) {
+            $where[] = $view_sql;
+        } elseif ( ! empty( $status_filter ) ) {
             $where[]  = "m.status = %s";
             $values[] = $status_filter;
         }
@@ -23843,7 +23967,7 @@ class SP_Members_List_Table extends WP_List_Table {
                 $values[] = wp_date( 'Y-m-d', strtotime( '+30 days' ) );
                 break;
             case 'deceased':
-                $where[]  = 'm.deceased = 1';
+                $where[]  = "(m.status = 'deceased' OR m.deceased = 1)";
                 break;
             case 'lifetime':
                 $where[]  = 'm.lifetime = 1';
@@ -33365,6 +33489,29 @@ add_action( 'admin_init', function () {
         'sp_membership_section'
     );
 
+    // --- Renewal window ---
+    // WHY: With a fixed membership year, a member who renews in October has
+    //      paid for a year that hasn't started, and the treasurer's books end
+    //      up straddling two years. Societies open renewals a few months
+    //      before the year ends; this is that window.
+    add_settings_field(
+        'sp_renewal_opens_months',
+        __( 'Renewal Opens', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            $current  = (int) ( $settings['renewal_opens_months'] ?? 3 );
+
+            printf(
+                '<input type="number" name="societypress_settings[renewal_opens_months]" '
+                . 'value="%d" min="0" max="11" class="sp-w-60"> ' . esc_html__( 'months before the membership year ends', 'societypress' ),
+                $current
+            );
+            echo '<p class="description">' . esc_html__( 'Members can renew online from this point on. Before then, they see when renewal opens. Use 0 to let members renew at any time. Only applies to Annual period type.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_membership_section'
+    );
+
     // --- Auto-remove lapsed members from groups ---
     add_settings_field(
         'sp_groups_auto_remove_expired',
@@ -34530,6 +34677,7 @@ function sp_sanitize_settings( array $input ): array {
         'membership_email'        => fn() => sanitize_email( $input['membership_email'] ?? '' ),
         'groups_auto_remove_expired' => fn() => ! empty( $input['groups_auto_remove_expired'] ) ? 1 : 0,
         'grace_period_months'     => fn() => max( 0, min( 11, (int) ( $input['grace_period_months'] ?? 2 ) ) ),
+        'renewal_opens_months'    => fn() => max( 0, min( 11, (int) ( $input['renewal_opens_months'] ?? 3 ) ) ),
         'renewal_reminder_30d'    => fn() => ! empty( $input['renewal_reminder_30d'] ) ? 1 : 0,
         'renewal_reminder_15d'    => fn() => ! empty( $input['renewal_reminder_15d'] ) ? 1 : 0,
         'renewal_reminder_7d'     => fn() => ! empty( $input['renewal_reminder_7d'] ) ? 1 : 0,
@@ -34709,7 +34857,7 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'membership_period_type', 'membership_start_month', 'late_join_months',
             'membership_max_years', 'membership_email', 'groups_auto_remove_expired',
-            'grace_period_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
+            'grace_period_months', 'renewal_opens_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
             'renewal_reminder_7d', 'renewal_reminder_subject',
         ]);
     }
@@ -41024,7 +41172,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.99',
+            'version'     => '1.5.100',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41032,7 +41180,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.99',
+            'version'     => '1.5.100',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41040,7 +41188,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.99',
+            'version'     => '1.5.100',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41048,7 +41196,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.99',
+            'version'     => '1.5.100',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41056,7 +41204,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.99',
+            'version'     => '1.5.100',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -65198,6 +65346,15 @@ add_action( 'init', function () {
             $GLOBALS['sp_join_result'] = [ 'success' => false, 'html' => true, 'message' => esc_html__( 'This renewal link has expired or was already used. Ask for a new one below.', 'societypress' ) ];
             return;
         }
+        // The panel hides the form before the window opens; this stops an old
+        // page or a hand-built request from paying early anyway.
+        $renewing = sp_get_member_by_user_id( $user_id );
+        $opens    = $renewing ? sp_renewal_opens_at( $renewing ) : 0;
+        if ( $opens ) {
+            /* translators: %s: date renewal opens */
+            $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => sprintf( __( 'Renewal for next year opens on %s.', 'societypress' ), date_i18n( get_option( 'date_format' ), $opens ) ) ];
+            return;
+        }
         $tier = $wpdb->get_row( $wpdb->prepare(
             "SELECT * FROM {$wpdb->prefix}sp_membership_tiers WHERE id = %d AND active = 1",
             absint( $_POST['tier_id'] ?? 0 )
@@ -65559,6 +65716,33 @@ function sp_join_notice_html( array $result ): string {
 }
 
 /**
+ * When renewal opens for a member, if it hasn't yet.
+ *
+ * WHY: With an annual membership year, renewing months early pays for a year
+ *      that hasn't started. Renewal opens a set number of months before the
+ *      member's paid-through date (Settings → Membership → Renewal Opens).
+ *      Rolling and lifetime memberships, and members already expired, can
+ *      renew at any time.
+ *
+ * @param object $member Row from sp_members.
+ * @return int Timestamp renewal opens, or 0 when they can renew now.
+ */
+function sp_renewal_opens_at( $member ): int {
+    $settings = sp_settings();
+    $months   = max( 0, min( 11, (int) ( $settings['renewal_opens_months'] ?? 3 ) ) );
+    if ( $months === 0 || ( $settings['membership_period_type'] ?? 'annual' ) !== 'annual'
+            || empty( $member->expiration_date ) || ! empty( $member->lifetime ) ) {
+        return 0;
+    }
+    // Counted from the day after the paid-through date, so a year ending
+    // June 30 with a 3-month window opens on April 1, not March 30.
+    // Two steps: strtotime() applies months before days in one string, which
+    // turns June 30 into March 31.
+    $opens = strtotime( "-{$months} months", strtotime( '+1 day', strtotime( $member->expiration_date ) ) );
+    return ( $opens && current_time( 'timestamp' ) < $opens ) ? $opens : 0;
+}
+
+/**
  * The renewal panel: who is renewing, when they expire, plan and term, pay.
  *
  * @param int    $user_id Member renewing.
@@ -65598,8 +65782,16 @@ function sp_render_renew_panel( int $user_id, string $token, array $tiers ): str
             ?>
         </p>
 
+        <?php $opens = sp_renewal_opens_at( $member ); ?>
         <?php if ( ! $exp && $member->status === 'active' ) : ?>
             <?php // Lifetime — nothing more to show. ?>
+        <?php elseif ( $opens ) : ?>
+            <p>
+                <?php
+                /* translators: %s: date renewal opens */
+                printf( esc_html__( 'Renewal for next year opens on %s.', 'societypress' ), esc_html( date_i18n( get_option( 'date_format' ), $opens ) ) );
+                ?>
+            </p>
         <?php elseif ( ! $online ) : ?>
             <p><?php esc_html_e( 'Online payment isn\'t set up, so renewals are handled by the society directly.', 'societypress' ); ?> <?php echo $help; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?></p>
         <?php else : ?>

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.106
+ * Version:     1.5.107
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.106' );
+define( 'SOCIETYPRESS_VERSION', '1.5.107' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41286,7 +41286,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.106',
+            'version'     => '1.5.107',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41294,7 +41294,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.106',
+            'version'     => '1.5.107',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41302,7 +41302,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.106',
+            'version'     => '1.5.107',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41310,7 +41310,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.106',
+            'version'     => '1.5.107',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41318,7 +41318,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.106',
+            'version'     => '1.5.107',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -73545,7 +73545,12 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
     // ================================================================
     if ( $show_landing ) {
         echo '<div class="sp-catalog-header">';
-        echo '<h2>' . esc_html__( 'Library Catalog', 'societypress' ) . '</h2>';
+        // The Library Catalog page template already prints the page's own
+        // title, so it asks for this one to be left off; a builder page that
+        // drops the catalog in among other widgets still wants it.
+        if ( $s['show_heading'] ?? true ) {
+            echo '<h2>' . esc_html__( 'Library Catalog', 'societypress' ) . '</h2>';
+        }
         echo '<p class="sp-catalog-subtitle">' . esc_html__( 'Search and browse our collection of books, periodicals, maps, and more. Click any title for full details.', 'societypress' ) . '</p>';
 
         echo '<div class="sp-catalog-stats-bar">';
@@ -76647,8 +76652,8 @@ add_filter( 'template_include', function( $template ) {
         case 'sp-library-catalog':
             // WHY: full OPAC-style catalog with faceted search, browse-by
             // sections, expandable detail rows, sort options, and media type
-            // filtering. Empty array = use widget defaults.
-            sp_render_builder_widget_library_catalog( [] );
+            // filtering. Widget defaults, minus its own heading — the page title is shown above.
+            sp_render_builder_widget_library_catalog( [ 'show_heading' => false ] );
             break;
         case 'sp-vertical-files':
             // Public, like the records search: a researcher finding their
@@ -77374,8 +77379,6 @@ function sp_frontend_resources_directory(): void {
          WHERE {$where}
          ORDER BY r.title ASC"
     );
-
-    echo '<h2>' . esc_html__( 'Resource Links', 'societypress' ) . '</h2>';
 
     // Two independent controls: a search box and a category dropdown.
     // WHY independent: They don't combine — search searches everything,
@@ -105073,8 +105076,6 @@ function sp_render_cart_page(): void {
     </style>
 
     <div class="sp-cart-wrap">
-        <h2><?php esc_html_e( 'Shopping Cart', 'societypress' ); ?></h2>
-
         <div id="sp-cart-success-banner" class="sp-cart-success" style="display:none;">
             <strong><?php esc_html_e( 'Payment received!', 'societypress' ); ?></strong>
             <?php esc_html_e( 'Thank you for your purchase. A confirmation email has been sent to your address on file.', 'societypress' ); ?>

@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.107] — 2026-11-12
+
+**No more doubled headings.** Now that template pages show their own title, the Library Catalog, Cart and Resources pages no longer print a second fixed heading ("Library Catalog", "Shopping Cart", "Resource Links") beneath it. A Library Catalog widget placed on a Page Builder page keeps its heading.
+
 ## [1.5.106] — 2026-11-12
 
 **Meeting minutes start newest first.** On a new site, the Meeting Minutes folder is set up to list documents by date, newest first, instead of in manual order. Any folder can still be changed under Folders, then Edit, then "List By".

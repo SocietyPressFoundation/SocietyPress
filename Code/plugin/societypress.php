@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.101
+ * Version:     1.5.102
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.101' );
+define( 'SOCIETYPRESS_VERSION', '1.5.102' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -8918,6 +8918,18 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_events_page'
     );
 
+    // Payments got its own screen: Stripe and PayPal serve dues, donations,
+    // the store and events alike, and nobody setting up dues looked for
+    // them under Events.
+    sp_add_admin_page(
+        'societypress',
+        __( 'Payments Settings — SocietyPress', 'societypress' ),
+        __( 'Payments', 'societypress' ),
+        'manage_options',
+        'sp-settings-payments',
+        'sp_render_settings_payments_page'
+    );
+
     sp_add_admin_page(
         'societypress',
         __( 'Privacy Settings — SocietyPress', 'societypress' ),
@@ -9243,6 +9255,7 @@ function sp_get_menu_capability_map(): array {
         'sp-settings-membership'   => 'sp_manage_settings',
         'sp-settings-directory'    => 'sp_manage_settings',
         'sp-settings-events'       => 'sp_manage_settings',
+        'sp-settings-payments'     => 'sp_manage_settings',
         'sp-settings-privacy'      => 'sp_manage_settings',
         'sp-settings-export'       => 'sp_manage_settings',
         'privacy-policy-guide.php' => 'sp_manage_settings',
@@ -14577,7 +14590,7 @@ function sp_default_menu_config(): array {
               'items' => [ 'sp-reports', 'sp-insights', 'sp-annual-report', 'sp-membership-reports' ] ],
 
             [ 'id' => 'settings', 'label' => __( 'Settings', 'societypress' ), 'icon' => 'dashicons-admin-generic',
-              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access',
+              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-payments', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-user-access',
                            // Screens that change the admin itself rather than the
                            // public site. Kept apart from the Website group so the
                            // two kinds of "appearance" never sit side by side again.
@@ -32470,6 +32483,16 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // ---- PAYMENTS page — Stripe and PayPal ----
+    register_setting(
+        'sp-settings-payments',
+        'societypress_settings',
+        [
+            'type'              => 'array',
+            'sanitize_callback' => 'sp_sanitize_settings',
+        ]
+    );
+
     // ---- PRIVACY page — privacy policy picker + activity logging ----
     register_setting( 'sp-settings-privacy', 'wp_page_for_privacy_policy',
         [ 'sanitize_callback' => 'absint' ] );
@@ -32509,6 +32532,7 @@ add_action( 'admin_init', function () {
         'sp-settings-membership',
         'sp-settings-directory',
         'sp-settings-events',
+        'sp-settings-payments',
         'sp-settings-privacy',
         'sp-settings-design',
     ] as $sp_settings_group ) {
@@ -34904,7 +34928,14 @@ function sp_sanitize_settings( array $input ): array {
             'events_ical_feed_enabled',
             'events_reminder_1_day', 'events_reminder_3_days',
             'events_reminder_1_week', 'events_confirmation_subject',
-            'events_reminder_subject', 'stripe_test_mode',
+            'events_reminder_subject',
+        ]);
+    }
+
+    // Payments page — signature: the Stripe currency select is always present
+    if ( array_key_exists( 'stripe_currency', $input ) ) {
+        $page_keys = array_merge( $page_keys, [
+            'stripe_test_mode',
             'stripe_test_publishable_key', 'stripe_test_secret_key',
             'stripe_live_publishable_key', 'stripe_live_secret_key',
             'stripe_webhook_secret', 'stripe_currency',
@@ -40650,9 +40681,8 @@ function sp_render_settings_directory_page(): void {
 /**
  * Output the Events settings page.
  *
- * WHY: Event defaults (visibility, registration, reminders), email subjects,
- *      and Stripe payment configuration. Stripe setup instructions are
- *      deliberately step-by-step for non-technical admins.
+ * WHY: Event defaults (visibility, registration, reminders) and email
+ *      subjects. Payment setup lives on its own Payments page.
  */
 function sp_render_settings_events_page(): void {
     ?>
@@ -40669,6 +40699,35 @@ function sp_render_settings_events_page(): void {
             <?php
             settings_fields( 'sp-settings-events' );
             do_settings_sections( 'sp-settings-events' );
+            submit_button( __( 'Save Settings', 'societypress' ) );
+            ?>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Output the Payments settings page.
+ *
+ * WHY: One Stripe and one PayPal connection serve dues, donations, the store
+ *      and event registrations. Setup instructions are deliberately
+ *      step-by-step for non-technical admins.
+ */
+function sp_render_settings_payments_page(): void {
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Settings: Payments', 'societypress' ); ?></h1>
+
+        <?php
+        if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
+        }
+        ?>
+
+        <form method="post" action="options.php">
+            <?php
+            settings_fields( 'sp-settings-payments' );
+            do_settings_sections( 'sp-settings-payments' );
             submit_button( __( 'Save Settings', 'societypress' ) );
             ?>
         </form>
@@ -41172,7 +41231,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.101',
+            'version'     => '1.5.102',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41180,7 +41239,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.101',
+            'version'     => '1.5.102',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41188,7 +41247,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.101',
+            'version'     => '1.5.102',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41196,7 +41255,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.101',
+            'version'     => '1.5.102',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41204,7 +41263,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.101',
+            'version'     => '1.5.102',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -58669,7 +58728,7 @@ add_action( 'admin_init', function () {
             </div>
             <?php
         },
-        'sp-settings-events'
+        'sp-settings-payments'
     );
 
     // --- Test Mode Toggle ---
@@ -58688,7 +58747,7 @@ add_action( 'admin_init', function () {
             <p class="description"><?php esc_html_e( 'Keep this checked until you\'re ready to accept real payments. Test mode uses separate API keys.', 'societypress' ); ?></p>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_stripe_section'
     );
 
@@ -58723,7 +58782,7 @@ add_action( 'admin_init', function () {
             </div>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_stripe_section'
     );
 
@@ -58758,7 +58817,7 @@ add_action( 'admin_init', function () {
             </div>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_stripe_section'
     );
 
@@ -58790,7 +58849,7 @@ add_action( 'admin_init', function () {
             </p>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_stripe_section'
     );
 
@@ -58811,7 +58870,7 @@ add_action( 'admin_init', function () {
             </select>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_stripe_section'
     );
 
@@ -58885,7 +58944,7 @@ add_action( 'admin_init', function () {
             </script>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_stripe_section'
     );
 
@@ -58933,7 +58992,7 @@ add_action( 'admin_init', function () {
             </div>
             <?php
         },
-        'sp-settings-events'
+        'sp-settings-payments'
     );
 
     // --- PayPal Sandbox Mode Toggle ---
@@ -58952,7 +59011,7 @@ add_action( 'admin_init', function () {
             <p class="description"><?php esc_html_e( 'Keep this checked until you\'re ready to accept real payments. Sandbox mode uses separate API credentials.', 'societypress' ); ?></p>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_paypal_section'
     );
 
@@ -58984,7 +59043,7 @@ add_action( 'admin_init', function () {
             </div>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_paypal_section'
     );
 
@@ -59016,7 +59075,7 @@ add_action( 'admin_init', function () {
             </div>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_paypal_section'
     );
 
@@ -59088,7 +59147,7 @@ add_action( 'admin_init', function () {
             </script>
             <?php
         },
-        'sp-settings-events',
+        'sp-settings-payments',
         'sp_paypal_section'
     );
 });
@@ -104646,7 +104705,7 @@ add_action( 'admin_notices', function () {
     $paypal   = function_exists( 'sp_paypal_is_configured' ) && sp_paypal_is_configured( $settings );
     if ( $stripe || $paypal ) return;
 
-    $settings_url = admin_url( 'admin.php?page=sp-settings-events' );
+    $settings_url = admin_url( 'admin.php?page=sp-settings-payments' );
     ?>
     <style id="sp-store-notice-css">
         .sp-store-notice { border-left-width: 6px; }

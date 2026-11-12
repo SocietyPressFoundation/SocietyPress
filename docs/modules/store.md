@@ -74,9 +74,9 @@ When an order is paid, stock decrements by the purchased quantity. When an order
 
 ## If something looks wrong
 
-**Checkout says Stripe isn't set up.** Add your publishable and secret keys under **Settings → Events → Online Payments** — the same Stripe connection serves the Store, donations and event registrations. Test mode keys work; switch to live when ready.
+**Checkout says Stripe isn't set up.** Add your publishable and secret keys under **Settings → Payments** — the same Stripe connection serves the Store, donations and event registrations. Test mode keys work; switch to live when ready.
 
-**PayPal Smart Button doesn't appear.** Check the PayPal part of **Settings → Events → Online Payments**. Both client ID and secret must be filled in. The button is hidden when either is blank.
+**PayPal Smart Button doesn't appear.** Check the PayPal part of **Settings → Payments**. Both client ID and secret must be filled in. The button is hidden when either is blank.
 
 **Orders are stuck in `pending` after payment.** Webhook isn't reaching your site. Stripe dashboard → Developers → Webhooks → recent attempts shows the failure. Re-copy the signing secret into your settings if it doesn't match.
 

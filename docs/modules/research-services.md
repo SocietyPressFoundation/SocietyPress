@@ -99,7 +99,7 @@ The thread is private to the requester, the assigned researcher, and staff. Othe
 
 ## If something looks wrong
 
-**Intake form says "stripe_unconfigured."** Add your Stripe keys under **Settings → Events → Online Payments**.
+**Intake form says "stripe_unconfigured."** Add your Stripe keys under **Settings → Payments**.
 
 **Case is stuck in `pending_payment` after the requester says they paid.** Stripe success URL didn't get hit (closed tab, browser interrupted). Look at the Stripe dashboard → Payments to verify the charge succeeded; if it did, manually flip the case status to `open` and update `paid_amount` in the admin.
 

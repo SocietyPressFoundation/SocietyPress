@@ -57,7 +57,7 @@ Your society's year starts in the month set as **Period Starts** under **Setting
 
 **A feature you use isn't showing.** Check it's turned on under **Settings → Features**.
 
-**Total raised looks too low.** Failed, pending, cancelled and refunded donations aren't counted. A card payment that stays pending usually means Stripe couldn't reach your site to confirm it — check the Webhook Signing Secret under **Settings → Events → Online Payments**, and look for the gift under **Money → Donations**.
+**Total raised looks too low.** Failed, pending, cancelled and refunded donations aren't counted. A card payment that stays pending usually means Stripe couldn't reach your site to confirm it — check the Webhook Signing Secret under **Settings → Payments**, and look for the gift under **Money → Donations**.
 
 ## Related guides
 

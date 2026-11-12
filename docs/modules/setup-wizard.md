@@ -40,7 +40,7 @@ The last page offers to **Import My Members** — see [Members](members.md), and
 
 Other things most societies do next:
 
-- **Set up payments** — add your Stripe and/or PayPal keys under **Settings → Events → Online Payments**. Needed before members can pay dues online, before donations work, and before the store accepts orders.
+- **Set up payments** — add your Stripe and/or PayPal keys under **Settings → Payments**. Needed before members can pay dues online, before donations work, and before the store accepts orders.
 - **Pick a look** — **Website → Appearance → Theme** has five child themes (Heritage, Coastline, Prairie, Ledger, Parlor), and **Website → Appearance → Colors & Fonts** fine-tunes colors and fonts. See [Theme Presets](theme-presets.md) and [Child Themes](child-themes.md).
 - **Add your first event** — see [Events](events.md). Most societies start with their next monthly meeting.
 

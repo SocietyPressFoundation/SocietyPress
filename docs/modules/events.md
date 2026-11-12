@@ -55,7 +55,7 @@ Most societies put Upcoming Events on the homepage and a full calendar on a dedi
 
 **The occurrences aren't showing up.** Save the event, then reload the events list. They're created when you save.
 
-**Registration says Stripe isn't set up.** Add your Stripe keys under **Settings → Events → Online Payments**. Test mode with Stripe's test keys works for trying it out; switch to live keys when you're ready.
+**Registration says Stripe isn't set up.** Add your Stripe keys under **Settings → Payments**. Test mode with Stripe's test keys works for trying it out; switch to live keys when you're ready.
 
 **A member registered but didn't get a confirmation email.** Check your site can send email at all — "Lost your password?" on the sign-in page with your own address is the quickest test. If that never arrives, your host is probably blocking WordPress's mail; see [Email Setup](email-setup.md).
 

@@ -66,7 +66,7 @@ Words SocietyPress uses, defined in plain English. If a term in another guide is
 
 **Cover the fee** — Optional checkbox on the donation form letting the donor pay the Stripe/PayPal processing fee (about 3%) so the society receives the full amount. SocietyPress calculates the bump and adds it to the charge.
 
-**Recurring donation** — Monthly or yearly giving through Stripe. Each later payment is recorded when Stripe tells your site about it, which needs the webhook set up under **Settings → Events → Online Payments**.
+**Recurring donation** — Monthly or yearly giving through Stripe. Each later payment is recorded when Stripe tells your site about it, which needs the webhook set up under **Settings → Payments**.
 
 **Pseudonymization** — On a GDPR erasure request, donations don't get *deleted* (the IRS wants the dollar amount and date for nonprofit recordkeeping); the donor's name and contact info get *wiped* and replaced with placeholders. The amount and date stay on the books.
 

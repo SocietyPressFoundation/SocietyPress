@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.102] — 2026-11-11
+
+**Payments have their own settings page.** Stripe and PayPal moved from
+Settings → Events to a new Settings → Payments page. One connection serves
+dues, donations, the store and event registrations, and nobody setting up
+dues thought to look under Events. Keys already entered carry over.
+
+---
+
 ## [1.5.101] — 2026-11-11
 
 **The Stripe webhook signing secret now saves.** The box for it on the Events

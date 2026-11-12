@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.103
+ * Version:     1.5.104
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.103' );
+define( 'SOCIETYPRESS_VERSION', '1.5.104' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -39190,6 +39190,39 @@ function sp_render_page_edit(): void {
                     </td>
                 </tr>
 
+                <!-- Document folders — shown only when Page Type is "Documents" -->
+                <?php
+                // WHY here and not on the Documents screen: the choice belongs
+                // to the page. A society with a Policies page and a Minutes page
+                // decides what each shows while looking at that page.
+                $sp_doc_picked = $is_edit ? sp_documents_page_folders( $post_id ) : [];
+                $sp_doc_cats   = sp_module_enabled( 'documents' )
+                    ? $GLOBALS['wpdb']->get_results( "SELECT id, name, active FROM {$GLOBALS['wpdb']->prefix}sp_document_categories ORDER BY sort_order ASC, name ASC" )
+                    : [];
+                ?>
+                <tr id="sp-doc-folders-row" class="<?php echo 'sp-documents' === $template ? '' : 'hidden'; ?>">
+                    <th scope="row"><?php esc_html_e( 'Folders to show', 'societypress' ); ?></th>
+                    <td>
+                        <fieldset>
+                            <legend class="screen-reader-text"><?php esc_html_e( 'Folders to show', 'societypress' ); ?></legend>
+                            <?php foreach ( $sp_doc_cats as $c ) : ?>
+                                <label class="sp-block-label">
+                                    <input type="checkbox" name="sp_doc_folders[]" value="<?php echo (int) $c->id; ?>" <?php checked( in_array( (int) $c->id, $sp_doc_picked, true ) ); ?>>
+                                    <?php echo esc_html( $c->name ); ?>
+                                    <?php if ( ! (int) $c->active ) : ?>
+                                        <em class="description"><?php esc_html_e( '(hidden from the site)', 'societypress' ); ?></em>
+                                    <?php endif; ?>
+                                </label>
+                            <?php endforeach; ?>
+                            <label class="sp-block-label">
+                                <input type="checkbox" name="sp_doc_folders[]" value="0" <?php checked( in_array( 0, $sp_doc_picked, true ) ); ?>>
+                                <?php esc_html_e( 'Other Documents (not in any folder)', 'societypress' ); ?>
+                            </label>
+                        </fieldset>
+                        <p class="description"><?php esc_html_e( 'Tick the folders this page should show. Leave them all unticked to show every folder.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+
                 <!-- Content Editor -->
                 <tr>
                     <th scope="row"><label for="page_content"><?php esc_html_e( 'Content', 'societypress' ); ?></label></th>
@@ -39342,10 +39375,17 @@ function sp_render_page_edit(): void {
             row.style.display = (sel.value === 'sp-builder') ? '' : 'none';
         }
 
+        var docRow = document.getElementById('sp-doc-folders-row');
+        function toggleDocFolders() {
+            if (docRow) docRow.classList.toggle('hidden', sel.value !== 'sp-documents');
+        }
+
         sel.addEventListener('change', toggleBuilder);
+        sel.addEventListener('change', toggleDocFolders);
         // Initial state is already set via PHP $builder_display, but run once
         // in case browser auto-fills a cached form value on back-navigation.
         toggleBuilder();
+        toggleDocFolders();
     })();
     </script>
     <?php
@@ -39490,6 +39530,17 @@ function sp_handle_page_save(): void {
     } elseif ( 'sp-builder' !== $template ) {
         // Not a builder page — remove widget meta if it exists
         delete_post_meta( $saved_id, '_sp_page_widgets' );
+    }
+
+    // Document folders this page shows. Nothing ticked means every folder, so
+    // the meta is removed rather than stored empty.
+    $sp_doc_folders = ( 'sp-documents' === $template )
+        ? array_values( array_unique( array_map( 'absint', (array) ( $_POST['sp_doc_folders'] ?? [] ) ) ) )
+        : [];
+    if ( $sp_doc_folders ) {
+        update_post_meta( $saved_id, '_sp_doc_folders', $sp_doc_folders );
+    } else {
+        delete_post_meta( $saved_id, '_sp_doc_folders' );
     }
 
     // Review link: reset it on request (invalidating the old link), otherwise
@@ -41231,7 +41282,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.103',
+            'version'     => '1.5.104',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41239,7 +41290,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.103',
+            'version'     => '1.5.104',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41247,7 +41298,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.103',
+            'version'     => '1.5.104',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41255,7 +41306,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.103',
+            'version'     => '1.5.104',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41263,7 +41314,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.103',
+            'version'     => '1.5.104',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -108809,7 +108860,7 @@ function sp_render_documents_page(): void {
                     <th scope="col"><?php esc_html_e( 'Type', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Size', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Access', 'societypress' ); ?></th>
-                    <th scope="col"><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th scope="col"><?php esc_html_e( 'Show on site', 'societypress' ); ?></th>
                     <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                 </tr>
             </thead>
@@ -108831,7 +108882,7 @@ function sp_render_documents_page(): void {
                                 <span class="sp-documents-access-public">&#127760; <?php esc_html_e( 'Public', 'societypress' ); ?></span>
                             <?php endif; ?>
                         </td>
-                        <td><?php echo $doc->status === 'published' ? esc_html__( 'Published', 'societypress' ) : esc_html__( 'Draft', 'societypress' ); ?></td>
+                        <td><?php sp_render_document_show_toggle( 'doc', (int) $doc->id, $doc->status === 'published', $doc->title ); ?></td>
                         <td>
                             <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-edit&id=' . $doc->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                             |
@@ -108896,6 +108947,87 @@ function sp_render_documents_page(): void {
 // ADMIN: Document categories page
 // ---------------------------------------------------------------------------
 
+/**
+ * A "Show on site" checkbox that saves the moment it is clicked.
+ *
+ * WHY: hiding a document used to mean opening it and changing Status to
+ * Draft; hiding a folder meant opening its settings and unticking Visible.
+ * Both stay the underlying settings — this is a quicker way to reach them
+ * from the list, so there is nothing new to keep in step.
+ *
+ * @param string $kind  'doc' or 'folder'.
+ * @param int    $id    Row id.
+ * @param bool   $shown Whether it currently shows on the site.
+ * @param string $name  For the screen-reader label.
+ */
+function sp_render_document_show_toggle( string $kind, int $id, bool $shown, string $name ): void {
+    static $script_done = false;
+    printf(
+        '<label class="sp-doc-show"><input type="checkbox" class="sp-doc-show-cb" data-kind="%s" data-id="%d" %s aria-label="%s"> <span class="sp-doc-show-note" aria-live="polite"></span></label>',
+        esc_attr( $kind ),
+        $id,
+        checked( $shown, true, false ),
+        /* translators: %s: document or folder name */
+        esc_attr( sprintf( __( 'Show %s on the site', 'societypress' ), $name ) )
+    );
+    if ( $script_done ) {
+        return;
+    }
+    $script_done = true;
+    ?>
+    <style>.sp-doc-show-note { color: #646970; font-size: 12px; }</style>
+    <script>
+    document.addEventListener( 'change', function ( e ) {
+        var cb = e.target;
+        if ( ! cb.classList || ! cb.classList.contains( 'sp-doc-show-cb' ) ) { return; }
+        var note = cb.parentNode.querySelector( '.sp-doc-show-note' );
+        var body = new FormData();
+        body.append( 'action', 'sp_document_show' );
+        body.append( 'nonce', <?php echo wp_json_encode( wp_create_nonce( 'sp_document_show' ) ); ?> );
+        body.append( 'kind', cb.getAttribute( 'data-kind' ) );
+        body.append( 'id', cb.getAttribute( 'data-id' ) );
+        body.append( 'shown', cb.checked ? '1' : '0' );
+        cb.disabled = true;
+        fetch( ajaxurl, { method: 'POST', body: body, credentials: 'same-origin' } )
+            .then( function ( r ) { return r.json(); } )
+            .then( function ( res ) {
+                if ( ! res || ! res.success ) { throw new Error(); }
+                note.textContent = <?php echo wp_json_encode( __( 'Saved', 'societypress' ) ); ?>;
+            } )
+            .catch( function () {
+                // Put the box back so it never claims a state that was not saved.
+                cb.checked = ! cb.checked;
+                note.textContent = <?php echo wp_json_encode( __( 'Not saved — try again', 'societypress' ) ); ?>;
+            } )
+            .finally( function () {
+                cb.disabled = false;
+                setTimeout( function () { note.textContent = ''; }, 2500 );
+            } );
+    } );
+    </script>
+    <?php
+}
+
+add_action( 'wp_ajax_sp_document_show', function () {
+    check_ajax_referer( 'sp_document_show', 'nonce' );
+    if ( ! current_user_can( 'sp_manage_content' ) ) {
+        wp_send_json_error( null, 403 );
+    }
+    global $wpdb;
+    $id    = absint( $_POST['id'] ?? 0 );
+    $shown = ! empty( $_POST['shown'] );
+    $kind  = sanitize_key( $_POST['kind'] ?? '' );
+
+    if ( 'doc' === $kind ) {
+        $ok = $wpdb->update( $wpdb->prefix . 'sp_documents', [ 'status' => $shown ? 'published' : 'draft' ], [ 'id' => $id ] );
+    } elseif ( 'folder' === $kind ) {
+        $ok = $wpdb->update( $wpdb->prefix . 'sp_document_categories', [ 'active' => $shown ? 1 : 0 ], [ 'id' => $id ] );
+    } else {
+        $ok = false;
+    }
+    false === $ok ? wp_send_json_error() : wp_send_json_success();
+} );
+
 function sp_render_document_categories_page(): void {
     global $wpdb;
     $table = $wpdb->prefix . 'sp_document_categories';
@@ -108917,7 +109049,6 @@ function sp_render_document_categories_page(): void {
         /* sp_render_document_categories_page() — scoped layout styles */
         .sp-doc-cat-layout { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 20px; }
         .sp-doc-cat-form   { flex: 0 0 320px; }
-        .sp-doc-cat-hidden { color: #767676; font-weight: normal; font-style: italic; }
     </style>
     <div class="wrap">
         <h1><?php esc_html_e( 'Document Sections', 'societypress' ); ?></h1>
@@ -109028,24 +109159,23 @@ function sp_render_document_categories_page(): void {
                             <th scope="col"><?php esc_html_e( 'URL Name', 'societypress' ); ?></th>
                             <th scope="col"><?php esc_html_e( 'Documents', 'societypress' ); ?></th>
                             <th scope="col"><?php esc_html_e( 'Order', 'societypress' ); ?></th>
+                            <th scope="col"><?php esc_html_e( 'Show on site', 'societypress' ); ?></th>
                             <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ( empty( $categories ) ) : ?>
-                            <tr><td colspan="5" class="sp-empty-state"><?php esc_html_e( 'No sections yet.', 'societypress' ); ?></td></tr>
+                            <tr><td colspan="6" class="sp-empty-state"><?php esc_html_e( 'No sections yet.', 'societypress' ); ?></td></tr>
                         <?php else : ?>
                             <?php foreach ( $categories as $cat ) : ?>
                             <tr>
                                 <td>
                                     <strong><?php echo esc_html( $cat->name ); ?></strong>
-                                    <?php if ( isset( $cat->active ) && ! $cat->active ) : ?>
-                                        <span class="sp-doc-cat-hidden">— <?php esc_html_e( 'hidden from visitors', 'societypress' ); ?></span>
-                                    <?php endif; ?>
                                 </td>
                                 <td><code><?php echo esc_html( $cat->slug ); ?></code></td>
                                 <td><?php echo (int) ( $doc_counts[ $cat->id ]->cnt ?? 0 ); ?></td>
                                 <td><?php echo (int) $cat->sort_order; ?></td>
+                                <td><?php sp_render_document_show_toggle( 'folder', (int) $cat->id, ! isset( $cat->active ) || (bool) $cat->active, $cat->name ); ?></td>
                                 <td>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-document-categories&edit=' . $cat->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     |
@@ -109756,6 +109886,20 @@ function sp_is_new_item( $created_at, int $days = 30 ): bool {
     return $ts >= ( current_time( 'timestamp' ) - $days * DAY_IN_SECONDS );
 }
 
+/**
+ * The document folders a Documents page has been limited to.
+ *
+ * An empty list means "every folder" — the page has not been narrowed. Zero
+ * stands for documents that were never filed in a folder.
+ *
+ * @param int $page_id The page.
+ * @return int[]
+ */
+function sp_documents_page_folders( int $page_id ): array {
+    $ids = get_post_meta( $page_id, '_sp_doc_folders', true );
+    return is_array( $ids ) ? array_map( 'intval', $ids ) : [];
+}
+
 function sp_frontend_documents(): void {
     if ( ! sp_module_enabled( 'documents' ) ) {
         echo '<p>' . esc_html__( 'The documents library is not available.', 'societypress' ) . '</p>';
@@ -109764,6 +109908,24 @@ function sp_frontend_documents(): void {
 
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
+
+    // A page may be limited to chosen folders, so a society can have one page
+    // for policies and another for minutes. Every query below that decides what
+    // is shown carries this clause, including a folder opened by its link — a
+    // hand-edited ?sp_doc_cat must not reach past what the page allows.
+    $scope_where = '';
+    $page_folders = is_page() ? sp_documents_page_folders( (int) get_queried_object_id() ) : [];
+    if ( $page_folders ) {
+        $real_ids    = array_filter( $page_folders );
+        $parts       = [];
+        if ( $real_ids ) {
+            $parts[] = 'd.category_id IN (' . implode( ',', array_map( 'intval', $real_ids ) ) . ')';
+        }
+        if ( in_array( 0, $page_folders, true ) ) {
+            $parts[] = 'd.category_id IS NULL';
+        }
+        $scope_where = ' AND ( ' . implode( ' OR ', $parts ) . ' )';
+    }
 
     // Access parity with the download handler: an active member OR a content
     // manager may open members-only files. Computing membership the same way
@@ -109806,14 +109968,14 @@ function sp_frontend_documents(): void {
          FROM {$prefix}document_categories c
          INNER JOIN {$prefix}documents d
                  ON d.category_id = c.id AND d.status = 'published'
-         WHERE c.active = 1
+         WHERE c.active = 1{$scope_where}
          GROUP BY c.id, c.name, c.access_level, c.sort_order
          HAVING n > 0
          ORDER BY c.sort_order ASC, c.name ASC"
     );
 
     $loose = (int) $wpdb->get_var(
-        "SELECT COUNT(*) FROM {$prefix}documents WHERE status = 'published' AND category_id IS NULL"
+        "SELECT COUNT(*) FROM {$prefix}documents d WHERE d.status = 'published' AND d.category_id IS NULL{$scope_where}"
     );
 
     $folder_count = count( $cat_rows ) + ( $loose > 0 ? 1 : 0 );
@@ -109894,7 +110056,7 @@ function sp_frontend_documents(): void {
     $has_dated_docs = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$prefix}documents d
          WHERE d.status = 'published'
-           AND d.document_date IS NOT NULL AND d.document_date <> '0000-00-00'{$cat_where}"
+           AND d.document_date IS NOT NULL AND d.document_date <> '0000-00-00'{$cat_where}{$scope_where}"
     ) > 0;
 
     // Published documents only on the frontend. Order by category sort order,
@@ -109903,7 +110065,7 @@ function sp_frontend_documents(): void {
         "SELECT d.*, c.name AS category_name, c.sort_order AS cat_sort, c.access_level AS cat_access, c.display_format AS cat_format, c.show_updated AS cat_show_updated, c.list_sort AS cat_list_sort
          FROM {$prefix}documents d
          LEFT JOIN {$prefix}document_categories c ON d.category_id = c.id
-         WHERE d.status = 'published'{$time_where}{$cat_where}
+         WHERE d.status = 'published'{$time_where}{$cat_where}{$scope_where}
            AND ( d.category_id IS NULL OR c.active = 1 )
          ORDER BY (d.category_id IS NULL) ASC, c.sort_order ASC, c.name ASC,
                   d.sort_order ASC, d.title ASC"

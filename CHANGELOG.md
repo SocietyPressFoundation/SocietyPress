@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.104] — 2026-11-12
+
+**Choose which documents a page shows.** A Documents page now has a "Folders to show" list on its edit screen. Tick the folders that page should show, for example one page for policies and another for minutes. Leave them all unticked and the page shows every folder, as before.
+
+**Show or hide documents from the list.** The Documents and Folders lists each have a "Show on site" checkbox that saves as soon as it's clicked. There's no need to open a document and set it to Draft, or open a folder's settings, just to hide it.
+
 ## [1.5.103] — 2026-11-12
 
 **Module pages show their title.** Pages set to a SocietyPress template — Documents, Records, News, Library Catalog, Surnames, Cart and the rest — now open with the page's name as a heading, the same as every other page. A page named "Society Documents" says so at the top. The Store keeps its own heading, and a page whose text already starts with a heading isn't given a second one.

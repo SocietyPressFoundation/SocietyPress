@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.102
+ * Version:     1.5.103
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.102' );
+define( 'SOCIETYPRESS_VERSION', '1.5.103' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41231,7 +41231,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.102',
+            'version'     => '1.5.103',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41239,7 +41239,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.102',
+            'version'     => '1.5.103',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41247,7 +41247,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.102',
+            'version'     => '1.5.103',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41255,7 +41255,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.102',
+            'version'     => '1.5.103',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41263,7 +41263,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.102',
+            'version'     => '1.5.103',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -76554,6 +76554,20 @@ add_filter( 'template_include', function( $template ) {
     echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 960px); margin: 40px auto; padding: 0 20px; }</style>';
     echo '<div class="entry-content sp-page-template-content">';
 
+    // WHY print the page title: these templates bypass the theme's page.php,
+    // which is where every other page gets its heading, so a page named
+    // "Society Documents" opened with no name at all. Skipped for the store,
+    // which prints its own configurable heading, and for a page whose own text
+    // already opens with a heading — two titles stacked reads as a mistake.
+    $sp_tpl_post = get_post();
+    if ( $sp_tpl_post
+        && 'sp-store' !== $page_template
+        && false === stripos( (string) $sp_tpl_post->post_content, '<h1' ) ) {
+        echo '<header class="entry-header"><h1 class="entry-title">'
+           . esc_html( get_the_title( $sp_tpl_post ) )
+           . '</h1></header>';
+    }
+
     // WHY output the page's own content first: these templates replace the
     // page entirely, so anything a volunteer typed into the editor was thrown
     // away without a word. That silently breaks two reasonable expectations —
@@ -76562,7 +76576,6 @@ add_filter( 'template_include', function( $template ) {
     // Both read as "the page is broken" rather than "this template ignores
     // content". Rendering it above the module output makes what you type
     // appear where you'd expect, and pages with an empty editor are unchanged.
-    $sp_tpl_post = get_post();
     if ( $sp_tpl_post && '' !== trim( (string) $sp_tpl_post->post_content ) ) {
         echo '<div class="sp-page-template-intro">'
            . apply_filters( 'the_content', $sp_tpl_post->post_content )

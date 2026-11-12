@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.103] — 2026-11-12
+
+**Module pages show their title.** Pages set to a SocietyPress template — Documents, Records, News, Library Catalog, Surnames, Cart and the rest — now open with the page's name as a heading, the same as every other page. A page named "Society Documents" says so at the top. The Store keeps its own heading, and a page whose text already starts with a heading isn't given a second one.
+
 ## [1.5.102] — 2026-11-11
 
 **Payments have their own settings page.** Stripe and PayPal moved from

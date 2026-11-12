@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.101] — 2026-11-11
+
+**The Stripe webhook signing secret now saves.** The box for it on the Events
+settings tab was thrown away on every save, so Stripe's payment notifications
+were always rejected and payments relied on the visitor returning to the site
+after checkout.
+
+---
+
 ## [1.5.100] — 2026-11-11
 
 **Renewal opens a set time before the year ends.** With an annual membership

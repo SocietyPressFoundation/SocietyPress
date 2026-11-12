@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.104
+ * Version:     1.5.105
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.104' );
+define( 'SOCIETYPRESS_VERSION', '1.5.105' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41282,7 +41282,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.104',
+            'version'     => '1.5.105',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41290,7 +41290,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.104',
+            'version'     => '1.5.105',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41298,7 +41298,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.104',
+            'version'     => '1.5.105',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41306,7 +41306,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.104',
+            'version'     => '1.5.105',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41314,7 +41314,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.104',
+            'version'     => '1.5.105',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -107080,6 +107080,14 @@ add_action( 'admin_init', function () {
     global $wpdb;
     $wpdb->delete( $wpdb->prefix . 'sp_documents', [ 'id' => $doc_id ] );
 
+    // The public Documents page posts here too, so an administrator who deleted
+    // from inside a folder lands back in that folder rather than in wp-admin.
+    $back = wp_validate_redirect( wp_unslash( $_POST['redirect_to'] ?? '' ), '' );
+    if ( $back !== '' ) {
+        wp_safe_redirect( add_query_arg( 'sp_doc_deleted', 1, $back ) );
+        exit;
+    }
+
     wp_redirect( admin_url( 'admin.php?page=sp-documents&sp_deleted=1' ) );
     exit;
 });
@@ -109170,7 +109178,7 @@ function sp_render_document_categories_page(): void {
                             <?php foreach ( $categories as $cat ) : ?>
                             <tr>
                                 <td>
-                                    <strong><?php echo esc_html( $cat->name ); ?></strong>
+                                    <strong><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-documents&cat=' . (int) $cat->id ) ); ?>"><?php echo esc_html( $cat->name ); ?></a></strong>
                                 </td>
                                 <td><code><?php echo esc_html( $cat->slug ); ?></code></td>
                                 <td><?php echo (int) ( $doc_counts[ $cat->id ]->cnt ?? 0 ); ?></td>
@@ -109940,6 +109948,7 @@ function sp_frontend_documents(): void {
         $is_member = ( $member_status === 'active' );
     }
     $login_url = wp_login_url( get_permalink() );
+    $can_delete = current_user_can( 'sp_manage_content' );
 
     // Dependency-free file-type glyph keyed off the extension.
     $type_icon = static function ( string $file_name ): string {
@@ -110105,6 +110114,10 @@ function sp_frontend_documents(): void {
 .sp-doc-save { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; text-decoration: none; margin-left: 8px; }
 .sp-doc-save:hover, .sp-doc-save:focus { color: #0d1f3c; text-decoration: underline; }
 .sp-doc-locked { color: #6b7280; font-size: 13px; }
+.sp-doc-delete-form { display: inline; margin: 0 0 0 8px; }
+.sp-doc-delete { background: none; border: 0; padding: 0; color: #b32d2e; font-size: 13px; text-decoration: underline; cursor: pointer; }
+.sp-doc-delete:hover, .sp-doc-delete:focus { color: #8a2424; }
+.sp-doc-deleted { padding: 10px 14px; margin: 0 0 16px; border-left: 4px solid #166534; background: #f0fdf4; }
 .sp-doc-empty { color: #6b7280; font-style: italic; }
 .sp-doc-monthyear { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 32px; }
 .sp-doc-monthyear li { break-inside: avoid; padding: 5px 0; border-bottom: 1px solid #f0f0f0; }
@@ -110116,6 +110129,10 @@ function sp_frontend_documents(): void {
 .sp-doc-filter label { font-weight: 600; margin-right: 8px; }
 .sp-doc-filter select { padding: 6px 8px; }
 </style>';
+
+    if ( $can_delete && ! empty( $_GET['sp_doc_deleted'] ) ) {
+        echo '<p class="sp-doc-deleted" role="status">' . esc_html__( 'Document deleted.', 'societypress' ) . '</p>';
+    }
 
     // A way back out of a folder. Only when folders are actually in play —
     // with a single category there is nothing to go back to.
@@ -110230,12 +110247,15 @@ function sp_frontend_documents(): void {
                 if ( sp_is_new_item( $d->created_at ?? '' ) ) {
                     echo ' <span class="sp-doc-new">' . esc_html__( 'New', 'societypress' ) . '</span>';
                 }
+                if ( $can_delete ) {
+                    echo sp_render_document_delete_button( $d );
+                }
                 echo '</li>';
             }
             echo '</ul>';
         } else {
             foreach ( $rows as $d ) {
-                sp_render_document_row( $d, $is_member, $login_url, $type_icon );
+                sp_render_document_row( $d, $is_member, $login_url, $type_icon, $can_delete );
             }
         }
         echo '</section>';
@@ -110245,7 +110265,32 @@ function sp_frontend_documents(): void {
     sp_pdf_reader();
 }
 
-function sp_render_document_row( object $doc, bool $is_member, string $login_url, callable $type_icon ): void {
+/**
+ * A Delete button for one document, shown on the public page to people who
+ * manage content.
+ *
+ * WHY on the public page: an administrator tidying a folder is looking at the
+ * folder. Sending them to wp-admin to find the same file again by name is the
+ * long way round. It posts to the same handler the admin list uses, so the
+ * nonce and permission checks are the ones already there.
+ */
+function sp_render_document_delete_button( object $doc ): string {
+    $current = ( is_ssl() ? 'https://' : 'http://' ) . ( $_SERVER['HTTP_HOST'] ?? '' ) . wp_unslash( $_SERVER['REQUEST_URI'] ?? '' );
+    return '<form method="post" class="sp-doc-delete-form" action="' . esc_url( admin_url( 'admin.php?page=sp-documents' ) ) . '"'
+        . ' data-sp-confirm="' . esc_attr( sprintf(
+            /* translators: %s: document title */
+            __( 'Delete "%s"? This cannot be undone.', 'societypress' ),
+            $doc->title
+        ) ) . '">'
+        . wp_nonce_field( 'sp_delete_document_' . (int) $doc->id, '_wpnonce', false, false )
+        . '<input type="hidden" name="action" value="delete">'
+        . '<input type="hidden" name="id" value="' . (int) $doc->id . '">'
+        . '<input type="hidden" name="redirect_to" value="' . esc_url( remove_query_arg( 'sp_doc_deleted', $current ) ) . '">'
+        . '<button type="submit" class="sp-doc-delete">' . esc_html__( 'Delete', 'societypress' ) . '</button>'
+        . '</form>';
+}
+
+function sp_render_document_row( object $doc, bool $is_member, string $login_url, callable $type_icon, bool $can_delete = false ): void {
     $can_access = ( $doc->access_level === 'public' ) || $is_member;
 
     echo '<div class="sp-doc-row">';
@@ -110314,6 +110359,9 @@ function sp_render_document_row( object $doc, bool $is_member, string $login_url
     } else {
         echo '<span class="sp-doc-locked">&#128274; <a href="' . esc_url( $login_url ) . '">'
              . esc_html__( 'Log in to access', 'societypress' ) . '</a></span>';
+    }
+    if ( $can_delete ) {
+        echo sp_render_document_delete_button( $doc );
     }
     echo '</div>';
 

@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.105] — 2026-11-12
+
+**Delete a document from inside its folder.** On the public Documents page, people who manage content now see a Delete button beside each document. It asks for confirmation, then returns them to the same folder. Visitors and members don't see it.
+
+**Folder names open their documents.** In the dashboard's Folders list, clicking a folder's name opens the Documents list filtered to that folder, where each document can be edited or deleted.
+
 ## [1.5.104] — 2026-11-12
 
 **Choose which documents a page shows.** A Documents page now has a "Folders to show" list on its edit screen. Tick the folders that page should show, for example one page for policies and another for minutes. Leave them all unticked and the page shows every folder, as before.

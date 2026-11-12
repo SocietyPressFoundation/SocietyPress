@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.107
+ * Version:     1.5.108
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.107' );
+define( 'SOCIETYPRESS_VERSION', '1.5.108' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16613,6 +16613,33 @@ add_action( 'wp_before_admin_bar_render', function () {
     // 'sp-logout' node because we thought the default was removed — it wasn't.
     // No need to add anything here; the built-in logout link is sufficient.
 });
+
+/**
+ * Log Out at the foot of the admin sidebar.
+ *
+ * WHY: the toolbar is off by default (Settings → Site Basics), and the toolbar
+ *      was the only place WordPress offers Log Out in the back office. With it
+ *      hidden, a volunteer on a shared library computer had no way to sign out
+ *      short of closing the browser. The sidebar is always there, so it goes
+ *      there. Added straight to $menu rather than through add_menu_page(),
+ *      which would turn the address into an admin.php?page= slug; a bare URL
+ *      with no page hook is printed as the link as-is.
+ */
+add_action( 'admin_menu', function () {
+    global $menu;
+    if ( ! is_user_logged_in() ) {
+        return;
+    }
+    $menu[9999] = [
+        __( 'Log Out', 'societypress' ),
+        'read',
+        wp_logout_url( home_url( '/' ) ),
+        '',
+        'menu-top sp-menu-logout',
+        'sp-menu-logout',
+        'dashicons-exit',
+    ];
+}, 1000 );
 
 
 // ============================================================================
@@ -41286,7 +41313,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.107',
+            'version'     => '1.5.108',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41294,7 +41321,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.107',
+            'version'     => '1.5.108',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41302,7 +41329,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.107',
+            'version'     => '1.5.108',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41310,7 +41337,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.107',
+            'version'     => '1.5.108',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41318,7 +41345,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.107',
+            'version'     => '1.5.108',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

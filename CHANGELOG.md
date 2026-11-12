@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.108] — 2026-11-12
+
+**Log Out is back in the admin sidebar.** With the toolbar switched off, which is the default, there was no way to sign out from the dashboard. A Log Out item now sits at the bottom of the sidebar.
+
 ## [1.5.107] — 2026-11-12
 
 **No more doubled headings.** Now that template pages show their own title, the Library Catalog, Cart and Resources pages no longer print a second fixed heading ("Library Catalog", "Shopping Cart", "Resource Links") beneath it. A Library Catalog widget placed on a Page Builder page keeps its heading.

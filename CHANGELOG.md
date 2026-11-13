@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.110] — 2026-11-13
+
+**Guessed links to Join and Donate now land on the right page.** Addresses people commonly type from memory — /join-online/, /become-a-member/, /membership/, /donation/ and the like — now forward to the society's actual Join or Donate page instead of showing "page not found". A real page at any of those addresses still takes priority.
+
+**The link picker in the editor shows the society's own pages first.** Join, Donate, Events, Calendar, Newsletters, Library, Records, Store, Directory and My Account now appear at the top of the list before anything is typed, so linking to them is a matter of picking rather than guessing the address.
+
 ## [1.5.109] — 2026-11-13
 
 **Attach Files works on blast emails.** The Attach Files button on the email editor did nothing when clicked. It now opens the media library so files can be picked and attached.

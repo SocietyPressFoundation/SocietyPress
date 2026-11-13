@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.109
+ * Version:     1.5.110
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.109' );
+define( 'SOCIETYPRESS_VERSION', '1.5.110' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41313,7 +41313,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.109',
+            'version'     => '1.5.110',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41321,7 +41321,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.109',
+            'version'     => '1.5.110',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41329,7 +41329,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.109',
+            'version'     => '1.5.110',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41337,7 +41337,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.109',
+            'version'     => '1.5.110',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41345,7 +41345,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.109',
+            'version'     => '1.5.110',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -127757,6 +127757,147 @@ add_action( 'template_redirect', function () {
         exit;
     }
 } );
+
+/**
+ * The published page that holds a SocietyPress feature, wherever it was put.
+ *
+ * WHY not a fixed slug: the installer makes /join/, but a society is free to
+ * rename it or rebuild it in the Page Builder, so the only reliable sign of
+ * "the Join page" is the join form itself — as a shortcode in the body or as
+ * a builder widget in the page's widget list.
+ *
+ * @param string $feature 'join' or 'donate'.
+ * @return int Page ID, or 0 when the society has no such page.
+ */
+function sp_find_feature_page_id( string $feature ): int {
+    static $cache = [];
+    if ( isset( $cache[ $feature ] ) ) {
+        return $cache[ $feature ];
+    }
+
+    $markers = [
+        'join'   => [ '[societypress_join', 's:9:"join_form"' ],
+        'donate' => [ '[sp_donate' ],
+    ];
+    if ( ! isset( $markers[ $feature ] ) ) {
+        return 0;
+    }
+
+    global $wpdb;
+    $where = [];
+    $args  = [];
+    foreach ( $markers[ $feature ] as $marker ) {
+        $like    = '%' . $wpdb->esc_like( $marker ) . '%';
+        $where[] = 'p.post_content LIKE %s OR pm.meta_value LIKE %s';
+        $args[]  = $like;
+        $args[]  = $like;
+    }
+    $args[] = $feature;
+
+    // A society may have the form on more than one page; the one still at
+    // the obvious address is the one it means.
+    $cache[ $feature ] = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT p.ID
+           FROM {$wpdb->posts} p
+           LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = '_sp_page_widgets'
+          WHERE p.post_type = 'page'
+            AND p.post_status = 'publish'
+            AND ( " . implode( ' OR ', $where ) . " )
+          ORDER BY ( p.post_name = %s ) DESC, p.ID ASC
+          LIMIT 1",
+        $args
+    ) );
+
+    return $cache[ $feature ];
+}
+
+/**
+ * Send the addresses people guess for Join and Donate to the real pages.
+ *
+ * WHY: a volunteer writing a page links to the Join page by typing what its
+ * address probably is — /join-online/, /become-a-member/ — and a visitor who
+ * clicks gets a "page not found" at exactly the moment they meant to join.
+ * Only ever consulted on a 404, so a society's own page at any of these
+ * addresses always wins.
+ */
+add_action( 'template_redirect', function () {
+    if ( ! is_404() ) {
+        return;
+    }
+
+    $requested = get_query_var( 'pagename' );
+    if ( '' === $requested ) {
+        $requested = get_query_var( 'name' );
+    }
+    if ( '' === $requested ) {
+        return;
+    }
+    $slug = strtolower( basename( untrailingslashit( (string) $requested ) ) );
+
+    $guesses = [
+        'join'   => [ 'join', 'join-online', 'joinonline', 'online-join', 'join-us', 'joinus', 'join-now',
+                      'become-a-member', 'becomeamember', 'membership', 'memberships',
+                      'membership-application', 'sign-up', 'signup', 'renew', 'renewal', 'renew-membership' ],
+        'donate' => [ 'donate', 'donation', 'donations', 'donate-online', 'give', 'giving', 'support-us' ],
+    ];
+
+    foreach ( $guesses as $feature => $slugs ) {
+        if ( ! in_array( $slug, $slugs, true ) ) {
+            continue;
+        }
+        $page_id = sp_find_feature_page_id( $feature );
+        $link    = $page_id ? get_permalink( $page_id ) : '';
+        if ( $link ) {
+            wp_safe_redirect( $link, 301 );
+            exit;
+        }
+        return;
+    }
+}, 11 );
+
+/**
+ * Put the society's own pages at the top of the editor's link picker.
+ *
+ * WHY: until a word is typed, the picker lists whatever was edited most
+ * recently, so the Join page is buried and the volunteer types an address
+ * from memory instead — and gets it wrong. Showing the pages people link to
+ * most means picking the right one instead of guessing.
+ */
+add_filter( 'wp_link_query', function ( $results, $query ) {
+    if ( ! empty( $query['s'] ) || ! empty( $query['offset'] ) ) {
+        return $results;
+    }
+
+    $ids = [
+        sp_find_feature_page_id( 'join' ),
+        sp_find_feature_page_id( 'donate' ),
+    ];
+    $templates = [ 'sp-events', 'sp-calendar', 'sp-newsletter-archive', 'sp-library-catalog',
+                   'sp-records', 'sp-store', 'sp-directory', 'sp-my-account' ];
+    foreach ( $templates as $template ) {
+        $pages = get_pages( [
+            'meta_key'   => '_wp_page_template',
+            'meta_value' => $template,
+            'number'     => 1,
+        ] );
+        $ids[] = $pages ? (int) $pages[0]->ID : 0;
+    }
+
+    $ours = [];
+    foreach ( array_unique( array_filter( $ids ) ) as $id ) {
+        $ours[] = [
+            'ID'        => $id,
+            'title'     => trim( esc_html( wp_strip_all_tags( get_the_title( $id ) ) ) ),
+            'permalink' => get_permalink( $id ),
+            'info'      => __( 'Society page', 'societypress' ),
+        ];
+    }
+
+    $ids    = wp_list_pluck( $ours, 'ID' );
+    $others = array_filter( (array) $results, static fn( $r ) => ! in_array( (int) $r['ID'], $ids, true ) );
+
+    return array_merge( $ours, array_values( $others ) );
+}, 10, 2 );
 
 
 // ============================================================================

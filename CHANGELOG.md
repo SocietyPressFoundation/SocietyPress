@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.111] — 2026-11-13
+
+**View Site in the admin sidebar.** A View Site item now sits just above Log Out, so getting from the dashboard back to the public website is one click.
+
 ## [1.5.110] — 2026-11-13
 
 **Guessed links to Join and Donate now land on the right page.** Addresses people commonly type from memory — /join-online/, /become-a-member/, /membership/, /donation/ and the like — now forward to the society's actual Join or Donate page instead of showing "page not found". A real page at any of those addresses still takes priority.

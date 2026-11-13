@@ -374,9 +374,12 @@ $sp_section_locked = function ( $section ) {
                 $sp_exp_fmt = ( $sp_exp_raw && '0000-00-00' !== $sp_exp_raw )
                     ? date_i18n( get_option( 'date_format' ), strtotime( $sp_exp_raw ) )
                     : '';
-                // Renewal runs through the same join page (the join form links
-                // existing accounts), planted at slug "join".
-                $sp_join_page = get_page_by_path( 'join' );
+                // Renewal runs through the join form (it links existing
+                // accounts). Look for the page that actually holds the form:
+                // a society may keep /join/ as an information page and put the
+                // form on a page of its own.
+                $sp_join_id   = function_exists( 'sp_find_feature_page_id' ) ? sp_find_feature_page_id( 'join' ) : 0;
+                $sp_join_page = $sp_join_id ? get_post( $sp_join_id ) : get_page_by_path( 'join' );
                 $sp_renew_url = $sp_join_page ? get_permalink( $sp_join_page ) : home_url( '/join/' );
             ?>
                 <?php /* role="status", not "alert": this banner is present on every

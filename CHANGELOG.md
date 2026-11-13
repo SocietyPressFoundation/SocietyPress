@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.112] — 2026-11-13
+
+**Renew links follow the join form.** The "renew now" notice on My Account sent members to /join/ even when the society had moved its join form to a page of its own. It now goes to whichever page holds the form.
+
 ## [1.5.111] — 2026-11-13
 
 **View Site in the admin sidebar.** A View Site item now sits just above Log Out, so getting from the dashboard back to the public website is one click.

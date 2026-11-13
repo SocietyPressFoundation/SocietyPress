@@ -1228,31 +1228,21 @@ $sp_section_locked = function ( $section ) {
             ?>
             <?php if ( $member ) : ?>
             <section class="sp-account-section" id="interests">
-                <h2><?php esc_html_e( 'Interests & Skills', 'societypress' ); ?></h2>
+                <h2><?php esc_html_e( 'Interests, Skills & Volunteering', 'societypress' ); ?></h2>
 
                 <form method="post" class="sp-account-form">
                     <?php wp_nonce_field( 'sp_update_interests', 'sp_interests_nonce' ); ?>
                     <input type="hidden" name="sp_action" value="update_interests" />
 
-                    <div class="sp-form-field">
-                        <label for="sp-interests"><?php esc_html_e( 'Interests', 'societypress' ); ?></label>
-                        <textarea id="sp-interests" name="interests" rows="3"
-                                  aria-describedby="sp-interests-hint"
-                                  placeholder="<?php esc_attr_e( 'e.g., Texas Rangers, Civil War records, DNA research, cemetery preservation', 'societypress' ); ?>"
-                        ><?php echo esc_textarea( sp_m( $member, 'interests' ) ); ?></textarea>
-                        <p class="sp-field-hint" id="sp-interests-hint"><?php esc_html_e( 'Genealogical topics, time periods, or geographic areas you\'re interested in.', 'societypress' ); ?></p>
-                    </div>
+                    <?php
+                    // The same checklists the join form asks, so a member can
+                    // change their answers here (see the plugin's MEMBER CHOICES).
+                    if ( function_exists( 'sp_member_choices_fields' ) ) {
+                        echo sp_member_choices_fields( sp_get_member_choices( (int) $user->ID ), 'account' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper.
+                    }
+                    ?>
 
-                    <div class="sp-form-field">
-                        <label for="sp-skills"><?php esc_html_e( 'Skills', 'societypress' ); ?></label>
-                        <textarea id="sp-skills" name="skills" rows="3"
-                                  aria-describedby="sp-skills-hint"
-                                  placeholder="<?php esc_attr_e( 'e.g., German translation, courthouse research, photo restoration, web design', 'societypress' ); ?>"
-                        ><?php echo esc_textarea( sp_m( $member, 'skills' ) ); ?></textarea>
-                        <p class="sp-field-hint" id="sp-skills-hint"><?php esc_html_e( 'Skills or expertise you\'d be willing to share with other members.', 'societypress' ); ?></p>
-                    </div>
-
-                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save Interests & Skills', 'societypress' ); ?></button>
+                    <button type="submit" class="sp-button"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
                 </form>
             </section>
             <?php endif; ?>

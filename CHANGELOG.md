@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.113] — 2026-11-13
+
+**The join form asks about volunteering, lineage groups, interests and genealogy skills.** Each is a checklist with a box underneath for anything the list misses. Skills also asks how experienced the person is, and Lineage Groups asks both which lineage societies they already belong to and which of the society's own lineage programs they might apply to.
+
+- Every list is the society's to edit, and each section can be switched off, under Settings → Membership → Join Form Questions. New sites start with a sensible list for each.
+- Members can change their answers in My Account, and the office can see and change them on the member's record.
+- When someone offers to volunteer, the volunteer coordinator is emailed; when someone shows interest in a lineage program, the lineage chair is. Either address can be set in Settings; otherwise the society's main email is used.
+- The Volunteer Roster page now lists the members who offered to help, grouped by area.
+- Skills and interests already written on member records are kept as they are, in the text boxes under each list.
+
+**Name Prefix and Suffix lists now save.** Editing them in Settings → Membership said "saved" but kept nothing.
+
 ## [1.5.112] — 2026-11-13
 
 **Renew links follow the join form.** The "renew now" notice on My Account sent members to /join/ even when the society had moved its join form to a page of its own. It now goes to whichever page holds the form.

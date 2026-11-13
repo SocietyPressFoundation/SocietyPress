@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.112
+ * Version:     1.5.113
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.112' );
+define( 'SOCIETYPRESS_VERSION', '1.5.113' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1057,6 +1057,24 @@ function sp_create_tables(): void {
         PRIMARY KEY (id),
         KEY user_id (user_id),
         KEY area (area(100))
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_member_choices — Checklist answers: volunteering, lineage groups,
+    // interests, skills, experience level (see MEMBER CHOICES)
+    //
+    // WHY rows rather than a column per question: the lists are the society's
+    // to edit, so the answers have to be countable and searchable by value.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}member_choices (
+        id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id     BIGINT(20) UNSIGNED NOT NULL,
+        kind        VARCHAR(30)         NOT NULL,
+        choice      VARCHAR(255)        NOT NULL,
+        created_at  DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY user_kind (user_id, kind),
+        KEY kind_choice (kind, choice(100))
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -11948,11 +11966,7 @@ function sp_handle_account_forms() {
     if ( $action === 'update_interests' ) {
         if ( ! wp_verify_nonce( $_POST['sp_interests_nonce'] ?? '', 'sp_update_interests' ) ) { wp_redirect( add_query_arg( 'sp-error', 'nonce', $account_url ) ); exit; }
         if ( ! sp_user_has_member_record( $user->ID ) ) { wp_redirect( add_query_arg( 'sp-error', 'no-member', $account_url ) ); exit; }
-        $wpdb->update( $table, [
-            'interests'  => sanitize_textarea_field( wp_unslash( $_POST['interests'] ?? '' ) ),
-            'skills'     => sanitize_textarea_field( wp_unslash( $_POST['skills'] ?? '' ) ),
-            'updated_at' => current_time( 'mysql' ),
-        ], [ 'user_id' => $user->ID ] );
+        sp_member_choices_notify( $user->ID, sp_member_choices_save( $user->ID, wp_unslash( $_POST ) ) );
         wp_redirect( add_query_arg( 'sp-updated', 'interests', $account_url . '#interests' ) ); exit;
     }
 
@@ -12954,11 +12968,7 @@ add_action( 'wp_ajax_sp_save_account', function() {
         if ( ! sp_user_has_member_record( $user->ID ) ) {
             wp_send_json_error( [ 'message' => __( 'Member record not found.', 'societypress' ) ] );
         }
-        $wpdb->update( $table, [
-            'interests'  => sanitize_textarea_field( wp_unslash( $_POST['interests'] ?? '' ) ),
-            'skills'     => sanitize_textarea_field( wp_unslash( $_POST['skills'] ?? '' ) ),
-            'updated_at' => current_time( 'mysql' ),
-        ], [ 'user_id' => $user->ID ] );
+        sp_member_choices_notify( $user->ID, sp_member_choices_save( $user->ID, wp_unslash( $_POST ) ) );
         wp_send_json_success( [ 'message' => __( 'Interests and skills saved.', 'societypress' ) ] );
     }
 
@@ -25988,6 +25998,10 @@ add_action( 'admin_init', function () {
         }
     }
 
+    // Interests, skills, volunteering, lineage. No notices from here: the
+    // person saving is the office, which already knows what it just ticked.
+    sp_member_choices_save( (int) $user_id, wp_unslash( $_POST ) );
+
     // ================================================================
     // NEW NOTE — Only insert if Harold actually typed something
     // ================================================================
@@ -28117,6 +28131,16 @@ function sp_render_member_edit_page(): void {
                             }
                         });
                     </script>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- SECTION: Interests, Skills & Volunteering -->
+            <!-- ============================================================ -->
+            <div class="sp-section">
+                <h2><?php esc_html_e( 'Interests, Skills & Volunteering', 'societypress' ); ?></h2>
+                <div class="sp-section-body">
+                    <?php echo sp_member_choices_fields( sp_get_member_choices( (int) $user_id ), 'admin' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
                 </div>
             </div>
 
@@ -33533,6 +33557,65 @@ add_action( 'admin_init', function () {
         'sp_membership_section'
     );
 
+    // --- Join form questions (see MEMBER CHOICES) ---
+    add_settings_section(
+        'sp_join_questions_section',
+        __( 'Join Form Questions', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'Checklists new members see on the join form, and every member sees in My Account. Edit any list — one choice per line — or leave it blank to use the starter list.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership'
+    );
+
+    $sp_join_sections = [
+        'volunteer' => [ __( 'Volunteering', 'societypress' ), 'join_volunteer_areas', 'volunteer', __( 'Areas a member can offer to help with.', 'societypress' ) ],
+        'lineage'   => [ __( 'Lineage Groups', 'societypress' ), 'join_lineage_groups', 'lineage_member', __( 'Lineage societies a member may already belong to. Your own lineage programs that are taking applications are listed below these automatically.', 'societypress' ) ],
+        'interests' => [ __( 'Interests', 'societypress' ), 'join_interest_choices', 'interest', __( 'Research topics a member can tick.', 'societypress' ) ],
+        'skills'    => [ __( 'Genealogy Skills', 'societypress' ), 'join_skill_choices', 'skill', __( 'Skills a member could share. Members are also asked how experienced they are.', 'societypress' ) ],
+    ];
+    foreach ( $sp_join_sections as $sp_section => [ $sp_title, $sp_key, $sp_kind, $sp_help ] ) {
+        add_settings_field(
+            'sp_join_' . $sp_section,
+            $sp_title,
+            function () use ( $sp_section, $sp_key, $sp_kind, $sp_help ) {
+                printf(
+                    '<label><input type="checkbox" name="societypress_settings[join_ask_%1$s]" value="1"%2$s> %3$s</label>',
+                    esc_attr( $sp_section ),
+                    checked( sp_join_asks( $sp_section ), true, false ),
+                    esc_html__( 'Ask on the join form and in My Account', 'societypress' )
+                );
+                printf(
+                    '<br><textarea name="societypress_settings[%1$s]" rows="6" class="large-text">%2$s</textarea>',
+                    esc_attr( $sp_key ),
+                    esc_textarea( implode( "\n", sp_member_choice_options( $sp_kind ) ) )
+                );
+                echo '<p class="description">' . esc_html( $sp_help ) . '</p>';
+            },
+            'sp-settings-membership',
+            'sp_join_questions_section'
+        );
+    }
+
+    foreach ( [
+        'volunteer_coordinator_email' => [ __( 'Volunteer Offers Go To', 'societypress' ), __( 'Who is emailed when a member ticks something under Volunteering. Leave blank to use the society\'s main email address.', 'societypress' ) ],
+        'lineage_chair_email'         => [ __( 'Lineage Interest Goes To', 'societypress' ), __( 'Who is emailed when a member says they might apply to one of your lineage programs. Leave blank to use the society\'s main email address.', 'societypress' ) ],
+    ] as $sp_key => [ $sp_title, $sp_help ] ) {
+        add_settings_field(
+            'sp_' . $sp_key,
+            $sp_title,
+            function () use ( $sp_key, $sp_help ) {
+                printf(
+                    '<input type="email" name="societypress_settings[%1$s]" value="%2$s" class="regular-text">',
+                    esc_attr( $sp_key ),
+                    esc_attr( sp_settings()[ $sp_key ] ?? '' )
+                );
+                echo '<p class="description">' . esc_html( $sp_help ) . '</p>';
+            },
+            'sp-settings-membership',
+            'sp_join_questions_section'
+        );
+    }
+
     // --- Grace Period ---
     // WHY: Societies typically give existing members a window to renew
     //      after the new period starts before dropping them. This setting
@@ -34696,6 +34779,19 @@ function sp_sanitize_settings( array $input ): array {
         'name_prefixes' => fn() => sp_sanitize_picklist_input( $input['name_prefixes'] ?? '' ),
         'name_suffixes' => fn() => sp_sanitize_picklist_input( $input['name_suffixes'] ?? '' ),
 
+        // Join form questions (Membership tab). Unticked checkboxes send
+        // nothing, which correctly saves as "don't ask".
+        'join_ask_volunteer'          => fn() => ! empty( $input['join_ask_volunteer'] ) ? 1 : 0,
+        'join_ask_lineage'            => fn() => ! empty( $input['join_ask_lineage'] ) ? 1 : 0,
+        'join_ask_interests'          => fn() => ! empty( $input['join_ask_interests'] ) ? 1 : 0,
+        'join_ask_skills'             => fn() => ! empty( $input['join_ask_skills'] ) ? 1 : 0,
+        'join_volunteer_areas'        => fn() => sp_sanitize_choice_list_input( $input['join_volunteer_areas'] ?? '' ),
+        'join_lineage_groups'         => fn() => sp_sanitize_choice_list_input( $input['join_lineage_groups'] ?? '' ),
+        'join_interest_choices'       => fn() => sp_sanitize_choice_list_input( $input['join_interest_choices'] ?? '' ),
+        'join_skill_choices'          => fn() => sp_sanitize_choice_list_input( $input['join_skill_choices'] ?? '' ),
+        'volunteer_coordinator_email' => fn() => sanitize_email( $input['volunteer_coordinator_email'] ?? '' ),
+        'lineage_chair_email'         => fn() => sanitize_email( $input['lineage_chair_email'] ?? '' ),
+
         // Member self-service locks (Privacy tab)
         'member_lock_contact'     => fn() => ! empty( $input['member_lock_contact'] ) ? 1 : 0,
         'member_lock_password'    => fn() => ! empty( $input['member_lock_password'] ) ? 1 : 0,
@@ -34926,6 +35022,12 @@ function sp_sanitize_settings( array $input ): array {
             'membership_max_years', 'membership_email', 'groups_auto_remove_expired',
             'grace_period_months', 'renewal_opens_months', 'renewal_reminder_30d', 'renewal_reminder_15d',
             'renewal_reminder_7d', 'renewal_reminder_subject',
+            // WHY the name lists are here: they sit on this tab but were never
+            // listed, so editing them showed "saved" and kept nothing.
+            'name_prefixes', 'name_suffixes',
+            'join_ask_volunteer', 'join_ask_lineage', 'join_ask_interests', 'join_ask_skills',
+            'join_volunteer_areas', 'join_lineage_groups', 'join_interest_choices', 'join_skill_choices',
+            'volunteer_coordinator_email', 'lineage_chair_email',
         ]);
     }
 
@@ -41325,7 +41427,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.112',
+            'version'     => '1.5.113',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41333,7 +41435,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.112',
+            'version'     => '1.5.113',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41341,7 +41443,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.112',
+            'version'     => '1.5.113',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41349,7 +41451,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.112',
+            'version'     => '1.5.113',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41357,7 +41459,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.112',
+            'version'     => '1.5.113',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -64993,6 +65095,578 @@ function sp_ajax_export_registrations(): void {
 
 
 // ============================================================================
+// MEMBER CHOICES — volunteering, lineage groups, interests, skills
+// ============================================================================
+//
+// WHY: A society learns the most about a new member at the moment they join,
+//      and the questions it most wants answered — what would you help with,
+//      what are you interested in, what do you know how to do — were either
+//      missing from the join form or only free-text boxes nobody can sort or
+//      count. Each is now a checklist the society edits in Settings →
+//      Membership, with a free-text box under it for anything the list misses.
+//      The old free-text Skills and Interests columns stay exactly as they
+//      were, so answers carried over from an old site are never lost.
+// ============================================================================
+
+/**
+ * Whether the join form asks about one of the four sections.
+ *
+ * WHY default on: a setting the society has never saved should not hide a
+ * question — the volunteer setting things up would never think to switch it on.
+ *
+ * @param string $section 'volunteer', 'lineage', 'interests' or 'skills'.
+ */
+function sp_join_asks( string $section ): bool {
+    $settings = sp_settings();
+    $key      = 'join_ask_' . $section;
+    return ! array_key_exists( $key, $settings ) || ! empty( $settings[ $key ] );
+}
+
+/**
+ * Read a one-entry-per-line list setting, falling back to a starter list.
+ *
+ * WHY not sp_parse_picklist_setting(): that one also splits on commas and is
+ * sized for "Dr." and "Jr."; these entries are phrases that may hold a comma.
+ *
+ * @return string[]
+ */
+function sp_choice_list_setting( string $key, array $default ): array {
+    $raw = (string) ( sp_settings()[ $key ] ?? '' );
+    if ( trim( $raw ) === '' ) {
+        return $default;
+    }
+    $items = array_filter( array_map( 'trim', preg_split( '/\r\n|\r|\n/', $raw ) ), static fn( $v ) => $v !== '' );
+    return array_values( array_unique( $items ) );
+}
+
+/**
+ * Clean a one-entry-per-line list on save. '' means "use the starter list".
+ */
+function sp_sanitize_choice_list_input( $raw ): string {
+    $clean = [];
+    foreach ( preg_split( '/\r\n|\r|\n/', (string) $raw ) as $item ) {
+        $item = trim( wp_strip_all_tags( (string) $item ) );
+        if ( $item === '' ) {
+            continue;
+        }
+        $item = function_exists( 'mb_substr' ) ? mb_substr( $item, 0, 150 ) : substr( $item, 0, 150 );
+        if ( ! in_array( $item, $clean, true ) ) {
+            $clean[] = $item;
+        }
+    }
+    return implode( "\n", $clean );
+}
+
+/**
+ * The starter lists, and the setting each one is stored under.
+ *
+ * @return array<string, array{setting:string, default:string[]}>
+ */
+function sp_member_choice_lists(): array {
+    return [
+        'volunteer' => [
+            'setting' => 'join_volunteer_areas',
+            'default' => [
+                __( 'Library', 'societypress' ),
+                __( 'Greeting and hospitality at meetings', 'societypress' ),
+                __( 'Newsletter and publications', 'societypress' ),
+                __( 'Programs and classes', 'societypress' ),
+                __( 'Helping people with their research', 'societypress' ),
+                __( 'Indexing and transcribing records', 'societypress' ),
+                __( 'Cemetery surveys', 'societypress' ),
+                __( 'Website and computers', 'societypress' ),
+                __( 'Publicity', 'societypress' ),
+                __( 'Fundraising', 'societypress' ),
+            ],
+        ],
+        'interest' => [
+            'setting' => 'join_interest_choices',
+            'default' => [
+                __( 'DNA and genetic genealogy', 'societypress' ),
+                __( 'Military records', 'societypress' ),
+                __( 'Immigration and naturalization', 'societypress' ),
+                __( 'Land and property records', 'societypress' ),
+                __( 'Courthouse and vital records', 'societypress' ),
+                __( 'Church records', 'societypress' ),
+                __( 'Cemeteries', 'societypress' ),
+                __( 'African American research', 'societypress' ),
+                __( 'Hispanic research', 'societypress' ),
+                __( 'German research', 'societypress' ),
+                __( 'Irish and British research', 'societypress' ),
+                __( 'Writing a family history', 'societypress' ),
+                __( 'Preserving photos and documents', 'societypress' ),
+            ],
+        ],
+        'skill' => [
+            'setting' => 'join_skill_choices',
+            'default' => [
+                __( 'Reading old handwriting', 'societypress' ),
+                __( 'Translating a foreign language', 'societypress' ),
+                __( 'Courthouse and archive research', 'societypress' ),
+                __( 'Online records and databases', 'societypress' ),
+                __( 'DNA results', 'societypress' ),
+                __( 'Family tree software', 'societypress' ),
+                __( 'Scanning and restoring photos', 'societypress' ),
+                __( 'Writing and editing', 'societypress' ),
+                __( 'Teaching or giving talks', 'societypress' ),
+                __( 'Computers and websites', 'societypress' ),
+            ],
+        ],
+        'lineage_member' => [
+            'setting' => 'join_lineage_groups',
+            'default' => [
+                __( 'Daughters of the American Revolution (DAR)', 'societypress' ),
+                __( 'Sons of the American Revolution (SAR)', 'societypress' ),
+                __( 'General Society of Mayflower Descendants', 'societypress' ),
+                __( 'National Society Colonial Dames of America', 'societypress' ),
+                __( 'United Daughters of the Confederacy (UDC)', 'societypress' ),
+                __( 'Sons of Confederate Veterans (SCV)', 'societypress' ),
+                __( 'Sons of Union Veterans of the Civil War', 'societypress' ),
+            ],
+        ],
+    ];
+}
+
+/**
+ * The choices currently offered for one list.
+ *
+ * @return string[]
+ */
+function sp_member_choice_options( string $kind ): array {
+    $lists = sp_member_choice_lists();
+    return isset( $lists[ $kind ] ) ? sp_choice_list_setting( $lists[ $kind ]['setting'], $lists[ $kind ]['default'] ) : [];
+}
+
+/**
+ * Genealogy experience levels — fixed, because three plain steps cover it.
+ *
+ * @return array<string,string>
+ */
+function sp_member_experience_levels(): array {
+    return [
+        'beginner'    => __( 'Just getting started', 'societypress' ),
+        'some'        => __( 'Some experience', 'societypress' ),
+        'experienced' => __( 'Experienced', 'societypress' ),
+    ];
+}
+
+/**
+ * The society's own lineage programs that are taking applications.
+ *
+ * @return array<int,string> id => name
+ */
+function sp_member_lineage_programs_open(): array {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_lineage_programs';
+    if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) !== $table ) {
+        return [];
+    }
+    $rows = $wpdb->get_results( "SELECT id, name FROM {$table} WHERE active = 1 AND accepts_applications = 1 ORDER BY sort_order, name" );
+    $out  = [];
+    foreach ( (array) $rows as $row ) {
+        $out[ (int) $row->id ] = $row->name;
+    }
+    return $out;
+}
+
+/**
+ * Everything one member has answered, keyed by kind.
+ *
+ * @return array<string, string[]> Also carries 'interests_text' and 'skills_text'.
+ */
+function sp_get_member_choices( int $user_id ): array {
+    global $wpdb;
+    $out = [];
+    if ( $user_id <= 0 ) {
+        return $out;
+    }
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT kind, choice FROM {$wpdb->prefix}sp_member_choices WHERE user_id = %d ORDER BY id",
+        $user_id
+    ) );
+    foreach ( (array) $rows as $row ) {
+        $out[ $row->kind ][] = $row->choice;
+    }
+    $member = $wpdb->get_row( $wpdb->prepare(
+        "SELECT interests, skills FROM {$wpdb->prefix}sp_members WHERE user_id = %d",
+        $user_id
+    ) );
+    $out['interests_text'] = [ (string) ( $member->interests ?? '' ) ];
+    $out['skills_text']    = [ (string) ( $member->skills ?? '' ) ];
+    return $out;
+}
+
+/**
+ * Shape a submitted form back into the same structure, so a join form that
+ * comes back with an error keeps every box the applicant ticked.
+ */
+function sp_member_choices_from_post( array $post ): array {
+    $out = [];
+    foreach ( (array) ( $post['sp_choice'] ?? [] ) as $kind => $values ) {
+        $out[ sanitize_key( $kind ) ] = array_map( 'sanitize_text_field', (array) $values );
+    }
+    foreach ( [ 'volunteer_note', 'lineage_note' ] as $note ) {
+        if ( isset( $post[ $note ] ) ) {
+            $out[ $note ] = [ sanitize_textarea_field( (string) $post[ $note ] ) ];
+        }
+    }
+    $out['interests_text'] = [ sanitize_textarea_field( (string) ( $post['interests'] ?? '' ) ) ];
+    $out['skills_text']    = [ sanitize_textarea_field( (string) ( $post['skills'] ?? '' ) ) ];
+    return $out;
+}
+
+/**
+ * One checklist. Anything the member already has that is no longer on the
+ * society's list still shows, ticked, so editing the list never silently
+ * erases an answer the next time the member saves.
+ */
+function sp_member_choices_checklist( string $kind, array $options, array $current ): string {
+    $values = $options;
+    foreach ( $current as $value ) {
+        if ( ! in_array( $value, $values, true ) && ! isset( $options[ $value ] ) ) {
+            $values[] = $value;
+        }
+    }
+    $is_map = array_keys( $options ) !== range( 0, count( $options ) - 1 );
+
+    $html = '<div class="sp-choices">';
+    foreach ( $values as $key => $label ) {
+        $value = $is_map && isset( $options[ $key ] ) ? (string) $key : (string) $label;
+        $html .= sprintf(
+            '<label class="sp-choice"><input type="checkbox" name="sp_choice[%1$s][]" value="%2$s"%3$s> %4$s</label>',
+            esc_attr( $kind ),
+            esc_attr( $value ),
+            in_array( $value, $current, true ) ? ' checked' : '',
+            esc_html( $label )
+        );
+    }
+    return $html . '</div>';
+}
+
+/**
+ * The four sections, for the join form, My Account, or the admin member screen.
+ *
+ * WHY one renderer: three screens ask the same questions, and three copies of
+ * the markup would drift apart the first time a list changed.
+ *
+ * @param array  $current From sp_get_member_choices() or sp_member_choices_from_post().
+ * @param string $context 'join', 'account' or 'admin'.
+ */
+function sp_member_choices_fields( array $current, string $context ): string {
+    static $styled = false;
+    $join = ( 'join' === $context );
+    $get  = static fn( $k ) => (array) ( $current[ $k ] ?? [] );
+    $one  = static fn( $k ) => (string) ( $current[ $k ][0] ?? '' );
+
+    ob_start();
+    if ( ! $styled ) {
+        $styled = true;
+        ?>
+        <style>
+            .sp-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 16px; margin: 6px 0 14px; }
+            .sp-choices .sp-choice, .sp-join-form .sp-choices .sp-choice { display: flex; gap: 8px; align-items: flex-start; font-weight: normal; margin: 0; }
+            .sp-choices .sp-choice input { margin-top: 3px; }
+            .sp-choices-group { margin-bottom: 20px; }
+            .sp-choices-group h3 { margin: 18px 0 4px; font-size: 1rem; }
+            .sp-choices-group textarea, .sp-choices-group input[type="text"] { width: 100%; max-width: 640px; }
+        </style>
+        <?php
+    }
+
+    $section = static function ( string $title, string $intro, callable $body ) use ( $join ) {
+        if ( $join ) {
+            echo '<fieldset class="sp-choices-group"><legend>' . esc_html( $title ) . '</legend>';
+        } else {
+            echo '<div class="sp-choices-group"><h3>' . esc_html( $title ) . '</h3>';
+        }
+        if ( $intro !== '' ) {
+            echo '<p class="sp-field-help">' . esc_html( $intro ) . '</p>';
+        }
+        $body();
+        echo $join ? '</fieldset>' : '</div>';
+    };
+
+    $text_box = static function ( string $name, string $id, string $label, string $value ) {
+        echo '<label for="' . esc_attr( $id ) . '">' . esc_html( $label ) . '</label>';
+        echo '<textarea id="' . esc_attr( $id ) . '" name="' . esc_attr( $name ) . '" rows="2">' . esc_textarea( $value ) . '</textarea>';
+    };
+
+    // Volunteering
+    if ( sp_join_asks( 'volunteer' ) ) {
+        $section(
+            __( 'Volunteering', 'societypress' ),
+            $join ? __( 'Optional. Tick anything you might like to help with — it doesn\'t commit you to anything, it just lets us know whom to ask.', 'societypress' ) : '',
+            function () use ( $get, $one, $text_box, $context ) {
+                echo '<input type="hidden" name="sp_choices_present[]" value="volunteer">';
+                echo sp_member_choices_checklist( 'volunteer', sp_member_choice_options( 'volunteer' ), $get( 'volunteer' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper.
+                $text_box( 'volunteer_note', 'sp-volunteer-note-' . $context, __( 'Anything else you\'d like to help with?', 'societypress' ), $one( 'volunteer_note' ) );
+            }
+        );
+    }
+
+    // Lineage groups
+    if ( sp_join_asks( 'lineage' ) ) {
+        $programs = sp_member_lineage_programs_open();
+        $section(
+            __( 'Lineage Groups', 'societypress' ),
+            $join ? __( 'Optional.', 'societypress' ) : '',
+            function () use ( $get, $one, $text_box, $context, $programs ) {
+                echo '<input type="hidden" name="sp_choices_present[]" value="lineage">';
+                echo '<p><strong>' . esc_html__( 'Lineage societies you already belong to', 'societypress' ) . '</strong></p>';
+                echo sp_member_choices_checklist( 'lineage_member', sp_member_choice_options( 'lineage_member' ), $get( 'lineage_member' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper.
+                $text_box( 'lineage_note', 'sp-lineage-note-' . $context, __( 'Any others?', 'societypress' ), $one( 'lineage_note' ) );
+                if ( $programs ) {
+                    echo '<p><strong>' . esc_html__( 'Our lineage programs you might like to apply to', 'societypress' ) . '</strong></p>';
+                    $options = [];
+                    foreach ( $programs as $id => $name ) {
+                        $options[ (string) $id ] = $name;
+                    }
+                    echo sp_member_choices_checklist( 'lineage_apply', $options, $get( 'lineage_apply' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper.
+                }
+            }
+        );
+    }
+
+    // Interests — the text box is the long-standing Interests field, so it
+    // stays on My Account and the admin screen even when the list is off.
+    if ( ! $join || sp_join_asks( 'interests' ) ) :
+    $section(
+        __( 'Interests', 'societypress' ),
+        '',
+        function () use ( $get, $one, $text_box, $context ) {
+            if ( sp_join_asks( 'interests' ) ) {
+                echo '<input type="hidden" name="sp_choices_present[]" value="interest">';
+                echo sp_member_choices_checklist( 'interest', sp_member_choice_options( 'interest' ), $get( 'interest' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper.
+            }
+            $text_box( 'interests', 'sp-interests-' . $context, __( 'Other interests — topics, places or time periods', 'societypress' ), $one( 'interests_text' ) );
+        }
+    );
+    endif;
+
+    // Genealogy skills — the text box is the long-standing Skills field.
+    if ( ! $join || sp_join_asks( 'skills' ) ) :
+    $section(
+        __( 'Genealogy Skills', 'societypress' ),
+        '',
+        function () use ( $get, $one, $text_box, $context ) {
+            if ( sp_join_asks( 'skills' ) ) {
+                echo '<input type="hidden" name="sp_choices_present[]" value="skill">';
+                $level = $one( 'experience' );
+                echo '<p><strong>' . esc_html__( 'Your genealogy experience', 'societypress' ) . '</strong></p><div class="sp-choices">';
+                foreach ( sp_member_experience_levels() as $key => $label ) {
+                    printf(
+                        '<label class="sp-choice"><input type="radio" name="sp_choice[experience][]" value="%1$s"%2$s> %3$s</label>',
+                        esc_attr( $key ),
+                        $level === $key ? ' checked' : '',
+                        esc_html( $label )
+                    );
+                }
+                echo '</div><p><strong>' . esc_html__( 'Skills you could share with other members', 'societypress' ) . '</strong></p>';
+                echo sp_member_choices_checklist( 'skill', sp_member_choice_options( 'skill' ), $get( 'skill' ) ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper.
+            }
+            $text_box( 'skills', 'sp-skills-' . $context, __( 'Other skills or background', 'societypress' ), $one( 'skills_text' ) );
+        }
+    );
+
+    endif;
+
+    return ob_get_clean();
+}
+
+/**
+ * Save the four sections for one member.
+ *
+ * Only the sections the form actually showed are touched (sp_choices_present),
+ * so a section the society switched off never wipes a member's old answers.
+ *
+ * @param array $post Unslashed $_POST.
+ * @return array{volunteer:string[], lineage_apply:string[]} Newly ticked, for notices.
+ */
+function sp_member_choices_save( int $user_id, array $post ): array {
+    global $wpdb;
+    $table   = $wpdb->prefix . 'sp_member_choices';
+    $before  = sp_get_member_choices( $user_id );
+    $present = array_map( 'sanitize_key', (array) ( $post['sp_choices_present'] ?? [] ) );
+    $chosen  = (array) ( $post['sp_choice'] ?? [] );
+
+    $kinds = [];
+    if ( in_array( 'volunteer', $present, true ) ) {
+        $kinds['volunteer']      = sp_member_choice_options( 'volunteer' );
+        $kinds['volunteer_note'] = null;
+    }
+    if ( in_array( 'lineage', $present, true ) ) {
+        $kinds['lineage_member'] = sp_member_choice_options( 'lineage_member' );
+        $kinds['lineage_note']   = null;
+        $kinds['lineage_apply']  = array_map( 'strval', array_keys( sp_member_lineage_programs_open() ) );
+    }
+    if ( in_array( 'interest', $present, true ) ) {
+        $kinds['interest'] = sp_member_choice_options( 'interest' );
+    }
+    if ( in_array( 'skill', $present, true ) ) {
+        $kinds['skill']      = sp_member_choice_options( 'skill' );
+        $kinds['experience'] = array_keys( sp_member_experience_levels() );
+    }
+
+    $now = current_time( 'mysql' );
+    foreach ( $kinds as $kind => $allowed ) {
+        $values = [];
+        if ( null === $allowed ) {
+            $note = trim( sanitize_textarea_field( (string) ( $post[ $kind ] ?? '' ) ) );
+            if ( $note !== '' ) {
+                $values[] = function_exists( 'mb_substr' ) ? mb_substr( $note, 0, 255 ) : substr( $note, 0, 255 );
+            }
+        } else {
+            // Accept what is on the list now, plus anything the member already
+            // had — the form shows retired entries ticked so they can be kept.
+            $keep = array_merge( $allowed, (array) ( $before[ $kind ] ?? [] ) );
+            foreach ( (array) ( $chosen[ $kind ] ?? [] ) as $value ) {
+                $value = sanitize_text_field( (string) $value );
+                if ( in_array( $value, $keep, true ) && ! in_array( $value, $values, true ) ) {
+                    $values[] = $value;
+                }
+            }
+            if ( 'experience' === $kind ) {
+                $values = array_slice( $values, 0, 1 );
+            }
+        }
+
+        $wpdb->delete( $table, [ 'user_id' => $user_id, 'kind' => $kind ] );
+        foreach ( $values as $value ) {
+            $wpdb->insert( $table, [ 'user_id' => $user_id, 'kind' => $kind, 'choice' => $value, 'created_at' => $now ] );
+        }
+    }
+
+    $member_update = [];
+    foreach ( [ 'interests', 'skills' ] as $col ) {
+        if ( array_key_exists( $col, $post ) ) {
+            $member_update[ $col ] = sanitize_textarea_field( (string) $post[ $col ] );
+        }
+    }
+    // Ticking a volunteer area is saying yes to volunteering. Unticking them
+    // all leaves the old yes/no alone — it may have been set by the office.
+    if ( ! empty( $chosen['volunteer'] ) && isset( $kinds['volunteer'] ) ) {
+        $member_update['volunteer'] = 1;
+    }
+    if ( $member_update ) {
+        $member_update['updated_at'] = $now;
+        $wpdb->update( $wpdb->prefix . 'sp_members', $member_update, [ 'user_id' => $user_id ] );
+    }
+
+    $after = sp_get_member_choices( $user_id );
+    return [
+        'volunteer'     => array_values( array_diff( (array) ( $after['volunteer'] ?? [] ), (array) ( $before['volunteer'] ?? [] ) ) ),
+        'lineage_apply' => array_values( array_diff( (array) ( $after['lineage_apply'] ?? [] ), (array) ( $before['lineage_apply'] ?? [] ) ) ),
+    ];
+}
+
+/**
+ * Tell the volunteer coordinator and the lineage chair what a member just ticked.
+ *
+ * WHY plain text: internal mail to one volunteer, the same treatment
+ * sp_volunteer_notify_coordinator() gives signups.
+ */
+function sp_member_choices_notify( int $user_id, array $added ): void {
+    $user = get_userdata( $user_id );
+    if ( ! $user ) {
+        return;
+    }
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $fallback = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
+    $name     = trim( $user->first_name . ' ' . $user->last_name ) ?: $user->display_name;
+    $record   = admin_url( 'admin.php?page=sp-member-edit&user_id=' . $user_id );
+
+    $send = static function ( string $setting, string $subject, string $opening, array $items ) use ( $settings, $fallback, $user, $record ) {
+        $to = trim( $settings[ $setting ] ?? '' ) ?: $fallback;
+        if ( ! is_email( $to ) || ! $items ) {
+            return;
+        }
+        $body  = $opening . "\n\n";
+        foreach ( $items as $item ) {
+            $body .= '  • ' . $item . "\n";
+        }
+        /* translators: %s: member email address */
+        $body .= "\n" . sprintf( __( 'Email: %s', 'societypress' ), $user->user_email ) . "\n";
+        /* translators: %s: link to the member record */
+        $body .= sprintf( __( 'Member record: %s', 'societypress' ), $record ) . "\n";
+        wp_mail( $to, $subject, $body );
+    };
+
+    $send(
+        'volunteer_coordinator_email',
+        /* translators: %s: organization name */
+        sprintf( __( '[%s] A member offered to volunteer', 'societypress' ), $org_name ),
+        /* translators: %s: member name */
+        sprintf( __( '%s would like to help with:', 'societypress' ), $name ),
+        (array) ( $added['volunteer'] ?? [] )
+    );
+
+    $programs = sp_member_lineage_programs_open();
+    $names    = [];
+    foreach ( (array) ( $added['lineage_apply'] ?? [] ) as $id ) {
+        if ( isset( $programs[ (int) $id ] ) ) {
+            $names[] = $programs[ (int) $id ];
+        }
+    }
+    $send(
+        'lineage_chair_email',
+        /* translators: %s: organization name */
+        sprintf( __( '[%s] A member is interested in a lineage program', 'societypress' ), $org_name ),
+        /* translators: %s: member name */
+        sprintf( __( '%s may want to apply to:', 'societypress' ), $name ),
+        $names
+    );
+}
+
+/**
+ * The "Members who offered to help" list on the Volunteer Roster page.
+ */
+function sp_render_volunteer_offers(): void {
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT c.choice, c.user_id, u.display_name
+           FROM {$wpdb->prefix}sp_member_choices c
+           INNER JOIN {$wpdb->users} u ON u.ID = c.user_id
+           INNER JOIN {$wpdb->prefix}sp_members m ON m.user_id = c.user_id
+          WHERE c.kind = 'volunteer' AND m.status = 'active'
+          ORDER BY c.choice, u.display_name"
+    );
+    $by_area = [];
+    foreach ( (array) $rows as $row ) {
+        $by_area[ $row->choice ][] = $row;
+    }
+    ?>
+    <div class="sp-section sp-volunteer-offers">
+        <h2><?php esc_html_e( 'Members Who Offered to Help', 'societypress' ); ?></h2>
+        <p class="description"><?php esc_html_e( 'What active members said they would like to help with, on the join form or in My Account.', 'societypress' ); ?></p>
+        <?php if ( ! $by_area ) : ?>
+            <p><?php esc_html_e( 'No offers yet.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <table class="widefat striped">
+                <thead><tr><th><?php esc_html_e( 'Area', 'societypress' ); ?></th><th><?php esc_html_e( 'Members', 'societypress' ); ?></th></tr></thead>
+                <tbody>
+                <?php foreach ( $by_area as $area => $people ) : ?>
+                    <tr>
+                        <td><?php echo esc_html( $area ); ?></td>
+                        <td>
+                            <?php
+                            $links = [];
+                            foreach ( $people as $p ) {
+                                $links[] = '<a href="' . esc_url( admin_url( 'admin.php?page=sp-member-edit&user_id=' . (int) $p->user_id ) ) . '">' . esc_html( $p->display_name ) . '</a>';
+                            }
+                            echo implode( ', ', $links ); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped parts.
+                            ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+// ============================================================================
 // PUBLIC JOIN FORM — [societypress_join] Shortcode
 // ============================================================================
 //
@@ -65735,6 +66409,9 @@ add_action( 'init', function () {
         }
     }
 
+    // Volunteering, lineage groups, interests and skills from the join form.
+    sp_member_choices_notify( $user_id, sp_member_choices_save( $user_id, wp_unslash( $_POST ) ) );
+
     if ( $possible ) {
         sp_join_flag_possible_duplicate( $user_id, $first_name . ' ' . $last_name, $possible );
     }
@@ -66359,6 +67036,8 @@ function sp_render_join_form(): string {
                 <p class="sp-field-help"><?php esc_html_e( 'Optional. Separate names with commas — other members can find you by the family lines you study.', 'societypress' ); ?></p>
             </div>
         </fieldset>
+
+        <?php echo sp_member_choices_fields( sp_member_choices_from_post( wp_unslash( $_POST ) ), 'join' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
 
         <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
         </div>
@@ -85441,6 +86120,8 @@ function sp_render_volunteers_page(): void {
                 </p>
             </form>
         </div>
+
+        <?php sp_render_volunteer_offers(); ?>
 
         <!-- Volunteer roster table -->
         <form method="get">
@@ -111791,7 +112472,7 @@ function sp_rest_health_check(): WP_REST_Response {
         'event_speaker_assignments', 'event_speakers', 'events',
         'group_members', 'groups', 'help_requests', 'help_responses',
         'ical_feeds', 'library_categories', 'library_items', 'member_meta',
-        'member_notes', 'member_payments', 'member_relationships',
+        'member_choices', 'member_notes', 'member_payments', 'member_relationships',
         'member_research_areas', 'member_surnames', 'members',
         'membership_tiers', 'newsletters', 'order_items', 'orders',
         'pending_profile_changes', 'photo_album_items', 'photo_albums',

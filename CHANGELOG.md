@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.109] — 2026-11-13
+
+**Attach Files works on blast emails.** The Attach Files button on the email editor did nothing when clicked. It now opens the media library so files can be picked and attached.
+
 ## [1.5.108] — 2026-11-12
 
 **Log Out is back in the admin sidebar.** With the toolbar switched off, which is the default, there was no way to sign out from the dashboard. A Log Out item now sits at the bottom of the sidebar.

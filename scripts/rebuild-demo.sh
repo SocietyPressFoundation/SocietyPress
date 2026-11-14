@@ -32,6 +32,40 @@ echo ""
 echo "=== SocietyPress Demo Rebuild — $(date) ==="
 
 # ---------------------------------------------------------------------------
+# 0. Repair WordPress core if it no longer matches the official release
+# ---------------------------------------------------------------------------
+# WHY: the demo's core once arrived with long file names cut short, leaving
+# files WordPress could not load. Nothing noticed until a manual check, so
+# the rebuild now verifies core every night and re-downloads the installed
+# version over itself when it fails. --skip-content leaves themes, plugins
+# and uploads alone. Leftovers WordPress flags as "should not exist" are
+# removed only inside wp-admin/ and wp-includes/, which hold nothing of ours.
+
+# WHY grep for strays as well as the exit code: extra files only produce a
+# warning, and verify-checksums still exits 0 when they're the sole problem.
+core_strays() {
+    $WP core verify-checksums 2>&1 | sed -n 's/^Warning: File should not exist: //p' |
+        grep -E '^wp-(admin|includes)/'
+}
+
+if ! $WP core verify-checksums >/dev/null 2>&1 || [ -n "$(core_strays)" ]; then
+    echo "WordPress core failed its checksum check; reinstalling core files..."
+    CORE_VERSION=$($WP core version)
+    $WP core download --version="$CORE_VERSION" --skip-content --force 2>&1 | tail -1
+    core_strays |
+    while read -r STRAY; do
+        case "$STRAY" in
+            wp-admin/*|wp-includes/*) rm -f "$WP_PATH/$STRAY" ;;
+        esac
+    done
+    if $WP core verify-checksums >/dev/null 2>&1 && [ -z "$(core_strays)" ]; then
+        echo "  Core repaired."
+    else
+        echo "  WARNING: core still fails its checksum check — look by hand."
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 # 1. Delete all non-admin WP users (member accounts from previous seed)
 # ---------------------------------------------------------------------------
 

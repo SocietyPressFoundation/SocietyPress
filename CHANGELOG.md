@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.122] — 2026-11-15
+
+**Emails use your society's name.** The name in the coloured bar and footer of every email now comes from Settings → Organization, not the site title. A site title written as a greeting ("Welcome to the … Society") no longer shows up as the sender's name.
+
+**Bulk emails invite replies.** Emails sent from Send Email no longer end with "This is an automated message. Please do not reply". A person wrote them, and when you fill in a From address, replies go straight to it.
+
+**Test emails show the real sender.** A test now comes from the From name and address filled in on the compose screen, the same as the real send.
+
+**Replying to a closed ticket reopens it, for admins too.** The person who filed a ticket reopens it by replying, even when they are a site administrator and the reply form shows them the status menu. Choosing a different status still sets that status.
+
+---
+
 ## [1.5.121] — 2026-11-15
 
 **Send a test email to any address.** On Send Email, the test button now has an address box beside it, filled in with your own email. Change it to send the test somewhere else — a personal inbox, or a board member who should look it over first. On the public demo the box is left out and tests go only to the demo account.

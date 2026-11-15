@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.121
+ * Version:     1.5.122
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.121' );
+define( 'SOCIETYPRESS_VERSION', '1.5.122' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -21930,16 +21930,19 @@ add_action( 'admin_post_sp_reply_ticket', function () {
 
     $changed = [ 'updated_at' => current_time( 'mysql' ) ];
 
-    if ( sp_can_answer_tickets() ) {
-        $statuses = sp_ticket_statuses();
-        $status   = sanitize_key( wp_unslash( $_POST['status'] ?? '' ) );
-        if ( isset( $statuses[ $status ] ) ) {
-            $changed['status'] = $status;
-        }
-    } elseif ( $reply_id && in_array( $ticket->status, [ 'done', 'wontdo' ], true ) ) {
+    $statuses = sp_ticket_statuses();
+    $status   = sp_can_answer_tickets() ? sanitize_key( wp_unslash( $_POST['status'] ?? '' ) ) : '';
+    $is_reporter = (int) $ticket->reporter_id === get_current_user_id();
+
+    if ( isset( $statuses[ $status ] ) && $status !== $ticket->status ) {
+        $changed['status'] = $status;
+    } elseif ( $reply_id && $is_reporter && in_array( $ticket->status, [ 'done', 'wontdo' ], true ) ) {
         // WHY reopen: a closed ticket drops out of the open list, so a reply
         // on one ("it's still not right") would sit unseen. Writing back on a
         // closed ticket means it isn't finished — put it back in the queue.
+        // WHY "left unchanged" counts: a reporter who is also a site admin
+        // gets the status dropdown too, and it sits on the current status, so
+        // their reply always arrived "set to Done" and never reopened.
         $changed['status'] = 'new';
     }
 
@@ -41529,7 +41532,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.121',
+            'version'     => '1.5.122',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41537,7 +41540,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.121',
+            'version'     => '1.5.122',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41545,7 +41548,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.121',
+            'version'     => '1.5.122',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41553,7 +41556,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.121',
+            'version'     => '1.5.122',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41561,7 +41564,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.121',
+            'version'     => '1.5.122',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -68058,10 +68061,17 @@ function sp_email_body_from_editor( string $html ): string {
  *
  * @param string $heading   The email heading (e.g., "Registration Confirmed").
  * @param string $body_html The main content HTML.
+ * @param string $banner    Words for the coloured bar; empty means the society's name.
+ * @param bool   $personal  True for email a person wrote (bulk email), which
+ *                          drops the "automated message, do not reply" footer
+ *                          line — replies to those go to the sender on purpose.
  * @return string Complete HTML email body.
  */
-function sp_build_email_html( string $heading, string $body_html, string $banner = '' ): string {
-    $site_name = get_bloginfo( 'name' );
+function sp_build_email_html( string $heading, string $body_html, string $banner = '', bool $personal = false ): string {
+    // WHY the organization name first: a site title is often written as a
+    // greeting ("Welcome to the … Society"), which reads wrong as the name on
+    // an email. Settings → Organization holds the society's actual name.
+    $site_name = trim( sp_settings()['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
     // WHY a banner override: the coloured bar across the top normally names the
     // society, but a bulk email may want it to say something of its own
     // ("Annual Meeting — March 14"). Empty means the society's name, as before.
@@ -68098,7 +68108,7 @@ function sp_build_email_html( string $heading, string $body_html, string $banner
     <!-- Footer -->
     <tr><td style="padding: 16px 32px; background: #f6f7f7; border-top: 1px solid #e0e0e0; font-size: 13px; color: #6d7175;">
         <a href="' . esc_url( $site_url ) . '" style="color: ' . esc_attr( $brand_color ) . '; text-decoration: none;">' . esc_html( $site_name ) . '</a>
-        &mdash; This is an automated message. Please do not reply directly to this email.
+        ' . ( $personal ? '' : '&mdash; ' . esc_html__( 'This is an automated message. Please do not reply directly to this email.', 'societypress' ) ) . '
     </td></tr>
 </table>
 </td></tr></table>
@@ -89530,7 +89540,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
         <h3><?php esc_html_e( 'Email Body', 'societypress' ); ?></h3>
         <div class="sp-blast-detail-body-wrap">
             <?php
-            $rendered = sp_build_email_html( $blast->subject, sp_email_body_from_editor( (string) $blast->body ), (string) ( $blast->banner_text ?? '' ) );
+            $rendered = sp_build_email_html( $blast->subject, sp_email_body_from_editor( (string) $blast->body ), (string) ( $blast->banner_text ?? '' ), true );
             echo '<iframe srcdoc="' . esc_attr( $rendered ) . '" class="sp-blast-detail-iframe" sandbox title="' . esc_attr__( 'Newsletter blast preview', 'societypress' ) . '"></iframe>';
             ?>
         </div>
@@ -90247,6 +90257,10 @@ function sp_render_blast_email_compose_page(): void {
                 fd.append('banner', document.getElementById('sp-blast-banner-text').value);
                 var att = document.getElementById('sp-blast-attachment-ids');
                 fd.append('attachment_ids', att ? att.value : '');
+                var fromName  = document.getElementById('sp-blast-from-name');
+                var fromEmail = document.getElementById('sp-blast-from-email');
+                fd.append('from_name', fromName ? fromName.value : '');
+                fd.append('from_email', fromEmail ? fromEmail.value : '');
                 var to = document.getElementById('sp-blast-test-to');
                 fd.append('to', to ? to.value : '');
                 return fd;
@@ -90293,6 +90307,44 @@ function sp_render_blast_email_compose_page(): void {
 }
 
 /**
+ * Apply a bulk email's own sender to the standard headers.
+ *
+ * Replaces the default From line (and points Reply-To at the same address)
+ * when the email carries its own sender address, or swaps only the display
+ * name when it carries just a name. CR/LF are stripped as a header-injection
+ * guard. The composer warns that an off-domain From can fail DMARC and land
+ * in spam — we honor the admin's choice regardless.
+ *
+ * WHY shared: the real send and "Send a test" must agree on who the email is
+ *      from, or the test isn't showing what members will get.
+ *
+ * @param string[] $headers  Headers from sp_get_email_headers().
+ * @return string[]
+ */
+function sp_blast_sender_headers( array $headers, string $name, string $email ): array {
+    $ov_name  = str_replace( [ "\r", "\n" ], '', $name );
+    $ov_email = sanitize_email( str_replace( [ "\r", "\n" ], '', $email ) );
+    if ( $ov_email && is_email( $ov_email ) ) {
+        $headers = array_values( array_filter( $headers, static function ( $h ) {
+            return stripos( $h, 'From:' ) !== 0 && stripos( $h, 'Reply-To:' ) !== 0;
+        } ) );
+        $from_line = $ov_name !== '' ? $ov_name . ' <' . $ov_email . '>' : $ov_email;
+        $headers[] = 'From: ' . $from_line;
+        $headers[] = 'Reply-To: ' . $ov_email;
+    } elseif ( $ov_name !== '' ) {
+        // Name-only override: keep the deliverable From address, swap the
+        // display name so it reads as the chosen sender.
+        foreach ( $headers as $i => $h ) {
+            if ( stripos( $h, 'From:' ) === 0 && preg_match( '/<([^>]+)>/', $h, $m ) ) {
+                $headers[ $i ] = 'From: ' . $ov_name . ' <' . $m[1] . '>';
+                break;
+            }
+        }
+    }
+    return $headers;
+}
+
+/**
  * Is this the public demo site?
  *
  * WHY a constant: the demo publishes an administrator login, so a few things
@@ -90324,7 +90376,7 @@ function sp_blast_render_for_current_user( string $subject, string $body, string
     $body    = sp_blast_process_merge_tags( sp_email_body_from_editor( $body ), $recipient );
     return [
         'subject' => $subject,
-        'html'    => sp_build_email_html( $subject, $body, $banner ),
+        'html'    => sp_build_email_html( $subject, $body, $banner, true ),
     ];
 }
 
@@ -90384,7 +90436,12 @@ add_action( 'wp_ajax_sp_blast_send_test', function () {
     sp_email_log_tag( get_current_user_id(), 'blast_test' );
     /* translators: %s: the email's subject line */
     $subject = sprintf( __( '[Test] %s', 'societypress' ), $out['subject'] );
-    if ( wp_mail( $to, $subject, $out['html'], sp_get_email_headers(), $attachments ) ) {
+    $headers = sp_blast_sender_headers(
+        sp_get_email_headers(),
+        sanitize_text_field( wp_unslash( $_POST['from_name'] ?? '' ) ),
+        sanitize_email( wp_unslash( $_POST['from_email'] ?? '' ) )
+    );
+    if ( wp_mail( $to, $subject, $out['html'], $headers, $attachments ) ) {
         /* translators: %s: email address the test was sent to */
         wp_send_json_success( [ 'message' => sprintf( __( 'Test sent to %s. It may take a minute or two to arrive.', 'societypress' ), $to ) ] );
     }
@@ -90868,30 +90925,7 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
     $sent_count = 0;
     $fail_count = 0;
 
-    // Per-blast sender override: replace the default From line (and point
-    // Reply-To at the same address) when this blast carries one. CR/LF are
-    // stripped as a header-injection guard even though the value was already
-    // sanitized on save. The composer warns that an off-domain From can fail
-    // DMARC and land in spam — we honor the admin's choice regardless.
-    $ov_name  = isset( $blast->from_name_override )  ? str_replace( [ "\r", "\n" ], '', (string) $blast->from_name_override )  : '';
-    $ov_email = isset( $blast->from_email_override ) ? sanitize_email( str_replace( [ "\r", "\n" ], '', (string) $blast->from_email_override ) ) : '';
-    if ( $ov_email && is_email( $ov_email ) ) {
-        $headers = array_values( array_filter( $headers, static function ( $h ) {
-            return stripos( $h, 'From:' ) !== 0 && stripos( $h, 'Reply-To:' ) !== 0;
-        } ) );
-        $from_line = $ov_name !== '' ? $ov_name . ' <' . $ov_email . '>' : $ov_email;
-        $headers[] = 'From: ' . $from_line;
-        $headers[] = 'Reply-To: ' . $ov_email;
-    } elseif ( $ov_name !== '' ) {
-        // Name-only override: keep the deliverable From address, swap the
-        // display name so it reads as the chosen sender.
-        foreach ( $headers as $i => $h ) {
-            if ( stripos( $h, 'From:' ) === 0 && preg_match( '/<([^>]+)>/', $h, $m ) ) {
-                $headers[ $i ] = 'From: ' . $ov_name . ' <' . $m[1] . '>';
-                break;
-            }
-        }
-    }
+    $headers = sp_blast_sender_headers( $headers, (string) ( $blast->from_name_override ?? '' ), (string) ( $blast->from_email_override ?? '' ) );
 
     // Resolve any attached files once for the whole batch — wp_mail wants
     // filesystem paths, so map the stored media IDs through get_attached_file().
@@ -90921,7 +90955,7 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         }
 
         // Wrap in the email HTML template
-        $html_body = sp_build_email_html( $personalized_subject, $personalized_body, (string) ( $blast->banner_text ?? '' ) );
+        $html_body = sp_build_email_html( $personalized_subject, $personalized_body, (string) ( $blast->banner_text ?? '' ), true );
 
         // Send the email (with any attached files). The pre_wp_mail hook logs it.
         sp_email_log_tag( (int) $recipient->user_id, 'blast' );

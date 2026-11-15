@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.116
+ * Version:     1.5.117
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.116' );
+define( 'SOCIETYPRESS_VERSION', '1.5.117' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2540,6 +2540,7 @@ function sp_create_tables(): void {
         attachment_ids      TEXT                NULL,
         from_name_override  VARCHAR(255)        NULL,
         from_email_override VARCHAR(255)        NULL,
+        banner_text         VARCHAR(255)        NULL,
         status              VARCHAR(20)         NOT NULL DEFAULT 'draft',
         scheduled_at        DATETIME            NULL,
         sent_at             DATETIME            NULL,
@@ -41499,7 +41500,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.116',
+            'version'     => '1.5.117',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41507,7 +41508,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.116',
+            'version'     => '1.5.117',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41515,7 +41516,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.116',
+            'version'     => '1.5.117',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41523,7 +41524,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.116',
+            'version'     => '1.5.117',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41531,7 +41532,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.116',
+            'version'     => '1.5.117',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -68030,8 +68031,12 @@ function sp_email_body_from_editor( string $html ): string {
  * @param string $body_html The main content HTML.
  * @return string Complete HTML email body.
  */
-function sp_build_email_html( string $heading, string $body_html ): string {
+function sp_build_email_html( string $heading, string $body_html, string $banner = '' ): string {
     $site_name = get_bloginfo( 'name' );
+    // WHY a banner override: the coloured bar across the top normally names the
+    // society, but a bulk email may want it to say something of its own
+    // ("Annual Meeting — March 14"). Empty means the society's name, as before.
+    $banner = trim( $banner ) !== '' ? trim( $banner ) : $site_name;
     $site_url  = home_url();
 
     // WHY: Use the society's configured brand color instead of WordPress
@@ -68050,7 +68055,7 @@ function sp_build_email_html( string $heading, string $body_html ): string {
     <!-- Header -->
     <tr><td style="background: ' . esc_attr( $brand_color ) . '; padding: 20px 32px;">
         <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">
-            ' . esc_html( $site_name ) . '
+            ' . esc_html( $banner ) . '
         </h1>
     </td></tr>
     <!-- Heading -->
@@ -88977,6 +88982,7 @@ function sp_render_blast_email_page(): void {
                 'recipient_filter' => $src->recipient_filter,
                 'from_name_override'  => $src->from_name_override ?? null,
                 'from_email_override' => $src->from_email_override ?? null,
+                'banner_text'         => $src->banner_text ?? null,
                 'sender_id'        => get_current_user_id(),
                 'status'           => 'draft',
                 'total_recipients' => (int) $src->total_recipients,
@@ -89495,7 +89501,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
         <h3><?php esc_html_e( 'Email Body', 'societypress' ); ?></h3>
         <div class="sp-blast-detail-body-wrap">
             <?php
-            $rendered = sp_build_email_html( $blast->subject, sp_email_body_from_editor( (string) $blast->body ) );
+            $rendered = sp_build_email_html( $blast->subject, sp_email_body_from_editor( (string) $blast->body ), (string) ( $blast->banner_text ?? '' ) );
             echo '<iframe srcdoc="' . esc_attr( $rendered ) . '" class="sp-blast-detail-iframe" sandbox title="' . esc_attr__( 'Newsletter blast preview', 'societypress' ) . '"></iframe>';
             ?>
         </div>
@@ -89608,6 +89614,7 @@ function sp_render_blast_email_compose_page(): void {
         if ( $from_email_override && ! is_email( $from_email_override ) ) {
             $from_email_override = '';
         }
+        $banner_text = sanitize_text_field( wp_unslash( $_POST['blast_banner_text'] ?? '' ) );
 
         // Build recipient filter JSON
         $recipient_filter = null;
@@ -89645,6 +89652,7 @@ function sp_render_blast_email_compose_page(): void {
             'attachment_ids'   => $attachment_ids ?: null,
             'from_name_override'  => $from_name_override ?: null,
             'from_email_override' => $from_email_override ?: null,
+            'banner_text'         => $banner_text !== '' ? $banner_text : null,
             'status'           => 'draft',
             'updated_at'       => current_time( 'mysql' ),
         ];
@@ -89739,6 +89747,13 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-insert-tag          { margin: 0 0 4px 6px !important; }
     .sp-blast-submit-row          { display: flex; gap: 8px; align-items: center; }
     .sp-blast-send-btn            { background: #1d6b30; border-color: #1d6b30; }
+    .sp-blast-test-status         { min-height: 1.5em; margin: 0; }
+    .sp-blast-test-status.is-error { color: #b32d2e; }
+    .sp-blast-preview             { margin-top: 24px; border: 1px solid #dcdcde; background: #f4f4f4; padding: 16px; }
+    .sp-blast-preview-head        { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
+    .sp-blast-preview-head h2     { margin: 0; }
+    .sp-blast-preview-head .description { flex: 1 1 300px; margin: 0; }
+    .sp-blast-detail-iframe       { width: 100%; min-height: 600px; border: none; background: #f4f4f4; }
     </style>
     <div class="wrap sp-admin-wrap">
         <h1><?php echo $blast_id ? esc_html__( 'Edit Email', 'societypress' ) : esc_html__( 'Write an Email', 'societypress' ); ?></h1>
@@ -89926,6 +89941,13 @@ function sp_render_blast_email_compose_page(): void {
                     </td>
                 </tr>
                 <tr>
+                    <th scope="col"><label for="sp-blast-banner-text"><?php esc_html_e( 'Banner text', 'societypress' ); ?></label></th>
+                    <td>
+                        <input type="text" name="blast_banner_text" id="sp-blast-banner-text" value="<?php echo esc_attr( $blast->banner_text ?? '' ); ?>" class="large-text" placeholder="<?php echo esc_attr( get_bloginfo( 'name' ) ); ?>">
+                        <p class="description"><?php esc_html_e( 'The words in the coloured bar across the top of the email. Leave it empty to show your society\'s name.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="col"><label><?php esc_html_e( 'Attachments', 'societypress' ); ?></label></th>
                     <td>
                         <?php $blast_att_ids = $blast->attachment_ids ?? ''; ?>
@@ -89976,9 +89998,21 @@ function sp_render_blast_email_compose_page(): void {
                         onclick="document.getElementById('sp-blast-action').value='send_now';">
                     <?php esc_html_e( 'Send Now', 'societypress' ); ?>
                 </button>
+                <button type="button" class="button" id="sp-blast-preview-btn"><?php esc_html_e( 'Preview', 'societypress' ); ?></button>
+                <button type="button" class="button" id="sp-blast-test-btn"><?php esc_html_e( 'Send me a test', 'societypress' ); ?></button>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
+            <p class="sp-blast-test-status" id="sp-blast-test-status" role="status" aria-live="polite"></p>
         </form>
+
+        <div class="sp-blast-preview" id="sp-blast-preview" hidden>
+            <div class="sp-blast-preview-head">
+                <h2><?php esc_html_e( 'Preview', 'societypress' ); ?></h2>
+                <p class="description"><?php esc_html_e( 'This is how the email will look, filled in with your own name. Email programs vary a little, so "Send me a test" shows it in a real inbox.', 'societypress' ); ?></p>
+                <button type="button" class="button" id="sp-blast-preview-close"><?php esc_html_e( 'Close preview', 'societypress' ); ?></button>
+            </div>
+            <iframe class="sp-blast-detail-iframe" id="sp-blast-preview-frame" sandbox title="<?php esc_attr_e( 'Email preview', 'societypress' ); ?>"></iframe>
+        </div>
 
         <script>
         // Toggle group/tier checkboxes based on recipient type selection, and
@@ -90151,10 +90185,144 @@ function sp_render_blast_email_compose_page(): void {
                 frame.open();
             });
         })();
+
+        // Preview and "Send me a test" render the email from what is in the
+        // form right now — saved or not — so the sender can check it before
+        // anything goes out.
+        (function() {
+            var ajaxUrl  = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            var nonce    = <?php echo wp_json_encode( wp_create_nonce( 'sp_blast_preview' ) ); ?>;
+            var panel    = document.getElementById('sp-blast-preview');
+            var frame    = document.getElementById('sp-blast-preview-frame');
+            var status   = document.getElementById('sp-blast-test-status');
+            var testBtn  = document.getElementById('sp-blast-test-btn');
+            var failText = <?php echo wp_json_encode( __( 'Something went wrong. Please try again.', 'societypress' ) ); ?>;
+
+            function formData(action) {
+                var ed = (typeof tinymce !== 'undefined') ? tinymce.get('blast_body') : null;
+                var fd = new FormData();
+                fd.append('action', action);
+                fd.append('_wpnonce', nonce);
+                fd.append('subject', document.getElementById('sp-blast-subject').value);
+                fd.append('body', ed && !ed.isHidden() ? ed.getContent() : document.getElementById('blast_body').value);
+                fd.append('banner', document.getElementById('sp-blast-banner-text').value);
+                var att = document.getElementById('sp-blast-attachment-ids');
+                fd.append('attachment_ids', att ? att.value : '');
+                return fd;
+            }
+
+            function post(action) {
+                return fetch(ajaxUrl, { method: 'POST', credentials: 'same-origin', body: formData(action) })
+                    .then(function(r) { return r.json(); });
+            }
+
+            document.getElementById('sp-blast-preview-btn').addEventListener('click', function() {
+                post('sp_blast_preview').then(function(res) {
+                    if (!res || !res.success) { throw new Error(); }
+                    frame.srcdoc = res.data.html;
+                    panel.hidden = false;
+                    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }).catch(function() {
+                    status.textContent = failText;
+                    status.classList.add('is-error');
+                });
+            });
+
+            document.getElementById('sp-blast-preview-close').addEventListener('click', function() {
+                panel.hidden = true;
+                document.getElementById('sp-blast-preview-btn').focus();
+            });
+
+            testBtn.addEventListener('click', function() {
+                testBtn.disabled = true;
+                status.classList.remove('is-error');
+                status.textContent = <?php echo wp_json_encode( __( 'Sending…', 'societypress' ) ); ?>;
+                post('sp_blast_send_test').then(function(res) {
+                    status.textContent = res && res.data && res.data.message ? res.data.message : failText;
+                    status.classList.toggle('is-error', !(res && res.success));
+                }).catch(function() {
+                    status.textContent = failText;
+                    status.classList.add('is-error');
+                }).then(function() { testBtn.disabled = false; });
+            });
+        })();
         </script>
     </div>
     <?php
 }
+
+/**
+ * Render a bulk email exactly as a recipient would get it, using the sender
+ * as the recipient. Shared by Preview and "Send me a test" so the two can
+ * never disagree about what the email looks like.
+ *
+ * @return array{subject:string, html:string}
+ */
+function sp_blast_render_for_current_user( string $subject, string $body, string $banner ): array {
+    $user      = wp_get_current_user();
+    $recipient = (object) [
+        'user_id'      => $user->ID,
+        'email'        => $user->user_email,
+        'first_name'   => $user->first_name,
+        'last_name'    => $user->last_name,
+        'display_name' => $user->display_name,
+    ];
+    $subject = sp_blast_process_merge_tags( $subject, $recipient );
+    $body    = sp_blast_process_merge_tags( sp_email_body_from_editor( $body ), $recipient );
+    return [
+        'subject' => $subject,
+        'html'    => sp_build_email_html( $subject, $body, $banner ),
+    ];
+}
+
+/**
+ * Read and check the Preview / test-send request. Same permission as the
+ * compose screen itself.
+ *
+ * @return array{subject:string, body:string, banner:string}
+ */
+function sp_blast_preview_request(): array {
+    check_ajax_referer( 'sp_blast_preview' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
+    }
+    return [
+        'subject' => sanitize_text_field( wp_unslash( $_POST['subject'] ?? '' ) ),
+        'body'    => wp_kses_post( wp_unslash( $_POST['body'] ?? '' ) ),
+        'banner'  => sanitize_text_field( wp_unslash( $_POST['banner'] ?? '' ) ),
+    ];
+}
+
+add_action( 'wp_ajax_sp_blast_preview', function () {
+    $req = sp_blast_preview_request();
+    $out = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'] );
+    wp_send_json_success( [ 'html' => $out['html'] ] );
+} );
+
+add_action( 'wp_ajax_sp_blast_send_test', function () {
+    $req  = sp_blast_preview_request();
+    $out  = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'] );
+    $to   = wp_get_current_user()->user_email;
+
+    // WHY attachments too: a test that leaves out the flyer isn't a test of
+    // what members will receive.
+    $attachments = [];
+    foreach ( array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['attachment_ids'] ?? '' ) ) ) ) as $att_id ) {
+        $path = get_attached_file( $att_id );
+        if ( $path && file_exists( $path ) ) {
+            $attachments[] = $path;
+        }
+    }
+
+    sp_email_log_tag( get_current_user_id(), 'blast_test' );
+    /* translators: %s: the email's subject line */
+    $subject = sprintf( __( '[Test] %s', 'societypress' ), $out['subject'] );
+    if ( wp_mail( $to, $subject, $out['html'], sp_get_email_headers(), $attachments ) ) {
+        /* translators: %s: email address the test was sent to */
+        wp_send_json_success( [ 'message' => sprintf( __( 'Test sent to %s. It may take a minute or two to arrive.', 'societypress' ), $to ) ] );
+    }
+    wp_send_json_error( [ 'message' => __( 'The test could not be sent. Check Settings → Email, or try again in a few minutes.', 'societypress' ) ] );
+} );
 
 /**
  * Count how many recipients a blast email would reach.
@@ -90686,7 +90854,7 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         }
 
         // Wrap in the email HTML template
-        $html_body = sp_build_email_html( $personalized_subject, $personalized_body );
+        $html_body = sp_build_email_html( $personalized_subject, $personalized_body, (string) ( $blast->banner_text ?? '' ) );
 
         // Send the email (with any attached files). The pre_wp_mail hook logs it.
         sp_email_log_tag( (int) $recipient->user_id, 'blast' );
@@ -121095,6 +121263,7 @@ add_action( 'admin_init', function () {
             'attachment_ids'      => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN attachment_ids TEXT NULL AFTER override_optout",
             'from_name_override'  => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN from_name_override VARCHAR(255) NULL AFTER attachment_ids",
             'from_email_override' => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN from_email_override VARCHAR(255) NULL AFTER from_name_override",
+            'banner_text'         => "ALTER TABLE {$wpdb->prefix}sp_blast_emails ADD COLUMN banner_text VARCHAR(255) NULL AFTER from_email_override",
         ],
     ];
 

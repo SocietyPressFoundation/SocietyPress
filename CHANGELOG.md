@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.117] — 2026-11-14
+
+**Check a bulk email before it goes out.** Send Email has two new buttons next to Send Now.
+
+- **Preview** shows the finished email right on the page, filled in with your own name.
+- **Send me a test** emails a copy, attachments included, to your own address, marked [Test], so you can see it in a real inbox.
+
+**Choose the words in the banner.** A new Banner text box sets what the coloured bar across the top of the email says. Leave it empty and it shows your society's name, as before.
+
+---
+
 ## [1.5.116] — 2026-11-14
 
 **Emails now look the way you wrote them.** Bulk emails, and the welcome, renewal reminder, expired and donation thank-you emails, were arriving with every paragraph run together into one block, and a centered image showed up on the left. Paragraphs and image alignment now come through as they appear in the editor.

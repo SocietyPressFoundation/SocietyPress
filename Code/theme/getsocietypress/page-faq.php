@@ -28,6 +28,7 @@ get_header();
 <section class="page-hero">
     <div class="container">
         <div class="page-hero__content">
+            <?php gsp_archie( 'help' ); ?>
             <h1 class="page-hero__title">Frequently Asked Questions</h1>
             <p class="page-hero__subtitle">
                 Answers to common questions about SocietyPress.

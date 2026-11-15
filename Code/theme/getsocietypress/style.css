@@ -4,7 +4,7 @@ Theme URI: https://societypress.net
 Author: SocietyPress Contributors
 Author URI: https://societypress.net
 Description: The official theme for societypress.net — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 1.1.31
+Version: 1.1.32
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -7759,5 +7759,44 @@ select:focus-visible,
     .host-plans__card,
     .host-scope__card {
         padding: var(--spacing-lg);
+    }
+}
+
+/* ==========================================================================
+   ARCHIE THE ARCHIVIST — mascot illustrations
+   Sized by height so the different poses (wide, tall) read as the same owl.
+   ========================================================================== */
+.archie {
+    display: block;
+    width: auto;
+    height: 180px;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.archie--hero {
+    margin: 0 auto var(--spacing-lg);
+}
+
+/* Role one-pagers have a light header, so Archie sits beside the headline
+   rather than above it; flow-root keeps the float inside the header rule. */
+.onepager__header {
+    display: flow-root;
+}
+
+.archie--onepager {
+    float: right;
+    height: 170px;
+    margin: 0 0 var(--spacing-md) var(--spacing-xl);
+}
+
+@media (max-width: 768px) {
+    .archie {
+        height: 130px;
+    }
+
+    .archie--onepager {
+        float: none;
+        margin: 0 0 var(--spacing-md);
     }
 }

@@ -2266,3 +2266,30 @@ function gsp_redirect_news_to_blog(): void {
     }
 }
 add_action( 'template_redirect', 'gsp_redirect_news_to_blog', 1 );
+
+
+/**
+ * Print one of the Archie the Archivist owl illustrations.
+ *
+ * WHY: Archie is decorative — he sets the tone but never carries meaning a
+ *      screen reader would miss — so the image is hidden from assistive tech.
+ *      Width and height are read from the file so the browser reserves the
+ *      space before the image loads and the page doesn't jump.
+ *
+ * @param string $pose     File slug in images/archie/ (e.g. 'welcoming').
+ * @param string $modifier BEM modifier controlling size and placement.
+ */
+function gsp_archie( string $pose, string $modifier = 'hero' ): void {
+    $file = get_template_directory() . '/images/archie/archie-' . $pose . '.webp';
+    if ( ! is_readable( $file ) ) {
+        return;
+    }
+    $size = getimagesize( $file );
+    printf(
+        '<img class="archie archie--%1$s" src="%2$s" width="%3$d" height="%4$d" alt="" aria-hidden="true" decoding="async">',
+        esc_attr( $modifier ),
+        esc_url( get_template_directory_uri() . '/images/archie/archie-' . $pose . '.webp' ),
+        (int) ( $size[0] ?? 0 ),
+        (int) ( $size[1] ?? 0 )
+    );
+}

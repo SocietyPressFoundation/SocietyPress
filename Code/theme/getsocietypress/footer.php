@@ -86,6 +86,16 @@ defined( 'ABSPATH' ) || exit;
                     <li><a href="<?php echo esc_url( home_url( '/contact/' ) ); ?>">Contact</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/bug-reports/' ) ); ?>">Report a Bug</a></li>
                     <li><a href="<?php echo esc_url( home_url( '/feature-requests/' ) ); ?>">Request a Feature</a></li>
+                    <?php
+                    // WHY here rather than the header: almost nobody visiting
+                    // societypress.net has an account, so a header slot spent
+                    // on Log In cost every visitor room for the few who do.
+                    ?>
+                    <?php if ( is_user_logged_in() ) : ?>
+                        <li><a href="<?php echo esc_url( wp_logout_url( home_url( '/' ) ) ); ?>">Log Out</a></li>
+                    <?php else : ?>
+                        <li><a href="<?php echo esc_url( wp_login_url( home_url( add_query_arg( array() ) ) ) ); ?>">Log In</a></li>
+                    <?php endif; ?>
                 </ul>
             </div>
 

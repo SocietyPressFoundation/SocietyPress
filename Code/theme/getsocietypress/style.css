@@ -4,7 +4,7 @@ Theme URI: https://societypress.net
 Author: SocietyPress Contributors
 Author URI: https://societypress.net
 Description: The official theme for societypress.net — the home of SocietyPress, a free, open-source WordPress platform for genealogical society administrators.
-Version: 1.1.32
+Version: 1.1.33
 License: GNU General Public License v2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: getsocietypress
@@ -503,6 +503,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--spacing-xl);
     height: var(--nav-height);
     max-width: var(--container-max-width);
     margin: 0 auto;
@@ -539,6 +540,15 @@ body {
 
 .site-brand__name span {
     color: var(--color-accent);
+}
+
+/* The SocietyPress plugin appends Log In / My Account (and a cart) to the
+   primary menu. On a society's site those belong in the header; here they
+   crowd the bar, so the desktop header hides them and the footer carries
+   Log In instead. The phone menu still lists them. */
+.primary-nav .sp-nav-account,
+.primary-nav .sp-nav-cart {
+    display: none;
 }
 
 /* Primary nav links — centered in the middle */
@@ -7057,6 +7067,31 @@ select:focus-visible,
     width: 180px;
     outline: none;
 }
+
+/* In the header the field starts closed — just the magnifier — and opens on
+   click (theme.js) or when it takes keyboard focus. */
+.site-header .gsp-search-form {
+    background: transparent;
+    border-color: transparent;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+.site-header .gsp-search-form input[type="search"] {
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    transition: width var(--transition-fast), padding var(--transition-fast);
+}
+.site-header .gsp-search-form.is-open,
+.site-header .gsp-search-form:focus-within {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+.site-header .gsp-search-form.is-open input[type="search"],
+.site-header .gsp-search-form:focus-within input[type="search"] {
+    width: 180px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
 .gsp-search-form input[type="search"]::placeholder { color: rgba(255, 255, 255, 0.6); }
 .gsp-search-form input[type="search"]:focus { background: rgba(255, 255, 255, 0.05); }
 .gsp-search-submit {
@@ -7076,7 +7111,9 @@ select:focus-visible,
    reachable at all — it belongs at the documented nav cutover, not 132px above
    it, and certainly not higher. */
 @media (max-width: 1024px) {
-    .gsp-search-form input[type="search"] { width: 140px; }
+    .gsp-search-form input[type="search"],
+    .site-header .gsp-search-form.is-open input[type="search"],
+    .site-header .gsp-search-form:focus-within input[type="search"] { width: 140px; }
 }
 @media (max-width: 768px) {
     .gsp-search-form { display: none; }

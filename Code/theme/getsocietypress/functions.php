@@ -1597,6 +1597,12 @@ if ( ! function_exists( 'gsp_md_inline' ) ) {
  */
 function gsp_render_search_form(): void {
     ?>
+    <?php
+    // WHY collapsed: a full-width field in the header crowded the menu into
+    // wrapping. The magnifier stays put; the field opens when someone clicks
+    // it (theme.js) or tabs into it (:focus-within in style.css). Without
+    // JavaScript the button simply submits, so search still works.
+    ?>
     <form role="search" method="get" class="gsp-search-form" action="<?php echo esc_url( home_url( '/' ) ); ?>">
         <label for="gsp-search-input" class="screen-reader-text"><?php esc_html_e( 'Search the site', 'getsocietypress' ); ?></label>
         <input type="search" id="gsp-search-input" name="s" value="<?php echo esc_attr( get_search_query() ); ?>" placeholder="<?php esc_attr_e( 'Search docs, FAQ, blog…', 'getsocietypress' ); ?>" autocomplete="off">

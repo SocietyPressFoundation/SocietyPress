@@ -215,4 +215,43 @@
         } );
     }
 
+    /* ----------------------------------------------------------------------
+       Header search: the magnifier opens the field on first click, then
+       submits on the next. Escape, or clicking away with nothing typed,
+       closes it again.
+       ---------------------------------------------------------------------- */
+    var searchForm = document.querySelector( '.site-header .gsp-search-form' );
+    if ( searchForm ) {
+        var searchInput = searchForm.querySelector( 'input[type="search"]' );
+        var searchBtn   = searchForm.querySelector( '.gsp-search-submit' );
+
+        var closeSearch = function() {
+            if ( searchInput.value.trim() === '' ) {
+                searchForm.classList.remove( 'is-open' );
+            }
+        };
+
+        searchBtn.addEventListener( 'click', function( e ) {
+            if ( ! searchForm.classList.contains( 'is-open' ) || searchInput.value.trim() === '' ) {
+                e.preventDefault();
+                searchForm.classList.add( 'is-open' );
+                searchInput.focus();
+            }
+        } );
+
+        searchInput.addEventListener( 'keydown', function( e ) {
+            if ( e.key === 'Escape' ) {
+                searchInput.value = '';
+                closeSearch();
+                searchBtn.focus();
+            }
+        } );
+
+        document.addEventListener( 'click', function( e ) {
+            if ( ! searchForm.contains( e.target ) ) {
+                closeSearch();
+            }
+        } );
+    }
+
 } )();

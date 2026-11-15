@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.118
+ * Version:     1.5.119
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.118' );
+define( 'SOCIETYPRESS_VERSION', '1.5.119' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -649,7 +649,13 @@ function sp_maybe_create_default_pages(): void {
     //      has to figure out Appearance > Menus from scratch. This creates a
     //      sensible default menu with the key public-facing pages. The smart nav
     //      filter (wp_nav_menu_objects) handles visibility — Join hides for
-    //      logged-in members, Directory/My Account hide for logged-out visitors.
+    //      logged-in members, Directory hides for logged-out visitors.
+    // WHY no My Account item: the header's avatar menu (sp_user_menu) already
+    //      carries My Account, Admin and Log Out, so a menu item for it showed
+    //      the same link twice. WHY Research groups three pages: eleven
+    //      top-level items crowded the bar next to a society's name, and
+    //      Library, Records and Newsletters are the same errand — looking
+    //      something up. The parent opens the Library page, the natural hub.
     $menu_name = __( 'Primary Menu', 'societypress' );
     $menu_exists = wp_get_nav_menu_object( $menu_name );
     if ( ! $menu_exists ) {
@@ -660,13 +666,13 @@ function sp_maybe_create_default_pages(): void {
                 [ 'slug' => 'home',        'label' => __( 'Home', 'societypress' ) ],
                 [ 'slug' => 'about',       'label' => __( 'About', 'societypress' ) ],
                 [ 'slug' => 'events',      'label' => __( 'Events', 'societypress' ) ],
-                [ 'slug' => 'library',     'label' => __( 'Library', 'societypress' ) ],
-                [ 'slug' => 'records',     'label' => __( 'Records', 'societypress' ) ],
-                [ 'slug' => 'newsletters', 'label' => __( 'Newsletters', 'societypress' ) ],
+                [ 'slug' => 'library',     'label' => __( 'Research', 'societypress' ), 'key' => 'research' ],
+                [ 'slug' => 'library',     'label' => __( 'Library', 'societypress' ), 'parent' => 'research' ],
+                [ 'slug' => 'records',     'label' => __( 'Records', 'societypress' ), 'parent' => 'research' ],
+                [ 'slug' => 'newsletters', 'label' => __( 'Newsletters', 'societypress' ), 'parent' => 'research' ],
                 [ 'slug' => 'store',       'label' => __( 'Store', 'societypress' ) ],
                 [ 'slug' => 'join',        'label' => __( 'Join', 'societypress' ) ],
                 [ 'slug' => 'directory',   'label' => __( 'Directory', 'societypress' ) ],
-                [ 'slug' => 'my-account',  'label' => __( 'My Account', 'societypress' ) ],
                 [ 'slug' => 'contact-us',  'label' => __( 'Contact', 'societypress' ) ],
             ];
 
@@ -690,17 +696,23 @@ function sp_maybe_create_default_pages(): void {
                 $page_ids['contact-us'] = $contact_query->posts[0]->ID;
             }
 
-            $position = 1;
+            $position  = 1;
+            $item_ids  = [];
             foreach ( $menu_items as $item ) {
                 if ( ! isset( $page_ids[ $item['slug'] ] ) ) continue;
-                wp_update_nav_menu_item( $menu_id, 0, [
+                $parent = isset( $item['parent'] ) ? (int) ( $item_ids[ $item['parent'] ] ?? 0 ) : 0;
+                $new_id = wp_update_nav_menu_item( $menu_id, 0, [
                     'menu-item-title'     => $item['label'],
                     'menu-item-object'    => 'page',
                     'menu-item-object-id' => $page_ids[ $item['slug'] ],
                     'menu-item-type'      => 'post_type',
                     'menu-item-status'    => 'publish',
+                    'menu-item-parent-id' => $parent,
                     'menu-item-position'  => $position++,
                 ] );
+                if ( isset( $item['key'] ) && ! is_wp_error( $new_id ) ) {
+                    $item_ids[ $item['key'] ] = $new_id;
+                }
             }
 
             // Assign this menu to the 'primary' theme location
@@ -11709,7 +11721,13 @@ add_filter( 'wp_nav_menu_items', function ( $items, $args ) {
     if ( ! is_user_logged_in() ) {
         $links[] = [ wp_login_url( get_permalink() ), __( 'Log In', 'societypress' ) ];
     } else {
-        $links[] = [ sp_get_my_account_url(), __( 'My Account', 'societypress' ) ];
+        // WHY the check: sites built before the default menu dropped its own
+        //      My Account item still have one, and the phone panel listed the
+        //      link twice. Skip ours when the menu already links there.
+        $account_url = sp_get_my_account_url();
+        if ( false === strpos( $items, 'href="' . esc_url( $account_url ) . '"' ) ) {
+            $links[] = [ $account_url, __( 'My Account', 'societypress' ) ];
+        }
         if ( sp_user_can_access_admin() ) {
             $links[] = [ admin_url( 'admin.php?page=societypress' ), __( 'Admin', 'societypress' ) ];
         }
@@ -41505,7 +41523,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.118',
+            'version'     => '1.5.119',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41513,7 +41531,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.118',
+            'version'     => '1.5.119',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41521,7 +41539,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.118',
+            'version'     => '1.5.119',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41529,7 +41547,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.118',
+            'version'     => '1.5.119',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41537,7 +41555,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.118',
+            'version'     => '1.5.119',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.119] — 2026-11-15
+
+**A shorter menu bar on new sites.** The menu a new site starts with now groups Library, Records and Newsletters under one **Research** item, and leaves out My Account, which is already in the name-and-photo menu at the top right. New sites start with seven top-level items instead of eleven.
+
+On the phone menu, My Account no longer appears twice on sites whose menu already has it.
+
+---
+
 ## [1.5.118] — 2026-11-14
 
 **Replying to a closed help ticket reopens it.** If the person who filed a ticket writes back after it was marked Done or Not doing, the ticket goes back to New so the reply is seen, rather than sitting in a closed ticket nobody is looking at.

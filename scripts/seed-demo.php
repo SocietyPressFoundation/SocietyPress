@@ -942,10 +942,15 @@ if ( ! empty( $records_id ) && ! is_wp_error( $records_id ) ) {
 		}
 		if ( ! $already ) {
 			$library     = get_page_by_path( 'library' );
-			$library_pos = 0;
+			$library_pos    = 0;
+			$library_parent = 0;
+			// The last match wins, which is the Library item inside the Research
+			// group rather than the Research parent that also opens Library — so
+			// Records joins the group instead of the top bar.
 			foreach ( wp_get_nav_menu_items( $menu->term_id ) ?: [] as $item ) {
 				if ( $library && (int) $item->object_id === (int) $library->ID ) {
-					$library_pos = (int) $item->menu_order;
+					$library_pos    = (int) $item->menu_order;
+					$library_parent = (int) $item->menu_item_parent;
 				}
 			}
 			wp_update_nav_menu_item( $menu->term_id, 0, [
@@ -954,6 +959,7 @@ if ( ! empty( $records_id ) && ! is_wp_error( $records_id ) ) {
 				'menu-item-object-id' => $records_id,
 				'menu-item-type'      => 'post_type',
 				'menu-item-status'    => 'publish',
+				'menu-item-parent-id' => $library_parent,
 				'menu-item-position'  => $library_pos ? $library_pos + 1 : 0,
 			] );
 			WP_CLI::log( '  Added Records to the primary menu.' );

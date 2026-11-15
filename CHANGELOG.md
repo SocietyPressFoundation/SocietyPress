@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.121] — 2026-11-15
+
+**Send a test email to any address.** On Send Email, the test button now has an address box beside it, filled in with your own email. Change it to send the test somewhere else — a personal inbox, or a board member who should look it over first. On the public demo the box is left out and tests go only to the demo account.
+
+---
+
 ## [1.5.120] — 2026-11-15
 
 **Filter links sit above their lists again.** On Send Email and other screens with All / Drafts / Sent style filters, the links had slipped to the left of the list instead of sitting above it. The empty Send Email list now shows Arthur too.

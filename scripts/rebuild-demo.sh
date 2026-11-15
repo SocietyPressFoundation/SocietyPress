@@ -206,6 +206,9 @@ $WP user update societypressrocks --user_pass=societypressrocks 2>/dev/null || \
 echo "Locking down demo..."
 $WP config set DISALLOW_FILE_MODS true --raw --type=constant 2>/dev/null
 $WP config set DISALLOW_FILE_EDIT true --raw --type=constant 2>/dev/null
+# Tells the plugin it is the public demo (see sp_is_demo_mode()), so features
+# that could send email to outside addresses stay locked to the demo account.
+$WP config set SP_DEMO_MODE true --raw --type=constant 2>/dev/null
 
 EXTRA_ADMINS=$($WP user list --role=administrator --field=user_login 2>/dev/null | grep -vx societypressrocks)
 if [ -n "$EXTRA_ADMINS" ]; then

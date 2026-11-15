@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.120
+ * Version:     1.5.121
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.120' );
+define( 'SOCIETYPRESS_VERSION', '1.5.121' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41529,7 +41529,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.120',
+            'version'     => '1.5.121',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41537,7 +41537,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.120',
+            'version'     => '1.5.121',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41545,7 +41545,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.120',
+            'version'     => '1.5.121',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41553,7 +41553,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.120',
+            'version'     => '1.5.121',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41561,7 +41561,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.120',
+            'version'     => '1.5.121',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -89778,6 +89778,8 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-send-btn            { background: #1d6b30; border-color: #1d6b30; }
     .sp-blast-test-status         { min-height: 1.5em; margin: 0; }
     .sp-blast-test-status.is-error { color: #b32d2e; }
+    .sp-blast-test-group          { display: inline-flex; gap: 4px; align-items: center; }
+    .sp-blast-test-to             { width: 16em; }
     .sp-blast-preview             { margin-top: 24px; border: 1px solid #dcdcde; background: #f4f4f4; padding: 16px; }
     .sp-blast-preview-head        { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 12px; }
     .sp-blast-preview-head h2     { margin: 0; }
@@ -90028,7 +90030,15 @@ function sp_render_blast_email_compose_page(): void {
                     <?php esc_html_e( 'Send Now', 'societypress' ); ?>
                 </button>
                 <button type="button" class="button" id="sp-blast-preview-btn"><?php esc_html_e( 'Preview', 'societypress' ); ?></button>
-                <button type="button" class="button" id="sp-blast-test-btn"><?php esc_html_e( 'Send me a test', 'societypress' ); ?></button>
+                <?php if ( sp_is_demo_mode() ) : ?>
+                    <button type="button" class="button" id="sp-blast-test-btn"><?php esc_html_e( 'Send me a test', 'societypress' ); ?></button>
+                <?php else : ?>
+                    <span class="sp-blast-test-group">
+                        <label for="sp-blast-test-to" class="screen-reader-text"><?php esc_html_e( 'Send a test to this address', 'societypress' ); ?></label>
+                        <input type="email" id="sp-blast-test-to" class="sp-blast-test-to" value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>" autocomplete="email">
+                        <button type="button" class="button" id="sp-blast-test-btn"><?php esc_html_e( 'Send a test', 'societypress' ); ?></button>
+                    </span>
+                <?php endif; ?>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
             <p class="sp-blast-test-status" id="sp-blast-test-status" role="status" aria-live="polite"></p>
@@ -90237,6 +90247,8 @@ function sp_render_blast_email_compose_page(): void {
                 fd.append('banner', document.getElementById('sp-blast-banner-text').value);
                 var att = document.getElementById('sp-blast-attachment-ids');
                 fd.append('attachment_ids', att ? att.value : '');
+                var to = document.getElementById('sp-blast-test-to');
+                fd.append('to', to ? to.value : '');
                 return fd;
             }
 
@@ -90278,6 +90290,18 @@ function sp_render_blast_email_compose_page(): void {
         </script>
     </div>
     <?php
+}
+
+/**
+ * Is this the public demo site?
+ *
+ * WHY a constant: the demo publishes an administrator login, so a few things
+ *      that are safe for a real society's admin (sending email to any address)
+ *      must be held back there. The demo's wp-config sets SP_DEMO_MODE; no
+ *      real society ever will, so nothing changes for them.
+ */
+function sp_is_demo_mode(): bool {
+    return defined( 'SP_DEMO_MODE' ) && SP_DEMO_MODE;
 }
 
 /**
@@ -90332,6 +90356,20 @@ add_action( 'wp_ajax_sp_blast_send_test', function () {
     $req  = sp_blast_preview_request();
     $out  = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'] );
     $to   = wp_get_current_user()->user_email;
+
+    // WHY a typed address: the sender's account address is often not the inbox
+    //      they check, or they want a second person to look before it goes out.
+    // WHY not on the demo: its login is public, so an open "to" box would let
+    //      any visitor use the site to send email to anyone.
+    if ( ! sp_is_demo_mode() ) {
+        $typed = sanitize_email( wp_unslash( $_POST['to'] ?? '' ) );
+        if ( '' !== trim( (string) ( $_POST['to'] ?? '' ) ) && ! is_email( $typed ) ) {
+            wp_send_json_error( [ 'message' => __( 'That email address doesn’t look right. Please check it and try again.', 'societypress' ) ] );
+        }
+        if ( $typed ) {
+            $to = $typed;
+        }
+    }
 
     // WHY attachments too: a test that leaves out the flyer isn't a test of
     // what members will receive.

@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.118] — 2026-11-14
+
+**Replying to a closed help ticket reopens it.** If the person who filed a ticket writes back after it was marked Done or Not doing, the ticket goes back to New so the reply is seen, rather than sitting in a closed ticket nobody is looking at.
+
+---
+
 ## [1.5.117] — 2026-11-14
 
 **Check a bulk email before it goes out.** Send Email has two new buttons next to Send Now.

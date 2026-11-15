@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.123
+ * Version:     1.5.124
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.123' );
+define( 'SOCIETYPRESS_VERSION', '1.5.124' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -10954,7 +10954,7 @@ function sp_obfuscate_email( string $email ): string {
  * global spAssembleEmails() so dynamically-built HTML (like the member
  * detail modal) can trigger assembly on demand.
  */
-add_action( 'wp_footer', function () {
+function sp_print_email_assembler(): void {
     // Only run on the frontend, never in wp-admin
     if ( is_admin() ) {
         return;
@@ -10990,7 +10990,12 @@ add_action( 'wp_footer', function () {
     })();
     </script>
     <?php
-}, 99 ); // Priority 99: run after other wp_footer scripts so all spans exist
+}
+add_action( 'wp_footer', 'sp_print_email_assembler', 99 ); // Priority 99: run after other wp_footer scripts so all spans exist
+// WHY the login screen too: the society's login notice gives the Membership
+// Chair's address, and without the assembler there it read "contact the
+// Membership Chair at ." with the address missing.
+add_action( 'login_footer', 'sp_print_email_assembler', 99 );
 
 
 // ============================================================================
@@ -13174,6 +13179,52 @@ add_filter( 'wp_mail_from', function ( $email ) {
 // ============================================================================
 // SIDEBAR HIGHLIGHTING — Keep Pages & Media highlighted under SocietyPress
 // ============================================================================
+
+/**
+ * Keep the sidebar open on SocietyPress's own hidden screens.
+ *
+ * WHY: edit and compose screens (Write an Email, Edit Event, Edit Member…) are
+ *      registered without a menu row, so WordPress doesn't know they belong to
+ *      SocietyPress. It then treats the SocietyPress menu as closed, and a
+ *      closed menu's items are parked off-screen — the whole sidebar went
+ *      blank on every one of those screens. Claiming them for SocietyPress
+ *      keeps the menu open, and the list screen they belong to stays lit.
+ */
+function sp_hidden_screen_list_slug( string $page ): string {
+    foreach ( sp_get_modules() as $module ) {
+        $slugs = $module['menu_slugs'] ?? [];
+        if ( in_array( $page, $slugs, true ) ) {
+            return (string) $slugs[0];
+        }
+    }
+    return '';
+}
+
+add_filter( 'parent_file', function ( $parent_file ) {
+    global $pagenow, $plugin_page, $_wp_real_parent_file;
+    if ( 'admin.php' === $pagenow && is_string( $plugin_page ) && 0 === strpos( $plugin_page, 'sp-' ) ) {
+        // WHY the real-parent map too: right after this filter, WordPress's
+        // get_admin_page_parent() finds the screen filed under the blank parent
+        // hidden pages use and resets the parent to blank, undoing the return
+        // value below. The map tells it the blank parent means SocietyPress —
+        // set only on our own screens, so other plugins' hidden pages are
+        // left alone.
+        $_wp_real_parent_file['']   = 'societypress';
+        return 'societypress';
+    }
+    return $parent_file;
+} );
+
+add_filter( 'submenu_file', function ( $submenu_file ) {
+    global $pagenow, $plugin_page;
+    if ( 'admin.php' === $pagenow && is_string( $plugin_page ) && 0 === strpos( $plugin_page, 'sp-' ) ) {
+        $list = sp_hidden_screen_list_slug( $plugin_page );
+        if ( $list !== '' && $list !== $plugin_page ) {
+            return $list;
+        }
+    }
+    return $submenu_file;
+} );
 
 /**
  * Tell WordPress that Pages and Media screens belong under SocietyPress.
@@ -16227,20 +16278,21 @@ add_action( 'login_enqueue_scripts', function () {
  *
  * WHY: the demo invites visitors to log in and look around, and a login form
  *      with nothing to type into it is a dead end. Demo mode only, so no real
- *      society's login screen ever shows a password. Priority 5 puts it above
- *      the society notice below.
+ *      society's login screen ever shows a password. The society notice below
+ *      puts itself first, so this runs after it (priority 20) and goes first
+ *      again — the login is what a demo visitor came for.
  */
 add_filter( 'login_message', function ( $message ) {
     if ( ! sp_is_demo_mode() || ( $_GET['action'] ?? 'login' ) !== 'login' ) {
         return $message;
     }
-    return $message . '<p class="message">' . sprintf(
+    return '<p class="message">' . sprintf(
         /* translators: 1: demo username, 2: demo password */
         esc_html__( 'Try it out: the username is %1$s and the password is %2$s.', 'societypress' ),
         '<strong>societypressrocks</strong>',
         '<strong>societypressrocks</strong>'
-    ) . '</p>';
-}, 5 );
+    ) . '</p>' . $message;
+}, 20 );
 
 /**
  * Add the pre-login privacy notice above the login form.
@@ -41557,7 +41609,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.123',
+            'version'     => '1.5.124',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41565,7 +41617,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.123',
+            'version'     => '1.5.124',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41573,7 +41625,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.123',
+            'version'     => '1.5.124',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41581,7 +41633,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.123',
+            'version'     => '1.5.124',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41589,7 +41641,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.123',
+            'version'     => '1.5.124',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

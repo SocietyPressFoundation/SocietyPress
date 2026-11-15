@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.124] — 2026-11-15
+
+**The admin menu stays put on edit screens.** On screens like Write an Email, Edit Event and Edit Member, the left-hand menu went blank apart from View Site and Log Out. It now stays in place, with the screen's list highlighted.
+
+**The login notice shows the Membership Chair's address.** The notice above the login form said "contact the Membership Chair at ." with the address missing. The address now appears as a link.
+
+---
+
 ## [1.5.123] — 2026-11-15
 
 **A reply to "Waiting on you" moves the ticket along.** When the person who filed a help ticket answers a ticket marked Waiting on you, it changes to Being looked at, so their answer doesn't sit under a label saying it's still waiting on them.

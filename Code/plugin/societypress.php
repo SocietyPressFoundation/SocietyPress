@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.122
+ * Version:     1.5.123
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.122' );
+define( 'SOCIETYPRESS_VERSION', '1.5.123' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16223,6 +16223,26 @@ add_action( 'login_enqueue_scripts', function () {
 } );
 
 /**
+ * Show the public demo's login on its login screen.
+ *
+ * WHY: the demo invites visitors to log in and look around, and a login form
+ *      with nothing to type into it is a dead end. Demo mode only, so no real
+ *      society's login screen ever shows a password. Priority 5 puts it above
+ *      the society notice below.
+ */
+add_filter( 'login_message', function ( $message ) {
+    if ( ! sp_is_demo_mode() || ( $_GET['action'] ?? 'login' ) !== 'login' ) {
+        return $message;
+    }
+    return $message . '<p class="message">' . sprintf(
+        /* translators: 1: demo username, 2: demo password */
+        esc_html__( 'Try it out: the username is %1$s and the password is %2$s.', 'societypress' ),
+        '<strong>societypressrocks</strong>',
+        '<strong>societypressrocks</strong>'
+    ) . '</p>';
+}, 5 );
+
+/**
  * Add the pre-login privacy notice above the login form.
  *
  * WHY: The society's policy requires members to read the acceptable-use
@@ -21936,6 +21956,11 @@ add_action( 'admin_post_sp_reply_ticket', function () {
 
     if ( isset( $statuses[ $status ] ) && $status !== $ticket->status ) {
         $changed['status'] = $status;
+    } elseif ( $reply_id && $is_reporter && 'needs_info' === $ticket->status ) {
+        // WHY: "Waiting on you" means the ball is with the reporter. Their
+        // reply hands it back, so the ticket should stop saying it waits on
+        // them — otherwise the answer sits unnoticed under the wrong label.
+        $changed['status'] = 'progress';
     } elseif ( $reply_id && $is_reporter && in_array( $ticket->status, [ 'done', 'wontdo' ], true ) ) {
         // WHY reopen: a closed ticket drops out of the open list, so a reply
         // on one ("it's still not right") would sit unseen. Writing back on a
@@ -41532,7 +41557,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.122',
+            'version'     => '1.5.123',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41540,7 +41565,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.122',
+            'version'     => '1.5.123',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41548,7 +41573,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.122',
+            'version'     => '1.5.123',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41556,7 +41581,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.122',
+            'version'     => '1.5.123',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41564,7 +41589,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.122',
+            'version'     => '1.5.123',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

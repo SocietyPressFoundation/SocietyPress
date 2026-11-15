@@ -120,9 +120,10 @@ get_header();
         <footer class="onepager__footer">
             <p>
                 <strong>See the treasurer views on the demo:</strong>
-                <a href="https://demo.societypress.net">demo.societypress.net</a>
-                (log in with the treasurer demo account to see only the
-                financial surfaces)
+                <a href="https://demo.societypress.net/wp-login.php">demo.societypress.net</a>
+                (log in with username <strong>societypressrocks</strong>, password
+                <strong>societypressrocks</strong>, then open <strong>Money</strong>
+                in the admin menu)
             </p>
             <p>
                 <strong>Finance-specific questions:</strong>

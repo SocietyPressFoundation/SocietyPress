@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.123] — 2026-11-15
+
+**A reply to "Waiting on you" moves the ticket along.** When the person who filed a help ticket answers a ticket marked Waiting on you, it changes to Being looked at, so their answer doesn't sit under a label saying it's still waiting on them.
+
+**The demo shows its login.** The public demo's login screen now gives the demo username and password. Real society sites never show this.
+
+---
+
 ## [1.5.122] — 2026-11-15
 
 **Emails use your society's name.** The name in the coloured bar and footer of every email now comes from Settings → Organization, not the site title. A site title written as a greeting ("Welcome to the … Society") no longer shows up as the sender's name.

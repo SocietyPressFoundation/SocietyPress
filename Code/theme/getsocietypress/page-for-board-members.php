@@ -117,7 +117,7 @@ get_header();
                 <dd>Charles Stricklin &mdash; a software developer who created, writes, and maintains SocietyPress entirely on his own.</dd>
 
                 <dt>How do we evaluate it?</dt>
-                <dd>Visit the fully-functional demo at demo.societypress.net. Log in, click around, break things. No account, no form, no demo-request call required.</dd>
+                <dd>Visit the fully-functional demo at <a href="https://demo.societypress.net/wp-login.php">demo.societypress.net</a> and log in with username <strong>societypressrocks</strong>, password <strong>societypressrocks</strong>. Click around, break things &mdash; it resets every night. No sign-up, no form, no demo-request call required.</dd>
             </dl>
         </section>
 

@@ -2299,3 +2299,56 @@ function gsp_arthur( string $pose, string $modifier = 'hero' ): void {
         (int) ( $size[1] ?? 0 )
     );
 }
+
+
+/**
+ * Remember browsers that an administrator has logged in from.
+ *
+ * WHY: the header carries no Log In link — nearly every visitor here is a
+ *      prospective society, not an account holder. The site's own admins
+ *      still want one-click access, and the only way to know "this is an
+ *      admin" before they log in is a marker left by a previous login.
+ *      The cookie holds no identity or credentials; it only decides whether
+ *      a Log In link is drawn.
+ */
+const GSP_ADMIN_BROWSER_COOKIE = 'gsp_admin_browser';
+
+function gsp_mark_admin_browser( string $user_login, WP_User $user ): void {
+    if ( user_can( $user, 'manage_options' ) ) {
+        setcookie( GSP_ADMIN_BROWSER_COOKIE, '1', array(
+            'expires'  => time() + 5 * YEAR_IN_SECONDS,
+            'path'     => '/',
+            'secure'   => is_ssl(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ) );
+    }
+}
+add_action( 'wp_login', 'gsp_mark_admin_browser', 10, 2 );
+
+/**
+ * Header account links: shown only to admins, or to a browser an admin has
+ * logged in from before. Everyone else sees nothing here.
+ */
+function gsp_render_admin_header_links(): void {
+    if ( is_user_logged_in() ) {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            return;
+        }
+        printf(
+            '<a class="nav-actions__link" href="%1$s">%2$s</a><a class="nav-actions__link" href="%3$s">%4$s</a>',
+            esc_url( admin_url() ),
+            esc_html__( 'Admin', 'getsocietypress' ),
+            esc_url( wp_logout_url( home_url( '/' ) ) ),
+            esc_html__( 'Log Out', 'getsocietypress' )
+        );
+        return;
+    }
+    if ( ! empty( $_COOKIE[ GSP_ADMIN_BROWSER_COOKIE ] ) ) {
+        printf(
+            '<a class="nav-actions__link" href="%1$s">%2$s</a>',
+            esc_url( wp_login_url( home_url( add_query_arg( array() ) ) ) ),
+            esc_html__( 'Log In', 'getsocietypress' )
+        );
+    }
+}

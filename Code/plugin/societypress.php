@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.119
+ * Version:     1.5.120
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.119' );
+define( 'SOCIETYPRESS_VERSION', '1.5.120' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -13421,6 +13421,12 @@ add_action( 'admin_head', function () {
 <style id="sp-admin-utilities">
 /* ---------- Form field labels (48+ uses) ---------- */
 .sp-field-label { display: block; font-weight: 600; margin-bottom: 4px; }
+
+/* ---------- Status filter links above hand-built tables ----------
+   WordPress floats .subsubsub left; its own list tables clear it with a
+   .tablenav row, but our hand-built tables follow it directly and slid up
+   beside it, leaving the filter links stranded to the table's left. */
+.wrap .subsubsub + table, .wrap .subsubsub + form, .wrap .subsubsub + div { clear: both; }
 
 /* ---------- Visibility ---------- */
 /* WHY this is !important: the hidden attribute is only a UA-stylesheet
@@ -41523,7 +41529,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.119',
+            'version'     => '1.5.120',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41531,7 +41537,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.119',
+            'version'     => '1.5.120',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41539,7 +41545,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.119',
+            'version'     => '1.5.120',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41547,7 +41553,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.119',
+            'version'     => '1.5.120',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41555,7 +41561,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.119',
+            'version'     => '1.5.120',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -89254,7 +89260,7 @@ function sp_render_blast_email_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="6" class="sp-text-center sp-p-20"><?php esc_html_e( 'No blast emails yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>"><?php esc_html_e( 'Compose one', 'societypress' ); ?></a>.</td></tr>
+                    <tr><td colspan="6" class="sp-text-center sp-p-20"><?php echo sp_arthur_empty_list( 'editor' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_arthur_img(). ?><?php esc_html_e( 'No blast emails yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-blast-email-compose' ) ); ?>"><?php esc_html_e( 'Compose one', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>

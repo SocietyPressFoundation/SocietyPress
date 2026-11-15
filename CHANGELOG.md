@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.120] — 2026-11-15
+
+**Filter links sit above their lists again.** On Send Email and other screens with All / Drafts / Sent style filters, the links had slipped to the left of the list instead of sitting above it. The empty Send Email list now shows Arthur too.
+
+---
+
 ## [1.5.119] — 2026-11-15
 
 **A shorter menu bar on new sites.** The menu a new site starts with now groups Library, Records and Newsletters under one **Research** item, and leaves out My Account, which is already in the name-and-photo menu at the top right. New sites start with seven top-level items instead of eleven.

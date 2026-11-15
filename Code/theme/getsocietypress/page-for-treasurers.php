@@ -20,7 +20,7 @@ get_header();
     <div class="container container--narrow">
 
         <header class="onepager__header">
-            <?php gsp_archie( 'treasurer', 'onepager' ); ?>
+            <?php gsp_arthur( 'treasurer', 'onepager' ); ?>
             <div class="onepager__role-label">For society treasurers</div>
             <h1 class="onepager__title">Money flows directly. Books reconcile cleanly.</h1>
             <p class="onepager__lede">

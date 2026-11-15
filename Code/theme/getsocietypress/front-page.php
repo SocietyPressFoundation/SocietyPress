@@ -28,7 +28,7 @@ get_header();
     <div class="container">
         <div class="hero__content">
 
-            <?php gsp_archie( 'welcoming' ); ?>
+            <?php gsp_arthur( 'welcoming' ); ?>
 
             <div class="hero__badge">
                 Free. Open Source. Built for Genealogy.

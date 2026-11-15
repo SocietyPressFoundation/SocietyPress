@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.115] — 2026-11-14
+
+**The owl has a name: Arthur the Archivist.** Same owl, same places; only the name has changed.
+
+---
+
 ## [1.5.114] — 2026-11-14
 
 **Meet Archie the Archivist.** SocietyPress has a mascot: a friendly owl in a flat cap who turns up wherever a screen would otherwise feel bare.

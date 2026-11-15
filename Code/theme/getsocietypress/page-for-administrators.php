@@ -23,7 +23,7 @@ get_header();
     <div class="container container--narrow">
 
         <header class="onepager__header">
-            <?php gsp_archie( 'webmaster', 'onepager' ); ?>
+            <?php gsp_arthur( 'webmaster', 'onepager' ); ?>
             <div class="onepager__role-label">For the society administrator</div>
             <h1 class="onepager__title">Stop juggling plugins. Start running your society.</h1>
             <p class="onepager__lede">

@@ -19,7 +19,7 @@ get_header();
     <div class="container container--narrow">
 
         <header class="onepager__header">
-            <?php gsp_archie( 'board', 'onepager' ); ?>
+            <?php gsp_arthur( 'board', 'onepager' ); ?>
             <div class="onepager__role-label">For board members</div>
             <h1 class="onepager__title">A fiscal and governance case for SocietyPress.</h1>
             <p class="onepager__lede">

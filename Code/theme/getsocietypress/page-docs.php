@@ -28,7 +28,7 @@ get_header();
 <section class="page-hero">
     <div class="container">
         <div class="page-hero__content">
-            <?php gsp_archie( 'librarian' ); ?>
+            <?php gsp_arthur( 'librarian' ); ?>
             <h1 class="page-hero__title">Documentation</h1>
             <p class="page-hero__subtitle">
                 Guides, references, and tutorials for setting up and running

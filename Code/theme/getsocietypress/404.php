@@ -18,7 +18,7 @@ get_header();
 <section class="page-hero">
     <div class="container">
         <div class="page-hero__content">
-            <?php gsp_archie( 'not-found' ); ?>
+            <?php gsp_arthur( 'not-found' ); ?>
             <div class="error-404__code">404</div>
             <h1 class="page-hero__title">Page not found</h1>
             <p class="page-hero__subtitle">

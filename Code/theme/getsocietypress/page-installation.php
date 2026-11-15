@@ -33,7 +33,7 @@ get_header();
 <section class="page-hero">
     <div class="container">
         <div class="page-hero__content">
-            <?php gsp_archie( 'busy' ); ?>
+            <?php gsp_arthur( 'busy' ); ?>
             <h1 class="page-hero__title">Installation Guide</h1>
             <p class="page-hero__subtitle">
                 Upload one file, fill out one form, and SocietyPress is running.

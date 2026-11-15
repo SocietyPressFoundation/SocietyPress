@@ -33,7 +33,7 @@ get_header();
 <section class="page-hero">
     <div class="container">
         <div class="page-hero__content">
-            <?php gsp_archie( 'onboarding' ); ?>
+            <?php gsp_arthur( 'onboarding' ); ?>
             <h1 class="page-hero__title">First-Time Setup</h1>
             <p class="page-hero__subtitle">
                 A visual walkthrough of everything you'll do after installing

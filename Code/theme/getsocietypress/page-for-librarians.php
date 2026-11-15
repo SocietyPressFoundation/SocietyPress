@@ -19,7 +19,7 @@ get_header();
     <div class="container container--narrow">
 
         <header class="onepager__header">
-            <?php gsp_archie( 'librarian', 'onepager' ); ?>
+            <?php gsp_arthur( 'librarian', 'onepager' ); ?>
             <div class="onepager__role-label">For society librarians</div>
             <h1 class="onepager__title">Your collection, cataloged and searchable.</h1>
             <p class="onepager__lede">

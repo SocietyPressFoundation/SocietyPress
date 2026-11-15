@@ -858,6 +858,23 @@ if ( $demo_user ) {
 	} else {
 		WP_CLI::log( '  Demo admin already has a member record.' );
 	}
+
+	// WHY: Harold is the face every demo visitor logs in as, and a blank
+	// Gravatar silhouette in the toolbar and member record makes the demo look
+	// unfinished. Arthur the webmaster owl ships with the plugin, so copy it into
+	// the same folder the profile-photo uploader uses and point both photo
+	// fields at it — exactly the state a real upload leaves behind.
+	$arthur_src = WP_PLUGIN_DIR . '/societypress/assets/arthur/arthur-webmaster.webp';
+	if ( file_exists( $arthur_src ) ) {
+		$upload_dir = wp_upload_dir();
+		$photo_dir  = $upload_dir['basedir'] . '/sp-profile-photos';
+		wp_mkdir_p( $photo_dir );
+		copy( $arthur_src, $photo_dir . '/harold-wilson-member.webp' );
+		$photo_url = $upload_dir['baseurl'] . '/sp-profile-photos/harold-wilson-member.webp';
+		update_user_meta( $demo_user->ID, 'sp_profile_photo_url', $photo_url );
+		$wpdb->update( "{$prefix}members", [ 'photo_url' => $photo_url ], [ 'user_id' => $demo_user->ID ] );
+		WP_CLI::log( '  Demo admin photo set to Arthur.' );
+	}
 }
 
 // ---------------------------------------------------------------------------

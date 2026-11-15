@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.116] — 2026-11-14
+
+**Emails now look the way you wrote them.** Bulk emails, and the welcome, renewal reminder, expired and donation thank-you emails, were arriving with every paragraph run together into one block, and a centered image showed up on the left. Paragraphs and image alignment now come through as they appear in the editor.
+
+---
+
 ## [1.5.115] — 2026-11-14
 
 **The owl has a name: Arthur the Archivist.** Same owl, same places; only the name has changed.

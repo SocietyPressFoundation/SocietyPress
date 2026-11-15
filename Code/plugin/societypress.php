@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.115
+ * Version:     1.5.116
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.115' );
+define( 'SOCIETYPRESS_VERSION', '1.5.116' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41499,7 +41499,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.115',
+            'version'     => '1.5.116',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41507,7 +41507,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.115',
+            'version'     => '1.5.116',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41515,7 +41515,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.115',
+            'version'     => '1.5.116',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41523,7 +41523,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.115',
+            'version'     => '1.5.116',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41531,7 +41531,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.115',
+            'version'     => '1.5.116',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -67971,6 +67971,54 @@ add_action( 'sp_email_log_cleanup_cron', function () {
 // ============================================================================
 
 /**
+ * Turn rich-editor content into email-ready HTML.
+ *
+ * WHY: wp_editor() saves paragraphs as blank lines, not <p> tags — WordPress
+ *      adds the tags only when it displays a post. Mailing the saved text as
+ *      it is ran every paragraph together into one block, so the email looked
+ *      nothing like what the sender built. This applies the same paragraph
+ *      step WordPress uses on the site.
+ *
+ *      Alignment needs the same care: the editor marks a centered image with
+ *      class="aligncenter", which means something only to a stylesheet, and
+ *      email programs ignore stylesheets. So alignment becomes inline style,
+ *      which every mail program honors, and images are kept from overflowing
+ *      a phone screen.
+ *
+ * @param string $html Content as saved by wp_editor().
+ * @return string HTML ready to drop into sp_build_email_html().
+ */
+function sp_email_body_from_editor( string $html ): string {
+    $html = wpautop( $html );
+
+    // WP_HTML_Tag_Processor arrived in WordPress 6.2; on older sites the
+    // paragraphs are still fixed, only image alignment is left as it was.
+    if ( ! class_exists( 'WP_HTML_Tag_Processor' ) ) {
+        return $html;
+    }
+
+    $align_styles = [
+        'aligncenter' => 'display:block;margin:0 auto 16px;',
+        'alignleft'   => 'float:left;margin:0 16px 12px 0;',
+        'alignright'  => 'float:right;margin:0 0 12px 16px;',
+    ];
+
+    $p = new WP_HTML_Tag_Processor( $html );
+    while ( $p->next_tag( 'img' ) ) {
+        $style = 'max-width:100%;height:auto;';
+        foreach ( $align_styles as $class => $css ) {
+            if ( $p->has_class( $class ) ) {
+                $style .= $css;
+            }
+        }
+        $existing = (string) $p->get_attribute( 'style' );
+        $p->set_attribute( 'style', $style . $existing );
+    }
+
+    return $p->get_updated_html();
+}
+
+/**
  * Build an HTML email body with consistent styling.
  *
  * WHY: Every email from SocietyPress should look professional and be readable
@@ -87364,6 +87412,7 @@ function sp_process_renewal_reminders(): void {
             // so we always fall back to the built-in default.
             $template_body = $settings['email_template_renewal_reminder']
                              ?? sp_get_default_email_template( 'renewal_reminder' );
+            $template_body = sp_email_body_from_editor( (string) $template_body );
             $body_html = sp_replace_merge_tags(
                 $template_body,
                 $member,
@@ -87507,7 +87556,10 @@ function sp_process_expired_notices(): bool {
         if ( ! sp_member_wants_email( $member, 'pref_email_notices' ) ) continue;
 
         $template_body = $settings['email_template_expired']
+
                          ?? sp_get_default_email_template( 'expired' );
+
+        $template_body = sp_email_body_from_editor( (string) $template_body );
         $body_html = sp_replace_merge_tags(
             $template_body,
             $member
@@ -87594,7 +87646,10 @@ function sp_send_welcome_email( int $user_id ): void {
     $subject   = sp_replace_merge_tags( $subject, $member );
 
     $template_body = $settings['email_template_welcome']
+
                      ?? sp_get_default_email_template( 'welcome' );
+
+    $template_body = sp_email_body_from_editor( (string) $template_body );
     $body_html = sp_replace_merge_tags(
         $template_body,
         $member
@@ -89440,7 +89495,7 @@ function sp_render_blast_email_detail( int $blast_id ): void {
         <h3><?php esc_html_e( 'Email Body', 'societypress' ); ?></h3>
         <div class="sp-blast-detail-body-wrap">
             <?php
-            $rendered = sp_build_email_html( $blast->subject, $blast->body );
+            $rendered = sp_build_email_html( $blast->subject, sp_email_body_from_editor( (string) $blast->body ) );
             echo '<iframe srcdoc="' . esc_attr( $rendered ) . '" class="sp-blast-detail-iframe" sandbox title="' . esc_attr__( 'Newsletter blast preview', 'societypress' ) . '"></iframe>';
             ?>
         </div>
@@ -90617,7 +90672,7 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
 
     foreach ( $recipients as $recipient ) {
         // Process merge tags for this recipient
-        $personalized_body    = sp_blast_process_merge_tags( $blast->body, $recipient );
+        $personalized_body    = sp_blast_process_merge_tags( sp_email_body_from_editor( (string) $blast->body ), $recipient );
         $personalized_subject = sp_blast_process_merge_tags( $blast->subject, $recipient );
 
         // Public subscribers carry an unsubscribe token — append a one-click
@@ -92012,6 +92067,7 @@ function sp_send_donation_acknowledgments( array $donation_ids ): void {
         ?? __( 'Thank You for Your Donation — {{organization_name}}', 'societypress' );
     $body_template    = $settings['email_template_donation_acknowledgment']
         ?? sp_get_default_email_template( 'donation_acknowledgment' );
+    $body_template    = sp_email_body_from_editor( (string) $body_template );
 
     foreach ( $donation_ids as $did ) {
         $donation = $wpdb->get_row( $wpdb->prepare(

@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.114] — 2026-11-14
+
+**Meet Archie the Archivist.** SocietyPress has a mascot: a friendly owl in a flat cap who turns up wherever a screen would otherwise feel bare.
+
+- The setup wizard opens with Archie holding a "Start Here" sign and finishes with him celebrating.
+- The Dashboard greets you by name, with Archie waving hello.
+- An empty list (no members, events, books, donations, meetings, newsletters and so on) shows the Archie who does that job, next to the prompt to add the first one. When a search finds nothing, Archie is out with his binoculars instead.
+- Archie is decorative only, so screen readers skip him; the words beside him say what the screen means.
+
+---
+
 ## [1.5.113] — 2026-11-13
 
 **The join form asks about volunteering, lineage groups, interests and genealogy skills.** Each is a checklist with a box underneath for anything the list misses. Skills also asks how experienced the person is, and Lineage Groups asks both which lineage societies they already belong to and which of the society's own lineage programs they might apply to.

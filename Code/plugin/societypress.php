@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.113
+ * Version:     1.5.114
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.113' );
+define( 'SOCIETYPRESS_VERSION', '1.5.114' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -13346,6 +13346,50 @@ function sp_handle_screen_post( string $slug, callable $handler ): void {
 }
 
 /**
+ * Return an Archie the Archivist owl illustration for an admin screen.
+ *
+ * WHY: An empty list or a first-run screen with nothing but a sentence reads
+ *      as broken to a volunteer who has never seen the software before. Archie
+ *      makes "nothing here yet" look intentional and friendly. He is purely
+ *      decorative, so he is hidden from screen readers — the sentence beside
+ *      him carries the meaning. Width and height come from the file so the
+ *      layout doesn't jump while the image loads.
+ *
+ * @param string $pose     File slug in assets/archie/ (e.g. 'membership').
+ * @param string $modifier Size/placement modifier: 'empty', 'wizard', 'greeting'.
+ * @return string Image tag, or an empty string if the pose doesn't exist.
+ */
+function sp_archie_img( string $pose, string $modifier = 'empty' ): string {
+    $rel  = 'assets/archie/archie-' . $pose . '.webp';
+    $file = SOCIETYPRESS_PLUGIN_DIR . $rel;
+    if ( ! is_readable( $file ) ) {
+        return '';
+    }
+    $size = getimagesize( $file );
+    return sprintf(
+        '<img class="sp-archie sp-archie--%1$s" src="%2$s" width="%3$d" height="%4$d" alt="" aria-hidden="true" decoding="async">',
+        esc_attr( $modifier ),
+        esc_url( SOCIETYPRESS_PLUGIN_URL . $rel ),
+        (int) ( $size[0] ?? 0 ),
+        (int) ( $size[1] ?? 0 )
+    );
+}
+
+/**
+ * Pick the owl for an empty admin list.
+ *
+ * WHY: An empty list means two different things — "you haven't added any
+ *      yet" or "your search found nothing" — so Archie searches in the second
+ *      case instead of inviting you to add something that may already exist.
+ *
+ * @param string $pose The owl for this list when it is genuinely empty.
+ */
+function sp_archie_empty_list( string $pose ): string {
+    $searching = isset( $_GET['s'] ) && '' !== trim( (string) wp_unslash( $_GET['s'] ) );
+    return sp_archie_img( $searching ? 'searching' : $pose );
+}
+
+/**
  * Inject utility CSS classes used throughout admin pages.
  *
  * WHY: The plugin originally used inline style= attributes for common patterns
@@ -13450,6 +13494,15 @@ add_action( 'admin_head', function () {
 
 /* ---------- Empty states ---------- */
 .sp-empty-state { text-align: center; padding: 40px; color: #646970; }
+
+/* ---------- Archie the Archivist (sized by height so every pose reads as the same owl) ---------- */
+.sp-archie { display: block; width: auto; max-width: 100%; height: 120px; margin: 8px auto 12px; }
+.sp-archie--wizard { height: 150px; margin-bottom: 16px; }
+.sp-archie--greeting { height: 84px; margin: 0; flex: none; }
+.sp-dash-greeting { display: flex; align-items: center; gap: 16px; margin: 4px 0 16px; }
+.sp-dash-greeting .sp-dash-who { margin: 0; }
+.sp-dash-hello { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+.wp-list-table .no-items td:has(.sp-archie) { text-align: center; padding: 24px; }
 
 /* ---------- Common layout ---------- */
 .sp-flex-gap-8  { display: flex; gap: 8px; }
@@ -19890,6 +19943,19 @@ function sp_render_dashboard_page(): void {
             <?php esc_html_e( 'Dashboard', 'societypress' ); ?>
             <a href="<?php echo esc_url( home_url( '/' ) ); ?>" class="page-title-action"><?php esc_html_e( 'View Site', 'societypress' ); ?></a>
         </h1>
+        <div class="sp-dash-greeting">
+            <?php echo sp_archie_img( 'welcoming', 'greeting' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img(). ?>
+            <div>
+                <p class="sp-dash-hello">
+                    <?php
+                    $sp_user = wp_get_current_user();
+                    printf(
+                        /* translators: %s: the signed-in person's first name, or display name if none is set */
+                        esc_html__( 'Welcome back, %s.', 'societypress' ),
+                        esc_html( $sp_user->first_name !== '' ? $sp_user->first_name : $sp_user->display_name )
+                    );
+                    ?>
+                </p>
         <p class="sp-dash-who">
             <?php
             printf(
@@ -19900,6 +19966,8 @@ function sp_render_dashboard_page(): void {
             );
             ?>
         </p>
+        </div>
+        </div>
 
         <?php sp_render_dashboard_default_controls(); ?>
 
@@ -24163,8 +24231,10 @@ class SP_Members_List_Table extends WP_List_Table {
             "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members"
         );
         if ( $has_any > 0 ) {
+            echo sp_archie_img( 'searching' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
             echo esc_html__( 'No members match your current filters.', 'societypress' );
         } else {
+            echo sp_archie_img( 'membership' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
             echo esc_html__( 'No members found.', 'societypress' ) . ' <a href="' . esc_url( admin_url( 'admin.php?page=sp-member-edit' ) ) . '">' . esc_html__( 'Add your first member', 'societypress' ) . '</a>.';
         }
     }
@@ -35375,6 +35445,7 @@ function sp_render_setup_wizard(): void {
 
     <div class="sp-wizard-wrap">
         <div class="sp-wizard-header">
+            <?php echo sp_archie_img( 5 === $step ? 'success' : 'onboarding', 'wizard' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img(). ?>
             <h1><?php esc_html_e( 'Welcome to SocietyPress', 'societypress' ); ?></h1>
             <p><?php esc_html_e( "Let's get your society website set up. This only takes a minute.", 'societypress' ); ?></p>
         </div>
@@ -38585,6 +38656,7 @@ class SP_Pages_List_Table extends WP_List_Table {
      * Message shown when no pages exist yet.
      */
     public function no_items(): void {
+        echo sp_archie_empty_list( 'busy' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         echo esc_html__( 'No pages found.', 'societypress' ) . ' <a href="'
            . esc_url( admin_url( 'admin.php?page=sp-page-edit' ) )
            . '">' . esc_html__( 'Create your first page', 'societypress' ) . '</a>.';
@@ -40459,7 +40531,7 @@ function sp_render_finances_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $rows ) ) : ?>
-                    <tr><td colspan="8" class="sp-text-center sp-p-20"><?php esc_html_e( 'No transactions found.', 'societypress' ); ?></td></tr>
+                    <tr><td colspan="8" class="sp-text-center sp-p-20"><?php echo sp_archie_empty_list( 'treasurer' ); ?><?php esc_html_e( 'No transactions found.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $rows as $row ) : ?>
                         <tr>
@@ -41427,7 +41499,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.113',
+            'version'     => '1.5.114',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41435,7 +41507,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.113',
+            'version'     => '1.5.114',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41443,7 +41515,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.113',
+            'version'     => '1.5.114',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41451,7 +41523,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.113',
+            'version'     => '1.5.114',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41459,7 +41531,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.113',
+            'version'     => '1.5.114',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -54451,6 +54523,7 @@ class SP_Events_List_Table extends WP_List_Table {
      * Message shown when there are no events yet.
      */
     public function no_items(): void {
+        echo sp_archie_empty_list( 'programs' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         echo esc_html__( 'No events found.', 'societypress' ) . ' <a href="' . esc_url( admin_url( 'admin.php?page=sp-event-edit' ) ) . '">' . esc_html__( 'Create your first event', 'societypress' ) . '</a>.';
     }
 }
@@ -68988,6 +69061,7 @@ class SP_Speakers_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
+        echo sp_archie_empty_list( 'programs' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         printf(
             /* translators: 1: opening <a> tag, 2: closing </a> tag */
             wp_kses_post( __( 'No speakers yet. %1$sAdd your first speaker%2$s.', 'societypress' ) ),
@@ -75307,7 +75381,7 @@ function sp_render_gallery_page(): void {
         <hr class="wp-header-end">
 
         <?php if ( empty( $albums ) ) : ?>
-            <p><?php esc_html_e( 'No albums yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-album-edit' ) ); ?>"><?php esc_html_e( 'Create your first album', 'societypress' ); ?></a>.</p>
+            <?php echo sp_archie_img( 'records' ); ?><p><?php esc_html_e( 'No albums yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-album-edit' ) ); ?>"><?php esc_html_e( 'Create your first album', 'societypress' ); ?></a>.</p>
         <?php else : ?>
             <style>
                 .sp-gallery-admin-grid { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; }
@@ -80012,7 +80086,7 @@ function sp_render_library_catalog_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $items ) ) : ?>
-                    <tr><td colspan="9"><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
+                    <tr><td colspan="9"><?php echo sp_archie_empty_list( 'librarian' ); ?><?php esc_html_e( 'No items found.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-item-edit' ) ); ?>"><?php esc_html_e( 'Add your first catalog item', 'societypress' ); ?></a>.</td></tr>
                 <?php else : ?>
                     <?php foreach ( $items as $item ) :
                         $edit_url   = admin_url( 'admin.php?page=sp-library-item-edit&item_id=' . $item->id );
@@ -82262,6 +82336,7 @@ class SP_Volunteers_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
+        echo sp_archie_empty_list( 'welcoming' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         printf(
             /* translators: 1: opening <a> tag, 2: closing </a> tag */
             wp_kses_post( __( 'No volunteer assignments yet. %1$sAssign a member to a role%2$s.', 'societypress' ) ),
@@ -82411,6 +82486,7 @@ class SP_VolunteerHours_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
+        echo sp_archie_empty_list( 'busy' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         esc_html_e( 'No volunteer hours logged yet. Use the form above to log the first entry.', 'societypress' );
     }
 
@@ -84112,7 +84188,7 @@ function sp_render_meetings_page(): void {
 
         <?php if ( empty( $rows ) ) : ?>
             <div class="sp-empty-state sp-mt-20">
-                <p><?php esc_html_e( 'No meetings recorded yet.', 'societypress' ); ?></p>
+                <?php echo sp_archie_img( 'board' ); ?><p><?php esc_html_e( 'No meetings recorded yet.', 'societypress' ); ?></p>
                 <p><a href="<?php echo esc_url( $add_url ); ?>" class="button button-primary"><?php esc_html_e( 'Record Your First Meeting', 'societypress' ); ?></a></p>
             </div>
         <?php else : ?>
@@ -84429,7 +84505,7 @@ function sp_render_committees_page(): void {
 
         <?php if ( empty( $rows ) ) : ?>
             <div class="sp-empty-state sp-mt-20">
-                <p><?php esc_html_e( 'No committees yet.', 'societypress' ); ?></p>
+                <?php echo sp_archie_img( 'board' ); ?><p><?php esc_html_e( 'No committees yet.', 'societypress' ); ?></p>
                 <p><a href="<?php echo esc_url( $add_url ); ?>" class="button button-primary"><?php esc_html_e( 'Create Your First Committee', 'societypress' ); ?></a></p>
             </div>
         <?php else : ?>
@@ -90982,6 +91058,7 @@ class SP_Subscribers_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
+        echo sp_archie_empty_list( 'editor' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         esc_html_e( 'Subscribers will appear here when someone signs up for your mailing list.', 'societypress' );
     }
 
@@ -91557,7 +91634,7 @@ function sp_render_donations_page(): void {
                 </thead>
                 <tbody>
                     <?php if ( empty( $rows ) ) : ?>
-                        <tr><td colspan="8" class="sp-donations-empty-cell"><?php esc_html_e( 'No donations found.', 'societypress' ); ?></td></tr>
+                        <tr><td colspan="8" class="sp-donations-empty-cell"><?php echo sp_archie_empty_list( 'donations' ); ?><?php esc_html_e( 'No donations found.', 'societypress' ); ?></td></tr>
                     <?php else : ?>
                         <?php foreach ( $rows as $row ) : ?>
                             <tr>
@@ -95320,7 +95397,7 @@ function sp_render_newsletter_archive_page(): void {
         </form>
 
         <?php if ( empty( $newsletters ) ) : ?>
-            <p><?php esc_html_e( 'No newsletters yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>"><?php esc_html_e( 'Upload your first newsletter', 'societypress' ); ?></a>.</p>
+            <?php echo sp_archie_img( 'editor' ); ?><p><?php esc_html_e( 'No newsletters yet.', 'societypress' ); ?> <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-newsletter-edit' ) ); ?>"><?php esc_html_e( 'Upload your first newsletter', 'societypress' ); ?></a>.</p>
         <?php else : ?>
             <!-- Bulk visibility toolbar. WHY the form= attribute on the card
                  checkboxes below: each card already has its own delete form, so
@@ -97785,7 +97862,7 @@ function sp_render_record_collections_page(): void {
 
         <?php if ( empty( $collections ) ) : ?>
             <div class="sp-records-empty-state">
-                <span class="dashicons dashicons-book sp-records-empty-icon"></span>
+                <?php echo sp_archie_img( 'records' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img(). ?>
                 <h2><?php esc_html_e( 'No collections yet', 'societypress' ); ?></h2>
                 <p><?php esc_html_e( 'Create your first record collection to start importing transcribed genealogical records.', 'societypress' ); ?></p>
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-record-collection-edit' ) ); ?>" class="button button-primary button-hero"><?php esc_html_e( 'Create Collection', 'societypress' ); ?></a>
@@ -98537,6 +98614,7 @@ function sp_render_record_browse_page(): void {
         </form>
 
         <?php if ( empty( $records ) ) : ?>
+            <?php echo sp_archie_img( $search ? 'searching' : 'records' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img(). ?>
             <p class="sp-text-secondary sp-italic">
                 <?php
                 if ( $search ) {
@@ -106330,7 +106408,7 @@ function sp_render_store_products_page(): void {
 
         <?php if ( empty( $products ) ) : ?>
             <div class="sp-empty-state sp-mt-20">
-                <p><?php esc_html_e( 'No store products yet.', 'societypress' ); ?></p>
+                <?php echo sp_archie_img( 'donations' ); ?><p><?php esc_html_e( 'No store products yet.', 'societypress' ); ?></p>
                 <p><a href="<?php echo esc_url( $add_url ); ?>" class="button button-primary"><?php esc_html_e( 'Add Your First Product', 'societypress' ); ?></a></p>
             </div>
         <?php else : ?>
@@ -109603,7 +109681,7 @@ function sp_render_documents_page(): void {
             </thead>
             <tbody>
                 <?php if ( empty( $docs ) ) : ?>
-                    <tr><td colspan="8" class="sp-empty-state"><?php esc_html_e( 'No documents found.', 'societypress' ); ?></td></tr>
+                    <tr><td colspan="8" class="sp-empty-state"><?php echo sp_archie_empty_list( 'records' ); ?><?php esc_html_e( 'No documents found.', 'societypress' ); ?></td></tr>
                 <?php else : ?>
                     <?php foreach ( $docs as $doc ) : ?>
                     <tr>
@@ -109902,7 +109980,7 @@ function sp_render_document_categories_page(): void {
                     </thead>
                     <tbody>
                         <?php if ( empty( $categories ) ) : ?>
-                            <tr><td colspan="6" class="sp-empty-state"><?php esc_html_e( 'No sections yet.', 'societypress' ); ?></td></tr>
+                            <tr><td colspan="6" class="sp-empty-state"><?php echo sp_archie_img( 'records' ); ?><?php esc_html_e( 'No sections yet.', 'societypress' ); ?></td></tr>
                         <?php else : ?>
                             <?php foreach ( $categories as $cat ) : ?>
                             <tr>
@@ -113315,6 +113393,7 @@ class SP_Ballots_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
+        echo sp_archie_empty_list( 'board' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         printf(
             /* translators: 1: opening <a> tag, 2: closing </a> tag */
             wp_kses_post( __( 'No ballots yet. %1$sCreate your first ballot%2$s.', 'societypress' ) ),
@@ -116187,7 +116266,7 @@ function sp_render_lineage_programs_page(): void {
                     <tbody>
                         <?php if ( empty( $programs ) ) : ?>
                             <tr><td colspan="6" class="sp-empty-state sp-lp-empty-state">
-                                <?php esc_html_e( 'No lineage programs yet. Add your first one on the left to get started.', 'societypress' ); ?>
+                                <?php echo sp_archie_img( 'librarian' ); ?><?php esc_html_e( 'No lineage programs yet. Add your first one on the left to get started.', 'societypress' ); ?>
                             </td></tr>
                         <?php else : foreach ( $programs as $p ) :
                             $counts   = $by_program[ $p->id ] ?? [];
@@ -132570,7 +132649,7 @@ function sp_render_forms_admin_page(): void {
 
         <?php if ( empty( $forms ) ) : ?>
             <div class="sp-empty-state" style="text-align:center; padding:48px 20px;">
-                <p style="font-size:15px;"><?php esc_html_e( 'You haven\'t built any forms yet.', 'societypress' ); ?></p>
+                <?php echo sp_archie_img( 'busy' ); ?><p style="font-size:15px;"><?php esc_html_e( 'You haven\'t built any forms yet.', 'societypress' ); ?></p>
                 <a href="<?php echo $new_url; ?>" class="button button-primary button-hero"><?php esc_html_e( 'Create Your First Form', 'societypress' ); ?></a>
             </div>
         <?php else : ?>
@@ -133142,6 +133221,7 @@ class SP_Form_Submissions_List_Table extends WP_List_Table {
     }
 
     public function no_items(): void {
+        echo sp_archie_empty_list( 'records' ); // phpcs:ignore WordPress.Security.EscapeOutput -- built and escaped by sp_archie_img().
         esc_html_e( 'No submissions yet.', 'societypress' );
     }
 

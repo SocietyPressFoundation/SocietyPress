@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.127
+ * Version:     1.5.128
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.127' );
+define( 'SOCIETYPRESS_VERSION', '1.5.128' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41678,7 +41678,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.127',
+            'version'     => '1.5.128',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41686,7 +41686,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.127',
+            'version'     => '1.5.128',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41694,7 +41694,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.127',
+            'version'     => '1.5.128',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41702,7 +41702,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.127',
+            'version'     => '1.5.128',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41710,7 +41710,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.127',
+            'version'     => '1.5.128',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -62185,6 +62185,9 @@ function sp_render_event_detail( string $slug, array $settings ): void {
     $has_fee        = ( (float) $event->member_price > 0 || (float) $event->nonmember_price > 0 || $has_priced_options );
     $show_pay_btn   = $has_fee && $stripe_ready && in_array( $payment_mode, [ 'online', 'either' ], true );
     $show_door_btn  = $has_fee && in_array( $payment_mode, [ 'at_door', 'either' ], true );
+    // A mailed check is offered wherever the society takes payment at all, once
+    // it has a mailing address for the check to go to.
+    $show_check_btn = $has_fee && $payment_mode !== 'none' && sp_donation_check_giving_enabled( sp_settings() );
     $pay_only       = $has_fee && $payment_mode === 'online' && $stripe_ready;
 
     // Check if current user is already registered
@@ -62712,6 +62715,14 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                         <?php esc_html_e( 'Register Now', 'societypress' ); ?>
                                     </button>
                                 <?php endif; ?>
+                                <?php if ( ! $is_full && $show_check_btn ) : ?>
+                                    <button type="button" class="sp-reg-submit-btn sp-pay-check-btn" id="sp-register-check-btn"
+                                            data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                            data-pay-method="check">
+                                        <?php esc_html_e( 'Prefer to mail a check? →', 'societypress' ); ?>
+                                    </button>
+                                    <p class="sp-reg-note"><?php esc_html_e( 'Your place is confirmed when your check arrives.', 'societypress' ); ?></p>
+                                <?php endif; ?>
                                 <div class="sp-reg-message" id="sp-reg-message" style="display: none;" role="status" aria-live="polite"></div>
                             </div>
                         <?php elseif ( $event->guest_registration ) : ?>
@@ -62810,6 +62821,14 @@ function sp_render_event_detail( string $slug, array $settings ): void {
                                             data-pay-method="<?php echo $guest_fee > 0 ? 'at_door' : 'none'; ?>">
                                         <?php esc_html_e( 'Register Now', 'societypress' ); ?>
                                     </button>
+                                <?php endif; ?>
+                                <?php if ( ! $is_full && $show_check_btn ) : ?>
+                                    <button type="button" class="sp-reg-submit-btn sp-pay-check-btn" id="sp-guest-register-check-btn"
+                                            data-event-id="<?php echo esc_attr( $event->id ); ?>"
+                                            data-pay-method="check">
+                                        <?php esc_html_e( 'Prefer to mail a check? →', 'societypress' ); ?>
+                                    </button>
+                                    <p class="sp-reg-note"><?php esc_html_e( 'Your place is confirmed when your check arrives.', 'societypress' ); ?></p>
                                 <?php endif; ?>
                                 <div class="sp-reg-message" id="sp-reg-message" style="display: none;" role="status" aria-live="polite"></div>
                             </div>
@@ -63258,6 +63277,13 @@ function sp_events_frontend_scripts(): void {
                         return;
                     }
 
+                    // Mailed check: show the slip (built and escaped server-side).
+                    if (data.data.check_slip) {
+                        var slipArea = document.getElementById('sp-reg-form-area');
+                        if (slipArea) { slipArea.innerHTML = data.data.check_slip; }
+                        return;
+                    }
+
                     // No Stripe redirect — show normal confirmation
                     var formArea = document.getElementById('sp-reg-form-area');
                     if (formArea) {
@@ -63352,6 +63378,36 @@ function sp_events_frontend_scripts(): void {
                 if (!name) { showRegMsg('<?php echo esc_js( __( 'Please enter your name.', 'societypress' ) ); ?>', 'error'); return; }
                 if (!email || email.indexOf('@') < 1) { showRegMsg('<?php echo esc_js( __( 'Please enter a valid email address.', 'societypress' ) ); ?>', 'error'); return; }
 
+                var extras = {
+                    party_size: document.getElementById('sp-guest-party-size').value,
+                    guest_name: name,
+                    guest_email: email,
+                    guest_phone: phone
+                };
+                var gSlotEl = document.getElementById('sp-guest-slot');
+                if (gSlotEl && gSlotEl.value) { extras.slot_id = gSlotEl.value; }
+                handleRegistration(this, extras);
+            });
+        }
+
+        // Mailed-check buttons collect the same fields as their Pay-at-Door twins.
+        var checkBtn   = document.getElementById('sp-register-check-btn');
+        var guestCheck = document.getElementById('sp-guest-register-check-btn');
+        if (checkBtn) {
+            checkBtn.addEventListener('click', function() {
+                var extras = { party_size: document.getElementById('sp-reg-party-size').value };
+                var slotEl = document.getElementById('sp-reg-slot');
+                if (slotEl && slotEl.value) { extras.slot_id = slotEl.value; }
+                handleRegistration(this, extras);
+            });
+        }
+        if (guestCheck) {
+            guestCheck.addEventListener('click', function() {
+                var name  = document.getElementById('sp-guest-name').value.trim();
+                var email = document.getElementById('sp-guest-email').value.trim();
+                var phone = document.getElementById('sp-guest-phone').value.trim();
+                if (!name) { showRegMsg('<?php echo esc_js( __( 'Please enter your name.', 'societypress' ) ); ?>', 'error'); return; }
+                if (!email || email.indexOf('@') < 1) { showRegMsg('<?php echo esc_js( __( 'Please enter a valid email address.', 'societypress' ) ); ?>', 'error'); return; }
                 var extras = {
                     party_size: document.getElementById('sp-guest-party-size').value,
                     guest_name: name,
@@ -63815,6 +63871,22 @@ function sp_ajax_register_for_event(): void {
         }
     }
 
+    // Mailed check: no seat until the check is in hand (the society's call),
+    // so it's saved as pending, which no capacity count includes. A full event
+    // still goes to the waitlist as usual — there's nothing to pay for yet.
+    $pay_by_check = false;
+    if ( $pay_method === 'check' && $fee_amount > 0 ) {
+        if ( ! sp_donation_check_giving_enabled( sp_settings() ) ) {
+            $wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $reg_lock ) );
+            wp_send_json_error( __( 'Paying by check isn\'t available for this event.', 'societypress' ) );
+        }
+        $payment_method = 'check';
+        if ( $status === 'confirmed' ) {
+            $status       = 'pending';
+            $pay_by_check = true;
+        }
+    }
+
     // Insert the registration record
     $insert_data = [
         'event_id'       => $event_id,
@@ -63907,6 +63979,31 @@ function sp_ajax_register_for_event(): void {
         'event_registration',
         $registration_id
     );
+
+    if ( $pay_by_check ) {
+        $payer_name  = $is_guest ? $guest_name : wp_get_current_user()->display_name;
+        $payer_email = $is_guest ? $guest_email : wp_get_current_user()->user_email;
+        $pledge      = sp_check_pledge_create( 'event', (int) $registration_id, $is_guest ? null : get_current_user_id(), (string) $payer_name, (string) $payer_email, $fee_amount, [
+            'event_title' => $event->title,
+        ] );
+        if ( ! $pledge['id'] ) {
+            sp_event_registration_discard( $registration_id );
+            wp_send_json_error( __( 'Could not complete registration. Please try again.', 'societypress' ) );
+        }
+        wp_send_json_success( [
+            'registration_id' => $registration_id,
+            'status'          => $status,
+            'check_slip'      => sp_check_slip_html(
+                $fee_amount,
+                $pledge['code'],
+                sprintf(
+                    /* translators: %s: event title */
+                    __( 'Thank you for registering for %s. Your place is confirmed when your check arrives — we\'ll email you then. If the event fills up before then, we\'ll put you on the waitlist and let you know.', 'societypress' ),
+                    $event->title
+                )
+            ),
+        ] );
+    }
 
     // If paying online via Stripe, create a Checkout Session and send back the URL
     // WHY: Stripe Checkout is a hosted payment page — we redirect the user there,
@@ -66072,6 +66169,90 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
 
     return true;
 }
+
+/**
+ * An event check arrived: confirm the seat if there's still room.
+ *
+ * WHY re-check capacity here: the society chose not to hold seats for checks,
+ *      so the event may have filled while this one was in the mail. Then the
+ *      registrant goes to the waitlist — and the society is told plainly that
+ *      it is holding their money, so a refund or an extra chair is a decision
+ *      a person makes rather than something nobody notices.
+ */
+add_action( 'sp_check_pledge_received', function ( $pledge ) {
+    if ( 'event' !== $pledge->kind ) {
+        return;
+    }
+    global $wpdb;
+    $reg_table = $wpdb->prefix . 'sp_event_registrations';
+    $reg       = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$reg_table} WHERE id = %d", (int) $pledge->ref_id ) );
+    if ( ! $reg || 'pending' !== $reg->status ) {
+        return;
+    }
+    $event = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_events WHERE id = %d", $reg->event_id ) );
+    if ( ! $event ) {
+        return;
+    }
+
+    $lock = 'sp_event_reg_' . (int) $event->id;
+    $wpdb->query( $wpdb->prepare( 'SELECT GET_LOCK(%s, 10)', $lock ) );
+    $room = true;
+    if ( $reg->slot_id ) {
+        $left = sp_slot_get_remaining_capacity( (int) $reg->slot_id );
+        $room = ( null === $left || $left >= (int) $reg->party_size );
+    } elseif ( $event->registration_limit ) {
+        $taken = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COALESCE(SUM(party_size), 0) FROM {$reg_table} WHERE event_id = %d AND status = 'confirmed'",
+            $event->id
+        ) );
+        $room = ( (int) $event->registration_limit - $taken ) >= (int) $reg->party_size;
+    }
+    $status = $room ? 'confirmed' : 'waitlisted';
+    $wpdb->update( $reg_table, [
+        'status'         => $status,
+        'payment_status' => 'paid',
+        'payment_method' => 'check',
+        'payment_date'   => current_time( 'mysql' ),
+    ], [ 'id' => (int) $reg->id ] );
+    $wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock ) );
+
+    $email = $reg->user_id ? ( get_userdata( (int) $reg->user_id )->user_email ?? '' ) : (string) $reg->guest_email;
+    if ( $email ) {
+        sp_send_registration_email( $event, (int) $reg->id, $status, $email, (int) $reg->party_size, (float) $reg->fee_amount );
+    }
+
+    if ( ! $room ) {
+        $settings  = sp_settings();
+        $notify_to = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
+        if ( is_email( $notify_to ) ) {
+            wp_mail(
+                $notify_to,
+                /* translators: %s: event title */
+                sprintf( __( 'Check received, but %s is full', 'societypress' ), $event->title ),
+                sprintf(
+                    /* translators: 1: payer name, 2: amount, 3: event title */
+                    __( '%1$s\'s check for %2$s arrived, but %3$s filled up while it was in the mail, so they are on the waitlist. You are holding their payment: either make room for them or refund the check.', 'societypress' ),
+                    $pledge->payer_name, sp_format_currency( (float) $pledge->amount ), $event->title
+                )
+            );
+        }
+    }
+} );
+
+/**
+ * An event check never came: release the registration.
+ */
+add_action( 'sp_check_pledge_cancelled', function ( $pledge ) {
+    if ( 'event' !== $pledge->kind ) {
+        return;
+    }
+    global $wpdb;
+    $wpdb->update(
+        $wpdb->prefix . 'sp_event_registrations',
+        [ 'status' => 'cancelled', 'payment_status' => 'none' ],
+        [ 'id' => (int) $pledge->ref_id, 'status' => 'pending' ]
+    );
+} );
 
 /**
  * A dues check arrived: the member becomes Active (or their term extends)
@@ -105775,6 +105956,79 @@ function sp_store_finalize_paid_order( int $order_id, string $payment_method, ar
  *      the post-payment finalize step can verify the PaymentIntent server-to-
  *      server before trusting client-side success signals.
  */
+/**
+ * AJAX: place a store order to be paid by mailed check.
+ *
+ * WHY the order is created now, not when the check arrives: it reserves the
+ *      stock (the same way a card checkout does) so the last copy isn't sold
+ *      to someone else while this buyer's check is in the mail.
+ */
+$sp_h_sp_store_check_order = function () {
+    check_ajax_referer( 'sp_store_cart' );
+    if ( ! sp_donation_check_giving_enabled( sp_settings() ) ) {
+        wp_send_json_error( [ 'message' => __( 'Paying by check isn\'t available on this site.', 'societypress' ) ] );
+    }
+    $created = sp_store_create_pending_order( sp_store_posted_buyer() );
+    if ( is_wp_error( $created ) ) {
+        wp_send_json_error( [ 'message' => $created->get_error_message() ] );
+    }
+    global $wpdb;
+    $order_id = (int) $created['order_id'];
+    $wpdb->update( $wpdb->prefix . 'sp_orders', [ 'payment_method' => 'check' ], [ 'id' => $order_id ] );
+    $order  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_orders WHERE id = %d", $order_id ) );
+    $pledge = sp_check_pledge_create( 'order', $order_id, $order->user_id ? (int) $order->user_id : null, (string) $order->customer_name, (string) $order->customer_email, (float) $created['total'] );
+    if ( ! $pledge['id'] ) {
+        $wpdb->update( $wpdb->prefix . 'sp_orders', [ 'status' => 'failed' ], [ 'id' => $order_id ] );
+        sp_store_restock_order( $order_id );
+        wp_send_json_error( [ 'message' => __( 'Could not place your order. Please try again.', 'societypress' ) ] );
+    }
+    sp_save_cart( [] );
+    sp_audit( 'store_order_created', sprintf( 'Order #%d created ($%s) — to be paid by mailed check %s', $order_id, number_format( (float) $created['total'], 2 ), $pledge['code'] ), 'order', $order_id );
+    wp_send_json_success( [
+        'slip' => sp_check_slip_html(
+            (float) $created['total'],
+            $pledge['code'],
+            /* translators: %d: order number */
+            sprintf( __( 'Thank you! Order #%d is reserved for you and will be sent as soon as your check arrives — we\'ll email your receipt then.', 'societypress' ), $order_id )
+        ),
+    ] );
+};
+add_action( 'wp_ajax_sp_store_check_order',        $sp_h_sp_store_check_order );
+add_action( 'wp_ajax_nopriv_sp_store_check_order', $sp_h_sp_store_check_order );
+
+/**
+ * Put an unpaid order's products back on the shelf.
+ */
+function sp_store_restock_order( int $order_id ): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    foreach ( $wpdb->get_results( $wpdb->prepare( "SELECT product_id, quantity FROM {$prefix}order_items WHERE order_id = %d AND product_id IS NOT NULL", $order_id ) ) as $it ) {
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE {$prefix}store_products SET stock_qty = stock_qty + %d WHERE id = %d AND stock_qty IS NOT NULL",
+            (int) $it->quantity, (int) $it->product_id
+        ) );
+    }
+}
+
+// An order check arrived: the order is paid — receipt, downloads and all.
+add_action( 'sp_check_pledge_received', function ( $pledge ) {
+    if ( 'order' === $pledge->kind ) {
+        sp_store_finalize_paid_order( (int) $pledge->ref_id, 'check' );
+    }
+} );
+
+// An order check never came: cancel the order and release its stock.
+add_action( 'sp_check_pledge_cancelled', function ( $pledge ) {
+    if ( 'order' !== $pledge->kind ) {
+        return;
+    }
+    global $wpdb;
+    $changed = $wpdb->update( $wpdb->prefix . 'sp_orders', [ 'status' => 'failed', 'updated_at' => current_time( 'mysql' ) ], [ 'id' => (int) $pledge->ref_id, 'status' => 'pending' ] );
+    if ( $changed ) {
+        sp_store_restock_order( (int) $pledge->ref_id );
+    }
+} );
+
 // Paired with a nopriv registration below: a buyer without an account has
 // to be able to reach checkout, not just the basket.
 $sp_h_sp_store_create_payment_intent = function () {
@@ -106433,6 +106687,7 @@ function sp_render_cart_page(): void {
     $settings          = sp_settings();
     $stripe_configured = sp_stripe_is_configured( $settings );
     $paypal_configured = sp_paypal_is_configured( $settings );
+    $check_configured  = sp_donation_check_giving_enabled( $settings );
     $stripe_test_mode  = ! empty( $settings['stripe_test_mode'] );
     $stripe_pub_key    = $stripe_test_mode
         ? ( $settings['stripe_test_publishable_key'] ?? '' )
@@ -106510,7 +106765,7 @@ function sp_render_cart_page(): void {
             <?php esc_html_e( 'Thank you for your purchase. A confirmation email has been sent to your address on file.', 'societypress' ); ?>
         </div>
 
-        <?php if ( ! $stripe_configured && ! $paypal_configured ) : ?>
+        <?php if ( ! $stripe_configured && ! $paypal_configured && ! $check_configured ) : ?>
             <div class="sp-cart-unavailable">
                 <strong><?php esc_html_e( 'Online checkout is not available on this site yet.', 'societypress' ); ?></strong>
                 <?php esc_html_e( 'Please contact the administrator to complete your order.', 'societypress' ); ?>
@@ -106615,6 +106870,20 @@ function sp_render_cart_page(): void {
                 </div>
                 <?php endif; ?>
 
+                <?php if ( $check_configured ) : ?>
+                    <?php if ( $stripe_configured || $paypal_configured ) : ?>
+                    <div class="sp-pay-divider"><?php esc_html_e( 'or', 'societypress' ); ?></div>
+                    <?php endif; ?>
+                <div class="sp-pay-section">
+                    <span class="sp-pay-section-label"><?php esc_html_e( 'Pay by mailed check', 'societypress' ); ?></span>
+                    <p class="sp-pay-check-note"><?php esc_html_e( 'We\'ll hold your order and send it when your check arrives.', 'societypress' ); ?></p>
+                    <button type="button" id="sp-check-pay-btn" class="sp-cart-checkout-btn sp-stripe-pay-btn-full">
+                        <?php esc_html_e( 'Place order — I\'ll mail a check', 'societypress' ); ?>
+                    </button>
+                    <div class="sp-pay-error" id="sp-check-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
+                </div>
+                <?php endif; ?>
+
                 <button type="button" class="sp-pay-cancel" id="sp-pay-cancel-btn">&larr; <?php esc_html_e( 'Back to cart', 'societypress' ); ?></button>
             </div>
     </div>
@@ -106638,6 +106907,7 @@ function sp_render_cart_page(): void {
         ?>;
         var stripeConfigured = <?php echo $stripe_configured ? 'true' : 'false'; ?>;
         var paypalConfigured = <?php echo $paypal_configured ? 'true' : 'false'; ?>;
+        var checkConfigured  = <?php echo $check_configured ? 'true' : 'false'; ?>;
         var stripePubKey     = <?php echo wp_json_encode( $stripe_pub_key ); ?>;
         var spCurrencySym    = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
         var spCurrencyPos    = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
@@ -106652,6 +106922,7 @@ function sp_render_cart_page(): void {
         var stripeObj   = null;
         var elementsObj = null;
         var stripeOrderId = null;
+        var stripeMounting = false;
         var paypalRendered = false;
 
         function fmtCurrency(amount) {
@@ -106691,7 +106962,9 @@ function sp_render_cart_page(): void {
 
         // Caught here as well as on the server so the visitor is told before a
         // payment sheet opens, not after it fails.
-        function buyerReady() {
+        // quiet: decide without complaining — used before the visitor has had
+        // a chance to type anything.
+        function buyerReady(quiet) {
             var b   = buyerFields();
             var err = document.getElementById('sp-buyer-error');
             var msg = '';
@@ -106699,7 +106972,8 @@ function sp_render_cart_page(): void {
             else if (!b.buyer_email || b.buyer_email.indexOf('@') < 1) {
                 msg = <?php echo wp_json_encode( __( 'Please enter an email address we can send your receipt to.', 'societypress' ) ); ?>;
             }
-            if (err) { err.textContent = msg; }
+            if (err && !quiet) { err.textContent = msg; }
+            if (err && !msg) { err.textContent = ''; }
             return !msg;
         }
 
@@ -106785,7 +107059,7 @@ function sp_render_cart_page(): void {
             }
             html += '<div class="sp-cart-total"><span><?php echo esc_js( __( 'Total:', 'societypress' ) ); ?></span>' + fmtCurrency(data.total) + '</div>';
 
-            if (stripeConfigured || paypalConfigured) {
+            if (stripeConfigured || paypalConfigured || checkConfigured) {
                 html += '<button class="sp-cart-checkout-btn" id="sp-checkout-btn"><?php echo esc_js( __( 'Proceed to Checkout', 'societypress' ) ); ?></button>';
             }
 
@@ -106850,13 +107124,50 @@ function sp_render_cart_page(): void {
             container.style.display = '';
         }
 
+        // Load the card form as soon as the buyer has given a name and email.
+        ['sp-buyer-name', 'sp-buyer-email'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('change', function() {
+                    if (stripeConfigured && panel.style.display !== 'none') { mountStripe(); }
+                });
+            }
+        });
+
+        // Mailed check: place the order now; the slip replaces the payment panel.
+        var checkPayBtn = document.getElementById('sp-check-pay-btn');
+        if (checkPayBtn) {
+            checkPayBtn.addEventListener('click', function() {
+                var errEl = document.getElementById('sp-check-error');
+                errEl.textContent = '';
+                if (!buyerReady()) { return; }
+                checkPayBtn.disabled = true;
+                cartAjax('sp_store_check_order', buyerFields(), function(data) {
+                    panel.innerHTML = data.slip;
+                }, function(msg) {
+                    checkPayBtn.disabled = false;
+                    errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not place your order. Please try again.', 'societypress' ) ); ?>;
+                });
+            });
+        }
+
         // ---- Stripe Payment Element ----
+        // WHY quiet and retried: checkout opens with the buyer fields empty, and
+        // a card form can't load until there's an order to attach it to. The old
+        // code checked on open, showed "Please enter your name" to someone who
+        // hadn't had the chance yet, and gave up — so the card form never
+        // appeared and Pay did nothing however the form was then filled in.
+        // Now it loads as soon as name and email are there (see the listeners
+        // below), and Pay works whenever the card form is ready.
         function mountStripe() {
             var errEl = document.getElementById('sp-stripe-error');
             errEl.textContent = '';
+            bindStripePay(errEl);
 
-            if (!buyerReady()) { return; }
+            if (stripeObj || stripeMounting || !buyerReady(true)) { return; }
+            stripeMounting = true;
             cartAjax('sp_store_create_payment_intent', buyerFields(), function(data) {
+                stripeMounting = false;
                 stripeOrderId = data.order_id;
                 try {
                     stripeObj = Stripe(stripePubKey);
@@ -106872,20 +107183,25 @@ function sp_render_cart_page(): void {
                     errEl.textContent = <?php echo wp_json_encode( __( 'Could not load the card form. Please refresh and try again.', 'societypress' ) ); ?>;
                 }
             }, function(msg) {
+                stripeMounting = false;
                 errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not start checkout. Please try again.', 'societypress' ) ); ?>;
             });
+        }
 
+        function bindStripePay(errEl) {
             var payBtn = document.getElementById('sp-stripe-pay-btn');
             payBtn.onclick = function() {
                 errEl.textContent = '';
-                payBtn.disabled = true;
-                payBtn.textContent = <?php echo wp_json_encode( __( 'Processing…', 'societypress' ) ); ?>;
                 if (!stripeObj || !elementsObj) {
-                    errEl.textContent = <?php echo wp_json_encode( __( 'Card form is not ready yet.', 'societypress' ) ); ?>;
-                    payBtn.disabled = false;
-                    payBtn.textContent = <?php echo wp_json_encode( __( 'Pay', 'societypress' ) ); ?>;
+                    // Not loaded yet: now is the moment to say what's missing.
+                    if (buyerReady()) {
+                        mountStripe();
+                        errEl.textContent = <?php echo wp_json_encode( __( 'Loading the card form — enter your card details above, then press Pay.', 'societypress' ) ); ?>;
+                    }
                     return;
                 }
+                payBtn.disabled = true;
+                payBtn.textContent = <?php echo wp_json_encode( __( 'Processing…', 'societypress' ) ); ?>;
                 stripeObj.confirmPayment({
                     elements: elementsObj,
                     confirmParams: { return_url: window.location.href },

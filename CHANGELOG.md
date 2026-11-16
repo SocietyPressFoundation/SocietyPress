@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.128] — 2026-11-16
+
+**Pay for events and store orders by mailed check.** Paid events now offer "Prefer to mail a check?" beside the card and pay-at-the-door buttons. The registration is held without taking a seat. When the check is marked received, the seat is confirmed if there's still room and the usual confirmation email goes out. If the event filled up meanwhile, the person goes on the waitlist and the society is told it's holding their payment. The store checkout has a "Pay by mailed check" option: the order is placed and its stock held, and marking the check received marks the order paid and sends the receipt and any download links. "Never came" cancels the registration, or cancels the order and puts its stock back. Both appear on Checks in the Mail and get the same reminders. The store also accepts orders by check on sites with no card payment set up.
+
+**The card form at checkout no longer gets stuck on "Please enter your name."** Opening checkout checked the buyer's name before they could type it, showed that error, and never loaded the card form, so Pay did nothing however the form was then filled in. The card form now loads as soon as a name and email are entered, and the error only appears if Pay is pressed without them.
+
+---
+
 ## [1.5.127] — 2026-11-16
 
 **Pay membership dues by mailed check.** The join and renew forms now offer "Prefer to mail a check?" next to card payment, as long as the society has entered its mailing address. A new member stays Pending until the check arrives. A renewing member keeps their current expiration date until then, with the grace period covering a slow check. The payer sees a slip with the address and a memo code. When the treasurer marks the check received, the member is activated or extended and gets the welcome email, the same as paying online. Renewal is now possible by check even on sites with no card payment set up.

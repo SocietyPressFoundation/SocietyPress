@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.131] — 2026-11-16
+
+**Files in bulk email go out as download links.** Files added to a Send Email message used to be attached to every copy, which pushed the email into some members' junk folders. Junk folders also hide images, so the logo vanished too. Each copy also carried the whole file, so one large newsletter could mean gigabytes through the host's mail. The files now appear as a "Files" box of download links at the bottom of the email. The preview and the test email show them the same way.
+
+---
+
 ## [1.5.130] — 2026-11-16
 
 **Forms can notify more than one person.** The "Send notifications to" box on a form took only one email address; anything more was dropped when the form was saved. It now takes several, separated by commas, and every submission goes to all of them.

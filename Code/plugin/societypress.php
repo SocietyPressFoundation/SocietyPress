@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.130
+ * Version:     1.5.131
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.130' );
+define( 'SOCIETYPRESS_VERSION', '1.5.131' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41678,7 +41678,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.130',
+            'version'     => '1.5.131',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41686,7 +41686,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.130',
+            'version'     => '1.5.131',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41694,7 +41694,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.130',
+            'version'     => '1.5.131',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41702,7 +41702,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.130',
+            'version'     => '1.5.131',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41710,7 +41710,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.130',
+            'version'     => '1.5.131',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90428,8 +90428,8 @@ function sp_render_blast_email_compose_page(): void {
                             }
                             ?>
                         </ul>
-                        <button type="button" class="button" id="sp-blast-attachment-btn"><?php esc_html_e( 'Attach Files', 'societypress' ); ?></button>
-                        <p class="description"><?php esc_html_e( 'Optional files sent with every copy of this email (e.g. a flyer or the newsletter PDF). Large attachments can slow delivery and hit some hosts\' size limits.', 'societypress' ); ?></p>
+                        <button type="button" class="button" id="sp-blast-attachment-btn"><?php esc_html_e( 'Add Files', 'societypress' ); ?></button>
+                        <p class="description"><?php esc_html_e( 'Optional files to share with this email, such as a flyer or the newsletter PDF. They appear as download links at the bottom of the email rather than as attachments: attached files often send bulk email to the junk folder, and every member\'s copy would carry the whole file.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -90636,7 +90636,7 @@ function sp_render_blast_email_compose_page(): void {
                 if (typeof wp === 'undefined' || !wp.media) { return; }
                 if (frame) { frame.open(); return; }
                 frame = wp.media({
-                    title:    <?php echo wp_json_encode( __( 'Attach files to this email', 'societypress' ) ); ?>,
+                    title:    <?php echo wp_json_encode( __( 'Add files to this email', 'societypress' ) ); ?>,
                     button:   { text: <?php echo wp_json_encode( __( 'Attach', 'societypress' ) ); ?> },
                     multiple: true
                 });
@@ -90789,7 +90789,42 @@ function sp_is_demo_mode(): bool {
  *
  * @return array{subject:string, html:string}
  */
-function sp_blast_render_for_current_user( string $subject, string $body, string $banner ): array {
+/**
+ * The "Files" block of download links for a bulk email's attached files.
+ *
+ * WHY links instead of attachments: a PDF attached to a bulk email from a
+ *      society's site is exactly what spam filters distrust — testing showed
+ *      the same message landing in the inbox without its PDF and in junk with
+ *      it (and junk hides the logo too). Every member's copy also carried the
+ *      whole file, so one 5 MB newsletter to 400 members was 2 GB through the
+ *      host's mail. The files already sit in the media library with a web
+ *      address, so the email links to them instead.
+ *
+ * @param string $ids Comma-separated media IDs, as stored on the blast.
+ * @return string Email-safe HTML (inline styles), or '' when there are none.
+ */
+function sp_blast_files_html( string $ids ): string {
+    $items = '';
+    foreach ( array_filter( array_map( 'intval', explode( ',', $ids ) ) ) as $att_id ) {
+        $url  = wp_get_attachment_url( $att_id );
+        $path = get_attached_file( $att_id );
+        if ( ! $url ) {
+            continue;
+        }
+        $name = $path ? wp_basename( $path ) : get_the_title( $att_id );
+        $size = ( $path && file_exists( $path ) ) ? ' (' . size_format( filesize( $path ), 1 ) . ')' : '';
+        $items .= '<li style="margin:6px 0;"><a href="' . esc_url( $url ) . '" style="color:#0D1F3C;font-weight:600;">'
+            . esc_html( $name ) . '</a>' . esc_html( $size ) . '</li>';
+    }
+    if ( '' === $items ) {
+        return '';
+    }
+    return '<div style="margin-top:24px;padding:14px 18px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;">'
+        . '<p style="margin:0 0 6px;font-weight:700;">' . esc_html__( 'Files', 'societypress' ) . '</p>'
+        . '<ul style="margin:0;padding-left:20px;">' . $items . '</ul></div>';
+}
+
+function sp_blast_render_for_current_user( string $subject, string $body, string $banner, string $files = '' ): array {
     $user      = wp_get_current_user();
     $recipient = (object) [
         'user_id'      => $user->ID,
@@ -90799,7 +90834,7 @@ function sp_blast_render_for_current_user( string $subject, string $body, string
         'display_name' => $user->display_name,
     ];
     $subject = sp_blast_process_merge_tags( $subject, $recipient );
-    $body    = sp_blast_process_merge_tags( sp_email_body_from_editor( $body ), $recipient );
+    $body    = sp_blast_process_merge_tags( sp_email_body_from_editor( $body ), $recipient ) . sp_blast_files_html( $files );
     return [
         'subject' => $subject,
         'html'    => sp_build_email_html( $subject, $body, $banner, true ),
@@ -90821,18 +90856,19 @@ function sp_blast_preview_request(): array {
         'subject' => sanitize_text_field( wp_unslash( $_POST['subject'] ?? '' ) ),
         'body'    => wp_kses_post( wp_unslash( $_POST['body'] ?? '' ) ),
         'banner'  => sanitize_text_field( wp_unslash( $_POST['banner'] ?? '' ) ),
+        'files'   => implode( ',', array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['attachment_ids'] ?? '' ) ) ) ) ),
     ];
 }
 
 add_action( 'wp_ajax_sp_blast_preview', function () {
     $req = sp_blast_preview_request();
-    $out = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'] );
+    $out = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'], $req['files'] );
     wp_send_json_success( [ 'html' => $out['html'] ] );
 } );
 
 add_action( 'wp_ajax_sp_blast_send_test', function () {
     $req  = sp_blast_preview_request();
-    $out  = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'] );
+    $out  = sp_blast_render_for_current_user( $req['subject'], $req['body'], $req['banner'], $req['files'] );
     $to   = wp_get_current_user()->user_email;
 
     // WHY a typed address: the sender's account address is often not the inbox
@@ -90849,16 +90885,6 @@ add_action( 'wp_ajax_sp_blast_send_test', function () {
         }
     }
 
-    // WHY attachments too: a test that leaves out the flyer isn't a test of
-    // what members will receive.
-    $attachments = [];
-    foreach ( array_filter( array_map( 'intval', explode( ',', (string) ( $_POST['attachment_ids'] ?? '' ) ) ) ) as $att_id ) {
-        $path = get_attached_file( $att_id );
-        if ( $path && file_exists( $path ) ) {
-            $attachments[] = $path;
-        }
-    }
-
     sp_email_log_tag( get_current_user_id(), 'blast_test' );
     /* translators: %s: the email's subject line */
     $subject = sprintf( __( '[Test] %s', 'societypress' ), $out['subject'] );
@@ -90867,7 +90893,7 @@ add_action( 'wp_ajax_sp_blast_send_test', function () {
         sanitize_text_field( wp_unslash( $_POST['from_name'] ?? '' ) ),
         sanitize_email( wp_unslash( $_POST['from_email'] ?? '' ) )
     );
-    if ( wp_mail( $to, $subject, $out['html'], $headers, $attachments ) ) {
+    if ( wp_mail( $to, $subject, $out['html'], $headers ) ) {
         /* translators: %s: email address the test was sent to */
         wp_send_json_success( [ 'message' => sprintf( __( 'Test sent to %s. It may take a minute or two to arrive.', 'societypress' ), $to ) ] );
     }
@@ -91353,21 +91379,13 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
 
     $headers = sp_blast_sender_headers( $headers, (string) ( $blast->from_name_override ?? '' ), (string) ( $blast->from_email_override ?? '' ) );
 
-    // Resolve any attached files once for the whole batch — wp_mail wants
-    // filesystem paths, so map the stored media IDs through get_attached_file().
-    $attachments = [];
-    if ( ! empty( $blast->attachment_ids ) ) {
-        foreach ( array_filter( array_map( 'intval', explode( ',', $blast->attachment_ids ) ) ) as $att_id ) {
-            $att_path = get_attached_file( $att_id );
-            if ( $att_path && file_exists( $att_path ) ) {
-                $attachments[] = $att_path;
-            }
-        }
-    }
+    // Files go out as download links, built once for the whole batch.
+    // See sp_blast_files_html() for why they are no longer attached.
+    $files_html = sp_blast_files_html( (string) ( $blast->attachment_ids ?? '' ) );
 
     foreach ( $recipients as $recipient ) {
         // Process merge tags for this recipient
-        $personalized_body    = sp_blast_process_merge_tags( sp_email_body_from_editor( (string) $blast->body ), $recipient );
+        $personalized_body    = sp_blast_process_merge_tags( sp_email_body_from_editor( (string) $blast->body ), $recipient ) . $files_html;
         $personalized_subject = sp_blast_process_merge_tags( $blast->subject, $recipient );
 
         // Public subscribers carry an unsubscribe token — append a one-click
@@ -91383,9 +91401,9 @@ function sp_blast_email_send_batch( int $blast_id, int $offset ): void {
         // Wrap in the email HTML template
         $html_body = sp_build_email_html( $personalized_subject, $personalized_body, (string) ( $blast->banner_text ?? '' ), true );
 
-        // Send the email (with any attached files). The pre_wp_mail hook logs it.
+        // Send the email. The pre_wp_mail hook logs it.
         sp_email_log_tag( (int) $recipient->user_id, 'blast' );
-        $sent = wp_mail( $recipient->email, $personalized_subject, $html_body, $headers, $attachments );
+        $sent = wp_mail( $recipient->email, $personalized_subject, $html_body, $headers );
 
         if ( $sent ) {
             $sent_count++;

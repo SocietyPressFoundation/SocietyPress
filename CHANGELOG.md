@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.125] — 2026-11-16
+
+**Forms bring you back to the page you were on.** Choosing "Prefer to mail a check?" on the donation form sent donors to the home page, so they never saw where to send the check or the code to write on it. The same thing happened on other forms that send people back to their own page — lineage applications, photo submissions, newsletter sign-up and others — whenever they finished or hit a problem. All of them now return to the page with their message showing.
+
+**A clearer message for mailed-check donations missing a name or email.** Leaving either one out used to show "Please enter a donation amount." It now asks for the name and email.
+
+---
+
 ## [1.5.124] — 2026-11-15
 
 **The admin menu stays put on edit screens.** On screens like Write an Email, Edit Event and Edit Member, the left-hand menu went blank apart from View Site and Log Out. It now stays in place, with the screen's list highlighted.

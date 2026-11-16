@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.124
+ * Version:     1.5.125
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.124' );
+define( 'SOCIETYPRESS_VERSION', '1.5.125' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -6333,6 +6333,31 @@ function sp_settings( bool $refresh = false ): array {
         $cache = is_array( $opt ) ? $opt : [];
     }
     return $cache;
+}
+
+/**
+ * Where a front-end form handler should send the visitor back to.
+ *
+ * WHY not wp_get_referer(): it returns false when the referer is the current
+ * page, and every SocietyPress front-end form posts to its own page. Callers
+ * fell back to the home page, so a donor choosing to mail a check — or anyone
+ * whose form hit an error — landed on the home page and never saw the
+ * message meant for them. The raw referer (the form's own _wp_http_referer
+ * field, or the browser's Referer header) is validated against this site
+ * before use, so it can't send anyone off-site.
+ *
+ * @param string[] $strip Query args to drop, so a stale message from an
+ *                        earlier visit doesn't ride along.
+ */
+function sp_form_return_url( array $strip = [] ): string {
+    $referer = (string) wp_get_raw_referer();
+    // _wp_http_referer is a bare request path (it already includes any
+    // subdirectory), so it only needs this site's scheme and host in front.
+    if ( 0 === strpos( $referer, '/' ) && 0 !== strpos( $referer, '//' ) ) {
+        $referer = set_url_scheme( 'http://' . wp_parse_url( home_url(), PHP_URL_HOST ) . $referer );
+    }
+    $url = wp_validate_redirect( $referer, home_url( '/' ) );
+    return $strip ? remove_query_arg( $strip, $url ) : $url;
 }
 add_action( 'update_option_societypress_settings', static function () { sp_settings( true ); } );
 add_action( 'add_option_societypress_settings',    static function () { sp_settings( true ); } );
@@ -41609,7 +41634,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.124',
+            'version'     => '1.5.125',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41617,7 +41642,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.124',
+            'version'     => '1.5.125',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41625,7 +41650,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.124',
+            'version'     => '1.5.125',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41633,7 +41658,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.124',
+            'version'     => '1.5.125',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41641,7 +41666,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.124',
+            'version'     => '1.5.125',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -66609,11 +66634,7 @@ add_action( 'init', function () {
     // WHY the raw referer: the form posts to its own page, and
     // wp_get_referer() returns false when the referer is the current page —
     // which sent paying applicants back to the homepage with no message.
-    $referer = wp_get_raw_referer();
-    if ( $referer && 0 === strpos( $referer, '/' ) && 0 !== strpos( $referer, '//' ) ) {
-        $referer = set_url_scheme( 'http://' . wp_parse_url( home_url(), PHP_URL_HOST ) . $referer );
-    }
-    $referer = remove_query_arg( [ 'sp_membership_msg', 'sp_membership_session' ], wp_validate_redirect( (string) $referer, home_url() ) );
+    $referer = sp_form_return_url( [ 'sp_membership_msg', 'sp_membership_session' ] );
     $checkout = sp_membership_checkout_url( $user_id, $email, $tier, (int) ( $_POST['membership_years'] ?? 1 ), $referer );
     if ( $checkout ) {
         wp_redirect( $checkout );
@@ -91216,7 +91237,7 @@ add_action( 'init', function () {
     if ( ! sp_module_enabled( 'blast_email' ) ) {
         return;
     }
-    $redirect = wp_get_referer() ?: home_url( '/' );
+    $redirect = sp_form_return_url();
 
     if ( ! isset( $_POST['sp_subscribe_nonce'] )
       || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sp_subscribe_nonce'] ) ), 'sp_subscribe' ) ) {
@@ -117384,11 +117405,11 @@ add_action( 'init', function () {
             $program_id
         ) );
         if ( ! $program ) {
-            wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'invalid_program', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'invalid_program', sp_form_return_url() ) );
             exit;
         }
         if ( $action === 'submit_application' && ! (int) $program->accepts_applications ) {
-            wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'closed', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'closed', sp_form_return_url() ) );
             exit;
         }
 
@@ -117398,7 +117419,7 @@ add_action( 'init', function () {
                 "SELECT user_id FROM {$apps_t} WHERE id = %d", $app_id
             ) );
             if ( $owner !== $user_id ) {
-                wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'forbidden', wp_get_referer() ?: home_url() ) );
+                wp_safe_redirect( add_query_arg( 'sp_lineage_error', 'forbidden', sp_form_return_url() ) );
                 exit;
             }
         }
@@ -117527,7 +117548,7 @@ add_action( 'init', function () {
                 wp_safe_redirect( add_query_arg( [
                     'sp_lineage_app' => $app_id,
                     'sp_lineage_msg' => 'submitted_payment_due',
-                ], wp_get_referer() ?: home_url() ) );
+                ], sp_form_return_url() ) );
                 exit;
             }
 
@@ -117537,7 +117558,7 @@ add_action( 'init', function () {
                 'payment_amount' => $fee,
             ], [ 'id' => $app_id ] );
 
-            $referer     = wp_get_referer() ?: home_url();
+            $referer     = sp_form_return_url();
             $success_url = add_query_arg( [
                 'sp_lineage_app'  => $app_id,
                 'sp_lineage_msg'  => 'paid',
@@ -117610,7 +117631,7 @@ add_action( 'init', function () {
         wp_safe_redirect( add_query_arg( [
             'sp_lineage_app' => $app_id,
             'sp_lineage_msg' => $redirect,
-        ], wp_get_referer() ?: home_url() ) );
+        ], sp_form_return_url() ) );
         exit;
     }
 
@@ -117626,7 +117647,7 @@ add_action( 'init', function () {
             $wpdb->update( $apps_t, [ 'status' => 'withdrawn' ], [ 'id' => $app_id ] );
         }
 
-        wp_safe_redirect( add_query_arg( 'sp_lineage_msg', 'withdrawn', wp_get_referer() ?: home_url() ) );
+        wp_safe_redirect( add_query_arg( 'sp_lineage_msg', 'withdrawn', sp_form_return_url() ) );
         exit;
     }
 } );
@@ -118147,12 +118168,12 @@ add_action( 'init', function () {
             $album_id
         ) );
         if ( ! $album ) {
-            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'closed', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'closed', sp_form_return_url() ) );
             exit;
         }
 
         if ( empty( $_FILES['photo']['name'] ) || ( $_FILES['photo']['error'] ?? UPLOAD_ERR_NO_FILE ) !== UPLOAD_ERR_OK ) {
-            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'no_file', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'no_file', sp_form_return_url() ) );
             exit;
         }
 
@@ -118175,13 +118196,13 @@ add_action( 'init', function () {
             ],
         ] );
         if ( ! $movefile || ! empty( $movefile['error'] ) ) {
-            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'upload_failed', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'upload_failed', sp_form_return_url() ) );
             exit;
         }
         // Reject non-images
         if ( strpos( (string) $movefile['type'], 'image/' ) !== 0 ) {
             @unlink( $movefile['file'] );
-            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'not_image', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'not_image', sp_form_return_url() ) );
             exit;
         }
 
@@ -118194,7 +118215,7 @@ add_action( 'init', function () {
         ], $movefile['file'] );
 
         if ( is_wp_error( $attach_id ) ) {
-            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'attach_failed', wp_get_referer() ?: home_url() ) );
+            wp_safe_redirect( add_query_arg( 'sp_pw_error', 'attach_failed', sp_form_return_url() ) );
             exit;
         }
         wp_update_attachment_metadata( $attach_id, wp_generate_attachment_metadata( $attach_id, $movefile['file'] ) );
@@ -118234,7 +118255,7 @@ add_action( 'init', function () {
             );
         }
 
-        wp_safe_redirect( add_query_arg( 'sp_pw_msg', 'submitted', wp_get_referer() ?: home_url() ) );
+        wp_safe_redirect( add_query_arg( 'sp_pw_msg', 'submitted', sp_form_return_url() ) );
         exit;
     }
 } );
@@ -119499,6 +119520,10 @@ add_shortcode( 'sp_donate', function ( $atts ) {
             <div class="sp-donate-notice sp-donate-notice-error">
                 <?php esc_html_e( 'Please enter a donation amount of at least $1.', 'societypress' ); ?>
             </div>
+        <?php elseif ( $err === 'missing_contact' ) : ?>
+            <div class="sp-donate-notice sp-donate-notice-error">
+                <?php esc_html_e( 'Please enter your name and email address so we can match your check when it arrives.', 'societypress' ); ?>
+            </div>
         <?php elseif ( $err === 'check_unavailable' ) : ?>
             <div class="sp-donate-notice sp-donate-notice-error">
                 <?php esc_html_e( 'Giving by mailed check isn\'t set up on this site yet. Please use the card option above.', 'societypress' ); ?>
@@ -119804,7 +119829,7 @@ add_shortcode( 'sp_donate', function ( $atts ) {
 add_action( 'init', function () {
     if ( ( $_POST['sp_donate_action'] ?? '' ) !== 'checkout' ) return;
 
-    $referer = wp_get_referer() ?: home_url();
+    $referer = sp_form_return_url();
 
     if ( ! wp_verify_nonce( $_POST['sp_donate_nonce'] ?? '', 'sp_donate_submit' ) ) {
         wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_nonce', $referer ) );
@@ -119848,7 +119873,7 @@ add_action( 'init', function () {
         $donor_name  = sanitize_text_field( wp_unslash( $_POST['donor_name'] ?? '' ) );
         $donor_email = sanitize_email( wp_unslash( $_POST['donor_email'] ?? '' ) );
         if ( $donor_name === '' || ! is_email( $donor_email ) ) {
-            wp_safe_redirect( add_query_arg( 'sp_donate_err', 'invalid_amount', $referer ) );
+            wp_safe_redirect( add_query_arg( 'sp_donate_err', 'missing_contact', $referer ) );
             exit;
         }
 
@@ -121257,7 +121282,7 @@ function sp_donate_paypal_create_order(): void {
     }
 
     // Build the redirect URLs for after PayPal capture (used by JS, not PayPal itself)
-    $referer = wp_get_referer() ?: home_url();
+    $referer = sp_form_return_url();
     $return_url = add_query_arg( [
         'sp_donate_msg' => 'success',
         'sp_donation'   => $donation_id,
@@ -121341,7 +121366,7 @@ function sp_donate_paypal_capture(): void {
         wp_send_json_success( [ 'redirect_url' => add_query_arg( [
             'sp_donate_msg' => 'success',
             'sp_donation'   => $donation->id,
-        ], wp_get_referer() ?: home_url() ) ] );
+        ], sp_form_return_url() ) ] );
     }
 
     $settings = sp_settings();
@@ -121385,7 +121410,7 @@ function sp_donate_paypal_capture(): void {
         'redirect_url' => add_query_arg( [
             'sp_donate_msg' => 'success',
             'sp_donation'   => $donation->id,
-        ], wp_get_referer() ?: home_url() ),
+        ], sp_form_return_url() ),
     ] );
 }
 
@@ -122659,7 +122684,7 @@ add_shortcode( 'sp_help_request_submit', function () {
 add_action( 'init', function () {
     if ( ( $_POST['sp_help_action'] ?? '' ) !== 'public_submit' ) return;
 
-    $referer = wp_get_referer() ?: home_url();
+    $referer = sp_form_return_url();
     if ( ! wp_verify_nonce( $_POST['sp_help_nonce'] ?? '', 'sp_help_public_submit' ) ) {
         wp_safe_redirect( add_query_arg( 'sp_help_msg', 'invalid', $referer ) );
         exit;
@@ -123962,7 +123987,7 @@ add_shortcode( 'sp_research_request', function () {
 add_action( 'init', function () {
     if ( ( $_POST['sp_research_action'] ?? '' ) !== 'submit' ) return;
 
-    $referer = wp_get_referer() ?: home_url();
+    $referer = sp_form_return_url();
     if ( ! wp_verify_nonce( $_POST['sp_research_nonce'] ?? '', 'sp_research_submit' ) ) {
         wp_safe_redirect( add_query_arg( 'sp_research_err', 'invalid', $referer ) );
         exit;
@@ -124510,7 +124535,7 @@ add_action( 'init', function () {
     $secret_key = function_exists( 'sp_stripe_get_secret_key' ) ? sp_stripe_get_secret_key( $settings ) : '';
     if ( empty( $secret_key ) ) return;
 
-    $referer = wp_get_referer() ?: home_url();
+    $referer = sp_form_return_url();
     $success_url = add_query_arg( [
         'sp_research_invoice_paid' => 1,
         'sp_research_inv'          => $invoice_id,

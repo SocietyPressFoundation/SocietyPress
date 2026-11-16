@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.128
+ * Version:     1.5.129
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.128' );
+define( 'SOCIETYPRESS_VERSION', '1.5.129' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41678,7 +41678,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.128',
+            'version'     => '1.5.129',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41686,7 +41686,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.128',
+            'version'     => '1.5.129',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41694,7 +41694,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.128',
+            'version'     => '1.5.129',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41702,7 +41702,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.128',
+            'version'     => '1.5.129',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41710,7 +41710,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.128',
+            'version'     => '1.5.129',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -77896,13 +77896,18 @@ add_filter( 'template_include', function( $template ) {
         return $template;
     }
 
-    // Most templates require login. Records, Store, and Documents handle their
-    // own access (records: per-collection, store: public storefront, documents:
-    // per-document access_level). Cart requires login to purchase.
-    // Surnames joins the public list for the same reason vertical files did:
-    // an outsider finding their family name in the registry is how the society
-    // gets found. The registry never shows a member's address either way.
-    if ( ! in_array( $page_template, [ 'sp-records', 'sp-store', 'sp-cart', 'sp-documents', 'sp-vertical-files', 'sp-surnames', 'sp-news', 'sp-donate' ], true ) && ! is_user_logged_in() ) {
+    // WHY the page's own "Restrict to Members Only" box decides: these pages
+    // used to be sorted into public and login-only here in code, and the
+    // checkbox in the page editor was skipped for them — so a society that
+    // left it unticked on its Library Catalog still had every visitor sent to
+    // the login screen, with nothing on the page saying why. The box is what
+    // people see, so the box is what counts. Help Requests is the exception:
+    // it lists members' own research requests and is never public.
+    // Records and Documents still apply their own per-collection and
+    // per-document rules on top of this.
+    $sp_page_gated = get_post_meta( get_the_ID(), '_sp_members_only', true ) === '1';
+    if ( ( 'sp-help-requests' === $page_template || $sp_page_gated ) && ! is_user_logged_in()
+            && ! ( ! empty( $GLOBALS['sp_review_ok'] ) && (int) $GLOBALS['sp_review_ok'] === (int) get_the_ID() ) ) {
         wp_redirect( wp_login_url( get_permalink() ) );
         exit;
     }
@@ -104770,7 +104775,8 @@ function sp_render_store_frontend(): void {
 
         // ---- Mini-cart badge: show item count in header ----
         function updateCartBadge(count) {
-            var badge = document.querySelector('.sp-cart-badge');
+            // The menu's badge is the original; the header copy follows it.
+            var badge = document.querySelector('.sp-nav-cart .sp-cart-badge') || document.querySelector('.sp-cart-badge');
             if (!badge) return;
             badge.textContent = count;
             // Toggle the attribute, not style.display. SocietyPress ships
@@ -105259,6 +105265,64 @@ function sp_nav_cart_item( string $items, $args ): string {
 add_filter( 'wp_nav_menu_items', 'sp_nav_cart_item', 10, 2 );
 
 /**
+ * On phones and tablets, show the cart in the header bar beside search.
+ *
+ * WHY: below a theme's menu breakpoint the primary menu folds into a dropdown
+ *      and the cart went with it — a shopper had to open the menu to find out
+ *      whether anything was in their basket. Every shop puts it in the bar.
+ *
+ * WHY watch the menu button instead of a screen width: the six themes fold
+ *      their menus at different widths (1280px in three, 768px in the others),
+ *      so any fixed number would be wrong in half of them. "Is the theme's
+ *      menu button showing?" is the question that actually matters.
+ *
+ * WHY copy the menu's own cart link: it already carries the live count, the
+ *      screen-reader label, and the hidden-when-empty behaviour; the copy is
+ *      refreshed whenever the store script changes the original.
+ */
+function sp_header_cart_script(): void {
+    if ( ! sp_module_enabled( 'store' ) || ! sp_nav_cart_page() ) {
+        return;
+    }
+    ?>
+    <script>
+    (function () {
+        var li = document.querySelector('.sp-nav-cart');
+        if (!li) { return; }
+        var toggle = document.querySelector('.sp-hamburger, .ledger-hamburger, .prairie-sidebar-toggle');
+        var search = document.querySelector('.sp-header-search-wrap');
+        var anchor = search || toggle;
+        if (!toggle || !anchor || !anchor.parentNode) { return; }
+
+        var box = document.createElement('div');
+        box.className = 'sp-header-cart';
+        box.hidden = true;
+        anchor.parentNode.insertBefore(box, anchor);
+
+        function sync() {
+            var folded = toggle.offsetParent !== null;
+            document.documentElement.classList.toggle('sp-cart-in-header', folded);
+            box.hidden = !folded || li.hidden;
+        }
+        function copy() { box.innerHTML = li.innerHTML; sync(); }
+
+        copy();
+        window.addEventListener('resize', sync);
+        new MutationObserver(copy).observe(li, { attributes: true, subtree: true, childList: true, characterData: true });
+    })();
+    </script>
+    <?php
+}
+add_action( 'wp_footer', 'sp_header_cart_script' );
+
+add_action( 'wp_head', function () {
+    if ( '' === sp_stripe_test_notice_html() ) {
+        return;
+    }
+    echo '<style id="sp-stripe-test-notice-css">.sp-stripe-test-notice { background: #fff8e5; border: 1px solid #dba617; border-radius: 4px; padding: 10px 12px; margin: 8px 0 12px; font-size: 14px; color: #3c2f00; }</style>';
+} );
+
+/**
  * Styling for the cart badge, on the front end only.
  *
  * WHY inline and unconditional: the badge rides in the theme's own menu markup,
@@ -105325,6 +105389,13 @@ add_action( 'wp_head', function () {
        has to be gone, not faintly present. */
     .sp-nav-cart[hidden],
     .sp-cart-badge[hidden]   { display: none !important; }
+
+    /* Phone/tablet: the cart sits in the header bar, not in the folded menu.
+       See sp_header_cart_script() for why this keys off the menu button. */
+    .sp-cart-in-header .sp-nav-cart { display: none !important; }
+    .sp-header-cart          { display: flex; align-items: center; margin-inline: 4px; }
+    .sp-header-cart[hidden]  { display: none !important; }
+    .sp-header-cart a        { display: inline-flex; align-items: center; color: inherit; }
     .sp-nav-cart a           { white-space: nowrap; display: inline-flex;
                                align-items: center; }
     .sp-cart-glyph           { position: relative; display: inline-block; flex: 0 0 auto;
@@ -105498,6 +105569,25 @@ add_action( 'wp_ajax_nopriv_sp_cart_remove', 'sp_ajax_cart_remove' );
  *
  * @return array|WP_Error [ 'order_id' => int, 'subtotal' => float, 'items' => [...] ]
  */
+/**
+ * A plain notice that payments are in Stripe test mode, or '' when live.
+ *
+ * WHY on the page itself: in test mode Stripe shows only pretend banks and
+ *      takes only test cards, so a volunteer trying the site searches for
+ *      their own bank, finds nothing, and reports it as broken. Stripe's
+ *      hosted page carries its own TEST MODE badge; the payment forms built
+ *      into our pages had nothing, so there was no way to tell.
+ */
+function sp_stripe_test_notice_html(): string {
+    $settings = sp_settings();
+    if ( empty( $settings['stripe_test_mode'] ) || ! sp_stripe_is_configured( $settings ) ) {
+        return '';
+    }
+    return '<p class="sp-stripe-test-notice" role="note"><strong>' . esc_html__( 'Test mode — no real money is charged.', 'societypress' ) . '</strong> '
+        . esc_html__( 'Use card number 4242 4242 4242 4242 with any future date and any security code. To try paying by bank, choose "Test Institution" — real banks don\'t appear in test mode.', 'societypress' )
+        . '</p>';
+}
+
 /**
  * The buyer details posted from the checkout form.
  *
@@ -106850,6 +106940,7 @@ function sp_render_cart_page(): void {
                 <?php if ( $stripe_configured ) : ?>
                 <div class="sp-pay-section">
                     <span class="sp-pay-section-label"><?php esc_html_e( 'Pay with card', 'societypress' ); ?></span>
+                    <?php echo sp_stripe_test_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
                     <div id="sp-stripe-element"></div>
                     <button type="button" id="sp-stripe-pay-btn" class="sp-cart-checkout-btn sp-stripe-pay-btn-full">
                         <?php esc_html_e( 'Pay', 'societypress' ); ?>
@@ -120594,6 +120685,7 @@ add_shortcode( 'sp_donate', function ( $atts ) {
                 <span class="total" id="sp-donate-total">$0.00</span>
             </div>
 
+            <?php echo sp_stripe_test_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
             <button type="submit" class="sp-donate-submit" id="sp-donate-submit">
                 <?php esc_html_e( 'Donate with Card →', 'societypress' ); ?>
             </button>

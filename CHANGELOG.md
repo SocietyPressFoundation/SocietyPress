@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.129] — 2026-11-16
+
+**"Restrict to Members Only" now works on every page.** On pages built from a SocietyPress page type, such as Library Catalog, Resource Links, Store or News, the checkbox in the page editor was ignored. The Library Catalog and Resource Links pages sent every visitor to the login screen whatever it said. Those pages now follow the checkbox: public when it's unticked, members-only when it's ticked. Research Help Requests still always requires a login, because it lists members' own requests. **Note for existing sites:** a Library Catalog or Resource Links page with the box unticked becomes public with this update. Tick the box to keep it private.
+
+**The cart stays in sight on phones and tablets.** When the menu folds into a menu button, the cart icon now moves to the header bar beside search instead of being tucked inside the dropdown. This works in all six themes, whatever width each one folds its menu at.
+
+**Payment forms say when they're in test mode.** With Stripe in test mode, the store checkout and donation form now say that no real money is charged and give the test card number. They also explain that only "Test Institution" appears when paying by bank, because real banks are never listed in test mode.
+
+---
+
 ## [1.5.128] — 2026-11-16
 
 **Pay for events and store orders by mailed check.** Paid events now offer "Prefer to mail a check?" beside the card and pay-at-the-door buttons. The registration is held without taking a seat. When the check is marked received, the seat is confirmed if there's still room and the usual confirmation email goes out. If the event filled up meanwhile, the person goes on the waitlist and the society is told it's holding their payment. The store checkout has a "Pay by mailed check" option: the order is placed and its stock held, and marking the check received marks the order paid and sends the receipt and any download links. "Never came" cancels the registration, or cancels the order and puts its stock back. Both appear on Checks in the Mail and get the same reminders. The store also accepts orders by check on sites with no card payment set up.

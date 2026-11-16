@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.125
+ * Version:     1.5.127
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.125' );
+define( 'SOCIETYPRESS_VERSION', '1.5.127' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2368,6 +2368,8 @@ function sp_create_tables(): void {
         paypal_order_id        VARCHAR(255)        NULL,
         paypal_capture_id      VARCHAR(255)        NULL,
         paypal_subscription_id VARCHAR(255)        NULL,
+        reminded_at            DATETIME            NULL,
+        reminders_sent         TINYINT UNSIGNED    NOT NULL DEFAULT 0,
         created_at             DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY campaign_id (campaign_id),
@@ -2379,6 +2381,38 @@ function sp_create_tables(): void {
         KEY stripe_subscription_id (stripe_subscription_id),
         KEY donor_email (donor_email),
         KEY paypal_order_id (paypal_order_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_check_pledges — payments promised by mailed check
+    //
+    // WHY one table for dues, event fees and store orders: each has its own
+    //      records, but "a check is in the mail" is the same situation in all
+    //      of them — a slip, a memo code, reminders, and a treasurer closing
+    //      it out. One table means one Checks in the Mail screen and one
+    //      reminder job. Donations keep their own pending rows (they predate
+    //      this) and are folded into the same screen and job.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}check_pledges (
+        id             BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        kind           VARCHAR(20)         NOT NULL,
+        ref_id         BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        user_id        BIGINT(20) UNSIGNED NULL,
+        payer_name     VARCHAR(255)        NOT NULL DEFAULT '',
+        payer_email    VARCHAR(255)        NULL,
+        amount         DECIMAL(10,2)       NOT NULL DEFAULT 0.00,
+        code           VARCHAR(20)         NOT NULL,
+        details        TEXT                NULL,
+        status         VARCHAR(20)         NOT NULL DEFAULT 'pending',
+        reminded_at    DATETIME            NULL,
+        reminders_sent TINYINT UNSIGNED    NOT NULL DEFAULT 0,
+        closed_at      DATETIME            NULL,
+        closed_by      BIGINT(20) UNSIGNED NULL,
+        created_at     DATETIME            NOT NULL,
+        PRIMARY KEY  (id),
+        KEY status (status),
+        KEY kind_ref (kind, ref_id),
+        KEY code (code)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -8660,6 +8694,16 @@ add_action( 'admin_menu', function () {
         'sp_render_donations_page'
     );
 
+    // Checks in the Mail — every payment promised by mailed check, one place
+    sp_add_admin_page(
+        'societypress',
+        __( 'Checks in the Mail — SocietyPress', 'societypress' ),
+        __( 'Checks in the Mail', 'societypress' ),
+        'manage_options',
+        'sp-checks',
+        'sp_render_checks_page'
+    );
+
     // Hidden: Donation edit/record page
     sp_add_admin_page(
         '',
@@ -14665,7 +14709,7 @@ function sp_default_menu_config(): array {
               // History) so listing it here was a silent no-op — the group asked
               // for a screen that can never render in it. It is an action taken
               // from Payment History, not a place of its own.
-              'items' => [ 'sp-finances', 'sp-donations', 'sp-campaigns',
+              'items' => [ 'sp-finances', 'sp-checks', 'sp-donations', 'sp-campaigns',
                            [ 'heading' => __( 'Store', 'societypress' ) ],
                            'sp-store-products', 'sp-orders' ] ],
 
@@ -33858,10 +33902,10 @@ add_action( 'admin_init', function () {
 
             printf(
                 '<input type="number" name="societypress_settings[renewal_opens_months]" '
-                . 'value="%d" min="0" max="11" class="sp-w-60"> ' . esc_html__( 'months before the membership year ends', 'societypress' ),
+                . 'value="%d" min="0" max="11" class="sp-w-60"> ' . esc_html__( 'months before a membership expires', 'societypress' ),
                 $current
             );
-            echo '<p class="description">' . esc_html__( 'Members can renew online from this point on. Before then, they see when renewal opens. Use 0 to let members renew at any time. Only applies to Annual period type.', 'societypress' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Members can renew online from this point on. Before then, they see when renewal opens. Use 0 to let members renew at any time. Applies to Annual and Rolling memberships.', 'societypress' ) . '</p>';
         },
         'sp-settings-membership',
         'sp_membership_section'
@@ -41634,7 +41678,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.125',
+            'version'     => '1.5.127',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41642,7 +41686,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.125',
+            'version'     => '1.5.127',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41650,7 +41694,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.125',
+            'version'     => '1.5.127',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41658,7 +41702,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.125',
+            'version'     => '1.5.127',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41666,7 +41710,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.125',
+            'version'     => '1.5.127',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -65968,7 +66012,7 @@ function sp_membership_compute_expiration( int $years, array $settings, ?string 
  * double-fire only activates once. Returns true if it activated, false if it was
  * a no-op (already recorded or bad input).
  */
-function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $years, float $amount, string $session_ref ): bool {
+function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $years, float $amount, string $session_ref, string $method = 'stripe' ): bool {
     global $wpdb;
     if ( $user_id <= 0 ) {
         return false;
@@ -66008,12 +66052,15 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
         'user_id' => $user_id,
         'amount'  => round( $amount, 2 ),
         'type'    => 'dues',
-        'method'  => 'stripe',
+        'method'  => $method,
         'date'    => current_time( 'Y-m-d' ),
-        'note'    => $session_ref !== ''
-            /* translators: %s: Stripe payment reference */
-            ? sprintf( __( 'Online dues payment (Stripe: %s)', 'societypress' ), $session_ref )
-            : __( 'Online dues payment', 'societypress' ),
+        'note'    => 'check' === $method
+            /* translators: %s: memo code written on the check */
+            ? sprintf( __( 'Dues paid by mailed check (%s)', 'societypress' ), $session_ref )
+            : ( $session_ref !== ''
+                /* translators: %s: Stripe payment reference */
+                ? sprintf( __( 'Online dues payment (Stripe: %s)', 'societypress' ), $session_ref )
+                : __( 'Online dues payment', 'societypress' ) ),
     ] );
 
     // A new applicant was skipped by the welcome email while pending; this is
@@ -66024,6 +66071,58 @@ function sp_membership_activate_from_payment( int $user_id, int $tier_id, int $y
     }
 
     return true;
+}
+
+/**
+ * A dues check arrived: the member becomes Active (or their term extends)
+ * exactly as if they had paid online — welcome email included for a joiner.
+ */
+add_action( 'sp_check_pledge_received', function ( $pledge ) {
+    if ( 'dues' !== $pledge->kind ) {
+        return;
+    }
+    sp_membership_activate_from_payment(
+        (int) $pledge->ref_id,
+        (int) ( $pledge->details['tier_id'] ?? 0 ),
+        (int) ( $pledge->details['years'] ?? 1 ),
+        (float) $pledge->amount,
+        (string) $pledge->code,
+        'check'
+    );
+} );
+
+/**
+ * Take a dues payment by mailed check: record the pledge and return the slip.
+ *
+ * WHY nothing changes on the member yet: a joiner stays Pending and a renewer
+ * keeps their current expiration until the check is in hand. A late check is
+ * what the grace period is for.
+ *
+ * @return string Slip HTML, or '' if the pledge couldn't be saved.
+ */
+function sp_membership_pledge_check( int $user_id, object $tier, int $years, bool $joining ): string {
+    $settings  = sp_settings();
+    $max_years = max( 1, (int) ( $settings['membership_max_years'] ?? 1 ) );
+    $years     = max( 1, min( $max_years, $years ) );
+    $amount    = round( (float) $tier->price * $years, 2 );
+    $user      = get_userdata( $user_id );
+    $member    = sp_get_member_by_user_id( $user_id );
+    $name      = $member ? trim( $member->first_name . ' ' . $member->last_name ) : ( $user ? $user->display_name : '' );
+
+    $pledge = sp_check_pledge_create( 'dues', $user_id, $user_id, $name, $user ? $user->user_email : '', $amount, [
+        'tier_id' => (int) $tier->id,
+        'years'   => $years,
+    ] );
+    if ( ! $pledge['id'] ) {
+        return '';
+    }
+    return sp_check_slip_html(
+        $amount,
+        $pledge['code'],
+        $joining
+            ? __( 'Thank you for joining! Your membership becomes active as soon as your check arrives — we\'ll email you then.', 'societypress' )
+            : __( 'Thank you for renewing! Your membership is extended as soon as your check arrives.', 'societypress' )
+    );
 }
 
 /**
@@ -66386,8 +66485,12 @@ add_action( 'init', function () {
         $renewing = sp_get_member_by_user_id( $user_id );
         $opens    = $renewing ? sp_renewal_opens_at( $renewing ) : 0;
         if ( $opens ) {
-            /* translators: %s: date renewal opens */
-            $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => sprintf( __( 'Renewal for next year opens on %s.', 'societypress' ), date_i18n( get_option( 'date_format' ), $opens ) ) ];
+            $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => sprintf(
+                /* translators: 1: date membership is paid through, 2: date renewal opens */
+                __( 'You\'re paid up through %1$s. You can renew starting %2$s.', 'societypress' ),
+                date_i18n( get_option( 'date_format' ), strtotime( $renewing->expiration_date ) ),
+                date_i18n( get_option( 'date_format' ), $opens )
+            ) ];
             return;
         }
         $tier = $wpdb->get_row( $wpdb->prepare(
@@ -66397,6 +66500,13 @@ add_action( 'init', function () {
         if ( ! $tier ) {
             $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Invalid membership level selected.', 'societypress' ) ];
             return;
+        }
+        if ( 'check' === ( $_POST['sp_pay_method'] ?? '' ) && (float) $tier->price > 0 && sp_donation_check_giving_enabled( sp_settings() ) ) {
+            $slip = sp_membership_pledge_check( $user_id, $tier, (int) ( $_POST['membership_years'] ?? 1 ), false );
+            if ( $slip ) {
+                $GLOBALS['sp_join_result'] = [ 'success' => true, 'type' => 'check_slip', 'slip' => $slip ];
+                return;
+            }
         }
         $user = get_userdata( $user_id );
         $url  = sp_membership_checkout_url( $user_id, $user ? $user->user_email : '', $tier, (int) ( $_POST['membership_years'] ?? 1 ), $page_url );
@@ -66634,6 +66744,15 @@ add_action( 'init', function () {
     // WHY the raw referer: the form posts to its own page, and
     // wp_get_referer() returns false when the referer is the current page —
     // which sent paying applicants back to the homepage with no message.
+    // Paying by mailed check: they stay Pending until the check arrives.
+    if ( 'check' === ( $_POST['sp_pay_method'] ?? '' ) && (float) $tier->price > 0 && sp_donation_check_giving_enabled( sp_settings() ) ) {
+        $slip = sp_membership_pledge_check( $user_id, $tier, (int) ( $_POST['membership_years'] ?? 1 ), true );
+        if ( $slip ) {
+            $GLOBALS['sp_join_result'] = [ 'success' => true, 'type' => 'check_slip', 'slip' => $slip ];
+            return;
+        }
+    }
+
     $referer = sp_form_return_url( [ 'sp_membership_msg', 'sp_membership_session' ] );
     $checkout = sp_membership_checkout_url( $user_id, $email, $tier, (int) ( $_POST['membership_years'] ?? 1 ), $referer );
     if ( $checkout ) {
@@ -66715,6 +66834,10 @@ function sp_join_notice_html( array $result ): string {
     $success = ! empty( $result['success'] );
     $help    = sp_membership_help_html();
 
+    if ( $type === 'check_slip' ) {
+        return (string) ( $result['slip'] ?? '' ); // Built from escaped parts.
+    }
+
     if ( $type === 'existing_email' ) {
         $inner = '<p class="sp-m-0"><strong>' . esc_html__( 'You\'re already a member with this email address — no need to join again.', 'societypress' ) . '</strong> '
                . esc_html__( 'To renew, we\'ll email you a link. No password needed.', 'societypress' ) . '</p>'
@@ -66754,9 +66877,9 @@ function sp_join_notice_html( array $result ): string {
  *
  * WHY: With an annual membership year, renewing months early pays for a year
  *      that hasn't started. Renewal opens a set number of months before the
- *      member's paid-through date (Settings → Membership → Renewal Opens).
- *      Rolling and lifetime memberships, and members already expired, can
- *      renew at any time.
+ *      member's paid-through date (Settings → Membership → Renewal Opens),
+ *      for annual and rolling memberships alike. Lifetime memberships, and
+ *      members already expired, can renew at any time.
  *
  * @param object $member Row from sp_members.
  * @return int Timestamp renewal opens, or 0 when they can renew now.
@@ -66764,7 +66887,10 @@ function sp_join_notice_html( array $result ): string {
 function sp_renewal_opens_at( $member ): int {
     $settings = sp_settings();
     $months   = max( 0, min( 11, (int) ( $settings['renewal_opens_months'] ?? 3 ) ) );
-    if ( $months === 0 || ( $settings['membership_period_type'] ?? 'annual' ) !== 'annual'
+    // WHY rolling too: a rolling renewal stacks onto the unused tail, so no
+    // paid time is lost — but societies still don't want members paying
+    // years ahead, and asked for the same window on rolling memberships.
+    if ( $months === 0 || ( $settings['membership_period_type'] ?? 'annual' ) === 'lifetime'
             || empty( $member->expiration_date ) || ! empty( $member->lifetime ) ) {
         return 0;
     }
@@ -66794,6 +66920,7 @@ function sp_render_renew_panel( int $user_id, string $token, array $tiers ): str
     $date     = $exp ? date_i18n( get_option( 'date_format' ), $exp ) : '';
     $help     = sp_membership_help_html();
     $online   = function_exists( 'sp_stripe_get_secret_key' ) && sp_stripe_get_secret_key( $settings );
+    $by_check = sp_donation_check_giving_enabled( $settings );
 
     ob_start();
     ?>
@@ -66822,11 +66949,17 @@ function sp_render_renew_panel( int $user_id, string $token, array $tiers ): str
         <?php elseif ( $opens ) : ?>
             <p>
                 <?php
-                /* translators: %s: date renewal opens */
-                printf( esc_html__( 'Renewal for next year opens on %s.', 'societypress' ), esc_html( date_i18n( get_option( 'date_format' ), $opens ) ) );
+                // WHY lead with "paid up": being turned away from a Renew
+                // button reads as a refusal; knowing nothing is owed yet doesn't.
+                printf(
+                    /* translators: 1: date membership is paid through, 2: date renewal opens */
+                    esc_html__( 'You\'re paid up through %1$s. You can renew starting %2$s.', 'societypress' ),
+                    esc_html( date_i18n( get_option( 'date_format' ), strtotime( $member->expiration_date ) ) ),
+                    esc_html( date_i18n( get_option( 'date_format' ), $opens ) )
+                );
                 ?>
             </p>
-        <?php elseif ( ! $online ) : ?>
+        <?php elseif ( ! $online && ! $by_check ) : ?>
             <p><?php esc_html_e( 'Online payment isn\'t set up, so renewals are handled by the society directly.', 'societypress' ); ?> <?php echo $help; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?></p>
         <?php else : ?>
             <form method="post" class="sp-join-form">
@@ -66862,7 +66995,12 @@ function sp_render_renew_panel( int $user_id, string $token, array $tiers ): str
                         </select>
                     </div>
                 <?php endif; ?>
-                <button type="submit" class="sp-submit"><?php esc_html_e( 'Continue to payment', 'societypress' ); ?></button>
+                <?php if ( $online ) : ?>
+                    <button type="submit" class="sp-submit"><?php esc_html_e( 'Continue to payment', 'societypress' ); ?></button>
+                <?php endif; ?>
+                <?php if ( $by_check ) : ?>
+                    <button type="submit" name="sp_pay_method" value="check" class="<?php echo $online ? 'sp-submit sp-submit-secondary' : 'sp-submit'; ?>"><?php echo esc_html( $online ? __( 'Prefer to mail a check? →', 'societypress' ) : __( 'Pay by mailed check', 'societypress' ) ); ?></button>
+                <?php endif; ?>
             </form>
             <?php if ( $help ) : ?>
                 <p class="sp-field-help"><?php echo $help; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?></p>
@@ -67244,6 +67382,10 @@ function sp_render_join_form(): string {
         <?php echo sp_member_choices_fields( sp_member_choices_from_post( wp_unslash( $_POST ) ), 'join' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
 
         <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
+        <?php if ( sp_donation_check_giving_enabled( $settings ) ) : ?>
+            <button type="submit" name="sp_pay_method" value="check" class="sp-submit sp-submit-secondary"><?php esc_html_e( 'Prefer to mail a check? →', 'societypress' ); ?></button>
+            <p class="sp-field-help"><?php esc_html_e( 'We\'ll show you where to send it. Your membership starts when the check arrives.', 'societypress' ); ?></p>
+        <?php endif; ?>
         </div>
     </form>
     </div><!-- .sp-join-main -->
@@ -91761,6 +91903,16 @@ function sp_render_donations_page(): void {
         exit;
     }
 
+    // Close out a mailed-check pledge from its row.
+    if ( isset( $_POST['sp_check_outcome'], $_POST['donation_id'] ) ) {
+        $sp_id = (int) $_POST['donation_id'];
+        check_admin_referer( 'sp_check_outcome_' . $sp_id );
+        $sp_outcome = sanitize_key( wp_unslash( $_POST['sp_check_outcome'] ) );
+        sp_donation_close_check( $sp_id, $sp_outcome );
+        wp_redirect( admin_url( 'admin.php?page=sp-donations&check=' . ( 'received' === $sp_outcome ? 'received' : 'cancelled' ) ) );
+        exit;
+    }
+
     // Handle bulk acknowledgment
     if ( isset( $_POST['sp_bulk_acknowledge'] ) && ! empty( $_POST['donation_ids'] ) ) {
         check_admin_referer( 'sp_bulk_acknowledge' );
@@ -91879,6 +92031,11 @@ function sp_render_donations_page(): void {
         <?php if ( isset( $_GET['acknowledged'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Acknowledgment emails sent.', 'societypress' ); ?></p></div>
         <?php endif; ?>
+        <?php if ( 'received' === ( $_GET['check'] ?? '' ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Check marked received. The donor has been sent a receipt.', 'societypress' ); ?></p></div>
+        <?php elseif ( 'cancelled' === ( $_GET['check'] ?? '' ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Pledge closed. No more reminders will go out for it.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
 
         <style>
             /* sp_render_donations_page() — summary stat cards (pre-existing block,
@@ -91946,6 +92103,13 @@ function sp_render_donations_page(): void {
             /* Not-acknowledged dash — muted */
             .sp-donations-ack-no {
                 color: #6d7175;
+            }
+
+            /* A pledged check still waiting on the post — the treasurer's cue to act */
+            .sp-donations-pending-check {
+                display: block;
+                color: #8a5a00;
+                font-weight: 600;
             }
 
             /* Delete form sits inline alongside the Edit link */
@@ -92089,6 +92253,21 @@ function sp_render_donations_page(): void {
                                     <?php endif; ?>
                                 </td>
                                 <td>
+                                    <?php if ( sp_donation_is_pending_check( $row ) ) : ?>
+                                        <span class="sp-donations-pending-check"><?php esc_html_e( 'Check not yet received', 'societypress' ); ?></span>
+                                        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="sp-donations-delete-form">
+                                            <?php wp_nonce_field( 'sp_check_outcome_' . $row->id ); ?>
+                                            <input type="hidden" name="donation_id" value="<?php echo (int) $row->id; ?>">
+                                            <button type="submit" name="sp_check_outcome" value="received" class="sp-link-btn"><?php esc_html_e( 'Mark received', 'societypress' ); ?></button>
+                                        </form>
+                                        |
+                                        <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="sp-donations-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Mark this check as never arriving? The donor will stop getting reminders.', 'societypress' ) ); ?>">
+                                            <?php wp_nonce_field( 'sp_check_outcome_' . $row->id ); ?>
+                                            <input type="hidden" name="donation_id" value="<?php echo (int) $row->id; ?>">
+                                            <button type="submit" name="sp_check_outcome" value="cancelled" class="sp-link-btn sp-donations-delete-btn"><?php esc_html_e( 'Never came', 'societypress' ); ?></button>
+                                        </form>
+                                        <br>
+                                    <?php endif; ?>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donation-edit&donation_id=' . $row->id ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     |
                                     <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>" class="sp-donations-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this donation record?', 'societypress' ) ); ?>">
@@ -92213,6 +92392,19 @@ function sp_render_donation_edit_page(): void {
 
         if ( $donation_id ) {
             $wpdb->update( $prefix . 'donations', $data, [ 'id' => $donation_id ] );
+
+            // Status changes go through the close-out helper so a check marked
+            // received here gets its receipt, same as from the list.
+            $sp_new_status = sanitize_key( wp_unslash( $_POST['donation_status'] ?? '' ) );
+            $sp_old_status = (string) ( $donation->status ?? '' );
+            if ( $donation && sp_donation_status_editable( $donation )
+                && isset( sp_donation_manual_statuses()[ $sp_new_status ] ) && $sp_new_status !== $sp_old_status ) {
+                if ( 'pending' === $sp_old_status ) {
+                    sp_donation_close_check( $donation_id, 'recorded' === $sp_new_status ? 'received' : 'cancelled' );
+                } else {
+                    $wpdb->update( $prefix . 'donations', [ 'status' => $sp_new_status ], [ 'id' => $donation_id ] );
+                }
+            }
         } else {
             $data['created_at'] = current_time( 'mysql' );
             $wpdb->insert( $prefix . 'donations', $data );
@@ -92316,6 +92508,18 @@ function sp_render_donation_edit_page(): void {
                         </select>
                     </td>
                 </tr>
+                <?php if ( $donation && sp_donation_status_editable( $donation ) ) : ?>
+                    <tr>
+                        <th scope="col"><label for="sp-d-status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="donation_status" id="sp-d-status">
+                                <?php foreach ( sp_donation_manual_statuses() as $sp_s => $sp_s_label ) : ?>
+                                    <option value="<?php echo esc_attr( $sp_s ); ?>" <?php selected( $donation->status, $sp_s ); ?>><?php echo esc_html( $sp_s_label ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                <?php endif; ?>
                 <tr id="sp-d-inkind-row" style="<?php echo ( $donation->type ?? '' ) !== 'in_kind' ? 'display:none;' : ''; ?>">
                     <th scope="col"><label for="sp-d-inkind"><?php esc_html_e( 'In-Kind Description', 'societypress' ); ?></label></th>
                     <td><textarea name="in_kind_description" id="sp-d-inkind" rows="3" class="sp-full-width"><?php echo esc_textarea( $donation->in_kind_description ?? '' ); ?></textarea></td>
@@ -118998,6 +119202,9 @@ add_action( 'admin_init', function () {
         'donor_state'            => "ALTER TABLE {$table} ADD COLUMN donor_state VARCHAR(100) NULL AFTER donor_city",
         'donor_postal_code'      => "ALTER TABLE {$table} ADD COLUMN donor_postal_code VARCHAR(20) NULL AFTER donor_state",
         'donor_country'          => "ALTER TABLE {$table} ADD COLUMN donor_country VARCHAR(100) NULL AFTER donor_postal_code",
+        // When the last "your check hasn't arrived" reminder went out.
+        'reminded_at'            => "ALTER TABLE {$table} ADD COLUMN reminded_at DATETIME NULL AFTER paypal_subscription_id",
+        'reminders_sent'         => "ALTER TABLE {$table} ADD COLUMN reminders_sent TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER reminded_at",
     ];
     foreach ( $cols as $col => $sql ) {
         $exists = $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM {$table} LIKE %s", $col ) );
@@ -119089,6 +119296,470 @@ function sp_donation_presets(): array {
 
 
 /**
+ * Donation statuses a person sets by hand, keyed to their labels.
+ *
+ * WHY: card and PayPal gifts get their status from the processor, but a
+ *      mailed check only changes when the treasurer says so. Without a way to
+ *      say so, every check pledge stayed pending forever — left out of every
+ *      total even after the money was banked.
+ */
+function sp_donation_manual_statuses(): array {
+    return [
+        'pending'   => __( 'Pending — not received yet', 'societypress' ),
+        'recorded'  => __( 'Received', 'societypress' ),
+        'cancelled' => __( 'Cancelled — never received', 'societypress' ),
+    ];
+}
+
+/**
+ * May a person change this donation's status by hand?
+ *
+ * Processor-paid gifts are excluded: Stripe and PayPal own that status, and
+ * the nightly reconcile would only fight a hand edit.
+ */
+function sp_donation_status_editable( object $d ): bool {
+    return isset( sp_donation_manual_statuses()[ $d->status ?? '' ] )
+        && ! in_array( (string) ( $d->payment_method ?? '' ), [ 'stripe', 'paypal' ], true );
+}
+
+/**
+ * Is this a mailed-check pledge still waiting on the post?
+ */
+function sp_donation_is_pending_check( object $d ): bool {
+    return 'pending' === ( $d->status ?? '' ) && 'check' === ( $d->payment_method ?? '' );
+}
+
+/**
+ * The confirmation code the donor was told to write on the memo line.
+ *
+ * It lives inside the note the check path writes; pulling it back out means a
+ * reminder can repeat the exact code the donor saw on their slip.
+ */
+function sp_donation_check_code( object $d ): string {
+    return preg_match( '/SP-[A-Z0-9]{6}/', (string) ( $d->note ?? '' ), $m ) ? $m[0] : '';
+}
+
+/**
+ * Close out a mailed-check pledge: the check arrived, or it never will.
+ *
+ * WHY date moves to today on receipt: the pledge date is when the donor
+ * promised; the gift counts — for the year's totals and the donor's tax
+ * receipt — from when the society actually had the money.
+ *
+ * @param string $outcome 'received' or 'cancelled'.
+ */
+function sp_donation_close_check( int $donation_id, string $outcome ): void {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_donations';
+    $d     = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $donation_id ) );
+    if ( ! $d || 'pending' !== $d->status || ! sp_donation_status_editable( $d ) ) {
+        return;
+    }
+
+    if ( 'received' === $outcome ) {
+        $wpdb->update( $table, [
+            'status' => 'recorded',
+            'date'   => current_time( 'Y-m-d' ),
+        ], [ 'id' => $donation_id ] );
+        // A check donor gets the same receipt a card donor does.
+        sp_donation_send_receipt( $donation_id );
+    } else {
+        $wpdb->update( $table, [ 'status' => 'cancelled' ], [ 'id' => $donation_id ] );
+    }
+}
+
+/**
+ * What each kind of mailed-check payment is for, in plain words.
+ */
+function sp_check_pledge_kinds(): array {
+    return [
+        'donation' => __( 'Donation', 'societypress' ),
+        'dues'     => __( 'Membership dues', 'societypress' ),
+        'event'    => __( 'Event registration', 'societypress' ),
+        'order'    => __( 'Store order', 'societypress' ),
+    ];
+}
+
+/**
+ * Record that someone will pay by mailed check, and tell the society.
+ *
+ * @param string $kind    'dues', 'event' or 'order'.
+ * @param int    $ref_id  The member's user id, the registration id, or the order id.
+ * @param array  $details What the receiving side needs to finish the job
+ *                        (for dues: tier_id and years).
+ * @return array{id:int,code:string} id 0 when the row couldn't be saved.
+ */
+function sp_check_pledge_create( string $kind, int $ref_id, ?int $user_id, string $name, string $email, float $amount, array $details = [] ): array {
+    global $wpdb;
+    $code = 'SP-' . strtoupper( substr( wp_generate_password( 10, false, false ), 0, 6 ) );
+    $wpdb->insert( $wpdb->prefix . 'sp_check_pledges', [
+        'kind'        => $kind,
+        'ref_id'      => $ref_id,
+        'user_id'     => $user_id ?: null,
+        'payer_name'  => $name,
+        'payer_email' => $email ?: null,
+        'amount'      => round( $amount, 2 ),
+        'code'        => $code,
+        'details'     => $details ? wp_json_encode( $details ) : null,
+        'status'      => 'pending',
+        'created_at'  => current_time( 'mysql' ),
+    ] );
+    $id = (int) $wpdb->insert_id;
+    if ( ! $id ) {
+        error_log( 'SocietyPress check pledge not saved: ' . $wpdb->last_error );
+        return [ 'id' => 0, 'code' => '' ];
+    }
+
+    $settings  = sp_settings();
+    $notify_to = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
+    if ( is_email( $notify_to ) ) {
+        $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+        $what     = sp_check_pledge_kinds()[ $kind ] ?? $kind;
+        $body     = sprintf(
+            /* translators: 1: payer name, 2: amount, 3: what it pays for, e.g. Membership dues */
+            __( '%1$s will mail a check for %2$s (%3$s).', 'societypress' ),
+            $name, sp_format_currency( $amount ), $what
+        ) . "\n\n";
+        /* translators: %s: confirmation code on the check's memo line */
+        $body .= sprintf( __( 'Memo code: %s', 'societypress' ), $code ) . "\n\n";
+        $body .= __( 'When it arrives, mark it received on the Checks in the Mail screen:', 'societypress' ) . "\n";
+        $body .= admin_url( 'admin.php?page=sp-checks' );
+        wp_mail(
+            $notify_to,
+            /* translators: 1: organization name, 2: what it pays for */
+            sprintf( __( '[%1$s] Check on the way: %2$s', 'societypress' ), $org_name, $what ),
+            $body
+        );
+    }
+
+    return [ 'id' => $id, 'code' => $code ];
+}
+
+/**
+ * Close out a mailed-check pledge: the check arrived, or it never will.
+ *
+ * WHY actions rather than a switch: what "received" means belongs to each
+ *      feature — activating a member, confirming a seat, marking an order
+ *      paid. Each hooks sp_check_pledge_received / _cancelled for its kind.
+ *
+ * @param string $outcome 'received' or 'cancelled'.
+ */
+function sp_check_pledge_close( int $id, string $outcome ): bool {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_check_pledges';
+    // Claim the row in the UPDATE itself, so a double click can't fire twice.
+    $claimed = $wpdb->query( $wpdb->prepare(
+        "UPDATE {$table} SET status = %s, closed_at = %s, closed_by = %d WHERE id = %d AND status = 'pending'",
+        'received' === $outcome ? 'received' : 'cancelled',
+        current_time( 'mysql' ),
+        get_current_user_id(),
+        $id
+    ) );
+    if ( ! $claimed ) {
+        return false;
+    }
+    $pledge = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) );
+    $pledge->details = json_decode( (string) $pledge->details, true ) ?: [];
+    do_action( 'received' === $outcome ? 'sp_check_pledge_received' : 'sp_check_pledge_cancelled', $pledge );
+    return true;
+}
+
+/**
+ * The "here's how to mail it" slip, shared by every check payment.
+ */
+function sp_check_slip_html( float $amount, string $code, string $lead ): string {
+    $settings = sp_settings();
+    $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $address  = trim( (string) ( $settings['organization_address'] ?? '' ) );
+    $code     = preg_replace( '/[^A-Z0-9\-]/', '', strtoupper( $code ) );
+
+    ob_start();
+    ?>
+    <div class="sp-checkslip-wrap">
+        <style>
+            .sp-checkslip-wrap { max-width: 560px; margin: 1.5em auto; }
+            .sp-checkslip { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 28px; }
+            .sp-checkslip h3 { margin: 0 0 6px; }
+            .sp-checkslip-lead { color: #555; margin: 0 0 20px; }
+            .sp-checkslip dl { margin: 0; }
+            .sp-checkslip dt { font-weight: 600; color: #555; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; margin-top: 16px; }
+            .sp-checkslip dd { margin: 3px 0 0; font-size: 16px; }
+            .sp-checkslip-amount { font-size: 22px; font-weight: 700; color: #0d1f3c; }
+            .sp-checkslip-code { font-family: monospace; font-size: 20px; letter-spacing: .08em; }
+            .sp-checkslip address { white-space: pre-line; font-style: normal; }
+            .sp-checkslip-print { margin-top: 22px; background: #0d1f3c; color: #fff; border: none; border-radius: 6px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+            @media print { .sp-checkslip-print { display: none; } .sp-checkslip { border: none; } }
+        </style>
+        <div class="sp-checkslip">
+            <h3><?php esc_html_e( 'Here\'s how to mail your check', 'societypress' ); ?></h3>
+            <p class="sp-checkslip-lead"><?php echo esc_html( $lead ); ?></p>
+            <dl>
+                <dt><?php esc_html_e( 'Amount', 'societypress' ); ?></dt>
+                <dd class="sp-checkslip-amount"><?php echo esc_html( sp_format_currency( $amount ) ); ?></dd>
+
+                <dt><?php esc_html_e( 'Make your check payable to', 'societypress' ); ?></dt>
+                <dd><?php echo esc_html( $org_name ); ?></dd>
+
+                <?php if ( $address !== '' ) : ?>
+                    <dt><?php esc_html_e( 'Mail it to', 'societypress' ); ?></dt>
+                    <dd><address><?php echo esc_html( $address ); ?></address></dd>
+                <?php endif; ?>
+
+                <?php if ( $code !== '' ) : ?>
+                    <dt><?php esc_html_e( 'Write this code on the memo line', 'societypress' ); ?></dt>
+                    <dd class="sp-checkslip-code"><?php echo esc_html( $code ); ?></dd>
+                <?php endif; ?>
+            </dl>
+            <button type="button" class="sp-checkslip-print" onclick="window.print()"><?php esc_html_e( 'Print this page', 'societypress' ); ?></button>
+        </div>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+/**
+ * Every check still in the mail — donations and pledges alike — in one shape.
+ *
+ * @param string $older_than Only those last created/reminded before this
+ *                           site-local datetime; '' for all.
+ */
+function sp_checks_pending( string $older_than = '' ): array {
+    global $wpdb;
+    $age_d = $older_than !== '' ? $wpdb->prepare( ' AND COALESCE(reminded_at, created_at) <= %s', $older_than ) : '';
+    $out   = [];
+
+    $donations = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}sp_donations
+         WHERE status = 'pending' AND payment_method = 'check'{$age_d}
+         ORDER BY id LIMIT 200"
+    );
+    foreach ( $donations as $d ) {
+        $out[] = (object) [
+            'source'         => 'donation',
+            'id'             => (int) $d->id,
+            'kind'           => 'donation',
+            'name'           => $d->donor_name,
+            'email'          => (string) $d->donor_email,
+            'amount'         => (float) ( $d->gross_amount ?: $d->amount ),
+            'code'           => sp_donation_check_code( $d ),
+            'pledged'        => (string) $d->date,
+            'reminders_sent' => (int) $d->reminders_sent,
+        ];
+    }
+
+    $pledges = $wpdb->get_results(
+        "SELECT * FROM {$wpdb->prefix}sp_check_pledges
+         WHERE status = 'pending'{$age_d}
+         ORDER BY id LIMIT 200"
+    );
+    foreach ( $pledges as $p ) {
+        $out[] = (object) [
+            'source'         => 'pledge',
+            'id'             => (int) $p->id,
+            'kind'           => $p->kind,
+            'name'           => $p->payer_name,
+            'email'          => (string) $p->payer_email,
+            'amount'         => (float) $p->amount,
+            'code'           => $p->code,
+            'pledged'        => substr( (string) $p->created_at, 0, 10 ),
+            'reminders_sent' => (int) $p->reminders_sent,
+        ];
+    }
+
+    usort( $out, fn( $a, $b ) => strcmp( $a->pledged, $b->pledged ) );
+    return $out;
+}
+
+/**
+ * Close out any check in the mail, whichever table it lives in.
+ */
+function sp_check_close( string $source, int $id, string $outcome ): void {
+    if ( 'donation' === $source ) {
+        sp_donation_close_check( $id, $outcome );
+    } elseif ( 'pledge' === $source ) {
+        sp_check_pledge_close( $id, $outcome );
+    }
+}
+
+/**
+ * Remind the society and the payer about checks that haven't arrived.
+ *
+ * WHY: a pledge is only a promise. Without a nudge, a check lost in the mail
+ *      or never sent just sits as pending and nobody notices. Every two weeks
+ *      the society hears about it until the treasurer marks it received or
+ *      never-came. The payer hears at most three times: someone who quietly
+ *      changed their mind shouldn't be emailed forever because nobody at the
+ *      society got round to closing the pledge.
+ */
+function sp_check_reminders(): void {
+    global $wpdb;
+    $rows = array_slice( sp_checks_pending( wp_date( 'Y-m-d H:i:s', time() - 14 * DAY_IN_SECONDS ) ), 0, 50 );
+    if ( ! $rows ) {
+        return;
+    }
+
+    $settings  = sp_settings();
+    $org_name  = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
+    $org_email = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
+    $address   = trim( (string) ( $settings['organization_address'] ?? '' ) );
+    $kinds     = sp_check_pledge_kinds();
+
+    foreach ( $rows as $c ) {
+        $amount  = sp_format_currency( $c->amount );
+        $pledged = date_i18n( get_option( 'date_format' ), strtotime( $c->pledged ) );
+        $what    = $kinds[ $c->kind ] ?? $c->kind;
+
+        if ( is_email( $org_email ) ) {
+            $body = sprintf(
+                /* translators: 1: amount, 2: payer name, 3: date pledged, 4: what it pays for */
+                __( 'A %1$s check from %2$s, promised on %3$s for %4$s, still hasn\'t been marked received.', 'societypress' ),
+                $amount, $c->name, $pledged, $what
+            ) . "\n\n";
+            if ( $c->code ) {
+                /* translators: %s: confirmation code on the check's memo line */
+                $body .= sprintf( __( 'Look for this code on the memo line: %s', 'societypress' ), $c->code ) . "\n\n";
+            }
+            $body .= __( 'If it arrived, choose "Mark received" on the Checks in the Mail screen. If it isn\'t coming, choose "Never came". Either one stops these reminders.', 'societypress' ) . "\n\n";
+            $body .= admin_url( 'admin.php?page=sp-checks' );
+            wp_mail(
+                $org_email,
+                /* translators: %s: organization name */
+                sprintf( __( '[%s] Mailed check not received yet', 'societypress' ), $org_name ),
+                $body
+            );
+        }
+
+        if ( is_email( $c->email ) && $c->reminders_sent < 3 ) {
+            /* translators: %s: payer name */
+            $body  = sprintf( __( 'Dear %s,', 'societypress' ), $c->name ) . "\n\n";
+            $body .= sprintf(
+                /* translators: 1: date pledged, 2: amount, 3: what it pays for */
+                __( 'On %1$s you let us know you\'d be mailing a check for %2$s (%3$s). We haven\'t received it yet. If it\'s already on its way, thank you — there\'s nothing more to do.', 'societypress' ),
+                $pledged, $amount, strtolower( $what )
+            ) . "\n\n";
+            $body .= __( 'In case you need the details again:', 'societypress' ) . "\n";
+            /* translators: %s: organization name */
+            $body .= sprintf( __( 'Make your check payable to: %s', 'societypress' ), $org_name ) . "\n";
+            if ( $address !== '' ) {
+                /* translators: %s: mailing address, one or more lines */
+                $body .= sprintf( __( "Mail it to:\n%s", 'societypress' ), $address ) . "\n";
+            }
+            if ( $c->code ) {
+                /* translators: %s: confirmation code */
+                $body .= sprintf( __( 'Write this code on the memo line: %s', 'societypress' ), $c->code ) . "\n";
+            }
+            $body .= "\n" . __( 'If you\'ve decided not to send it, that\'s all right — just reply to this email and we\'ll stop these reminders.', 'societypress' ) . "\n\n";
+            /* translators: 1: line break, 2: organization name */
+            $body .= sprintf( __( 'With gratitude,%1$sThe %2$s team', 'societypress' ), "\n", $org_name );
+
+            wp_mail(
+                $c->email,
+                /* translators: %s: organization name */
+                sprintf( __( '[%s] Your mailed check', 'societypress' ), $org_name ),
+                $body,
+                is_email( $org_email ) ? [ 'Reply-To: ' . $org_email ] : []
+            );
+        }
+
+        $wpdb->update(
+            $wpdb->prefix . ( 'donation' === $c->source ? 'sp_donations' : 'sp_check_pledges' ),
+            [
+                'reminded_at'    => current_time( 'mysql' ),
+                'reminders_sent' => min( 255, $c->reminders_sent + 1 ),
+            ],
+            [ 'id' => $c->id ]
+        );
+    }
+}
+add_action( 'sp_check_pledge_reminder_cron', 'sp_check_reminders' );
+
+function sp_check_schedule_reminders(): void {
+    if ( ! wp_next_scheduled( 'sp_check_pledge_reminder_cron' ) ) {
+        wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'sp_check_pledge_reminder_cron' );
+    }
+}
+add_action( 'init', 'sp_check_schedule_reminders' );
+
+/**
+ * Checks in the Mail: everything someone promised to pay by mailed check.
+ *
+ * WHY its own screen: checks for dues, events, orders and donations arrive in
+ *      the same envelope pile. The treasurer opening the mail shouldn't have to
+ *      know which part of the admin each one belongs to — they look up the
+ *      memo code here and mark it received.
+ */
+function sp_render_checks_page(): void {
+    if ( isset( $_POST['sp_check_outcome'], $_POST['sp_check_source'], $_POST['sp_check_id'] ) ) {
+        $source = sanitize_key( wp_unslash( $_POST['sp_check_source'] ) );
+        $id     = (int) $_POST['sp_check_id'];
+        check_admin_referer( 'sp_check_' . $source . '_' . $id );
+        $outcome = 'received' === sanitize_key( wp_unslash( $_POST['sp_check_outcome'] ) ) ? 'received' : 'cancelled';
+        sp_check_close( $source, $id, $outcome );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-checks&done=' . $outcome ) );
+        exit;
+    }
+
+    $checks = sp_checks_pending();
+    $kinds  = sp_check_pledge_kinds();
+    $done   = sanitize_key( wp_unslash( $_GET['done'] ?? '' ) );
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Checks in the Mail', 'societypress' ); ?></h1>
+        <p class="description"><?php esc_html_e( 'People who chose to pay by mailed check. When a check arrives, find its memo code here and mark it received — that activates the membership, confirms the registration, or marks the order paid, and sends a receipt.', 'societypress' ); ?></p>
+
+        <?php if ( 'received' === $done ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Marked received.', 'societypress' ); ?></p></div>
+        <?php elseif ( 'cancelled' === $done ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Closed. No more reminders will go out for it.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <?php if ( ! $checks ) : ?>
+            <p><?php esc_html_e( 'No checks are waiting to arrive.', 'societypress' ); ?></p>
+        <?php else : ?>
+            <table class="widefat striped sp-checks-table">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e( 'Memo code', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'From', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'For', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Amount', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Promised', 'societypress' ); ?></th>
+                        <th scope="col"><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ( $checks as $c ) : ?>
+                        <tr>
+                            <td><code><?php echo esc_html( $c->code ?: '—' ); ?></code></td>
+                            <td><?php echo esc_html( $c->name ); ?><?php if ( $c->email ) : ?><br><span class="description"><?php echo esc_html( $c->email ); ?></span><?php endif; ?></td>
+                            <td><?php echo esc_html( $kinds[ $c->kind ] ?? $c->kind ); ?></td>
+                            <td><?php echo esc_html( sp_format_currency( $c->amount ) ); ?></td>
+                            <td><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $c->pledged ) ) ); ?></td>
+                            <td>
+                                <form method="post" class="sp-inline-form">
+                                    <?php wp_nonce_field( 'sp_check_' . $c->source . '_' . $c->id ); ?>
+                                    <input type="hidden" name="sp_check_source" value="<?php echo esc_attr( $c->source ); ?>">
+                                    <input type="hidden" name="sp_check_id" value="<?php echo (int) $c->id; ?>">
+                                    <button type="submit" name="sp_check_outcome" value="received" class="button button-primary"><?php esc_html_e( 'Mark received', 'societypress' ); ?></button>
+                                </form>
+                                <form method="post" class="sp-inline-form" data-sp-confirm="<?php echo esc_attr__( 'Mark this check as never arriving? Reminders will stop.', 'societypress' ); ?>">
+                                    <?php wp_nonce_field( 'sp_check_' . $c->source . '_' . $c->id ); ?>
+                                    <input type="hidden" name="sp_check_source" value="<?php echo esc_attr( $c->source ); ?>">
+                                    <input type="hidden" name="sp_check_id" value="<?php echo (int) $c->id; ?>">
+                                    <button type="submit" name="sp_check_outcome" value="cancelled" class="button"><?php esc_html_e( 'Never came', 'societypress' ); ?></button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <style>.sp-checks-table .sp-inline-form { display: inline-block; margin: 0 4px 4px 0; }</style>
+        <?php endif; ?>
+    </div>
+    <?php
+}
+
+/**
  * Is mail-in giving usable on this site?
  *
  * WHY: the slip exists to tell a donor where to send the check. With no
@@ -119114,53 +119785,11 @@ function sp_donation_check_giving_enabled( array $settings ): bool {
  *      PDF" posture).
  */
 function sp_donation_check_slip( array $settings, string $org_name ): string {
-    $amount  = number_format( (float) ( $_GET['sp_amount'] ?? 0 ), 2 );
-    $code    = preg_replace( '/[^A-Z0-9\-]/', '', strtoupper( sanitize_text_field( wp_unslash( $_GET['sp_code'] ?? '' ) ) ) );
-    $address = trim( (string) ( $settings['organization_address'] ?? '' ) );
-    $symbol  = sp_get_currency_symbol();
-
-    ob_start();
-    ?>
-    <div class="sp-checkslip-wrap">
-        <style>
-            .sp-checkslip-wrap { max-width: 560px; margin: 1.5em auto; }
-            .sp-checkslip { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 28px; }
-            .sp-checkslip h3 { margin: 0 0 6px; }
-            .sp-checkslip-lead { color: #555; margin: 0 0 20px; }
-            .sp-checkslip dl { margin: 0; }
-            .sp-checkslip dt { font-weight: 600; color: #555; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; margin-top: 16px; }
-            .sp-checkslip dd { margin: 3px 0 0; font-size: 16px; }
-            .sp-checkslip-amount { font-size: 22px; font-weight: 700; color: #0d1f3c; }
-            .sp-checkslip-code { font-family: monospace; font-size: 20px; letter-spacing: .08em; }
-            .sp-checkslip address { white-space: pre-line; font-style: normal; }
-            .sp-checkslip-print { margin-top: 22px; background: #0d1f3c; color: #fff; border: none; border-radius: 6px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
-            @media print { .sp-checkslip-print { display: none; } .sp-checkslip { border: none; } }
-        </style>
-        <div class="sp-checkslip">
-            <h3><?php esc_html_e( 'Thank you — here\'s how to mail your gift', 'societypress' ); ?></h3>
-            <p class="sp-checkslip-lead"><?php esc_html_e( 'We\'ve noted your gift and will mark it received when your check arrives. Print this page or jot down the details below.', 'societypress' ); ?></p>
-            <dl>
-                <dt><?php esc_html_e( 'Gift amount', 'societypress' ); ?></dt>
-                <dd class="sp-checkslip-amount"><?php echo esc_html( $symbol . $amount ); ?></dd>
-
-                <dt><?php esc_html_e( 'Make your check payable to', 'societypress' ); ?></dt>
-                <dd><?php echo esc_html( $org_name ); ?></dd>
-
-                <?php if ( $address !== '' ) : ?>
-                    <dt><?php esc_html_e( 'Mail it to', 'societypress' ); ?></dt>
-                    <dd><address><?php echo esc_html( $address ); ?></address></dd>
-                <?php endif; ?>
-
-                <?php if ( $code !== '' ) : ?>
-                    <dt><?php esc_html_e( 'Write this code on the memo line', 'societypress' ); ?></dt>
-                    <dd class="sp-checkslip-code"><?php echo esc_html( $code ); ?></dd>
-                <?php endif; ?>
-            </dl>
-            <button type="button" class="sp-checkslip-print" onclick="window.print()"><?php esc_html_e( 'Print this page', 'societypress' ); ?></button>
-        </div>
-    </div>
-    <?php
-    return (string) ob_get_clean();
+    return sp_check_slip_html(
+        (float) ( $_GET['sp_amount'] ?? 0 ),
+        sanitize_text_field( wp_unslash( $_GET['sp_code'] ?? '' ) ),
+        __( 'Thank you! We\'ve noted your gift and will mark it received when your check arrives. Print this page or jot down the details below.', 'societypress' )
+    );
 }
 
 

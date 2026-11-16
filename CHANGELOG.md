@@ -20,6 +20,24 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.127] — 2026-11-16
+
+**Pay membership dues by mailed check.** The join and renew forms now offer "Prefer to mail a check?" next to card payment, as long as the society has entered its mailing address. A new member stays Pending until the check arrives. A renewing member keeps their current expiration date until then, with the grace period covering a slow check. The payer sees a slip with the address and a memo code. When the treasurer marks the check received, the member is activated or extended and gets the welcome email, the same as paying online. Renewal is now possible by check even on sites with no card payment set up.
+
+**Checks in the Mail.** A new screen under Money lists every payment promised by mailed check, dues and donations alike, with its memo code. Mark received or Never came from there. Reminders for checks that haven't arrived now cover dues too.
+
+---
+
+## [1.5.126] — 2026-11-16
+
+**Mailed checks can be marked received.** A donor who chose to mail a check left a pending pledge that nothing in the admin could close, so it never counted toward any total, even after the check was banked. Pending checks now show "Mark received" and "Never came" in the Donations list, and the donation edit screen has a Status field. Marking a check received dates the gift to that day and sends the donor the same receipt card donors get.
+
+**Reminders for checks that haven't arrived.** Two weeks after a check is pledged, and every two weeks after that, the society gets a reminder until the check is marked received or never came. The donor gets a friendly note with the mailing details and memo code again, at most three times, and can reply to say they've changed their mind.
+
+**Renewal Opens applies to rolling memberships.** The setting that controls how early members can renew (Settings → Membership → Renewal Opens) only worked for annual memberships, so rolling members could renew years ahead. It now applies to both, counted back from each member's own expiration date.
+
+---
+
 ## [1.5.125] — 2026-11-16
 
 **Forms bring you back to the page you were on.** Choosing "Prefer to mail a check?" on the donation form sent donors to the home page, so they never saw where to send the check or the code to write on it. The same thing happened on other forms that send people back to their own page — lineage applications, photo submissions, newsletter sign-up and others — whenever they finished or hit a problem. All of them now return to the page with their message showing.

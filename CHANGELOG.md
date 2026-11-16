@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.130] — 2026-11-16
+
+**Forms can notify more than one person.** The "Send notifications to" box on a form took only one email address; anything more was dropped when the form was saved. It now takes several, separated by commas, and every submission goes to all of them.
+
+---
+
 ## [1.5.129] — 2026-11-16
 
 **"Restrict to Members Only" now works on every page.** On pages built from a SocietyPress page type, such as Library Catalog, Resource Links, Store or News, the checkbox in the page editor was ignored. The Library Catalog and Resource Links pages sent every visitor to the login screen whatever it said. Those pages now follow the checkbox: public when it's unticked, members-only when it's ticked. Research Help Requests still always requires a login, because it lists members' own requests. **Note for existing sites:** a Library Catalog or Resource Links page with the box unticked becomes public with this update. Tick the box to keep it private.

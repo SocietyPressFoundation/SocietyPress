@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.129
+ * Version:     1.5.130
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.129' );
+define( 'SOCIETYPRESS_VERSION', '1.5.130' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41678,7 +41678,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.129',
+            'version'     => '1.5.130',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41686,7 +41686,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.129',
+            'version'     => '1.5.130',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41694,7 +41694,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.129',
+            'version'     => '1.5.130',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41702,7 +41702,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.129',
+            'version'     => '1.5.130',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41710,7 +41710,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.129',
+            'version'     => '1.5.130',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -133959,6 +133959,26 @@ function sp_forms_allowed_upload_mimes(): array {
 }
 
 /**
+ * The valid addresses in a form's "Send notifications to" box.
+ *
+ * WHY a list: a society usually wants a form to reach more than one person
+ *      (the program chair and the president, say), and the box took exactly
+ *      one address — anything more was thrown away on save.
+ *
+ * @return string[] Valid, de-duplicated addresses, in the order typed.
+ */
+function sp_form_recipient_list( string $raw ): array {
+    $out = [];
+    foreach ( preg_split( '/[\s,;]+/', $raw, -1, PREG_SPLIT_NO_EMPTY ) as $part ) {
+        $email = sanitize_email( $part );
+        if ( is_email( $email ) && ! in_array( strtolower( $email ), array_map( 'strtolower', $out ), true ) ) {
+            $out[] = $email;
+        }
+    }
+    return $out;
+}
+
+/**
  * Decode a form's stored fields JSON into a clean, ordered list of field defs.
  *
  * @param object|null $form A row from sp_forms.
@@ -134340,9 +134360,9 @@ function sp_render_form_edit_page(): void {
                             <tr>
                                 <th scope="row"><?php esc_html_e( 'Send notifications to', 'societypress' ); ?></th>
                                 <td>
-                                    <input type="email" name="send_to_email" value="<?php echo esc_attr( $to_email ); ?>" class="regular-text" placeholder="<?php echo esc_attr( $org_email ); ?>">
+                                    <input type="email" multiple name="send_to_email" value="<?php echo esc_attr( $to_email ); ?>" class="regular-text" placeholder="<?php echo esc_attr( $org_email ); ?>">
                                     <input type="text" name="send_to_name" value="<?php echo esc_attr( $to_name ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Name (optional)', 'societypress' ); ?>">
-                                    <p class="description"><?php esc_html_e( 'Who receives each submission. Leave the email blank to use your organization email.', 'societypress' ); ?></p>
+                                    <p class="description"><?php esc_html_e( 'Who receives each submission. To send to several people, separate their addresses with commas. Leave the email blank to use your organization email. The name is used only when there is one address.', 'societypress' ); ?></p>
                                 </td>
                             </tr>
                             <tr>
@@ -134638,7 +134658,7 @@ function sp_forms_handle_save( int $form_id ): int {
         'visibility'           => ( 'members' === ( $_POST['visibility'] ?? '' ) ) ? 'members' : 'public',
         'fields'               => wp_json_encode( $fields ),
         'email_subject'        => sanitize_text_field( wp_unslash( $_POST['email_subject'] ?? '' ) ),
-        'send_to_email'        => sanitize_email( wp_unslash( $_POST['send_to_email'] ?? '' ) ),
+        'send_to_email'        => implode( ', ', sp_form_recipient_list( wp_unslash( $_POST['send_to_email'] ?? '' ) ) ),
         'send_to_name'         => sanitize_text_field( wp_unslash( $_POST['send_to_name'] ?? '' ) ),
         'reply_to_email'       => sanitize_email( wp_unslash( $_POST['reply_to_email'] ?? '' ) ),
         'reply_to_name'        => sanitize_text_field( wp_unslash( $_POST['reply_to_name'] ?? '' ) ),
@@ -136206,8 +136226,9 @@ function sp_forms_send_notification( $form, array $stored, string $submitter_nam
     $settings  = sp_settings();
     $org_email = $settings['organization_email'] ?? get_option( 'admin_email' );
 
-    $to = is_email( $form->send_to_email ) ? $form->send_to_email : $org_email;
-    if ( ! is_email( $to ) ) {
+    $sp_list = sp_form_recipient_list( (string) $form->send_to_email );
+    $to      = $sp_list ? implode( ', ', $sp_list ) : $org_email;
+    if ( ! $sp_list && ! is_email( $to ) ) {
         return; // Nowhere valid to send — the submission is still stored.
     }
 
@@ -136259,7 +136280,7 @@ function sp_forms_send_notification( $form, array $stored, string $submitter_nam
     }
 
     $to_name = str_replace( [ "\r", "\n", '<', '>' ], '', (string) $form->send_to_name );
-    $to_final = ( $to === $form->send_to_email && $to_name ) ? sprintf( '%s <%s>', $to_name, $to ) : $to;
+    $to_final = ( 1 === count( $sp_list ) && $to_name ) ? sprintf( '%s <%s>', $to_name, $sp_list[0] ) : $to;
 
     wp_mail( $to_final, $subject, $html, $headers );
 }

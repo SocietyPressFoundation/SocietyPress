@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.131
+ * Version:     1.5.132
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.131' );
+define( 'SOCIETYPRESS_VERSION', '1.5.132' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -1988,6 +1988,9 @@ function sp_create_tables(): void {
         pub_day             TINYINT UNSIGNED    NULL,
         media_type          VARCHAR(191)        NULL,
         use_serials         TINYINT(1)          NOT NULL DEFAULT 0,
+        serial_fields       VARCHAR(100)        NULL,
+        serial_sort         VARCHAR(20)         NULL,
+        serial_order        VARCHAR(4)          NULL,
         isbn                VARCHAR(20)         NULL,
         call_number         VARCHAR(50)         NULL,
         lccn                VARCHAR(20)         NULL,
@@ -2029,6 +2032,31 @@ function sp_create_tables(): void {
         KEY surname (surname),
         KEY state (state),
         FULLTEXT KEY title_author_subject (title, author, subject)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_library_issues — Issues of a serial the library has on hand
+    //
+    // WHY: A periodical is one catalog item but arrives again every month or
+    //      quarter. Each arrival is logged here against the item, so members
+    //      can see which issues are on the shelf before they visit.
+    //
+    //      Volume, number, issue and edition are text, not numbers, because
+    //      libraries bind and log ranges: "Number 1-4" is a whole year.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}library_issues (
+        id                  BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        item_id             BIGINT(20) UNSIGNED NOT NULL,
+        pub_year            SMALLINT UNSIGNED   NULL,
+        pub_month           TINYINT UNSIGNED    NULL,
+        pub_day             TINYINT UNSIGNED    NULL,
+        edition             VARCHAR(50)         NULL,
+        volume              VARCHAR(50)         NULL,
+        number              VARCHAR(50)         NULL,
+        issue               VARCHAR(50)         NULL,
+        created_at          DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY item_id (item_id)
     ) {$charset_collate};" );
 
     // ========================================================================
@@ -41678,7 +41706,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.131',
+            'version'     => '1.5.132',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41686,7 +41714,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.131',
+            'version'     => '1.5.132',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41694,7 +41722,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.131',
+            'version'     => '1.5.132',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41702,7 +41730,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.131',
+            'version'     => '1.5.132',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41710,7 +41738,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.131',
+            'version'     => '1.5.132',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -74796,6 +74824,10 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
         .sp-catalog-detail-desc { grid-column: 1 / -1; margin-top: 8px; }
         .sp-catalog-detail-desc dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6d7175; margin-bottom: 4px; font-weight: 600; }
         .sp-catalog-detail-desc dd { margin: 0; font-size: 14px; color: #333; line-height: 1.6; }
+        /* A long run of issues scrolls inside the panel rather than stretching the page. */
+        .sp-catalog-issues { border-collapse: collapse; display: block; max-height: 320px; overflow-y: auto; }
+        .sp-catalog-issues th, .sp-catalog-issues td { padding: 4px 16px 4px 0; text-align: left; border-bottom: 1px solid #eee; }
+        .sp-catalog-issues th { font-weight: 600; color: #6d7175; }
 
         /* Subject / surname tags (in detail rows) */
         .sp-catalog-tag { display: inline-block; background: var(--sp-color-primary, #2271b1); color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin: 2px 3px 2px 0; text-decoration: none; cursor: pointer; }
@@ -74818,7 +74850,9 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
             .sp-catalog-stat { padding: 10px 14px; min-width: 80px; }
             .sp-catalog-stat-number { font-size: 20px; }
 
-            .sp-catalog-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            /* contain: the strip scrolls in its own box; without it, its full width still
+               stretches the theme's flex layout and the whole page scrolls sideways. */
+            .sp-catalog-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; contain: inline-size; }
             .sp-catalog-tab { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
             .sp-catalog-search-form { flex-direction: column; gap: 8px; }
             .sp-catalog-search-form input[type="text"] { border-radius: 6px; border-right: 1px solid #d0d5dd; }
@@ -75417,6 +75451,20 @@ function sp_render_builder_widget_library_catalog( array $s ): void {
                     // Description — full width
                     if ( d.description ) {
                         html += '<div class="sp-catalog-detail-desc"><dt><?php echo esc_js( __( 'Description', 'societypress' ) ); ?></dt><dd>' + escHtml(d.description) + '</dd></div>';
+                    }
+
+                    // A periodical's issues on hand — full width, as a table.
+                    if ( d.issues && d.issues.length > 0 ) {
+                        html += '<div class="sp-catalog-detail-desc"><dt><?php echo esc_js( __( 'Issues on Hand', 'societypress' ) ); ?></dt><dd>';
+                        html += '<table class="sp-catalog-issues"><thead><tr>';
+                        d.issue_columns.forEach(function(c) { html += '<th scope="col">' + escHtml(c) + '</th>'; });
+                        html += '</tr></thead><tbody>';
+                        d.issues.forEach(function(row) {
+                            html += '<tr>';
+                            row.forEach(function(v) { html += '<td>' + escHtml(v) + '</td>'; });
+                            html += '</tr>';
+                        });
+                        html += '</tbody></table></dd></div>';
                     }
 
                     html += '</div>'; // close grid
@@ -80168,6 +80216,7 @@ function sp_render_library_catalog_page(): void {
         $item_id = absint( $_POST['item_id'] );
         check_admin_referer( 'sp_delete_library_item_' . $item_id );
         $wpdb->delete( $prefix . 'library_items', [ 'id' => $item_id ] );
+        sp_library_delete_orphan_issues();
         // WHY: The catalog stats widget caches item counts and subject breakdowns.
         //      Any add/edit/delete/import must bust that cache or the frontend shows stale numbers.
         delete_transient( 'sp_library_catalog_stats' );
@@ -80226,6 +80275,7 @@ function sp_render_library_catalog_page(): void {
                 $deleted = (int) $wpdb->query( "DELETE FROM {$prefix}library_items WHERE id IN (" . implode( ',', $ids ) . ')' );
             }
         }
+        sp_library_delete_orphan_issues();
         delete_transient( 'sp_library_catalog_stats' );
         /* translators: %s: number of catalog items deleted */
         echo '<div class="notice notice-success"><p>' . esc_html( sprintf( _n( '%s item deleted.', '%s items deleted.', $deleted, 'societypress' ), number_format_i18n( $deleted ) ) ) . '</p></div>';
@@ -80743,6 +80793,283 @@ function sp_render_library_catalog_page(): void {
     <?php
 }
 
+// ============================================================================
+// LIBRARY: SERIALS — CHECKING IN ISSUES OF A PERIODICAL
+// ============================================================================
+//
+// WHY: A periodical is cataloged once but keeps arriving. Setting Use Serials
+//      to Yes gives the item an Issues tab where the cataloger chooses which
+//      fields this title is tracked by, sees every issue on hand, and checks
+//      in each new one as it comes. The list also shows in the public catalog.
+//
+//      Setup, the list and check-in share one tab on purpose: legacy systems
+//      split them into three screens, and getting back to the setup from the
+//      check-in form was the complaint.
+
+/**
+ * The fields an issue can be tracked by, in the order they are shown.
+ *
+ * @return array<string,string> Key => label.
+ */
+function sp_library_issue_fields(): array {
+    return [
+        'date'    => __( 'Publication Date', 'societypress' ),
+        'edition' => __( 'Edition', 'societypress' ),
+        'volume'  => __( 'Volume', 'societypress' ),
+        'number'  => __( 'Number', 'societypress' ),
+        'issue'   => __( 'Issue', 'societypress' ),
+    ];
+}
+
+/**
+ * The fields this serial is tracked by.
+ *
+ * WHY a default: most periodicals go by date, volume and number, so a title
+ * switched on without any setup still gets a sensible list and form.
+ *
+ * @param object|null $item Library item row.
+ * @return string[] Field keys.
+ */
+function sp_library_serial_fields( $item ): array {
+    $chosen = array_intersect(
+        array_keys( sp_library_issue_fields() ),
+        explode( ',', (string) ( $item->serial_fields ?? '' ) )
+    );
+    return $chosen ? array_values( $chosen ) : [ 'date', 'volume', 'number' ];
+}
+
+/**
+ * Every issue on hand for an item, in the order its setup asks for.
+ *
+ * WHY sorted here and not in SQL: volume and number are text ("1-4"), and
+ * natural ordering keeps Vol. 9 ahead of Vol. 10.
+ *
+ * @param object $item Library item row.
+ * @return object[]
+ */
+function sp_library_issues( $item ): array {
+    global $wpdb;
+    $issues = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_library_issues WHERE item_id = %d ORDER BY id",
+        (int) $item->id
+    ) );
+
+    $sort = (string) ( $item->serial_sort ?? '' );
+    if ( ! isset( sp_library_issue_fields()[ $sort ] ) ) {
+        $sort = 'date';
+    }
+    $desc = ( $item->serial_order ?? 'desc' ) !== 'asc';
+
+    $date_key = static function ( $i ): string {
+        return sprintf( '%04d%02d%02d', (int) $i->pub_year, (int) $i->pub_month, (int) $i->pub_day );
+    };
+
+    usort( $issues, static function ( $a, $b ) use ( $sort, $date_key ) {
+        $cmp = ( 'date' === $sort ) ? 0 : strnatcasecmp( (string) $a->$sort, (string) $b->$sort );
+        // Ties fall back to date, then to the order they were checked in.
+        return $cmp ?: ( strcmp( $date_key( $a ), $date_key( $b ) ) ?: ( (int) $a->id <=> (int) $b->id ) );
+    } );
+
+    return $desc ? array_reverse( $issues ) : $issues;
+}
+
+/**
+ * An issue's publication date as a librarian writes it: "2026 November 15".
+ *
+ * WHY year first: it is how serial holdings are listed on the shelf and in
+ * every legacy catalog, and it reads right for a year-only issue too.
+ */
+function sp_library_issue_date_label( $issue ): string {
+    global $wp_locale;
+    if ( ! $issue->pub_year ) {
+        return '';
+    }
+    $parts = [ (string) $issue->pub_year ];
+    if ( $issue->pub_month ) {
+        $parts[] = $wp_locale->get_month( (int) $issue->pub_month );
+        if ( $issue->pub_day ) {
+            $parts[] = (string) (int) $issue->pub_day;
+        }
+    }
+    return implode( ' ', $parts );
+}
+
+/**
+ * One issue's values for the chosen fields, ready to display.
+ *
+ * @return array<string,string> Field key => display text.
+ */
+function sp_library_issue_row( $issue, array $fields ): array {
+    $row = [];
+    foreach ( $fields as $key ) {
+        $row[ $key ] = ( 'date' === $key ) ? sp_library_issue_date_label( $issue ) : (string) ( $issue->$key ?? '' );
+    }
+    return $row;
+}
+
+/**
+ * A guess at the next issue, to prefill the check-in form.
+ *
+ * WHY: almost every arrival is "the one after the last one". Copying the
+ * latest issue with its number moved up by one, and its date moved by the
+ * same gap as the last two, leaves the cataloger checking rather than typing.
+ * When the number passes the most a volume has held before, the guess rolls
+ * over to the next volume, so a quarterly goes from No. 4 to Vol. 28 No. 1.
+ *
+ * @param object[] $issues Every issue on hand, any order.
+ * @return array<string,mixed> Column => value; empty when there is nothing to go on.
+ */
+function sp_library_next_issue_guess( array $issues ): array {
+    if ( ! $issues ) {
+        return [];
+    }
+
+    $months = static function ( $i ): ?int {
+        return ( $i->pub_year && $i->pub_month ) ? (int) $i->pub_year * 12 + (int) $i->pub_month - 1 : null;
+    };
+
+    // The latest is the most recently published; failing dates, the last logged.
+    usort( $issues, static function ( $a, $b ) use ( $months ) {
+        return ( ( $months( $a ) ?? 0 ) <=> ( $months( $b ) ?? 0 ) ) ?: ( (int) $a->id <=> (int) $b->id );
+    } );
+    $last = end( $issues );
+    $prev = count( $issues ) > 1 ? $issues[ count( $issues ) - 2 ] : null;
+
+    $guess = [
+        'pub_year'  => $last->pub_year,
+        'pub_month' => null,
+        'pub_day'   => null,
+        'edition'   => $last->edition,
+        'volume'    => $last->volume,
+        'number'    => $last->number,
+        'issue'     => $last->issue,
+    ];
+
+    // Same gap as the last two, when both have a month and the gap is sane.
+    if ( $prev && null !== $months( $last ) && null !== $months( $prev ) ) {
+        $gap = $months( $last ) - $months( $prev );
+        if ( $gap > 0 && $gap <= 12 ) {
+            $next               = $months( $last ) + $gap;
+            $guess['pub_year']  = intdiv( $next, 12 );
+            $guess['pub_month'] = $next % 12 + 1;
+        }
+    }
+
+    // Move the number up by one when it is a plain number.
+    if ( ctype_digit( (string) $last->number ) ) {
+        $per_volume = 0;
+        foreach ( $issues as $i ) {
+            if ( ctype_digit( (string) $i->number ) && (string) $i->volume !== (string) $last->volume ) {
+                $per_volume = max( $per_volume, (int) $i->number );
+            }
+        }
+        if ( $per_volume && (int) $last->number >= $per_volume && ctype_digit( (string) $last->volume ) ) {
+            $guess['volume'] = (string) ( (int) $last->volume + 1 );
+            $guess['number'] = '1';
+        } else {
+            $guess['number'] = (string) ( (int) $last->number + 1 );
+        }
+    } elseif ( ctype_digit( (string) $last->issue ) ) {
+        $guess['issue'] = (string) ( (int) $last->issue + 1 );
+    }
+
+    return $guess;
+}
+
+/**
+ * Remove issues whose catalog item is gone.
+ *
+ * WHY one sweep after any delete: the catalog deletes items one at a time, by
+ * ticked boxes, and by "every matching item", and this covers all three.
+ */
+function sp_library_delete_orphan_issues(): void {
+    global $wpdb;
+    $wpdb->query(
+        "DELETE iss FROM {$wpdb->prefix}sp_library_issues iss
+         LEFT JOIN {$wpdb->prefix}sp_library_items li ON li.id = iss.item_id
+         WHERE li.id IS NULL"
+    );
+}
+
+/**
+ * Where to send the cataloger after an issue is saved or deleted.
+ */
+function sp_library_issues_url( int $item_id, array $args = [] ): string {
+    return add_query_arg(
+        array_merge( [ 'page' => 'sp-library-item-edit', 'item_id' => $item_id, 'tab' => 'issues' ], $args ),
+        admin_url( 'admin.php' )
+    );
+}
+
+add_action( 'admin_post_sp_library_issue_save', function () {
+    if ( ! current_user_can( 'sp_manage_library' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_library_issue_save' );
+
+    global $wpdb;
+    $item_id  = absint( $_POST['item_id'] ?? 0 );
+    $issue_id = absint( $_POST['issue_id'] ?? 0 );
+    $item     = $wpdb->get_row( $wpdb->prepare(
+        "SELECT id FROM {$wpdb->prefix}sp_library_items WHERE id = %d", $item_id
+    ) );
+    if ( ! $item ) {
+        wp_die( esc_html__( 'That item no longer exists.', 'societypress' ) );
+    }
+
+    $num  = static function ( string $key ): ?int {
+        $val = trim( (string) wp_unslash( $_POST[ $key ] ?? '' ) );
+        return ( '' !== $val && ctype_digit( $val ) ) ? (int) $val : null;
+    };
+    $text = static function ( string $key ): ?string {
+        return sanitize_text_field( wp_unslash( $_POST[ $key ] ?? '' ) ) ?: null;
+    };
+
+    $data = [
+        'pub_year'  => $num( 'issue_pub_year' ),
+        'pub_month' => $num( 'issue_pub_month' ),
+        'pub_day'   => $num( 'issue_pub_day' ),
+        'edition'   => $text( 'issue_edition' ),
+        'volume'    => $text( 'issue_volume' ),
+        'number'    => $text( 'issue_number' ),
+        'issue'     => $text( 'issue_issue' ),
+    ];
+
+    // Nothing filled in is a stray click, not an issue.
+    if ( ! array_filter( $data, static fn( $v ) => null !== $v ) ) {
+        wp_safe_redirect( sp_library_issues_url( $item_id, [ 'sp_issue_msg' => 'empty' ] ) );
+        exit;
+    }
+
+    if ( $issue_id ) {
+        $wpdb->update( $wpdb->prefix . 'sp_library_issues', $data, [ 'id' => $issue_id, 'item_id' => $item_id ] );
+        $msg = 'updated';
+    } else {
+        $wpdb->insert( $wpdb->prefix . 'sp_library_issues', $data + [ 'item_id' => $item_id ] );
+        $msg = 'added';
+    }
+
+    wp_safe_redirect( sp_library_issues_url( $item_id, [ 'sp_issue_msg' => $msg ] ) );
+    exit;
+} );
+
+add_action( 'admin_post_sp_library_issue_delete', function () {
+    if ( ! current_user_can( 'sp_manage_library' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_library_issue_delete' );
+
+    global $wpdb;
+    $item_id = absint( $_POST['item_id'] ?? 0 );
+    $wpdb->delete( $wpdb->prefix . 'sp_library_issues', [
+        'id'      => absint( $_POST['issue_id'] ?? 0 ),
+        'item_id' => $item_id,
+    ] );
+
+    wp_safe_redirect( sp_library_issues_url( $item_id, [ 'sp_issue_msg' => 'deleted' ] ) );
+    exit;
+} );
+
 /**
  * Render: Library Item Edit Page
  *
@@ -80778,6 +81105,14 @@ function sp_render_library_item_edit_page(): void {
             // The three controlled lists, each posted as a set of tick boxes.
             'media_type'          => sp_library_list_posted_value( 'media_type' ) ?: null,
             'use_serials'         => ! empty( $_POST['use_serials'] ) ? 1 : 0,
+            // The Issues tab's setup is part of the item, so Save keeps it.
+            'serial_fields'       => implode( ',', array_intersect(
+                array_keys( sp_library_issue_fields() ),
+                array_map( 'sanitize_key', (array) wp_unslash( $_POST['serial_fields'] ?? [] ) )
+            ) ) ?: null,
+            'serial_sort'         => isset( sp_library_issue_fields()[ sanitize_key( wp_unslash( $_POST['serial_sort'] ?? '' ) ) ] )
+                ? sanitize_key( wp_unslash( $_POST['serial_sort'] ) ) : null,
+            'serial_order'        => ( ( $_POST['serial_order'] ?? '' ) === 'asc' ) ? 'asc' : 'desc',
             'call_number'         => sanitize_text_field( wp_unslash( $_POST['call_number'] ?? '' ) ) ?: null,
             'lccn'                => sanitize_text_field( wp_unslash( $_POST['lccn'] ?? '' ) ) ?: null,
             // WHY uppercase: "Texas" and "TEXAS" would otherwise file as two
@@ -80871,6 +81206,20 @@ function sp_render_library_item_edit_page(): void {
     .sp-lib-edit-short-input {
         width: 130px;
     }
+    .sp-lib-issue-check {
+        display: inline-block;
+        margin: 0 16px 6px 0;
+    }
+    .sp-lib-issues-table {
+        max-width: 800px;
+    }
+    .sp-lib-issue-actions {
+        white-space: nowrap;
+        text-align: right;
+    }
+    .sp-lib-issue-actions .sp-link-btn {
+        margin-left: 12px;
+    }
     /* Shows capitals while typing. The save handler is what stores them. */
     .sp-lib-edit-uppercase {
         text-transform: uppercase;
@@ -80927,24 +81276,44 @@ function sp_render_library_item_edit_page(): void {
         'media'       => __( 'Media Type', 'societypress' ),
         'subject'     => __( 'Subject', 'societypress' ),
         'location'    => __( 'Location', 'societypress' ),
+        'issues'      => __( 'Issues', 'societypress' ),
     ];
+    $serials_on = (int) ( $item->use_serials ?? 0 ) === 1;
+
+    $issue_notices = [
+        'added'   => [ 'success', __( 'Issue checked in.', 'societypress' ) ],
+        'updated' => [ 'success', __( 'Issue updated.', 'societypress' ) ],
+        'deleted' => [ 'success', __( 'Issue deleted.', 'societypress' ) ],
+        'empty'   => [ 'error', __( 'Fill in at least one field to check in an issue.', 'societypress' ) ],
+    ];
+    $issue_msg = sanitize_key( $_GET['sp_issue_msg'] ?? '' );
+    if ( isset( $issue_notices[ $issue_msg ] ) ) {
+        printf(
+            '<div class="notice notice-%1$s"><p>%2$s</p></div>',
+            esc_attr( $issue_notices[ $issue_msg ][0] ),
+            esc_html( $issue_notices[ $issue_msg ][1] )
+        );
+    }
 
     // Publication and acquisition dates share one layout, and the month is a
     // named list rather than a number because "March" is harder to mistype.
-    $date_fields = static function ( string $name, $year, $month, $day ) use ( $date_hint ): void {
+    // $form lets the Issues tab's check-in fields belong to their own form
+    // while sitting inside the item's.
+    $date_fields = static function ( string $name, $year, $month, $day, string $form = '' ) use ( $date_hint ): void {
         global $wp_locale;
+        $form_attr = $form ? ' form="' . esc_attr( $form ) . '"' : '';
         ?>
         <div class="sp-lib-edit-date-row">
-            <input type="number" name="<?php echo esc_attr( $name ); ?>_year" class="sp-lib-edit-year" value="<?php echo esc_attr( (string) $year ); ?>" min="1000" max="2100" aria-label="<?php esc_attr_e( 'Year', 'societypress' ); ?>">
+            <input type="number" name="<?php echo esc_attr( $name ); ?>_year" class="sp-lib-edit-year" value="<?php echo esc_attr( (string) $year ); ?>" min="1000" max="2100" aria-label="<?php esc_attr_e( 'Year', 'societypress' ); ?>"<?php echo $form_attr; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above ?>>
             <span aria-hidden="true">/</span>
-            <select name="<?php echo esc_attr( $name ); ?>_month" aria-label="<?php esc_attr_e( 'Month', 'societypress' ); ?>">
+            <select name="<?php echo esc_attr( $name ); ?>_month" aria-label="<?php esc_attr_e( 'Month', 'societypress' ); ?>"<?php echo $form_attr; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above ?>>
                 <option value=""></option>
                 <?php for ( $m = 1; $m <= 12; $m++ ) : ?>
                     <option value="<?php echo (int) $m; ?>" <?php selected( (int) $month, $m ); ?>><?php echo esc_html( $wp_locale->get_month( $m ) ); ?></option>
                 <?php endfor; ?>
             </select>
             <span aria-hidden="true">/</span>
-            <input type="number" name="<?php echo esc_attr( $name ); ?>_day" class="sp-lib-edit-day" value="<?php echo esc_attr( (string) $day ); ?>" min="1" max="31" aria-label="<?php esc_attr_e( 'Day', 'societypress' ); ?>">
+            <input type="number" name="<?php echo esc_attr( $name ); ?>_day" class="sp-lib-edit-day" value="<?php echo esc_attr( (string) $day ); ?>" min="1" max="31" aria-label="<?php esc_attr_e( 'Day', 'societypress' ); ?>"<?php echo $form_attr; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above ?>>
             <span class="description"><?php echo esc_html( $date_hint ); ?></span>
         </div>
         <?php
@@ -80967,7 +81336,7 @@ function sp_render_library_item_edit_page(): void {
             <div class="nav-tab-wrapper sp-lib-edit-tabs" role="tablist">
                 <?php $first = true; ?>
                 <?php foreach ( $tabs as $slug => $label ) : ?>
-                    <button type="button" role="tab" id="sp-lib-tab-<?php echo esc_attr( $slug ); ?>" class="nav-tab<?php echo $first ? ' nav-tab-active' : ''; ?>" aria-controls="sp-lib-panel-<?php echo esc_attr( $slug ); ?>" aria-selected="<?php echo $first ? 'true' : 'false'; ?>"><?php echo esc_html( $label ); ?></button>
+                    <button type="button" role="tab" id="sp-lib-tab-<?php echo esc_attr( $slug ); ?>" class="nav-tab<?php echo $first ? ' nav-tab-active' : ''; ?>" aria-controls="sp-lib-panel-<?php echo esc_attr( $slug ); ?>" aria-selected="<?php echo $first ? 'true' : 'false'; ?>"<?php echo ( 'issues' === $slug && ! $serials_on ) ? ' hidden' : ''; ?>><?php echo esc_html( $label ); ?></button>
                     <?php $first = false; ?>
                 <?php endforeach; ?>
             </div>
@@ -81023,10 +81392,11 @@ function sp_render_library_item_edit_page(): void {
                     <tr>
                         <th scope="row"><label for="use_serials"><?php esc_html_e( 'Use Serials', 'societypress' ); ?></label></th>
                         <td>
-                            <select name="use_serials" id="use_serials">
+                            <select name="use_serials" id="use_serials" aria-describedby="use-serials-hint">
                                 <option value="0" <?php selected( (int) ( $item->use_serials ?? 0 ), 0 ); ?>><?php esc_html_e( 'No', 'societypress' ); ?></option>
                                 <option value="1" <?php selected( (int) ( $item->use_serials ?? 0 ), 1 ); ?>><?php esc_html_e( 'Yes', 'societypress' ); ?></option>
                             </select>
+                            <p class="description" id="use-serials-hint"><?php esc_html_e( 'For periodicals. Yes adds an Issues tab, where you check in each new issue as it arrives.', 'societypress' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -81110,12 +81480,134 @@ function sp_render_library_item_edit_page(): void {
             <div class="sp-lib-edit-panel" id="sp-lib-panel-location" role="tabpanel" aria-labelledby="sp-lib-tab-location" hidden>
                 <?php sp_library_list_field( 'geographic_location', (string) ( $item->geographic_location ?? '' ) ); ?>
             </div>
+
+            <div class="sp-lib-edit-panel" id="sp-lib-panel-issues" role="tabpanel" aria-labelledby="sp-lib-tab-issues" hidden>
+                <?php
+                $issue_fields  = sp_library_issue_fields();
+                $serial_fields = sp_library_serial_fields( $item );
+                ?>
+                <h2><?php esc_html_e( 'Setup', 'societypress' ); ?></h2>
+                <p class="description"><?php esc_html_e( 'Choose what this title is tracked by. Press Save at the top to keep these choices.', 'societypress' ); ?></p>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><?php esc_html_e( 'Show', 'societypress' ); ?></th>
+                        <td>
+                            <fieldset>
+                                <legend class="screen-reader-text"><?php esc_html_e( 'Fields to show', 'societypress' ); ?></legend>
+                                <?php foreach ( $issue_fields as $key => $label ) : ?>
+                                    <label class="sp-lib-issue-check"><input type="checkbox" name="serial_fields[]" value="<?php echo esc_attr( $key ); ?>" <?php checked( in_array( $key, $serial_fields, true ) ); ?>> <?php echo esc_html( $label ); ?></label>
+                                <?php endforeach; ?>
+                            </fieldset>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="serial_sort"><?php esc_html_e( 'Sort By', 'societypress' ); ?></label></th>
+                        <td>
+                            <select name="serial_sort" id="serial_sort">
+                                <?php foreach ( $issue_fields as $key => $label ) : ?>
+                                    <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $item->serial_sort ?? 'date', $key ); ?>><?php echo esc_html( $label ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <select name="serial_order" aria-label="<?php esc_attr_e( 'Order', 'societypress' ); ?>">
+                                <option value="desc" <?php selected( $item->serial_order ?? 'desc', 'desc' ); ?>><?php esc_html_e( 'Newest first', 'societypress' ); ?></option>
+                                <option value="asc" <?php selected( $item->serial_order ?? 'desc', 'asc' ); ?>><?php esc_html_e( 'Oldest first', 'societypress' ); ?></option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+
+                <?php if ( ! $item ) : ?>
+                    <p><?php esc_html_e( 'Save this item first, then come back here to check in issues.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <?php
+                    $issues      = sp_library_issues( $item );
+                    $editing_id  = absint( $_GET['issue'] ?? 0 );
+                    $editing     = null;
+                    foreach ( $issues as $i ) {
+                        if ( (int) $i->id === $editing_id ) {
+                            $editing = $i;
+                        }
+                    }
+                    $values = $editing ? (array) $editing : sp_library_next_issue_guess( $issues );
+                    ?>
+                    <h2 id="sp-issue-form-heading"><?php echo $editing ? esc_html__( 'Edit Issue', 'societypress' ) : esc_html__( 'Check In New Issue', 'societypress' ); ?></h2>
+                    <?php if ( ! $editing && $values ) : ?>
+                        <p class="description"><?php esc_html_e( 'Filled in with a guess at the next issue. Correct anything that is wrong.', 'societypress' ); ?></p>
+                    <?php endif; ?>
+                    <table class="form-table" role="presentation">
+                        <?php foreach ( $serial_fields as $key ) : ?>
+                            <tr>
+                                <?php if ( 'date' === $key ) : ?>
+                                    <th scope="row"><?php echo esc_html( $issue_fields['date'] ); ?></th>
+                                    <td><?php $date_fields( 'issue_pub', $values['pub_year'] ?? '', $values['pub_month'] ?? 0, $values['pub_day'] ?? '', 'sp-issue-form' ); ?></td>
+                                <?php else : ?>
+                                    <th scope="row"><label for="issue_<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $issue_fields[ $key ] ); ?></label></th>
+                                    <td><input type="text" name="issue_<?php echo esc_attr( $key ); ?>" id="issue_<?php echo esc_attr( $key ); ?>" class="sp-lib-edit-short-input" value="<?php echo esc_attr( (string) ( $values[ $key ] ?? '' ) ); ?>" form="sp-issue-form"></td>
+                                <?php endif; ?>
+                            </tr>
+                        <?php endforeach; ?>
+                    </table>
+                    <p>
+                        <button type="submit" class="button button-primary" form="sp-issue-form"><?php echo $editing ? esc_html__( 'Save Issue', 'societypress' ) : esc_html__( 'Check In Issue', 'societypress' ); ?></button>
+                        <?php if ( $editing ) : ?>
+                            <a href="<?php echo esc_url( sp_library_issues_url( (int) $item->id ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
+                        <?php endif; ?>
+                    </p>
+
+                    <h2><?php esc_html_e( 'Issues on Hand', 'societypress' ); ?></h2>
+                    <?php if ( ! $issues ) : ?>
+                        <p><?php esc_html_e( 'No issues checked in yet.', 'societypress' ); ?></p>
+                    <?php else : ?>
+                        <table class="widefat striped sp-lib-issues-table">
+                            <thead>
+                                <tr>
+                                    <?php foreach ( $serial_fields as $key ) : ?>
+                                        <th scope="col"><?php echo esc_html( $issue_fields[ $key ] ); ?></th>
+                                    <?php endforeach; ?>
+                                    <th scope="col"><span class="screen-reader-text"><?php esc_html_e( 'Actions', 'societypress' ); ?></span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $issues as $i ) : ?>
+                                    <tr>
+                                        <?php foreach ( sp_library_issue_row( $i, $serial_fields ) as $text ) : ?>
+                                            <td><?php echo esc_html( $text ); ?></td>
+                                        <?php endforeach; ?>
+                                        <td class="sp-lib-issue-actions">
+                                            <a href="<?php echo esc_url( sp_library_issues_url( (int) $item->id, [ 'issue' => (int) $i->id ] ) ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                            <button type="submit" class="sp-link-btn" form="sp-issue-delete-form" name="issue_id" value="<?php echo (int) $i->id; ?>" data-sp-confirm="<?php esc_attr_e( 'Delete this issue?', 'societypress' ); ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
         </form>
+
+        <?php if ( $item ) : ?>
+            <?php // WHY outside the item form: forms cannot nest, so the Issues tab's fields point here with form="…" and check in without saving the whole item. ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="sp-issue-form">
+                <?php wp_nonce_field( 'sp_library_issue_save' ); ?>
+                <input type="hidden" name="action" value="sp_library_issue_save">
+                <input type="hidden" name="item_id" value="<?php echo (int) $item->id; ?>">
+                <input type="hidden" name="issue_id" value="<?php echo (int) ( $editing->id ?? 0 ); ?>">
+            </form>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" id="sp-issue-delete-form">
+                <?php wp_nonce_field( 'sp_library_issue_delete' ); ?>
+                <input type="hidden" name="action" value="sp_library_issue_delete">
+                <input type="hidden" name="item_id" value="<?php echo (int) $item->id; ?>">
+            </form>
+        <?php endif; ?>
     </div>
     <script>
     (function () {
         var form = document.querySelector('.sp-lib-edit-form');
         if (!form) return;
+
+        // Checking in an issue comes back here; land on the tab it came from.
+        var startTab = new URLSearchParams(window.location.search).get('tab');
 
         // After Add, the address bar still says Add. Pointing it at the new item
         // keeps a browser refresh from submitting the same book again.
@@ -81137,6 +81629,20 @@ function sp_render_library_item_edit_page(): void {
                 show(tab.getAttribute('aria-controls'));
             });
         });
+
+        if (startTab && document.getElementById('sp-lib-panel-' + startTab)) {
+            show('sp-lib-panel-' + startTab);
+        }
+
+        // The Issues tab is there exactly when Use Serials says Yes, so the
+        // cataloger can see at a glance whether this title tracks issues.
+        var serials   = document.getElementById('use_serials');
+        var issuesTab = document.getElementById('sp-lib-tab-issues');
+        if (serials && issuesTab) {
+            serials.addEventListener('change', function () {
+                issuesTab.hidden = serials.value !== '1';
+            });
+        }
 
         // WHY: pressing Save with a problem on another tab would otherwise do
         // nothing visible, because the browser cannot point at a hidden field.
@@ -94459,7 +94965,21 @@ function sp_ajax_library_item_detail(): void {
         'item_condition'      => $item->item_condition ?: '',
         'available'           => (bool) $item->available,
         'cover_url'           => $item->cover_url ?: '',
+        'issue_columns'       => [],
+        'issues'              => [],
     ];
+
+    // A periodical's issues on hand, so a member knows before the trip.
+    if ( (int) $item->use_serials === 1 ) {
+        $serial_fields = sp_library_serial_fields( $item );
+        $labels        = sp_library_issue_fields();
+        foreach ( $serial_fields as $key ) {
+            $response['issue_columns'][] = $labels[ $key ];
+        }
+        foreach ( sp_library_issues( $item ) as $issue ) {
+            $response['issues'][] = array_values( sp_library_issue_row( $issue, $serial_fields ) );
+        }
+    }
 
     // WHY: item_value, librarian_notes, donor, and acquisition_number are internal
     // administrative data that regular members should not see. Only librarians need
@@ -113601,7 +114121,7 @@ function sp_rest_health_check(): WP_REST_Response {
         'event_registrations', 'event_reminders', 'event_slots',
         'event_speaker_assignments', 'event_speakers', 'events',
         'group_members', 'groups', 'help_requests', 'help_responses',
-        'ical_feeds', 'library_categories', 'library_items', 'member_meta',
+        'ical_feeds', 'library_categories', 'library_issues', 'library_items', 'member_meta',
         'member_choices', 'member_notes', 'member_payments', 'member_relationships',
         'member_research_areas', 'member_surnames', 'members',
         'membership_tiers', 'newsletters', 'order_items', 'orders',
@@ -122494,6 +123014,9 @@ add_action( 'admin_init', function () {
     $migrations = [
         'sp_library_items'  => [
             'shipping_fee' => "ALTER TABLE {$wpdb->prefix}sp_library_items ADD COLUMN shipping_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER item_value",
+            'serial_fields' => "ALTER TABLE {$wpdb->prefix}sp_library_items ADD COLUMN serial_fields VARCHAR(100) NULL AFTER use_serials",
+            'serial_sort'   => "ALTER TABLE {$wpdb->prefix}sp_library_items ADD COLUMN serial_sort VARCHAR(20) NULL AFTER serial_fields",
+            'serial_order'  => "ALTER TABLE {$wpdb->prefix}sp_library_items ADD COLUMN serial_order VARCHAR(4) NULL AFTER serial_sort",
         ],
         'sp_store_products' => [
             'shipping_fee' => "ALTER TABLE {$wpdb->prefix}sp_store_products ADD COLUMN shipping_fee DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER price",

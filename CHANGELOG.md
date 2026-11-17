@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.136] — 2026-11-17
+
+**Name more than one person wherever SocietyPress asks for an email address to send to.** Every box where a society says who gets something, or who to contact, now takes several addresses separated by commas. Before, anything after the first address was thrown away on save. That covers:
+
+- the organization's Contact Email and the Membership Contact Email
+- Volunteer Offers Go To and Lineage Interest Goes To
+- backup notices
+- an event's contact email
+- a form's Reply-To
+- the Send Email screen's "send a test to" box
+
+Notices go to everyone listed. Wherever an address is shown, such as the Contact page, an event's details, or "questions? write to us at…" in emails, each one appears as its own link. Replies to a form notification can go to several people too. The From address stays single, because an email can only have one sender.
+
+**No more blank Reply-To on outgoing email.** With no Reply-To set, emails went out with an empty Reply-To line. They now fall back to the From address.
+
+---
+
 ## [1.5.135] — 2026-11-17
 
 **Order receipts show every charge.** The order confirmation email listed the items and then a total that didn't add up to them, with nothing to explain the difference. It now shows the subtotal, shipping and tax on their own lines above the total, each only when it was charged. The total also lines up under the Total column; before, it sat under Qty.

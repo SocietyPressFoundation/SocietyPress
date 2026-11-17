@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.135
+ * Version:     1.5.136
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.135' );
+define( 'SOCIETYPRESS_VERSION', '1.5.136' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -11029,7 +11029,13 @@ function sp_format_phone( string $phone ): string {
  * don't need to guard against nulls.
  */
 function sp_obfuscate_email( string $email ): string {
-    if ( ! $email || ! is_email( $email ) ) {
+    // A box holding several addresses shows each one, separated by commas.
+    $list = sp_form_recipient_list( $email );
+    if ( count( $list ) > 1 ) {
+        return implode( ', ', array_map( 'sp_obfuscate_email', $list ) );
+    }
+    $email = $list[0] ?? '';
+    if ( ! $email ) {
         return '';
     }
 
@@ -16619,18 +16625,14 @@ add_action( 'admin_footer', function () {
                 echo '<p>' . wp_kses_post( nl2br( $sp_ack_p ) ) . '</p>';
             }
             ?>
-            <?php if ( $sp_ack_email && is_email( $sp_ack_email ) ) : ?>
+            <?php if ( $sp_ack_email && sp_is_email_list( (string) $sp_ack_email ) ) : ?>
                 <?php
                 // WHY: This modal renders inside wp-admin, where the frontend
                 // email-assembler script never runs — so sp_obfuscate_email()'s
                 // placeholder span would stay empty ("contact us at ."). Members
                 // viewing this are already logged in, so harvester obfuscation
                 // buys nothing here; render a plain mailto link instead.
-                $sp_ack_email_link = sprintf(
-                    '<a href="%s">%s</a>',
-                    esc_url( 'mailto:' . $sp_ack_email ),
-                    esc_html( $sp_ack_email )
-                );
+                $sp_ack_email_link = sp_email_list_links( (string) $sp_ack_email );
                 ?>
                 <p><?php printf(
                     /* translators: %s: organization contact email address */
@@ -33453,6 +33455,7 @@ add_action( 'admin_init', function () {
             'key'         => 'organization_email',
             'placeholder' => 'info@mygenealogy.org',
             'type'        => 'email',
+            'multiple'    => true,
         ]
     );
 
@@ -33807,11 +33810,12 @@ add_action( 'admin_init', function () {
         function () {
             $settings = sp_settings();
             printf(
-                '<input type="email" name="societypress_settings[membership_email]" value="%s" class="regular-text" placeholder="%s">',
+                '<input type="email" multiple name="societypress_settings[membership_email]" value="%s" class="regular-text" placeholder="%s">',
                 esc_attr( $settings['membership_email'] ?? '' ),
                 esc_attr__( 'membership@mygenealogy.org', 'societypress' )
             );
             echo '<p class="description">' . esc_html__( 'Shown to people joining or renewing when they need help, and told when someone joins who might already be a member. Leave blank to use the organization\'s Contact Email.', 'societypress' ) . '</p>';
+            echo sp_email_list_hint(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in the helper.
         },
         'sp-settings-membership',
         'sp_membership_section'
@@ -33903,11 +33907,12 @@ add_action( 'admin_init', function () {
             $sp_title,
             function () use ( $sp_key, $sp_help ) {
                 printf(
-                    '<input type="email" name="societypress_settings[%1$s]" value="%2$s" class="regular-text">',
+                    '<input type="email" multiple name="societypress_settings[%1$s]" value="%2$s" class="regular-text">',
                     esc_attr( $sp_key ),
                     esc_attr( sp_settings()[ $sp_key ] ?? '' )
                 );
                 echo '<p class="description">' . esc_html( $sp_help ) . '</p>';
+                echo sp_email_list_hint(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in the helper.
             },
             'sp-settings-membership',
             'sp_join_questions_section'
@@ -34926,13 +34931,17 @@ function sp_render_text_field( array $args ): void {
     $id_attr  = ! empty( $args['id'] ) ? sprintf( ' id="%s"', esc_attr( $args['id'] ) ) : '';
 
     printf(
-        '<input type="%s" name="societypress_settings[%s]" value="%s" placeholder="%s" class="regular-text"%s>',
+        '<input type="%s" name="societypress_settings[%s]" value="%s" placeholder="%s" class="regular-text"%s%s>',
         esc_attr( $type ),
         esc_attr( $args['key'] ),
         esc_attr( $value ),
         esc_attr( $args['placeholder'] ?? '' ),
-        $id_attr
+        $id_attr,
+        ! empty( $args['multiple'] ) ? ' multiple' : ''
     );
+    if ( ! empty( $args['multiple'] ) ) {
+        echo sp_email_list_hint(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in the helper.
+    }
 }
 
 /**
@@ -35032,7 +35041,7 @@ function sp_sanitize_settings( array $input ): array {
         // future Email settings tab can't accidentally bypass header-safe input.
         'email_from_name'         => fn() => $strip_crlf( $input['email_from_name']  ?? '' ),
         'email_from_email'        => fn() => sanitize_email( $input['email_from_email'] ?? '' ),
-        'email_reply_to'          => fn() => sanitize_email( $input['email_reply_to']  ?? '' ),
+        'email_reply_to'          => fn() => sp_email_list_string( (string) ( $input['email_reply_to'] ?? '' ) ),
         // Website
         'website_require_login'   => fn() => ! empty( $input['website_require_login'] ) ? 1 : 0,
         'website_show_admin_bar'  => fn() => ! empty( $input['website_show_admin_bar'] ) ? 1 : 0,
@@ -35087,8 +35096,8 @@ function sp_sanitize_settings( array $input ): array {
         'join_lineage_groups'         => fn() => sp_sanitize_choice_list_input( $input['join_lineage_groups'] ?? '' ),
         'join_interest_choices'       => fn() => sp_sanitize_choice_list_input( $input['join_interest_choices'] ?? '' ),
         'join_skill_choices'          => fn() => sp_sanitize_choice_list_input( $input['join_skill_choices'] ?? '' ),
-        'volunteer_coordinator_email' => fn() => sanitize_email( $input['volunteer_coordinator_email'] ?? '' ),
-        'lineage_chair_email'         => fn() => sanitize_email( $input['lineage_chair_email'] ?? '' ),
+        'volunteer_coordinator_email' => fn() => sp_email_list_string( (string) ( $input['volunteer_coordinator_email'] ?? '' ) ),
+        'lineage_chair_email'         => fn() => sp_email_list_string( (string) ( $input['lineage_chair_email'] ?? '' ) ),
 
         // Member self-service locks (Privacy tab)
         'member_lock_contact'     => fn() => ! empty( $input['member_lock_contact'] ) ? 1 : 0,
@@ -35120,7 +35129,7 @@ function sp_sanitize_settings( array $input ): array {
         'organization_name'       => fn() => sanitize_text_field( $input['organization_name'] ?? '' ),
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
         'organization_phone'      => fn() => sanitize_text_field( $input['organization_phone'] ?? '' ),
-        'organization_email'      => fn() => sanitize_email( $input['organization_email'] ?? '' ),
+        'organization_email'      => fn() => sp_email_list_string( (string) ( $input['organization_email'] ?? '' ) ),
         'tax_id'                  => fn() => sanitize_text_field( $input['tax_id'] ?? '' ),
         'community_forum_url'    => fn() => esc_url_raw( $input['community_forum_url'] ?? '' ),
         'help_requests_notify_all'=> fn() => ! empty( $input['help_requests_notify_all'] ) ? 1 : 0,
@@ -35135,7 +35144,7 @@ function sp_sanitize_settings( array $input ): array {
         'membership_start_month'  => fn() => max( 1, min( 12, (int) ( $input['membership_start_month'] ?? 7 ) ) ),
         'late_join_months'        => fn() => max( 0, min( 11, (int) ( $input['late_join_months'] ?? 3 ) ) ),
         'membership_max_years'    => fn() => max( 1, min( 10, (int) ( $input['membership_max_years'] ?? 1 ) ) ),
-        'membership_email'        => fn() => sanitize_email( $input['membership_email'] ?? '' ),
+        'membership_email'        => fn() => sp_email_list_string( (string) ( $input['membership_email'] ?? '' ) ),
         'groups_auto_remove_expired' => fn() => ! empty( $input['groups_auto_remove_expired'] ) ? 1 : 0,
         'grace_period_months'     => fn() => max( 0, min( 11, (int) ( $input['grace_period_months'] ?? 2 ) ) ),
         'renewal_opens_months'    => fn() => max( 0, min( 11, (int) ( $input['renewal_opens_months'] ?? 3 ) ) ),
@@ -35567,7 +35576,7 @@ function sp_handle_setup_wizard_submit(): void {
     switch ( $step ) {
         case 1: // Organization info
             $settings['organization_name']    = sanitize_text_field( wp_unslash( $_POST['organization_name'] ?? '' ) );
-            $settings['organization_email']   = sanitize_email( wp_unslash( $_POST['organization_email'] ?? '' ) );
+            $settings['organization_email']   = sp_email_list_string( wp_unslash( $_POST['organization_email'] ?? '' ) );
             $settings['organization_address'] = sanitize_textarea_field( wp_unslash( $_POST['organization_address'] ?? '' ) );
             $settings['organization_phone']   = sanitize_text_field( wp_unslash( $_POST['organization_phone'] ?? '' ) );
             update_option( 'societypress_settings', $settings );
@@ -35709,7 +35718,7 @@ function sp_render_setup_wizard(): void {
                     </div>
                     <div class="sp-wizard-field">
                         <label for="wiz-org-email"><?php esc_html_e( 'Contact Email', 'societypress' ); ?></label>
-                        <input type="email" id="wiz-org-email" name="organization_email"
+                        <input type="email" multiple id="wiz-org-email" name="organization_email"
                                value="<?php echo esc_attr( $settings['organization_email'] ?? '' ); ?>"
                                placeholder="<?php echo esc_attr__( 'e.g., info@yoursociety.org', 'societypress' ); ?>">
                     </div>
@@ -41388,8 +41397,8 @@ function sp_render_settings_export_page(): void {
                     <td>
                         <label><input type="checkbox" name="backup_notify" value="1" <?php checked( $notify ); ?>> <?php esc_html_e( 'Email an admin a download link each time a scheduled backup finishes.', 'societypress' ); ?></label>
                         <p>
-                            <input type="email" name="backup_notify_email" value="<?php echo esc_attr( $notify_to ); ?>" class="regular-text" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
-                            <br><span class="description"><?php esc_html_e( 'Leave blank to use the site admin email.', 'societypress' ); ?></span>
+                            <input type="email" multiple name="backup_notify_email" value="<?php echo esc_attr( $notify_to ); ?>" class="regular-text" placeholder="<?php echo esc_attr( get_option( 'admin_email' ) ); ?>">
+                            <br><span class="description"><?php esc_html_e( 'Leave blank to use the site admin email. To reach more than one person, separate the addresses with commas.', 'societypress' ); ?></span>
                         </p>
                     </td>
                 </tr>
@@ -41727,7 +41736,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.135',
+            'version'     => '1.5.136',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41735,7 +41744,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.135',
+            'version'     => '1.5.136',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41743,7 +41752,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.135',
+            'version'     => '1.5.136',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41751,7 +41760,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.135',
+            'version'     => '1.5.136',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41759,7 +41768,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.135',
+            'version'     => '1.5.136',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -55106,7 +55115,7 @@ add_action( 'admin_init', function () {
                                   ? $_POST['event_payment_mode'] : 'none',
         'price_description'    => sanitize_text_field( wp_unslash( $_POST['event_price_description'] ?? '' ) ),
         'contact_name'         => sanitize_text_field( wp_unslash( $_POST['event_contact_name'] ?? '' ) ),
-        'contact_email'        => sanitize_email( wp_unslash( $_POST['event_contact_email'] ?? '' ) ),
+        'contact_email'        => sp_email_list_string( wp_unslash( $_POST['event_contact_email'] ?? '' ) ),
         'contact_phone'        => sanitize_text_field( wp_unslash( $_POST['event_contact_phone'] ?? '' ) ),
         // External URL — links this event to an outside website instead of showing
         // a SocietyPress detail page. When set manually, external_source = 'manual'.
@@ -56351,9 +56360,10 @@ function sp_render_event_edit_page(): void {
                 <tr>
                     <th scope="row"><label for="event_contact_email"><?php esc_html_e( 'Email', 'societypress' ); ?></label></th>
                     <td>
-                        <input type="email" id="event_contact_email" name="event_contact_email"
+                        <input type="email" multiple id="event_contact_email" name="event_contact_email"
                                value="<?php echo esc_attr( $val( 'contact_email' ) ); ?>"
                                class="regular-text">
+                        <?php echo sp_email_list_hint(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in the helper. ?>
                     </td>
                 </tr>
 
@@ -60130,7 +60140,7 @@ function sp_process_event_import( string $file_path, array $field_map ): array {
                                       ? $data['payment_mode'] : 'none',
             'price_description'    => sanitize_text_field( $data['price_description'] ?? '' ),
             'contact_name'         => sanitize_text_field( $data['contact_name'] ?? '' ),
-            'contact_email'        => sanitize_email( $data['contact_email'] ?? '' ),
+            'contact_email'        => sp_email_list_string( (string) ( $data['contact_email'] ?? '' ) ),
             'contact_phone'        => sanitize_text_field( $data['contact_phone'] ?? '' ),
             'recurrence_rule'      => $recurrence_rule,
             'recurrence_end_date'  => $recurrence_end_date,
@@ -65976,7 +65986,7 @@ function sp_member_choices_notify( int $user_id, array $added ): void {
 
     $send = static function ( string $setting, string $subject, string $opening, array $items ) use ( $settings, $fallback, $user, $record ) {
         $to = trim( $settings[ $setting ] ?? '' ) ?: $fallback;
-        if ( ! is_email( $to ) || ! $items ) {
+        if ( ! sp_is_email_list( $to ) || ! $items ) {
             return;
         }
         $body  = $opening . "\n\n";
@@ -66273,7 +66283,7 @@ add_action( 'sp_check_pledge_received', function ( $pledge ) {
     if ( ! $room ) {
         $settings  = sp_settings();
         $notify_to = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
-        if ( is_email( $notify_to ) ) {
+        if ( sp_is_email_list( $notify_to ) ) {
             wp_mail(
                 $notify_to,
                 /* translators: %s: event title */
@@ -66365,8 +66375,8 @@ function sp_membership_pledge_check( int $user_id, object $tier, int $years, boo
 function sp_membership_contact_email(): string {
     $settings = sp_settings();
     foreach ( [ $settings['membership_email'] ?? '', $settings['organization_email'] ?? '', get_option( 'admin_email' ) ] as $candidate ) {
-        $candidate = trim( (string) $candidate );
-        if ( is_email( $candidate ) ) {
+        $candidate = sp_email_list_string( (string) $candidate );
+        if ( '' !== $candidate ) {
             return $candidate;
         }
     }
@@ -66384,7 +66394,7 @@ function sp_membership_help_html(): string {
     return sprintf(
         /* translators: %s: membership contact email address, as a link */
         esc_html__( 'Need help? Email us at %s.', 'societypress' ),
-        '<a href="mailto:' . esc_attr( $email ) . '">' . esc_html( $email ) . '</a>'
+        sp_email_list_links( $email )
     );
 }
 
@@ -69169,7 +69179,7 @@ function sp_send_registration_email( object $event, int $registration_id, string
             $body .= esc_html( $event->contact_name );
         }
         if ( ! empty( $event->contact_email ) ) {
-            $body .= ' ' . esc_html__( 'at', 'societypress' ) . ' <a href="mailto:' . esc_attr( $event->contact_email ) . '" class="sp-text-link">' . esc_html( $event->contact_email ) . '</a>';
+            $body .= ' ' . esc_html__( 'at', 'societypress' ) . ' ' . sp_email_list_links( (string) $event->contact_email, 'sp-text-link' );
         }
         $body .= '.</p>';
     }
@@ -69279,7 +69289,7 @@ function sp_send_event_cancellation_emails( int $event_id, string $event_title )
         $body .= ' ' . sprintf(
             /* translators: %s: contact email link */
             esc_html__( 'You can reach them at %s.', 'societypress' ),
-            '<a href="mailto:' . esc_attr( $event->contact_email ) . '" class="sp-text-link">' . esc_html( $event->contact_email ) . '</a>'
+            sp_email_list_links( (string) $event->contact_email, 'sp-text-link' )
         );
     }
     $body .= '</p>';
@@ -72416,7 +72426,7 @@ function sp_notify_backup_ready( int $backup_id ): void {
     }
 
     $to = ! empty( $settings['backup_notify_email'] ) ? $settings['backup_notify_email'] : get_option( 'admin_email' );
-    if ( ! is_email( $to ) ) {
+    if ( ! sp_is_email_list( $to ) ) {
         return;
     }
 
@@ -72546,7 +72556,7 @@ add_action( 'admin_post_sp_save_backup_settings', function () {
     $settings['backup_hour']            = max( 0, min( 23, (int) ( $_POST['backup_hour'] ?? 3 ) ) );
     $settings['backup_include_uploads'] = empty( $_POST['backup_include_uploads'] ) ? 0 : 1;
     $settings['backup_notify']          = empty( $_POST['backup_notify'] ) ? 0 : 1;
-    $settings['backup_notify_email']    = sanitize_email( wp_unslash( $_POST['backup_notify_email'] ?? '' ) );
+    $settings['backup_notify_email']    = sp_email_list_string( wp_unslash( $_POST['backup_notify_email'] ?? '' ) );
     update_option( 'societypress_settings', $settings );
 
     // Clear the cron so the init scheduler re-creates it with the new frequency
@@ -83795,7 +83805,7 @@ function sp_volunteer_coordinator_email( object $opp ): string {
     $settings = sp_settings();
     $fallback = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
 
-    return is_email( $fallback ) ? $fallback : '';
+    return sp_email_list_string( $fallback );
 }
 
 /**
@@ -88885,7 +88895,9 @@ function sp_get_email_headers(): array {
     $settings   = sp_settings();
     $from_name  = $settings['email_from_name']  ?? get_bloginfo( 'name' );
     $from_email = $settings['email_from_email'] ?? get_option( 'admin_email' );
-    $reply_to   = $settings['email_reply_to']   ?? $from_email;
+    // WHY the fallback on empty, not only on missing: the setting exists with a
+    // blank default, and a blank Reply-To header is worse than none.
+    $reply_to   = trim( (string) ( $settings['email_reply_to'] ?? '' ) ) ?: $from_email;
 
     // Header injection guard: strip CR/LF from any value that lands in an
     // SMTP header, even if it was admin-supplied via settings — bare newlines
@@ -88893,7 +88905,7 @@ function sp_get_email_headers(): array {
     $strip      = static fn( $v ) => str_replace( [ "\r", "\n" ], '', (string) $v );
     $from_name  = $strip( $from_name );
     $from_email = sanitize_email( $strip( $from_email ) );
-    $reply_to   = sanitize_email( $strip( $reply_to ) );
+    $reply_to   = sp_email_list_string( $strip( $reply_to ) ) ?: $from_email;
 
     return [
         'Content-Type: text/html; charset=UTF-8',
@@ -91053,7 +91065,7 @@ function sp_render_blast_email_compose_page(): void {
                 <?php else : ?>
                     <span class="sp-blast-test-group">
                         <label for="sp-blast-test-to" class="screen-reader-text"><?php esc_html_e( 'Send a test to this address', 'societypress' ); ?></label>
-                        <input type="email" id="sp-blast-test-to" class="sp-blast-test-to" value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>" autocomplete="email">
+                        <input type="email" multiple id="sp-blast-test-to" class="sp-blast-test-to" value="<?php echo esc_attr( wp_get_current_user()->user_email ); ?>" autocomplete="email">
                         <button type="button" class="button" id="sp-blast-test-btn"><?php esc_html_e( 'Send a test', 'societypress' ); ?></button>
                     </span>
                 <?php endif; ?>
@@ -91504,8 +91516,8 @@ add_action( 'wp_ajax_sp_blast_send_test', function () {
     // WHY not on the demo: its login is public, so an open "to" box would let
     //      any visitor use the site to send email to anyone.
     if ( ! sp_is_demo_mode() ) {
-        $typed = sanitize_email( wp_unslash( $_POST['to'] ?? '' ) );
-        if ( '' !== trim( (string) ( $_POST['to'] ?? '' ) ) && ! is_email( $typed ) ) {
+        $typed = sp_email_list_string( wp_unslash( (string) ( $_POST['to'] ?? '' ) ) );
+        if ( '' !== trim( (string) ( $_POST['to'] ?? '' ) ) && '' === $typed ) {
             wp_send_json_error( [ 'message' => __( 'That email address doesn’t look right. Please check it and try again.', 'societypress' ) ] );
         }
         if ( $typed ) {
@@ -120589,7 +120601,7 @@ function sp_check_pledge_create( string $kind, int $ref_id, ?int $user_id, strin
 
     $settings  = sp_settings();
     $notify_to = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
-    if ( is_email( $notify_to ) ) {
+    if ( sp_is_email_list( $notify_to ) ) {
         $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
         $what     = sp_check_pledge_kinds()[ $kind ] ?? $kind;
         $body     = sprintf(
@@ -120786,7 +120798,7 @@ function sp_check_reminders(): void {
         $pledged = date_i18n( get_option( 'date_format' ), strtotime( $c->pledged ) );
         $what    = $kinds[ $c->kind ] ?? $c->kind;
 
-        if ( is_email( $org_email ) ) {
+        if ( sp_is_email_list( $org_email ) ) {
             $body = sprintf(
                 /* translators: 1: amount, 2: payer name, 3: date pledged, 4: what it pays for */
                 __( 'A %1$s check from %2$s, promised on %3$s for %4$s, still hasn\'t been marked received.', 'societypress' ),
@@ -121996,7 +122008,7 @@ function sp_donation_mark_paid_from_session( int $donation_id, array $session ):
  */
 function sp_donation_notify_society( object $d, array $settings, bool $is_pledge = false ): void {
     $notify_to = trim( $settings['organization_email'] ?? '' ) ?: get_option( 'admin_email' );
-    if ( ! $notify_to || ! is_email( $notify_to ) ) {
+    if ( ! $notify_to || ! sp_is_email_list( $notify_to ) ) {
         return;
     }
     $org_name = trim( $settings['organization_name'] ?? '' ) ?: get_bloginfo( 'name' );
@@ -134759,6 +134771,46 @@ function sp_form_recipient_list( string $raw ): array {
 }
 
 /**
+ * One or more addresses, cleaned and joined the way they are stored and sent.
+ *
+ * WHY everywhere a society names who gets something: a notice or a contact
+ *      often means two people — the vice president and the webmaster, say.
+ *      wp_mail() takes a comma-separated list as the To, so the joined string
+ *      works as-is wherever one address used to go.
+ */
+function sp_email_list_string( string $raw ): string {
+    return implode( ', ', sp_form_recipient_list( $raw ) );
+}
+
+/**
+ * Does this box hold at least one usable address? The list-aware is_email().
+ */
+function sp_is_email_list( string $raw ): bool {
+    return (bool) sp_form_recipient_list( $raw );
+}
+
+/**
+ * Each address in a list as its own mailto link, separated by commas.
+ *
+ * WHY separate links: one mailto holding two addresses opens a message to both,
+ *      which is rarely what someone reading "write to a or b" wants.
+ */
+function sp_email_list_links( string $raw, string $class = '' ): string {
+    $class_attr = $class ? ' class="' . esc_attr( $class ) . '"' : '';
+    $links      = array_map( static function ( $email ) use ( $class_attr ) {
+        return '<a href="' . esc_url( 'mailto:' . $email ) . '"' . $class_attr . '>' . esc_html( $email ) . '</a>';
+    }, sp_form_recipient_list( $raw ) );
+    return implode( ', ', $links );
+}
+
+/**
+ * The line under an address box that says a list is welcome.
+ */
+function sp_email_list_hint(): string {
+    return '<p class="description">' . esc_html__( 'To reach more than one person, separate the addresses with commas.', 'societypress' ) . '</p>';
+}
+
+/**
  * Decode a form's stored fields JSON into a clean, ordered list of field defs.
  *
  * @param object|null $form A row from sp_forms.
@@ -135163,9 +135215,9 @@ function sp_render_form_edit_page(): void {
                             <tr>
                                 <th scope="row"><?php esc_html_e( 'Reply-to', 'societypress' ); ?></th>
                                 <td>
-                                    <input type="email" name="reply_to_email" value="<?php echo esc_attr( $reply_email ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Defaults to the submitter', 'societypress' ); ?>">
+                                    <input type="email" multiple name="reply_to_email" value="<?php echo esc_attr( $reply_email ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Defaults to the submitter', 'societypress' ); ?>">
                                     <input type="text" name="reply_to_name" value="<?php echo esc_attr( $reply_name ); ?>" class="regular-text" placeholder="<?php esc_attr_e( 'Name (optional)', 'societypress' ); ?>">
-                                    <p class="description"><?php esc_html_e( 'When you hit Reply on the notification, this is who it goes to. Leave blank and it replies to whoever submitted the form (if they gave an email).', 'societypress' ); ?></p>
+                                    <p class="description"><?php esc_html_e( 'When you hit Reply on the notification, this is who it goes to. Leave blank and it replies to whoever submitted the form (if they gave an email). To reach more than one person, separate the addresses with commas.', 'societypress' ); ?></p>
                                 </td>
                             </tr>
                             <tr>
@@ -135455,7 +135507,7 @@ function sp_forms_handle_save( int $form_id ): int {
         'email_subject'        => sanitize_text_field( wp_unslash( $_POST['email_subject'] ?? '' ) ),
         'send_to_email'        => implode( ', ', sp_form_recipient_list( wp_unslash( $_POST['send_to_email'] ?? '' ) ) ),
         'send_to_name'         => sanitize_text_field( wp_unslash( $_POST['send_to_name'] ?? '' ) ),
-        'reply_to_email'       => sanitize_email( wp_unslash( $_POST['reply_to_email'] ?? '' ) ),
+        'reply_to_email'       => sp_email_list_string( wp_unslash( $_POST['reply_to_email'] ?? '' ) ),
         'reply_to_name'        => sanitize_text_field( wp_unslash( $_POST['reply_to_name'] ?? '' ) ),
         'email_intro'          => sanitize_textarea_field( wp_unslash( $_POST['email_intro'] ?? '' ) ),
         'confirmation_message' => sanitize_text_field( wp_unslash( $_POST['confirmation_message'] ?? '' ) ),
@@ -137023,7 +137075,7 @@ function sp_forms_send_notification( $form, array $stored, string $submitter_nam
 
     $sp_list = sp_form_recipient_list( (string) $form->send_to_email );
     $to      = $sp_list ? implode( ', ', $sp_list ) : $org_email;
-    if ( ! $sp_list && ! is_email( $to ) ) {
+    if ( ! $sp_list && ! sp_is_email_list( (string) $to ) ) {
         return; // Nowhere valid to send — the submission is still stored.
     }
 
@@ -137065,12 +137117,14 @@ function sp_forms_send_notification( $form, array $stored, string $submitter_nam
         return stripos( $h, 'reply-to:' ) !== 0;
     } );
 
-    $reply_email = is_email( $form->reply_to_email ) ? $form->reply_to_email : $submitter_email;
+    $reply_list  = sp_form_recipient_list( (string) $form->reply_to_email );
+    $reply_email = $reply_list ? implode( ', ', $reply_list ) : $submitter_email;
     $reply_name  = $form->reply_to_name ? $form->reply_to_name : $submitter_name;
-    if ( is_email( $reply_email ) ) {
+    if ( sp_is_email_list( (string) $reply_email ) ) {
         $safe_name = str_replace( [ "\r", "\n", '<', '>' ], '', (string) $reply_name );
-        $headers[] = $safe_name
-            ? sprintf( 'Reply-To: %s <%s>', $safe_name, $reply_email )
+        // A name only fits a single address; with several, the addresses stand alone.
+        $headers[] = ( $safe_name && count( $reply_list ) <= 1 )
+            ? sprintf( 'Reply-To: %s <%s>', $safe_name, $reply_list[0] ?? $reply_email )
             : 'Reply-To: ' . $reply_email;
     }
 

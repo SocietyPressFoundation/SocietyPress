@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.135] — 2026-11-17
+
+**Order receipts show every charge.** The order confirmation email listed the items and then a total that didn't add up to them, with nothing to explain the difference. It now shows the subtotal, shipping and tax on their own lines above the total, each only when it was charged. The total also lines up under the Total column; before, it sat under Qty.
+
+**The shopping cart fits a phone.** On a phone, each item in the cart becomes a card, but its title, quantity and prices were pushed off the right edge of the screen. They now fit, and the Proceed to Checkout button spans the screen instead of running off the edge. The page box behind every SocietyPress page type was also allowed to grow wider than the screen. It now stays at screen width, so no page type scrolls sideways.
+
+**Phone header: the cart and menu button sit at the right edge.** On phones, the menu button sat right after the logo, mid-row, and the cart icon beside it. Both now sit at the right edge, with Log In after them.
+
+---
+
 ## [1.5.134] — 2026-11-17
 
 **A form that asks for money points to the real Donate page.** A form that asks for a donation amount shows a warning that forms can't take payments. Its "Set up a Donate page instead" link went to the Donations screen. That screen only offers to make a Donate page when none exists, so a society that already had one hit a dead end. When a Donate page exists, the warning now names it and links straight to it, with a link to edit it.

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.134
+ * Version:     1.5.135
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.134' );
+define( 'SOCIETYPRESS_VERSION', '1.5.135' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -20697,7 +20697,7 @@ add_filter( 'template_include', function ( $template ) {
     }
 
     get_header();
-    echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 1200px); margin: 40px auto; padding: 0 20px; }</style>';
+    echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 1200px); width: 100%; box-sizing: border-box; margin: 40px auto; padding: 0 20px; }</style>';
     echo '<div class="entry-content sp-page-template-content">';
 
     $page = get_post( $posts_page );
@@ -41727,7 +41727,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.134',
+            'version'     => '1.5.135',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41735,7 +41735,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.134',
+            'version'     => '1.5.135',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41743,7 +41743,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.134',
+            'version'     => '1.5.135',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41751,7 +41751,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.134',
+            'version'     => '1.5.135',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41759,7 +41759,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.134',
+            'version'     => '1.5.135',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -77983,6 +77983,9 @@ add_filter( 'template_include', function( $template ) {
 
     // Output the header, run the appropriate template function, output footer
     get_header();
+    // WHY width:100%: the theme's .site is a flex column and auto side margins
+    // turn off stretching, so without a set width the box grows to its widest
+    // content and a phone scrolls the whole page sideways.
     // WHY: .sp-page-template-content provides consistent layout for every
     // SocietyPress page template without coupling to entry-content theme rules.
     // WHY the setting rather than a fixed 960: every other part of the site —
@@ -77990,7 +77993,7 @@ add_filter( 'template_include', function( $template ) {
     // itself from the content width in Design settings. These templates did not,
     // so a society that widened or narrowed its site found the store, the cart
     // and the catalog ignoring it and hanging past the header on both sides.
-    echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 960px); margin: 40px auto; padding: 0 20px; }</style>';
+    echo '<style>.sp-page-template-content { max-width: var(--sp-content-width, 960px); width: 100%; box-sizing: border-box; margin: 40px auto; padding: 0 20px; }</style>';
     echo '<div class="entry-content sp-page-template-content">';
 
     // WHY print the page title: these templates bypass the theme's page.php,
@@ -106132,6 +106135,10 @@ add_action( 'wp_head', function () {
     .sp-cart-in-header .sp-nav-cart { display: none !important; }
     .sp-header-cart          { display: flex; align-items: center; margin-inline: 4px; }
     .sp-header-cart[hidden]  { display: none !important; }
+    /* In the parent theme's header row the cart joins the menu button at the
+       right edge, just before it, and takes over the push to the right. */
+    .header-nav-area > .sp-header-cart:not([hidden]) { order: 98; margin-left: auto; }
+    .header-nav-area:has(> .sp-header-cart:not([hidden])) > .sp-hamburger { margin-left: 0; }
     .sp-header-cart a        { display: inline-flex; align-items: center; color: inherit; }
     .sp-nav-cart a           { white-space: nowrap; display: inline-flex;
                                align-items: center; }
@@ -107191,6 +107198,34 @@ function sp_send_store_order_email( int $order_id ): void {
         );
     }
 
+    // WHY every charge on its own line: a total bigger than the items with
+    // nothing to say why reads as a mistake. Shipping and tax appear only when
+    // charged, so a receipt with neither is not cluttered with rows of zeroes,
+    // and the subtotal only when there is something to add to it. Inline
+    // styles because email clients drop stylesheets.
+    $totals = [];
+    if ( (float) $order->shipping_total > 0 || (float) $order->tax > 0 ) {
+        $totals[] = [ __( 'Subtotal', 'societypress' ), $order->subtotal, false ];
+    }
+    if ( (float) $order->shipping_total > 0 ) {
+        $totals[] = [ __( 'Shipping', 'societypress' ), $order->shipping_total, false ];
+    }
+    if ( (float) $order->tax > 0 ) {
+        $totals[] = [ sp_store_tax_label(), $order->tax, false ];
+    }
+    $totals[]    = [ __( 'Total', 'societypress' ), $order->total, true ];
+    $totals_html = '';
+    foreach ( $totals as [ $label, $amount, $is_total ] ) {
+        $weight       = $is_total ? 'font-weight:bold;border-top:2px solid #ddd;' : '';
+        $totals_html .= sprintf(
+            '<tr><td colspan="2" style="padding:6px 12px;text-align:right;%1$s">%2$s</td>'
+            . '<td style="padding:6px 12px;text-align:right;%1$s">%3$s</td></tr>',
+            $weight,
+            esc_html( $label ),
+            esc_html( sp_format_currency( $amount ) )
+        );
+    }
+
     $body_html = sprintf(
         '<p>%s</p>'
         . '<p><strong>%s</strong> #%d</p>'
@@ -107200,8 +107235,7 @@ function sp_send_store_order_email( int $order_id ): void {
         . '<th style="padding:8px 12px;text-align:center;">%s</th>'
         . '<th style="padding:8px 12px;text-align:right;">%s</th>'
         . '</tr></thead><tbody>%s</tbody>'
-        . '<tfoot><tr><td colspan="2" class="sp-table-total">%s</td>'
-        . '<td class="sp-table-total">%s</td></tr></tfoot>'
+        . '<tfoot>%s</tfoot>'
         . '</table>'
         . '<p>%s</p>',
         __( 'Thank you for your order! Here is your confirmation:', 'societypress' ),
@@ -107211,20 +107245,9 @@ function sp_send_store_order_email( int $order_id ): void {
         __( 'Qty', 'societypress' ),
         __( 'Total', 'societypress' ),
         $items_html,
-        __( 'Total:', 'societypress' ),
-        esc_html( sp_format_currency( $order->total ) ),
+        $totals_html,
         __( 'We will be in touch regarding pickup or delivery of your items.', 'societypress' )
     );
-
-    // A tax line only appears when tax was actually charged, so the receipt of
-    // a society that charges none is not cluttered with a row of zeroes.
-    if ( (float) $order->tax > 0 ) {
-        $body_html .= sprintf(
-            '<p style="margin:4px 0;"><strong>%s:</strong> %s</p>',
-            esc_html( sp_store_tax_label() ),
-            esc_html( sp_format_currency( $order->tax ) )
-        );
-    }
 
     // Anything digital in this order gets its links in the receipt. WHY here
     // and not a separate email: a second message is one more thing to end up in
@@ -107578,9 +107601,19 @@ function sp_render_cart_page(): void {
             .sp-cart-table thead { display:none; }
             .sp-cart-table tr { display:block; margin-bottom:16px; border:1px solid #eee; border-radius:6px; padding:12px; }
             .sp-cart-table td { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border:none; }
-            .sp-cart-table td:before { content:attr(data-label); font-weight:600; font-size:12px; text-transform:uppercase; color:#666; }
-            .sp-cart-item-info { flex-direction:column; align-items:flex-start; }
+            /* Every row is a card that fits the phone: the table and its body become
+               plain blocks so their width is the screen's, not the widest cell's. */
+            .sp-cart-table, .sp-cart-table tbody { display:block; width:100%; }
+            .sp-cart-table td:before { content:attr(data-label); font-weight:600; font-size:12px; text-transform:uppercase; color:#666; flex-shrink:0; }
+            .sp-cart-table td { gap:12px; }
+            .sp-cart-table td > * { min-width:0; }
+            .sp-cart-item-info { flex-direction:column; align-items:flex-end; text-align:right; }
+            .sp-cart-item-title { overflow-wrap:anywhere; }
             .sp-cart-footer { flex-direction:column; align-items:stretch; text-align:center; }
+            /* Checkout runs full width: in a row that cannot wrap it ran past the
+               screen edge and hid the one button that matters. */
+            .sp-cart-actions { flex-direction:column; align-items:stretch; }
+            .sp-cart-checkout-btn { width:100%; }
         }
         .sp-cart-loading-p { text-align: center; color: #6d7175; padding: 40px 0; }
         .sp-stripe-pay-btn-full { margin-top: 14px; width: 100%; }

@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.133] — 2026-11-17
+
+**Email a few hand-picked members.** Send Email has a new audience, Specific members, for a one-time message to people who aren't in any group. An example is the volunteers who haven't used a voucher yet. Type a name to add each person, and remove anyone with a click. People who opted out of bulk email are marked in the list. The Members list also has a new bulk action, Email selected. Tick people there and Send Email opens with them already listed. A hand-picked person gets the email even if their membership has lapsed, because they were chosen by name.
+
+---
+
 ## [1.5.132] — 2026-11-17
 
 **Check in periodical issues.** Setting a catalog item's Use Serials to Yes now adds an Issues tab to its edit screen. Before, the setting did nothing. The tab holds everything in one place. You choose which fields the title goes by (publication date, edition, volume, number, issue) and how to sort them. You see every issue on hand, with Edit and Delete. You check in each new issue as it arrives. The check-in form fills in a guess at the next issue: after Vol. 27 No. 2 comes No. 3, a full volume rolls over to the next one, and the date moves by the same gap as the last two issues. Members see the list of issues on hand in the public catalog's item details.

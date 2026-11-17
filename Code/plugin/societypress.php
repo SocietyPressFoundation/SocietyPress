@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.132
+ * Version:     1.5.133
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.132' );
+define( 'SOCIETYPRESS_VERSION', '1.5.133' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -23987,6 +23987,9 @@ class SP_Members_List_Table extends WP_List_Table {
         return [
             'assign_to_group' => __( 'Assign to Group', 'societypress' ),
             'change_plan'     => __( 'Change Plan', 'societypress' ),
+        ] + ( current_user_can( 'sp_manage_communications' ) ? [
+            'email_selected'  => __( 'Email selected', 'societypress' ),
+        ] : [] ) + [
             'delete'          => __( 'Delete', 'societypress' ),
         ];
     }
@@ -24670,6 +24673,24 @@ add_action( 'admin_init', function () {
             $redirect = add_query_arg( 'sp_error', 'self_delete', $redirect );
         }
         wp_redirect( $redirect );
+        exit;
+    }
+
+    // ---- Bulk Email selected ----
+    // WHY: some emails go to a handful of people who share nothing a group or
+    //      plan would capture. Ticking them here and landing on Send Email with
+    //      them already listed beats re-finding each one by name there.
+    if ( ( ( $_REQUEST['action'] ?? '' ) === 'email_selected' || ( $_REQUEST['action2'] ?? '' ) === 'email_selected' )
+         && ( ! empty( $_REQUEST['member'] ) || ! empty( $_REQUEST['sp_apply_to_all'] ) ) ) {
+        check_admin_referer( 'bulk-members' );
+
+        if ( ! current_user_can( 'sp_manage_communications' ) ) {
+            wp_die( esc_html__( 'You do not have permission to send email.', 'societypress' ) );
+        }
+
+        $token = strtolower( wp_generate_password( 12, false ) );
+        set_transient( 'sp_blast_pick_' . get_current_user_id() . '_' . $token, sp_bulk_member_ids(), HOUR_IN_SECONDS );
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-blast-email-compose&sp_pick=' . $token ) );
         exit;
     }
 
@@ -37451,8 +37472,8 @@ function sp_ajax_admin_member_search(): void {
     if ( ! check_ajax_referer( 'sp_admin_member_search', 'nonce', false ) ) {
         wp_send_json_error( [ 'message' => __( 'Security check failed.', 'societypress' ) ], 403 );
     }
-    // These fields appear on member-management and finance pages; allow either.
-    if ( ! current_user_can( 'sp_manage_members' ) && ! current_user_can( 'sp_manage_finances' ) ) {
+    // These fields appear on member-management, finance and Send Email pages.
+    if ( ! current_user_can( 'sp_manage_members' ) && ! current_user_can( 'sp_manage_finances' ) && ! current_user_can( 'sp_manage_communications' ) ) {
         wp_send_json_error( [ 'message' => __( 'Unauthorized.', 'societypress' ) ], 403 );
     }
 
@@ -41706,7 +41727,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.132',
+            'version'     => '1.5.133',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41714,7 +41735,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.132',
+            'version'     => '1.5.133',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41722,7 +41743,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.132',
+            'version'     => '1.5.133',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41730,7 +41751,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.132',
+            'version'     => '1.5.133',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41738,7 +41759,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.132',
+            'version'     => '1.5.133',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90428,6 +90449,12 @@ function sp_render_blast_email_detail( int $blast_id ): void {
         $filter_display = __( 'Recently joined (last 30 days)', 'societypress' );
     } elseif ( $blast->recipient_type === 'birthday_month' ) {
         $filter_display = __( 'Birthdays this month', 'societypress' );
+    } elseif ( $blast->recipient_type === 'members' ) {
+        $filter_display = sprintf(
+            /* translators: %s: comma-separated list of member names */
+            __( 'Specific members: %s', 'societypress' ),
+            implode( ', ', wp_list_pluck( sp_blast_picked_people( sp_blast_picked_ids( $blast->recipient_filter ) ), 'label' ) )
+        );
     }
 
     ?>
@@ -90597,6 +90624,10 @@ function sp_render_blast_email_compose_page(): void {
             $recipient_filter = wp_json_encode( [
                 'tier_ids' => array_map( 'intval', (array) $_POST['tier_ids'] ),
             ] );
+        } elseif ( $recipient_type === 'members' && ! empty( $_POST['member_ids'] ) ) {
+            $recipient_filter = wp_json_encode( [
+                'user_ids' => array_values( array_unique( array_filter( array_map( 'intval', (array) $_POST['member_ids'] ) ) ) ),
+            ] );
         } elseif (
             in_array( $recipient_type, [ 'all_members', 'renewal_due', 'recently_joined', 'birthday_month' ], true )
             && ! empty( $_POST['limit_tier_ids'] )
@@ -90679,15 +90710,29 @@ function sp_render_blast_email_compose_page(): void {
     );
 
     // Parse existing filter for pre-selecting checkboxes
-    $selected_groups = [];
-    $selected_tiers  = [];
-    $recipient_type  = $blast->recipient_type ?? 'all_members';
+    $selected_groups  = [];
+    $selected_tiers   = [];
+    $selected_members = [];
+    $recipient_type   = $blast->recipient_type ?? 'all_members';
 
-    if ( $blast && $blast->recipient_filter ) {
+    if ( $blast && ! empty( $blast->recipient_filter ) ) {
         $filter_data = json_decode( $blast->recipient_filter, true );
-        $selected_groups = $filter_data['group_ids'] ?? [];
-        $selected_tiers  = $filter_data['tier_ids'] ?? [];
+        $selected_groups  = $filter_data['group_ids'] ?? [];
+        $selected_tiers   = $filter_data['tier_ids'] ?? [];
+        $selected_members = $filter_data['user_ids'] ?? [];
     }
+
+    // Arriving from the Members list's "Email selected": the ticked people
+    // wait in a short-lived transient (a URL can't carry a few thousand IDs).
+    $pick_token = sanitize_key( $_GET['sp_pick'] ?? '' );
+    if ( ! $blast_id && $pick_token ) {
+        $picked = get_transient( 'sp_blast_pick_' . get_current_user_id() . '_' . $pick_token );
+        if ( is_array( $picked ) && $picked ) {
+            $recipient_type   = 'members';
+            $selected_members = $picked;
+        }
+    }
+    $picked_people = sp_blast_picked_people( (array) $selected_members );
 
     // Total active members who haven't opted out (for the "all" count)
     $all_count = (int) $wpdb->get_var(
@@ -90708,6 +90753,13 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-recipient-label     { display: block; margin-bottom: 8px; }
     .sp-blast-recipient-label-sm  { display: block; margin-bottom: 4px; }
     .sp-blast-check-label         { display: block; margin-bottom: 2px; }
+    .sp-blast-members             { margin: 4px 0 12px 24px; }
+    .sp-blast-members[hidden]     { display: none; }
+    /* A filter-wide pick from the Members list can be long; scroll, don't sprawl. */
+    .sp-blast-member-list         { margin: 8px 0; max-height: 240px; overflow-y: auto; }
+    .sp-blast-member-list li      { margin: 0 0 4px; }
+    .sp-blast-member-optout       { color: #b32d2e; font-size: 12px; margin-left: 6px; }
+    .sp-blast-member-remove       { margin-left: 8px; }
     .sp-blast-count               { color: #6d7175; }
     .sp-blast-override-optout     { display: block; margin-top: 10px; color: #7d1414; font-weight: 600; }
     .sp-blast-attachment-list     { margin: 0 0 8px; padding: 0; list-style: none; }
@@ -90851,6 +90903,27 @@ function sp_render_blast_email_compose_page(): void {
                                 <input type="radio" name="recipient_type" value="birthday_month" <?php checked( $recipient_type, 'birthday_month' ); ?>>
                                 <?php /* translators: %d: number of members with a birthday this month */ printf( esc_html__( 'Birthdays this month (%d)', 'societypress' ), sp_blast_count_recipients( 'birthday_month', null ) ); ?>
                             </label>
+                            <label class="sp-blast-recipient-label-sm">
+                                <input type="radio" name="recipient_type" value="members" <?php checked( $recipient_type, 'members' ); ?>>
+                                <?php esc_html_e( 'Specific members', 'societypress' ); ?>
+                            </label>
+                            <div id="sp-blast-members" class="sp-blast-members"<?php echo 'members' !== $recipient_type ? ' hidden' : ''; ?>>
+                                <label for="sp-blast-member-pick" class="screen-reader-text"><?php esc_html_e( 'Add a member', 'societypress' ); ?></label>
+                                <?php sp_render_member_autocomplete( 'sp_blast_member_pick', [ 'input_id' => 'sp-blast-member-pick', 'placeholder' => __( 'Type a name to add someone…', 'societypress' ) ] ); ?>
+                                <ul id="sp-blast-member-list" class="sp-blast-member-list" aria-live="polite">
+                                    <?php foreach ( $picked_people as $p ) : ?>
+                                        <li data-id="<?php echo (int) $p['id']; ?>">
+                                            <input type="hidden" name="member_ids[]" value="<?php echo (int) $p['id']; ?>">
+                                            <span class="sp-blast-member-name"><?php echo esc_html( $p['label'] ); ?></span>
+                                            <?php if ( $p['optout'] ) : ?>
+                                                <span class="sp-blast-member-optout"><?php esc_html_e( 'opted out of bulk email', 'societypress' ); ?></span>
+                                            <?php endif; ?>
+                                            <button type="button" class="button-link sp-blast-member-remove"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                                <p class="description"><?php esc_html_e( 'For a one-time email to a few people who are not in any group. You can also tick people on the Members list and choose Email selected.', 'societypress' ); ?></p>
+                            </div>
                         </fieldset>
                         <?php
                         // Optional tier limit for the all-members / status segments
@@ -91064,6 +91137,48 @@ function sp_render_blast_email_compose_page(): void {
             var TAIL          = <?php echo wp_json_encode( __( 'This cannot be undone.', 'societypress' ) ); ?>;
             var NONE_GROUP    = <?php echo wp_json_encode( __( 'the groups you select (none chosen yet)', 'societypress' ) ); ?>;
             var NONE_TIER     = <?php echo wp_json_encode( __( 'the tiers you select (none chosen yet)', 'societypress' ) ); ?>;
+            var NONE_MEMBER   = <?php echo wp_json_encode( __( 'the members you pick (none chosen yet)', 'societypress' ) ); ?>;
+            var membersDiv    = document.getElementById('sp-blast-members');
+            var memberList    = document.getElementById('sp-blast-member-list');
+            var memberPick    = membersDiv ? membersDiv.querySelector('.sp-member-ac-value') : null;
+            var memberInput   = document.getElementById('sp-blast-member-pick');
+            var REMOVE        = <?php echo wp_json_encode( __( 'Remove', 'societypress' ) ); ?>;
+
+            function pickedNames() {
+                return Array.prototype.map.call(
+                    memberList ? memberList.querySelectorAll('.sp-blast-member-name') : [],
+                    function (n) { return n.textContent; }
+                );
+            }
+
+            // A chosen name joins the list and the search box clears for the next one.
+            if (memberPick && memberList) {
+                memberPick.addEventListener('change', function () {
+                    var id = memberPick.value;
+                    if (id && !memberList.querySelector('li[data-id="' + id + '"]')) {
+                        var li = document.createElement('li');
+                        li.setAttribute('data-id', id);
+                        var hidden = document.createElement('input');
+                        hidden.type = 'hidden'; hidden.name = 'member_ids[]'; hidden.value = id;
+                        var name = document.createElement('span');
+                        name.className = 'sp-blast-member-name';
+                        name.textContent = memberInput.value;
+                        var rm = document.createElement('button');
+                        rm.type = 'button'; rm.className = 'button-link sp-blast-member-remove'; rm.textContent = REMOVE;
+                        li.appendChild(hidden); li.appendChild(name); li.appendChild(document.createTextNode(' ')); li.appendChild(rm);
+                        memberList.appendChild(li);
+                    }
+                    memberPick.value = '';
+                    memberInput.value = '';
+                    memberInput.focus();
+                    updateConfirm();
+                });
+                memberList.addEventListener('click', function (e) {
+                    if (!e.target.classList.contains('sp-blast-member-remove')) return;
+                    e.target.closest('li').remove();
+                    updateConfirm();
+                });
+            }
             var OVERRIDE_NOTE = <?php echo wp_json_encode( __( 'Members who opted out WILL be included.', 'societypress' ) ); ?>;
 
             function labelText(el) {
@@ -91083,6 +91198,9 @@ function sp_render_blast_email_compose_page(): void {
                     summary = checked.length
                         ? checked.map(labelText).join(', ')
                         : ( sel.value === 'group' ? NONE_GROUP : NONE_TIER );
+                } else if (sel.value === 'members') {
+                    var names = pickedNames();
+                    summary = names.length ? names.join(', ') : NONE_MEMBER;
                 } else {
                     summary = labelText(sel);
                 }
@@ -91099,6 +91217,7 @@ function sp_render_blast_email_compose_page(): void {
                 if (!selected) return;
                 groupsDiv.style.display = selected.value === 'group' ? '' : 'none';
                 tiersDiv.style.display  = selected.value === 'tier'  ? '' : 'none';
+                if (membersDiv) { membersDiv.hidden = selected.value !== 'members'; }
                 // The optional tier limit only applies to all-members / status
                 // segments — hide it for By Group, By Tier, and subscribers.
                 if (tierLimitDiv) {
@@ -91469,6 +91588,60 @@ function sp_blast_tier_clause( ?string $recipient_filter ): string {
     return ' AND m.tier_id IN (' . implode( ',', $ids ) . ')';
 }
 
+/**
+ * The hand-picked members a "Specific members" email goes to.
+ *
+ * @param string|null $recipient_filter JSON carrying user_ids.
+ * @return int[]
+ */
+function sp_blast_picked_ids( ?string $recipient_filter ): array {
+    $filter = $recipient_filter ? json_decode( $recipient_filter, true ) : [];
+    return array_values( array_unique( array_filter( array_map( 'intval', (array) ( $filter['user_ids'] ?? [] ) ) ) ) );
+}
+
+/**
+ * Who among the hand-picked members can be sent to.
+ *
+ * WHY no "active only" here, unlike every other audience: a person picked by
+ * name was chosen on purpose, lapsed or not — the volunteer whose renewal is
+ * a week late still needs the voucher reminder. Opt-out still applies, since
+ * that is the member's own say about bulk email.
+ */
+function sp_blast_picked_where( bool $include_optout ): string {
+    return ( $include_optout ? '1=1' : 'm.blast_email_opt_out = 0' )
+        . " AND u.user_email != '' AND u.user_email IS NOT NULL";
+}
+
+/**
+ * Names and emails of hand-picked members, for the Send Email screen.
+ *
+ * @param int[] $ids
+ * @return array<int,array{id:int,label:string,optout:bool}>
+ */
+function sp_blast_picked_people( array $ids ): array {
+    global $wpdb;
+    $ids = array_filter( array_map( 'intval', $ids ) );
+    if ( ! $ids ) {
+        return [];
+    }
+    $rows = $wpdb->get_results(
+        "SELECT m.user_id, u.display_name, u.user_email, m.blast_email_opt_out
+         FROM {$wpdb->prefix}sp_members m
+         JOIN {$wpdb->users} u ON m.user_id = u.ID
+         WHERE m.user_id IN (" . implode( ',', $ids ) . ')
+         ORDER BY m.last_name, m.first_name'
+    );
+    $people = [];
+    foreach ( (array) $rows as $r ) {
+        $people[] = [
+            'id'     => (int) $r->user_id,
+            'label'  => $r->display_name . ( $r->user_email ? ' (' . $r->user_email . ')' : '' ),
+            'optout' => (bool) $r->blast_email_opt_out,
+        ];
+    }
+    return $people;
+}
+
 function sp_blast_count_recipients( string $recipient_type, ?string $recipient_filter, bool $include_optout = false ): int {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
@@ -91507,6 +91680,18 @@ function sp_blast_count_recipients( string $recipient_type, ?string $recipient_f
 
     if ( $recipient_type === 'mailing_list_subscribers' ) {
         return sp_subscriber_confirmed_count();
+    }
+
+    if ( $recipient_type === 'members' ) {
+        $ids = sp_blast_picked_ids( $recipient_filter );
+        if ( ! $ids ) {
+            return 0;
+        }
+        return (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$prefix}members m
+             JOIN {$wpdb->users} u ON m.user_id = u.ID
+             WHERE " . sp_blast_picked_where( $include_optout ) . ' AND m.user_id IN (' . implode( ',', $ids ) . ')'
+        );
     }
 
     // Default: all active members, plus any status-segment clause (renewal_due,
@@ -91571,6 +91756,20 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
                 $limit, $offset
             ) );
         }
+    }
+
+    if ( $recipient_type === 'members' ) {
+        $ids = sp_blast_picked_ids( $recipient_filter );
+        if ( ! $ids ) {
+            return [];
+        }
+        return $wpdb->get_results( $wpdb->prepare(
+            "{$base_select}
+             WHERE " . sp_blast_picked_where( $include_optout ) . ' AND m.user_id IN (' . implode( ',', $ids ) . ")
+             ORDER BY m.last_name ASC
+             LIMIT %d OFFSET %d",
+            $limit, $offset
+        ) );
     }
 
     // Public mailing-list subscribers (confirmed only). Shaped like member

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.133
+ * Version:     1.5.134
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.133' );
+define( 'SOCIETYPRESS_VERSION', '1.5.134' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41727,7 +41727,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.133',
+            'version'     => '1.5.134',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41735,7 +41735,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.133',
+            'version'     => '1.5.134',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41743,7 +41743,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.133',
+            'version'     => '1.5.134',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41751,7 +41751,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.133',
+            'version'     => '1.5.134',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41759,7 +41759,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.133',
+            'version'     => '1.5.134',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -130785,6 +130785,13 @@ function sp_find_feature_page_id( string $feature ): int {
         $args
     ) );
 
+    // WHY: a page set to the Donate page type draws the form itself, with no
+    // shortcode in its text, so the search above walks straight past it.
+    if ( ! $cache[ $feature ] && 'donate' === $feature ) {
+        $page = sp_page_using_template( 'sp-donate' );
+        $cache[ $feature ] = ( $page && 'publish' === $page->post_status ) ? (int) $page->ID : 0;
+    }
+
     return $cache[ $feature ];
 }
 
@@ -135025,7 +135032,22 @@ function sp_render_form_edit_page(): void {
             <div class="notice notice-warning">
                 <p>
                     <?php esc_html_e( 'This form looks like it asks for money, but forms can only send a message. They cannot take a payment.', 'societypress' ); ?>
-                    <?php if ( sp_module_enabled( 'donations' ) ) : ?>
+                    <?php
+                    // WHY two answers: when the society already has a Donate page,
+                    // sending her to the Donations screen to "set one up" is a dead
+                    // end — that screen only offers to make a page when none exists.
+                    $sp_donate_page = sp_module_enabled( 'donations' ) ? sp_find_feature_page_id( 'donate' ) : 0;
+                    ?>
+                    <?php if ( $sp_donate_page ) : ?>
+                        <?php
+                        printf(
+                            /* translators: %s: web address of the Donate page */
+                            esc_html__( 'Your Donate page already takes payments online, at %s. Point people there instead of using this form.', 'societypress' ),
+                            '<a href="' . esc_url( get_permalink( $sp_donate_page ) ) . '">' . esc_html( wp_parse_url( get_permalink( $sp_donate_page ), PHP_URL_PATH ) ?: '/' ) . '</a>'
+                        );
+                        ?>
+                        <a href="<?php echo esc_url( (string) get_edit_post_link( $sp_donate_page ) ); ?>"><?php esc_html_e( 'Edit the Donate page', 'societypress' ); ?></a>
+                    <?php elseif ( sp_module_enabled( 'donations' ) ) : ?>
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-donations' ) ); ?>"><?php esc_html_e( 'Set up a Donate page instead.', 'societypress' ); ?></a>
                     <?php endif; ?>
                 </p>

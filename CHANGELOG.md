@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.134] — 2026-11-17
+
+**A form that asks for money points to the real Donate page.** A form that asks for a donation amount shows a warning that forms can't take payments. Its "Set up a Donate page instead" link went to the Donations screen. That screen only offers to make a Donate page when none exists, so a society that already had one hit a dead end. When a Donate page exists, the warning now names it and links straight to it, with a link to edit it.
+
+**Donate pages built from the Donate page type are recognized everywhere.** These pages draw the donation form themselves rather than through a shortcode, and SocietyPress didn't count them as the Donate page. As a result, mistyped addresses like /give/ or /donation/ found nothing, and the editor's link picker didn't list the page.
+
+---
+
 ## [1.5.133] — 2026-11-17
 
 **Email a few hand-picked members.** Send Email has a new audience, Specific members, for a one-time message to people who aren't in any group. An example is the volunteers who haven't used a voucher yet. Type a name to add each person, and remove anyone with a click. People who opted out of bulk email are marked in the list. The Members list also has a new bulk action, Email selected. Tick people there and Send Email opens with them already listed. A hand-picked person gets the email even if their membership has lapsed, because they were chosen by name.

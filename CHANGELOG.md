@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.138] — 2026-11-18
+
+**Preview and Send Test Email work for everyone allowed to send email.** Before, both buttons on Send Email worked only for site administrators. Anyone else got "You do not have permission" from Send Test Email, and Preview did nothing at all.
+
+**The Library Catalog list shows which titles take issue check-ins.** A title with Use Serials set to Yes has a "Serials: check in issues" tag under its name in the catalog list. The tag goes straight to that title's Issues tab.
+
 ## [1.5.137] — 2026-11-17
 
 **Whoever sends email can now make and change Groups.** Before, only people with access to Members could create a group, rename it, delete it, or choose who is in it. So the person sending email could pick an existing group but couldn't set up a new one for a mailing. Anyone allowed to send email can now open the Groups screen. They still can't open member records. Send Email has a "Make or change groups" link under the group list.

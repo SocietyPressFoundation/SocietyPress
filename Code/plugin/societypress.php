@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.137
+ * Version:     1.5.138
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.137' );
+define( 'SOCIETYPRESS_VERSION', '1.5.138' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41753,7 +41753,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.137',
+            'version'     => '1.5.138',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41761,7 +41761,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.137',
+            'version'     => '1.5.138',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41769,7 +41769,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.137',
+            'version'     => '1.5.138',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41777,7 +41777,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.137',
+            'version'     => '1.5.138',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41785,7 +41785,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.137',
+            'version'     => '1.5.138',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -80500,6 +80500,14 @@ function sp_render_library_catalog_page(): void {
     .sp-catalog-col-check {
         width: 2.2em;
     }
+    .sp-catalog-serials {
+        display: inline-block;
+        margin-top: 2px;
+        padding: 0 6px;
+        border-radius: 3px;
+        background: #e7f0f8;
+        font-size: 12px;
+    }
     </style>
 
     <div class="wrap">
@@ -80715,6 +80723,13 @@ function sp_render_library_catalog_page(): void {
                             <td class="sp-catalog-col-check"><input type="checkbox" class="sp-catalog-check" name="item_ids[]" value="<?php echo (int) $item->id; ?>" form="sp-catalog-bulk-form" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: catalog item title */ __( 'Select %s', 'societypress' ), $item->title ) ); ?>"></td>
                             <td>
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $item->title ); ?></a></strong>
+                                <?php
+                                // WHY always visible rather than a hover row action: the
+                                //      cataloger scans the list for which titles take
+                                //      check-ins, and the link saves a trip through the tabs.
+                                if ( ! empty( $item->use_serials ) ) : ?>
+                                    <br><a class="sp-catalog-serials" href="<?php echo esc_url( sp_library_issues_url( (int) $item->id ) ); ?>"><?php esc_html_e( 'Serials: check in issues', 'societypress' ); ?></a>
+                                <?php endif; ?>
                                 <div class="row-actions">
                                     <span><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
                                     <span><form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-library-catalog' ) ); ?>" class="sp-catalog-delete-form" data-sp-confirm="<?php echo esc_attr( __( 'Delete this item?', 'societypress' ) ); ?>"><?php wp_nonce_field( 'sp_delete_library_item_' . $item->id ); ?><input type="hidden" name="action" value="delete"><input type="hidden" name="item_id" value="<?php echo (int) $item->id; ?>"><button type="submit" class="sp-link-btn sp-catalog-delete-btn"><?php esc_html_e( 'Delete', 'societypress' ); ?></button></form></span>
@@ -91509,7 +91524,7 @@ function sp_blast_render_for_current_user( string $subject, string $body, string
  */
 function sp_blast_preview_request(): array {
     check_ajax_referer( 'sp_blast_preview' );
-    if ( ! current_user_can( 'manage_options' ) ) {
+    if ( ! current_user_can( 'sp_manage_communications' ) ) {
         wp_send_json_error( [ 'message' => __( 'You do not have permission to do that.', 'societypress' ) ], 403 );
     }
     return [

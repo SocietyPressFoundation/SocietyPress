@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.136
+ * Version:     1.5.137
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.136' );
+define( 'SOCIETYPRESS_VERSION', '1.5.137' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7782,6 +7782,23 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
 }, 11, 4 );
 
 /**
+ * Grant the Groups screens to member staff and to email senders alike.
+ *
+ * WHY a derived cap rather than adding Groups to an access area: groups are
+ *      shared ground. Membership staff look after them, but the person who
+ *      sends email needs to set one up for a mailing ("Cemetery Survey
+ *      Volunteers") without being handed every member record. Groups show
+ *      only names, which the Send Email "Specific members" picker already
+ *      shows, so opening them to email senders reveals nothing new.
+ */
+add_filter( 'user_has_cap', function ( array $allcaps ): array {
+    if ( ! empty( $allcaps['sp_manage_members'] ) || ! empty( $allcaps['sp_manage_communications'] ) ) {
+        $allcaps['sp_manage_groups'] = true;
+    }
+    return $allcaps;
+}, 12 );
+
+/**
  * Allow non-admin SP staff to access wp-admin.
  *
  * WHY: By default, WordPress blocks users without 'edit_posts' from
@@ -9254,8 +9271,8 @@ function sp_get_menu_capability_map(): array {
         'sp-import'                => 'sp_manage_members',
         'sp-export'                => 'sp_manage_members',
         'sp-member-tiers'          => 'sp_manage_members',
-        'sp-groups'                => 'sp_manage_members',
-        'sp-group-edit'            => 'sp_manage_members',
+        'sp-groups'                => 'sp_manage_groups',
+        'sp-group-edit'            => 'sp_manage_groups',
         'sp-member-edit'           => 'sp_manage_members',
         'sp-pending-changes'       => 'sp_manage_members',
 
@@ -37371,7 +37388,7 @@ function sp_handle_group_delete(): void {
     if ( ( $_POST['action'] ?? '' ) !== 'delete' || ! isset( $_POST['group_id'] ) ) {
         return;
     }
-    if ( ! current_user_can( 'sp_manage_members' ) ) {
+    if ( ! current_user_can( 'sp_manage_groups' ) ) {
         wp_die( esc_html__( 'You do not have permission to manage groups.', 'societypress' ) );
     }
     check_admin_referer( 'sp_delete_group_' . $_POST['group_id'] );
@@ -37732,7 +37749,7 @@ function sp_handle_group_edit_save(): void {
     if ( ( $_SERVER['REQUEST_METHOD'] ?? '' ) !== 'POST' || ! isset( $_POST['sp_group_nonce'] ) ) {
         return;
     }
-    if ( ! current_user_can( 'sp_manage_members' ) ) {
+    if ( ! current_user_can( 'sp_manage_groups' ) ) {
         wp_die( esc_html__( 'You do not have permission to manage groups.', 'societypress' ) );
     }
     check_admin_referer( 'sp_save_group', 'sp_group_nonce' );
@@ -41736,7 +41753,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.136',
+            'version'     => '1.5.137',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41744,7 +41761,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.136',
+            'version'     => '1.5.137',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41752,7 +41769,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.136',
+            'version'     => '1.5.137',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41760,7 +41777,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.136',
+            'version'     => '1.5.137',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41768,7 +41785,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.136',
+            'version'     => '1.5.137',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90769,6 +90786,7 @@ function sp_render_blast_email_compose_page(): void {
     .sp-blast-recipient-label-sm  { display: block; margin-bottom: 4px; }
     .sp-blast-check-label         { display: block; margin-bottom: 2px; }
     .sp-blast-members             { margin: 4px 0 12px 24px; }
+    .sp-blast-groups-manage       { margin: 6px 0 0; }
     .sp-blast-members[hidden]     { display: none; }
     /* A filter-wide pick from the Members list can be long; scroll, don't sprawl. */
     .sp-blast-member-list         { margin: 8px 0; max-height: 240px; overflow-y: auto; }
@@ -90884,6 +90902,8 @@ function sp_render_blast_email_compose_page(): void {
                                             '</a>'
                                         );
                                     ?></em>
+                                <?php else : ?>
+                                    <p class="sp-blast-groups-manage"><a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>"><?php esc_html_e( 'Make or change groups', 'societypress' ); ?></a></p>
                                 <?php endif; ?>
                             </div>
 

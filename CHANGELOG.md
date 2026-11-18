@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.137] — 2026-11-17
+
+**Whoever sends email can now make and change Groups.** Before, only people with access to Members could create a group, rename it, delete it, or choose who is in it. So the person sending email could pick an existing group but couldn't set up a new one for a mailing. Anyone allowed to send email can now open the Groups screen. They still can't open member records. Send Email has a "Make or change groups" link under the group list.
+
 ## [1.5.136] — 2026-11-17
 
 **Name more than one person wherever SocietyPress asks for an email address to send to.** Every box where a society says who gets something, or who to contact, now takes several addresses separated by commas. Before, anything after the first address was thrown away on save. That covers:

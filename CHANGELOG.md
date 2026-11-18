@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.139] — 2026-11-18
+
+**Bring periodical issue lists over from EasyNetSites.** The EasyNetSites catalog export includes each periodical but not its list of issues on hand. Library Import now has a "Bring Over Periodical Issues" step: paste the old website's address and SocietyPress copies each periodical's issue list from it. Periodicals that already have issues are left alone, so the step is safe to run again. If the old site can't be reached, it says so and suggests trying again later.
+
 ## [1.5.138] — 2026-11-18
 
 **Preview and Send Test Email work for everyone allowed to send email.** Before, both buttons on Send Email worked only for site administrators. Anyone else got "You do not have permission" from Send Test Email, and Preview did nothing at all.

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.138
+ * Version:     1.5.139
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.138' );
+define( 'SOCIETYPRESS_VERSION', '1.5.139' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41753,7 +41753,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.138',
+            'version'     => '1.5.139',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41761,7 +41761,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.138',
+            'version'     => '1.5.139',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41769,7 +41769,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.138',
+            'version'     => '1.5.139',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41777,7 +41777,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.138',
+            'version'     => '1.5.139',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41785,7 +41785,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.138',
+            'version'     => '1.5.139',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -82010,6 +82010,126 @@ function sp_library_normalize_header( string $header ): string {
     return $h ?? '';
 }
 
+/**
+ * Read the issue list off one EasyNetSites catalog detail page.
+ *
+ * WHY scrape: the ENS catalog export carries each periodical but not its list
+ *      of issues on hand. The only place those lists leave ENS is the public
+ *      record page, a "Serial Listings" table whose columns vary by title
+ *      (Publication Date, Edition, Volume, Number, Issue in any mix).
+ *
+ * @return array[]|null Issue rows, newest first as ENS lists them; null when
+ *                      the page is not an ENS catalog record at all.
+ */
+function sp_library_ens_parse_issues( string $html ): ?array {
+    if ( false === strpos( $html, 'Library Resource Detail' ) ) {
+        return null;
+    }
+    $at = strpos( $html, 'Serial Listings' );
+    if ( false === $at ) {
+        return [];
+    }
+    $end   = strpos( $html, '</table>', $at );
+    $table = substr( $html, $at, false === $end ? null : $end - $at );
+    preg_match_all( '#<tr[^>]*>(.*?)</tr>#is', $table, $rows );
+
+    $cells = static function ( string $row ): array {
+        preg_match_all( '#<td[^>]*>(.*?)</td>#is', $row, $m );
+        return array_map( static function ( $c ) {
+            return trim( html_entity_decode( wp_strip_all_tags( $c ), ENT_QUOTES, 'UTF-8' ) );
+        }, $m[1] );
+    };
+
+    $months = [ 'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december' ];
+    $head   = $cells( array_shift( $rows[1] ) ?? '' );
+    $out    = [];
+    foreach ( $rows[1] as $row ) {
+        $v = array_combine( $head, array_slice( array_pad( $cells( $row ), count( $head ), '' ), 0, count( $head ) ) ) ?: [];
+        if ( ! array_filter( $v ) ) {
+            continue;
+        }
+        $year = $month = $day = null;
+        if ( preg_match( '/^(\d{4})(?:\s+([A-Za-z]+))?(?:\s+(\d{1,2}))?$/', $v['Publication Date'] ?? '', $d ) ) {
+            $year  = (int) $d[1];
+            $idx   = isset( $d[2] ) ? array_search( strtolower( $d[2] ), $months, true ) : false;
+            $month = false === $idx ? null : $idx + 1;
+            $day   = ! empty( $d[3] ) ? (int) $d[3] : null;
+        }
+        $text  = static function ( string $k ) use ( $v ) {
+            return '' === ( $v[ $k ] ?? '' ) ? null : mb_substr( $v[ $k ], 0, 50 );
+        };
+        $out[] = [
+            'pub_year'  => $year,
+            'pub_month' => $month,
+            'pub_day'   => $day,
+            'edition'   => $text( 'Edition' ),
+            'volume'    => $text( 'Volume' ),
+            'number'    => $text( 'Number' ),
+            'issue'     => $text( 'Issue' ),
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Bring each serial's issue list over from the society's old ENS site.
+ *
+ * WHY only titles with no issues yet: a volunteer may already have typed some
+ *      in. Leaving those titles alone means a second run never duplicates or
+ *      overwrites anything, so the step can be offered again at any time.
+ * WHY matched on System ID: the ENS export's record number is what the
+ *      catalog import stores there, and it is the id the detail page takes.
+ *
+ * @return array{reached:bool, issues:int, titles:int, kept:int}
+ */
+function sp_library_import_ens_issues( string $base ): array {
+    global $wpdb;
+    $p     = $wpdb->prefix;
+    $items = $wpdb->get_results(
+        "SELECT i.id, i.system_id,
+                EXISTS ( SELECT 1 FROM {$p}sp_library_issues s WHERE s.item_id = i.id ) AS has_issues
+           FROM {$p}sp_library_items i
+          WHERE i.use_serials = 1 AND i.system_id REGEXP '^[0-9]+$'"
+    );
+
+    $out = [ 'reached' => false, 'issues' => 0, 'titles' => 0, 'kept' => 0 ];
+    if ( function_exists( 'set_time_limit' ) ) {
+        set_time_limit( 300 );
+    }
+    foreach ( $items as $item ) {
+        if ( $item->has_issues ) {
+            $out['kept']++;
+            continue;
+        }
+        $res  = wp_safe_remote_get( $base . '/detail/libraryRecordDetail.php?id=' . (int) $item->system_id, [ 'timeout' => 20 ] );
+        $rows = is_wp_error( $res ) || 200 !== wp_remote_retrieve_response_code( $res )
+              ? null
+              : sp_library_ens_parse_issues( wp_remote_retrieve_body( $res ) );
+        if ( null === $rows ) {
+            // The first title failing means the site is down, gone, or not
+            // ENS; trying the rest would only make the volunteer wait longer.
+            if ( ! $out['reached'] ) {
+                return $out;
+            }
+            continue;
+        }
+        $out['reached'] = true;
+        if ( ! $rows ) {
+            continue;
+        }
+        // Oldest first, so the list reads in the order the issues arrived.
+        foreach ( array_reverse( $rows ) as $row ) {
+            $wpdb->insert( $p . 'sp_library_issues', $row + [ 'item_id' => (int) $item->id ] );
+        }
+        $out['issues'] += count( $rows );
+        $out['titles']++;
+    }
+    if ( ! $items || $out['kept'] === count( $items ) ) {
+        $out['reached'] = true;
+    }
+    return $out;
+}
+
 function sp_render_library_import_page(): void {
     if ( ! current_user_can( 'sp_manage_library' ) && ! current_user_can( 'manage_options' ) ) {
         wp_die( esc_html__( 'You do not have permission to import the library catalog.', 'societypress' ) );
@@ -82018,6 +82138,21 @@ function sp_render_library_import_page(): void {
 
     $results = null;
     $preview = null;
+    $ens     = null;
+
+    if ( isset( $_POST['sp_import_action'] ) && 'ens_issues' === $_POST['sp_import_action'] ) {
+        check_admin_referer( 'sp_import_library' );
+        $url  = esc_url_raw( trim( wp_unslash( $_POST['sp_ens_url'] ?? '' ) ) );
+        $url  = $url && ! preg_match( '#^https?://#i', $url ) ? 'https://' . $url : $url;
+        $host = (string) wp_parse_url( $url, PHP_URL_HOST );
+        if ( $host ) {
+            $base = ( wp_parse_url( $url, PHP_URL_SCHEME ) ?: 'https' ) . '://' . $host;
+            update_option( 'sp_library_ens_url', $base, false );
+            $ens = sp_library_import_ens_issues( $base );
+        } else {
+            $ens = [ 'reached' => false, 'issues' => 0, 'titles' => 0, 'kept' => 0 ];
+        }
+    }
 
     // ------------------------------------------------------------------
     // STEP 2: Run the actual import from the temp file
@@ -82299,6 +82434,33 @@ function sp_render_library_import_page(): void {
     <div class="wrap">
         <h1><?php esc_html_e( 'Import Library Catalog', 'societypress' ); ?></h1>
 
+        <?php if ( $ens ) : ?>
+            <?php if ( ! $ens['reached'] ) : ?>
+                <div class="notice notice-warning"><p>
+                    <?php esc_html_e( 'We couldn’t reach your old site right now. Please try again later. If your old site has been shut down, you can type issues in on each periodical’s Issues tab.', 'societypress' ); ?>
+                </p></div>
+            <?php else : ?>
+                <div class="notice notice-success"><p>
+                    <?php
+                    printf(
+                        /* translators: 1: number of issues, 2: number of periodicals */
+                        esc_html__( 'Brought over %1$s issues for %2$s periodicals.', 'societypress' ),
+                        esc_html( number_format( $ens['issues'] ) ),
+                        esc_html( number_format( $ens['titles'] ) )
+                    );
+                    if ( $ens['kept'] ) {
+                        echo ' ';
+                        printf(
+                            /* translators: %s: number of periodicals left alone */
+                            esc_html( _n( '%s periodical already had issues here and was left alone.', '%s periodicals already had issues here and were left alone.', $ens['kept'], 'societypress' ) ),
+                            esc_html( number_format( $ens['kept'] ) )
+                        );
+                    }
+                    ?>
+                </p></div>
+            <?php endif; ?>
+        <?php endif; ?>
+
         <?php if ( $results ) : ?>
             <!-- ============================================================
                  IMPORT RESULTS
@@ -82557,6 +82719,36 @@ function sp_render_library_import_page(): void {
                     </p>
                 <?php endif; ?>
             </div>
+
+            <?php
+            // WHY only once serials exist: the step fills in issue lists for
+            //      periodicals already in the catalog, so before the catalog
+            //      import there is nothing for it to do.
+            $serials = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_library_items WHERE use_serials = 1" );
+            if ( $serials > 0 ) : ?>
+                <div class="card sp-lib-import-card-narrow">
+                    <h2 class="sp-mt-0"><?php esc_html_e( 'Bring Over Periodical Issues', 'societypress' ); ?></h2>
+                    <p class="description">
+                        <?php esc_html_e( 'If your catalog came from EasyNetSites, the export file left out each periodical’s list of issues on hand. Paste your old website’s address and SocietyPress will copy those lists from it. Periodicals that already have issues here are left alone, so this is safe to run again.', 'societypress' ); ?>
+                    </p>
+                    <p class="description">
+                        <strong><?php esc_html_e( 'Do this before you cancel your old EasyNetSites account.', 'societypress' ); ?></strong>
+                    </p>
+                    <form method="post">
+                        <?php wp_nonce_field( 'sp_import_library' ); ?>
+                        <input type="hidden" name="sp_import_action" value="ens_issues">
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row"><label for="sp_ens_url"><?php esc_html_e( 'Old website address', 'societypress' ); ?></label></th>
+                                <td><input type="text" name="sp_ens_url" id="sp_ens_url" class="regular-text" required placeholder="www.example.org" value="<?php echo esc_attr( (string) get_option( 'sp_library_ens_url', '' ) ); ?>"></td>
+                            </tr>
+                        </table>
+                        <p class="submit">
+                            <input type="submit" class="button button-primary" value="<?php esc_attr_e( 'Bring Over Issues', 'societypress' ); ?>">
+                        </p>
+                    </form>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
     <?php

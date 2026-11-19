@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.145] — 2026-11-18
+
+- Scheduled backups now hold the whole site: every database table (pages, news posts, menus, the media library's records, settings, and other plugins' data, not just SocietyPress's own), plus installed plugins and themes, including a custom child theme. Uploaded files stay optional because they're large.
+- A backup now carries the key that unlocks members' phone numbers and addresses, so it can be restored on a different host. The backup screen now says to guard backup files like a printed membership roster.
+- First step toward Restore from a backup.
+
 ## [1.5.144] — 2026-11-18
 
 - The last admin screens that saved or redirected while being drawn now do it first: the Email list (delete, sending speed, copy a past email), Compose email, Order detail, Lineage application, Lineage program and Research case. Every SocietyPress admin screen now saves before it draws.

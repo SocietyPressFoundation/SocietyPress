@@ -144,16 +144,33 @@ and what happens to surveys already on existing sites.
 
 #### Restore from a backup
 
-**Motivation:** Scheduled backups capture everything a society needs —
-SocietyPress data, sign-in accounts, settings and uploaded files — but getting
-it back means phpMyAdmin, matching table prefixes and copying wp-config keys by
-hand. The one-click Site Export leaves out sign-in accounts entirely. A
-volunteer facing a dead host needs a button.
-**Scope:** "Restore a backup" on Settings → Export & Backup for a fresh
-install: upload a backup ZIP, check it, load the tables (rewriting the table
-prefix), settings and uploaded files, and re-encrypt member fields under the
-new site's key, so a backup moves between hosts without the old wp-config.
+**Motivation:** Scheduled backups capture SocietyPress data, sign-in accounts,
+settings and uploaded files — but not pages, posts, menus, the media library's
+records, plugins or themes, and getting any of it back means phpMyAdmin by
+hand. A volunteer facing a dead host needs a button.
+**Decided with Charles (2026-11-18):**
+- Restore works on a site that already has data, not only a fresh install.
+- It **replaces** everything rather than merging, after automatically taking a
+  backup of the current site so a mistaken restore can be undone.
+- Backups cover the **entire site**: every database table, uploaded files,
+  and installed plugins and themes (including custom child themes).
+- The person running the restore can always still sign in: if their account
+  isn't in the backup it comes along as an administrator.
+- The backup carries the key that unlocks members' phone numbers and
+  addresses, so a restore works on any host; the backup screen says plainly
+  that the file must be guarded like a printed roster.
+- Off-site copies are a separate item, next after this.
 **Blockers:** None.
+
+#### Send backups off the server automatically
+
+**Motivation:** Backups are saved on the same server as the site, and the
+volunteer is only emailed a reminder to download one. If nobody does and the
+host dies, the backups die with the site and Restore has nothing to restore.
+**Scope:** After each backup, copy it to a cloud account the society connects
+(Google Drive and Dropbox first), keeping the last few. Charles wants this soon
+after Restore ships (2026-11-18).
+**Blockers:** Restore from a backup.
 
 ### Medium
 

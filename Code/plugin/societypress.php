@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.144
+ * Version:     1.5.145
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.144' );
+define( 'SOCIETYPRESS_VERSION', '1.5.145' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41430,8 +41430,11 @@ function sp_render_settings_export_page(): void {
 
         <h2><?php esc_html_e( 'Scheduled Backups', 'societypress' ); ?></h2>
         <p class="description">
-            <?php esc_html_e( 'Automatically create a full backup (database and settings, and optionally uploaded files) on a schedule. Backups are kept on this server and listed below — download a copy and keep it somewhere safe.', 'societypress' ); ?>
+            <?php esc_html_e( 'Automatically back up the whole site on a schedule: every page, member and record, sign-in accounts, settings, plugins and themes, and optionally uploaded files. Backups are kept on this server and listed below — download a copy and keep it somewhere safe.', 'societypress' ); ?>
         </p>
+        <div class="notice notice-warning inline"><p>
+            <?php esc_html_e( 'Guard backup files the way you would a printed membership roster. Anyone who has one can read every member’s name, email, phone number and address. Don’t email them or leave them in a shared folder.', 'societypress' ); ?>
+        </p></div>
 
         <?php
         $msg = sanitize_key( $_GET['sp_backup_msg'] ?? '' );
@@ -41828,7 +41831,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.144',
+            'version'     => '1.5.145',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41836,7 +41839,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.144',
+            'version'     => '1.5.145',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41844,7 +41847,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.144',
+            'version'     => '1.5.145',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41852,7 +41855,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.144',
+            'version'     => '1.5.145',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41860,7 +41863,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.144',
+            'version'     => '1.5.145',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -71925,12 +71928,13 @@ function sp_get_backup_dir(): string {
  */
 function sp_backup_get_tables(): array {
     global $wpdb;
-    $sp_tables = $wpdb->get_col(
-        $wpdb->prepare( "SHOW TABLES LIKE %s", $wpdb->esc_like( $wpdb->prefix . 'sp_' ) . '%' )
+    // WHY every table with this site's prefix, not just SocietyPress's own:
+    // a restore has to bring back the whole site — pages, posts, menus, the
+    // media library's records, settings, and whatever other plugins keep —
+    // or a society restoring onto a new host gets members but no website.
+    return $wpdb->get_col(
+        $wpdb->prepare( "SHOW TABLES LIKE %s", $wpdb->esc_like( $wpdb->prefix ) . '%' )
     );
-    // Also include WP user tables since SP members are WP users
-    $wp_tables = [ $wpdb->users, $wpdb->usermeta ];
-    return array_merge( $sp_tables, $wp_tables );
 }
 
 
@@ -71952,18 +71956,13 @@ function sp_backup_export_table( string $table, string $output_dir ): int {
     global $wpdb;
 
     // Defense in depth: every callsite today passes a table from
-    // sp_backup_get_tables() (SocietyPress sp_* tables plus the core WP user
-    // tables), but the name still flows into raw SQL via backticks because
+    // sp_backup_get_tables() (every table with this site's prefix), but the name still flows into raw SQL via backticks because
     // $wpdb->prepare() does not parameterize identifiers. A future caller
     // that ever sourced this argument from user input — or a bug in
     // sp_backup_get_tables() — would otherwise reach the queries below
-    // unchecked. We refuse anything that isn't an SP table or a WP user
-    // table, and we confirm the table actually exists before any SQL runs.
-    $sp_prefix     = $wpdb->prefix . 'sp_';
-    $allowed_extra = [ $wpdb->users, $wpdb->usermeta ];
-    $is_sp         = ( strpos( $table, $sp_prefix ) === 0 );
-    $is_wp_user    = in_array( $table, $allowed_extra, true );
-    if ( ! $is_sp && ! $is_wp_user ) {
+    // unchecked. We refuse anything that isn't one of this site's own tables,
+    // and we confirm the table actually exists before any SQL runs.
+    if ( ! in_array( $table, sp_backup_get_tables(), true ) ) {
         return 0;
     }
     if ( ! $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) ) {
@@ -72094,18 +72093,34 @@ function sp_backup_export_settings( string $output_dir ): void {
  */
 function sp_backup_create_manifest( string $output_dir, array $options ): void {
     $manifest = [
-        'version'        => '1.0',
+        // 2.0: the whole site — every table, plugins, themes, and the
+        // encryption key — rather than SocietyPress's tables alone.
+        'version'        => '2.0',
         'plugin_version' => SOCIETYPRESS_VERSION,
         'wp_version'     => get_bloginfo( 'version' ),
         'php_version'    => PHP_VERSION,
         'site_url'       => home_url(),
+        'wp_site_url'    => site_url(),
+        'table_prefix'   => $GLOBALS['wpdb']->prefix,
         'created_at'     => current_time( 'c' ),
         'includes'       => [
             'database' => (bool) $options['db'],
             'uploads'  => (bool) $options['uploads'],
             'settings' => (bool) $options['settings'],
+            'plugins'  => ! empty( $options['plugins'] ),
+            'themes'   => ! empty( $options['themes'] ),
         ],
     ];
+    // WHY the key travels with the backup: members' phone numbers and street
+    // addresses are encrypted with a key derived from this server's
+    // wp-config.php. A new host has a different one, so without this the
+    // restored fields would be unreadable. Charles chose this over a
+    // passphrase (2026-11-18): a forgotten passphrase loses the data for
+    // good, and the file already holds names and emails in the clear, so it
+    // has to be guarded either way — the backup screen says so.
+    if ( $options['db'] ) {
+        $manifest['encryption_key'] = base64_encode( sp_get_encryption_key() );
+    }
 
     if ( $options['db'] && isset( $options['tables'] ) ) {
         $manifest['database'] = [
@@ -72320,6 +72335,40 @@ add_action( 'admin_init', function(): void {
 add_action( 'sp_backup_cron', 'sp_run_scheduled_backup' );
 
 /**
+ * Copy a folder into the backup's working folder.
+ *
+ * @param string   $src  Folder to copy.
+ * @param string   $dest Where it goes inside the backup.
+ * @param string[] $skip Top-level names inside $src to leave out.
+ * @return int Number of files copied.
+ */
+function sp_backup_copy_tree( string $src, string $dest, array $skip = [] ): int {
+    if ( ! is_dir( $src ) ) {
+        return 0;
+    }
+    wp_mkdir_p( $dest );
+    $count    = 0;
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator( $src, RecursiveDirectoryIterator::SKIP_DOTS ),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+    foreach ( $iterator as $item ) {
+        $relative = substr( $item->getPathname(), strlen( $src ) + 1 );
+        $top      = strtok( $relative, '/' );
+        if ( in_array( $top, $skip, true ) ) {
+            continue;
+        }
+        $dest_path = $dest . '/' . $relative;
+        if ( $item->isDir() ) {
+            wp_mkdir_p( $dest_path );
+        } elseif ( copy( $item->getPathname(), $dest_path ) ) {
+            $count++;
+        }
+    }
+    return $count;
+}
+
+/**
  * Execute a scheduled backup.
  *
  * WHY: This is the workhorse — called by wp_cron on the configured schedule.
@@ -72417,29 +72466,16 @@ function sp_run_scheduled_backup( string $trigger_type = 'scheduled' ): void {
         // ---- Copy uploads (media library) ----
         if ( $include_uploads ) {
             $upload_dir   = wp_upload_dir();
-            $uploads_src  = $upload_dir['basedir'];
-            $uploads_dest = $temp_dir . '/uploads';
-            wp_mkdir_p( $uploads_dest );
-
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator( $uploads_src, RecursiveDirectoryIterator::SKIP_DOTS ),
-                RecursiveIteratorIterator::SELF_FIRST
-            );
-
-            foreach ( $iterator as $item ) {
-                $relative = substr( $item->getPathname(), strlen( $uploads_src ) + 1 );
-                // Skip the backups directory itself — don't back up backups
-                if ( strpos( $relative, 'sp-backups' ) === 0 ) continue;
-
-                $dest_path = $uploads_dest . '/' . $relative;
-                if ( $item->isDir() ) {
-                    wp_mkdir_p( $dest_path );
-                } else {
-                    copy( $item->getPathname(), $dest_path );
-                    $files_count++;
-                }
-            }
+            // Skip the backups directory itself — don't back up backups.
+            $files_count += sp_backup_copy_tree( $upload_dir['basedir'], $temp_dir . '/uploads', [ 'sp-backups' ] );
         }
+
+        // ---- Copy plugins and themes ----
+        // WHY always, not behind a checkbox: a custom child theme or another
+        // plugin the society relies on is part of the site, and a fresh
+        // install on a new host won't have it.
+        $files_count += sp_backup_copy_tree( WP_PLUGIN_DIR, $temp_dir . '/plugins' );
+        $files_count += sp_backup_copy_tree( get_theme_root(), $temp_dir . '/themes' );
 
         // ---- Create manifest ----
         sp_backup_create_manifest( $temp_dir, [
@@ -72448,6 +72484,8 @@ function sp_run_scheduled_backup( string $trigger_type = 'scheduled' ): void {
             'settings'   => $include_settings,
             'tables'     => $include_db ? sp_backup_get_tables() : [],
             'file_count' => $files_count,
+            'plugins'    => true,
+            'themes'     => true,
         ] );
 
         // ---- Create ZIP archive ----

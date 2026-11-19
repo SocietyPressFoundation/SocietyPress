@@ -250,10 +250,29 @@ async function runSafari( site, pages ) {
     }
     try {
         await driver.manage().window().setRect( { width: 1366, height: 900 } );
+        // WHY the long timeouts and one retry: the deploy that runs this test
+        // has just emptied the sites' caches, so the first page Safari asks for
+        // can take far longer than usual to build. A slow first load isn't a
+        // problem with the page.
+        await driver.manage().setTimeouts( { pageLoad: 90000, script: 60000 } );
         for ( const path of pages ) {
-            await driver.get( site.url + path );
-            const f = await driver.executeScript( `return (${ pageFacts.toString() })()` );
             const shot = `${site.label}-Safari-desktop-visitor-${path.replace( /\W+/g, '_' ) || 'home'}.png`;
+            // WHY catch per page: one page timing out used to throw out of the
+            // whole run, so no report was written for any browser.
+            let f, lastError;
+            for ( let attempt = 0; attempt < 2 && ! f; attempt++ ) {
+                try {
+                    await driver.get( site.url + path );
+                    f = await driver.executeScript( `return (${ pageFacts.toString() })()` );
+                } catch ( e ) {
+                    lastError = e;
+                }
+            }
+            if ( ! f ) {
+                record( { site: site.label, browser: 'Safari', size: 'desktop', who: 'visitor', path, status: 'fail',
+                    notes: [ `didn't load: ${ ( lastError?.name || 'error' ) } ${ ( lastError?.message || '' ).split( '\n' )[ 0 ] }`.trim() ], shot: '' } );
+                continue;
+            }
             writeFileSync( join( out, shot ), await driver.takeScreenshot(), 'base64' );
             const notes = f.overflow > 1 ? [ `scrolls sideways by ${f.overflow}px` ] : [];
             record( { site: site.label, browser: 'Safari', size: 'desktop', who: 'visitor', path, status: notes.length ? 'fail' : 'pass', notes, shot } );

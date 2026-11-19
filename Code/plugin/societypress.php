@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.141
+ * Version:     1.5.142
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.141' );
+define( 'SOCIETYPRESS_VERSION', '1.5.142' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -13526,20 +13526,43 @@ add_action( 'admin_init', function () {
  * render function runs. See docs/KNOWN-ISSUES.md for the wider cleanup this is
  * the first step of.
  *
- * Every SocietyPress screen hangs off the 'societypress' parent, so its hook is
- * always societypress_page_{slug}. Keeping that string in one place stops the
- * next screen from being wired up with a hook name that silently never fires.
+ * A screen in the SocietyPress menu has the hook societypress_page_{slug}; a
+ * hidden screen (an edit page reached from a list) has admin_page_{slug}. Only
+ * one of the two ever fires for a given slug, so registering both is safe, and
+ * keeping the names in one place stops the next screen from being wired up with
+ * a hook that silently never fires.
+ *
+ * A handler that finds a problem with what was typed returns instead of
+ * redirecting; the screen then draws as usual and shows the message passed
+ * through sp_screen_post_error().
  *
  * @param string   $slug    Submenu slug, e.g. 'sp-settings-modules'.
  * @param callable $handler Runs before output; expected to redirect and exit.
  */
 function sp_handle_screen_post( string $slug, callable $handler ): void {
-    add_action( 'load-societypress_page_' . $slug, static function () use ( $handler ) {
+    $run = static function () use ( $handler ) {
         if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'POST' ) {
             return;
         }
         $handler();
-    } );
+    };
+    add_action( 'load-societypress_page_' . $slug, $run );
+    add_action( 'load-admin_page_' . $slug, $run );
+}
+
+/**
+ * Hand a "fix this and try again" message from a screen's POST handler to its
+ * render function. Call with a message to set it; with nothing to read it.
+ *
+ * WHY: the handler runs before the page is drawn, so it can't print the notice
+ * itself the way the old in-render code did.
+ */
+function sp_screen_post_error( ?string $message = null ): string {
+    static $error = '';
+    if ( null !== $message ) {
+        $error = $message;
+    }
+    return $error;
 }
 
 /**
@@ -41760,7 +41783,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.141',
+            'version'     => '1.5.142',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41768,7 +41791,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.141',
+            'version'     => '1.5.142',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41776,7 +41799,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.141',
+            'version'     => '1.5.142',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41784,7 +41807,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.141',
+            'version'     => '1.5.142',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41792,7 +41815,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.141',
+            'version'     => '1.5.142',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -93042,14 +93065,11 @@ add_action( 'wp_ajax_sp_blast_recipient_count', 'sp_ajax_blast_recipient_count' 
 // ============================================================================
 
 /**
- * Render the Donations list page.
+ * Donations list: delete, close out a mailed check, bulk acknowledge.
  *
- * WHY: Shows all donations with summary stats, filtering by campaign/type/
- *      date range, and search. Each row has edit/delete actions and an
- *      acknowledgment status indicator. Summary cards show total giving
- *      at a glance.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_donations_page(): void {
+function sp_handle_donations_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -93078,6 +93098,20 @@ function sp_render_donations_page(): void {
         wp_redirect( admin_url( 'admin.php?page=sp-donations&acknowledged=1' ) );
         exit;
     }
+}
+sp_handle_screen_post( 'sp-donations', 'sp_handle_donations_post' );
+
+/**
+ * Render the Donations list page.
+ *
+ * WHY: Shows all donations with summary stats, filtering by campaign/type/
+ *      date range, and search. Each row has edit/delete actions and an
+ *      acknowledgment status indicator. Summary cards show total giving
+ *      at a glance.
+ */
+function sp_render_donations_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
 
     // Filters
     $filter_campaign = (int) ( $_GET['campaign'] ?? 0 );
@@ -93479,18 +93513,19 @@ function sp_render_donations_page(): void {
     <?php
 }
 
-function sp_render_donation_edit_page(): void {
+/**
+ * Record or edit a donation.
+ *
+ * Runs before the screen is drawn; see sp_handle_screen_post().
+ */
+function sp_handle_donation_edit_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
     $donation_id = (int) ( $_GET['donation_id'] ?? 0 );
-    $donation    = null;
-
-    if ( $donation_id ) {
-        $donation = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$prefix}donations WHERE id = %d", $donation_id
-        ) );
-    }
+    $donation    = $donation_id ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$prefix}donations WHERE id = %d", $donation_id
+    ) ) : null;
 
     // Handle save
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_donation_nonce'] ) ) {
@@ -93570,6 +93605,21 @@ function sp_render_donation_edit_page(): void {
 
         wp_redirect( admin_url( 'admin.php?page=sp-donations&saved=1' ) );
         exit;
+    }
+}
+sp_handle_screen_post( 'sp-donation-edit', 'sp_handle_donation_edit_post' );
+
+function sp_render_donation_edit_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $donation_id = (int) ( $_GET['donation_id'] ?? 0 );
+    $donation    = null;
+
+    if ( $donation_id ) {
+        $donation = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}donations WHERE id = %d", $donation_id
+        ) );
     }
 
     // Members for dropdown
@@ -93835,13 +93885,11 @@ function sp_send_donation_acknowledgments( array $donation_ids ): void {
 
 
 /**
- * Render the Campaigns list page.
+ * Campaigns list: delete a campaign (its donations are unlinked, not deleted).
  *
- * WHY: Campaigns organize donations around specific fundraising goals.
- *      The list shows each campaign's name, goal, amount raised, status,
- *      and date range. The raised amount is a live sum from sp_donations.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_campaigns_page(): void {
+function sp_handle_campaigns_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -93854,6 +93902,19 @@ function sp_render_campaigns_page(): void {
         wp_redirect( admin_url( 'admin.php?page=sp-campaigns&deleted=1' ) );
         exit;
     }
+}
+sp_handle_screen_post( 'sp-campaigns', 'sp_handle_campaigns_post' );
+
+/**
+ * Render the Campaigns list page.
+ *
+ * WHY: Campaigns organize donations around specific fundraising goals.
+ *      The list shows each campaign's name, goal, amount raised, status,
+ *      and date range. The raised amount is a live sum from sp_donations.
+ */
+function sp_render_campaigns_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
 
     $campaigns = $wpdb->get_results(
         "SELECT c.*,
@@ -93961,27 +94022,15 @@ function sp_render_campaigns_page(): void {
 }
 
 /**
- * Render the Campaign edit/add page.
+ * Create or edit a fundraising campaign.
  *
- * WHY: Simple form for creating or editing a fundraising campaign.
- *      Name and status are required; goal, description, and dates are optional.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_campaign_edit_page(): void {
+function sp_handle_campaign_edit_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
     $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
-    $campaign    = null;
-
-    if ( $campaign_id ) {
-        $campaign = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$prefix}campaigns WHERE id = %d", $campaign_id
-        ) );
-        if ( ! $campaign ) {
-            echo '<div class="wrap"><h1>' . esc_html__( 'Campaign Not Found', 'societypress' ) . '</h1><p><a href="' . esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ) . '">' . esc_html__( '&larr; Back', 'societypress' ) . '</a></p></div>';
-            return;
-        }
-    }
 
     // Handle save
     if ( $_SERVER['REQUEST_METHOD'] === 'POST' && isset( $_POST['sp_campaign_nonce'] ) ) {
@@ -93989,7 +94038,7 @@ function sp_render_campaign_edit_page(): void {
 
         $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
         if ( ! $name ) {
-            echo '<div class="notice notice-error"><p>' . esc_html__( 'Campaign name is required.', 'societypress' ) . '</p></div>';
+            sp_screen_post_error( __( 'Campaign name is required.', 'societypress' ) );
         } else {
             $data = [
                 'name'        => $name,
@@ -94013,6 +94062,35 @@ function sp_render_campaign_edit_page(): void {
             wp_redirect( admin_url( 'admin.php?page=sp-campaigns&saved=1' ) );
             exit;
         }
+    }
+}
+sp_handle_screen_post( 'sp-campaign-edit', 'sp_handle_campaign_edit_post' );
+
+/**
+ * Render the Campaign edit/add page.
+ *
+ * WHY: Simple form for creating or editing a fundraising campaign.
+ *      Name and status are required; goal, description, and dates are optional.
+ */
+function sp_render_campaign_edit_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $campaign_id = (int) ( $_GET['campaign_id'] ?? 0 );
+    $campaign    = null;
+
+    if ( $campaign_id ) {
+        $campaign = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}campaigns WHERE id = %d", $campaign_id
+        ) );
+        if ( ! $campaign ) {
+            echo '<div class="wrap"><h1>' . esc_html__( 'Campaign Not Found', 'societypress' ) . '</h1><p><a href="' . esc_url( admin_url( 'admin.php?page=sp-campaigns' ) ) . '">' . esc_html__( '&larr; Back', 'societypress' ) . '</a></p></div>';
+            return;
+        }
+    }
+
+    if ( sp_screen_post_error() ) {
+        echo '<div class="notice notice-error"><p>' . esc_html( sp_screen_post_error() ) . '</p></div>';
     }
 
     ?>
@@ -121485,14 +121563,11 @@ function sp_check_schedule_reminders(): void {
 add_action( 'init', 'sp_check_schedule_reminders' );
 
 /**
- * Checks in the Mail: everything someone promised to pay by mailed check.
+ * Checks in the Mail: mark a check received or never arrived.
  *
- * WHY its own screen: checks for dues, events, orders and donations arrive in
- *      the same envelope pile. The treasurer opening the mail shouldn't have to
- *      know which part of the admin each one belongs to — they look up the
- *      memo code here and mark it received.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_checks_page(): void {
+function sp_handle_checks_post(): void {
     if ( isset( $_POST['sp_check_outcome'], $_POST['sp_check_source'], $_POST['sp_check_id'] ) ) {
         $source = sanitize_key( wp_unslash( $_POST['sp_check_source'] ) );
         $id     = (int) $_POST['sp_check_id'];
@@ -121502,7 +121577,18 @@ function sp_render_checks_page(): void {
         wp_safe_redirect( admin_url( 'admin.php?page=sp-checks&done=' . $outcome ) );
         exit;
     }
+}
+sp_handle_screen_post( 'sp-checks', 'sp_handle_checks_post' );
 
+/**
+ * Checks in the Mail: everything someone promised to pay by mailed check.
+ *
+ * WHY its own screen: checks for dues, events, orders and donations arrive in
+ *      the same envelope pile. The treasurer opening the mail shouldn't have to
+ *      know which part of the admin each one belongs to — they look up the
+ *      memo code here and mark it received.
+ */
+function sp_render_checks_page(): void {
     $checks = sp_checks_pending();
     $kinds  = sp_check_pledge_kinds();
     $done   = sanitize_key( wp_unslash( $_GET['done'] ?? '' ) );

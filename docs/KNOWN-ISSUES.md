@@ -64,6 +64,11 @@ The correct shape is to handle POST on `admin_init` or `load-{$page_hook}`, befo
 any output, and leave the render function to render. That is the standard
 WordPress pattern and makes post/redirect/get work without any help.
 
+**Progress.** Moved so far, using `sp_handle_screen_post()`: Modules settings;
+Donations, donation edit, Campaigns, campaign edit, Checks in the Mail
+(1.5.142). Each group was tested by saving real forms on the demo site with the
+debug log watched.
+
 That means lifting the handler out of each of ~30 render functions, where it is
 currently threaded through the markup it prints. It wants its own session, done
 screen group by screen group with a test after each, rather than one sweep. The

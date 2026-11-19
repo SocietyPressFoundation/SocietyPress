@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.142] — 2026-11-18
+
+- Donations, recording or editing a donation, Campaigns, editing a campaign, and Checks in the Mail now save before the screen is drawn, the standard WordPress way. Nothing looks different; it removes the reliance on holding the page open so the screen can move on after a save. First group of the admin-screen cleanup in docs/KNOWN-ISSUES.md.
+
 ## [1.5.141] — 2026-11-18
 
 - WordPress's Export Personal Data and Erase Personal Data tools now cover research requests, store orders and voting. Erasing keeps what the books and election results need (amounts paid, order totals, vote counts) and removes the name, contact details, address, research question and messages. Votes on open ballots lose the voter's name, just like a secret ballot; the record that the person voted is kept so turnout stays right. Orders not yet shipped and research still being worked are left alone, with a note saying so.

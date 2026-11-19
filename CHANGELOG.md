@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.143] — 2026-11-18
+
+- Finances, Record Payment, Pages, the form editor and form submissions now do their saving and deleting before the screen is drawn. Second group of the admin-screen cleanup; nothing looks different.
+
 ## [1.5.142] — 2026-11-18
 
 - Donations, recording or editing a donation, Campaigns, editing a campaign, and Checks in the Mail now save before the screen is drawn, the standard WordPress way. Nothing looks different; it removes the reliance on holding the page open so the screen can move on after a save. First group of the admin-screen cleanup in docs/KNOWN-ISSUES.md.

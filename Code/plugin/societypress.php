@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.142
+ * Version:     1.5.143
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.142' );
+define( 'SOCIETYPRESS_VERSION', '1.5.143' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -13540,14 +13540,25 @@ add_action( 'admin_init', function () {
  * @param callable $handler Runs before output; expected to redirect and exit.
  */
 function sp_handle_screen_post( string $slug, callable $handler ): void {
-    $run = static function () use ( $handler ) {
+    sp_handle_screen_load( $slug, static function () use ( $handler ) {
         if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) !== 'POST' ) {
             return;
         }
         $handler();
-    };
-    add_action( 'load-societypress_page_' . $slug, $run );
-    add_action( 'load-admin_page_' . $slug, $run );
+    } );
+}
+
+/**
+ * Like sp_handle_screen_post(), but runs on every request for the screen.
+ *
+ * WHY: some screens act on a plain link click too — a bulk-action dropdown
+ * that submits by GET, a nonce-guarded delete link, a "this moved" redirect.
+ * Those need the same before-output timing. The handler checks its own
+ * conditions and simply returns when there's nothing to do.
+ */
+function sp_handle_screen_load( string $slug, callable $handler ): void {
+    add_action( 'load-societypress_page_' . $slug, $handler );
+    add_action( 'load-admin_page_' . $slug, $handler );
 }
 
 /**
@@ -39007,13 +39018,11 @@ function sp_get_page_type_labels(): array {
 
 
 /**
- * Render the Pages list page.
+ * Pages list: delete one page, or several from the bulk-action menu.
  *
- * Shows the SP-native pages list with search, bulk actions, and pagination.
- * Pattern matches sp_render_members_page().
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_pages_page(): void {
-
+function sp_handle_pages_actions(): void {
     // Handle single delete action — POST-only to prevent browser prefetch / link-preview accidents
     if ( ( $_POST['action'] ?? '' ) === 'delete'
          && isset( $_POST['post_id'] ) && ! is_array( $_POST['post_id'] ) ) {
@@ -39038,6 +39047,16 @@ function sp_render_pages_page(): void {
         wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=' . $count ) );
         exit;
     }
+}
+sp_handle_screen_load( 'sp-pages', 'sp_handle_pages_actions' );
+
+/**
+ * Render the Pages list page.
+ *
+ * Shows the SP-native pages list with search, bulk actions, and pagination.
+ * Pattern matches sp_render_members_page().
+ */
+function sp_render_pages_page(): void {
 
     $table = new SP_Pages_List_Table();
     $table->prepare_items();
@@ -40599,14 +40618,11 @@ function sp_ajax_export_payments(): void {
 }
 
 /**
- * Render the main Finances page — shows all payment transactions across
- * all members, with summary stats, filtering, and search.
+ * Finances: delete a recorded payment.
  *
- * WHY: The treasurer needs a single view of all financial activity. Previously,
- *      payments were only visible per-member in the member edit form. This page
- *      aggregates everything and adds filtering by type, method, and date range.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_finances_page(): void {
+function sp_handle_finances_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -40617,6 +40633,20 @@ function sp_render_finances_page(): void {
         wp_redirect( admin_url( 'admin.php?page=sp-finances&deleted=1' ) );
         exit;
     }
+}
+sp_handle_screen_post( 'sp-finances', 'sp_handle_finances_post' );
+
+/**
+ * Render the main Finances page — shows all payment transactions across
+ * all members, with summary stats, filtering, and search.
+ *
+ * WHY: The treasurer needs a single view of all financial activity. Previously,
+ *      payments were only visible per-member in the member edit form. This page
+ *      aggregates everything and adds filtering by type, method, and date range.
+ */
+function sp_render_finances_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
 
     // Filters
     $filters       = sp_finances_filters_from_request();
@@ -40870,15 +40900,11 @@ function sp_render_finances_page(): void {
 }
 
 /**
- * Render the Record Payment page — a standalone form to add a payment
- * for any member.
+ * Record a payment by hand.
  *
- * WHY: The member edit page lets you add payments for one member at a time,
- *      but sometimes the treasurer has a stack of checks to enter and wants
- *      to do them quickly without navigating to each member's edit page.
- *      This page lets them pick a member and record payment in one step.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_record_payment_page(): void {
+function sp_handle_record_payment_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -40890,7 +40916,7 @@ function sp_render_record_payment_page(): void {
         $amount  = floatval( $_POST['amount'] ?? 0 );
 
         if ( ! $user_id || $amount <= 0 ) {
-            echo '<div class="notice notice-error"><p>' . esc_html__( 'Please select a member and enter a valid amount.', 'societypress' ) . '</p></div>';
+            sp_screen_post_error( __( 'Please select a member and enter a valid amount.', 'societypress' ) );
         } else {
             $wpdb->insert( $prefix . 'member_payments', [
                 'user_id'     => $user_id,
@@ -40906,6 +40932,25 @@ function sp_render_record_payment_page(): void {
             wp_redirect( admin_url( 'admin.php?page=sp-finances&recorded=1' ) );
             exit;
         }
+    }
+}
+sp_handle_screen_post( 'sp-record-payment', 'sp_handle_record_payment_post' );
+
+/**
+ * Render the Record Payment page — a standalone form to add a payment
+ * for any member.
+ *
+ * WHY: The member edit page lets you add payments for one member at a time,
+ *      but sometimes the treasurer has a stack of checks to enter and wants
+ *      to do them quickly without navigating to each member's edit page.
+ *      This page lets them pick a member and record payment in one step.
+ */
+function sp_render_record_payment_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    if ( sp_screen_post_error() ) {
+        echo '<div class="notice notice-error"><p>' . esc_html( sp_screen_post_error() ) . '</p></div>';
     }
 
     // Print the autocomplete CSS/JS at body top, before the form table, so the
@@ -41783,7 +41828,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.142',
+            'version'     => '1.5.143',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41791,7 +41836,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.142',
+            'version'     => '1.5.143',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41799,7 +41844,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.142',
+            'version'     => '1.5.143',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41807,7 +41852,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.142',
+            'version'     => '1.5.143',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41815,7 +41860,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.142',
+            'version'     => '1.5.143',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -135743,14 +135788,16 @@ function sp_render_forms_admin_page(): void {
 // ----------------------------------------------------------------------------
 
 /**
- * Render the form editor: field builder + email-delivery settings.
+ * Form editor: send surveys to their own screen, and save.
+ *
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_form_edit_page(): void {
+function sp_handle_form_edit_actions(): void {
     if ( ! sp_module_enabled( 'forms' ) ) {
-        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+        return;
     }
     if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You do not have permission to manage forms.', 'societypress' ) );
+        return; // The screen itself says why.
     }
 
     global $wpdb;
@@ -135772,6 +135819,23 @@ function sp_render_form_edit_page(): void {
         wp_safe_redirect( admin_url( 'admin.php?page=sp-form-edit&form_id=' . $form_id . '&saved=1' ) );
         exit;
     }
+}
+sp_handle_screen_load( 'sp-form-edit', 'sp_handle_form_edit_actions' );
+
+/**
+ * Render the form editor: field builder + email-delivery settings.
+ */
+function sp_render_form_edit_page(): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $form_id = absint( $_GET['form_id'] ?? 0 );
 
     $form   = $form_id ? sp_get_form( $form_id ) : null;
     $fields = sp_forms_get_fields( $form );
@@ -136359,22 +136423,25 @@ class SP_Form_Submissions_List_Table extends WP_List_Table {
 }
 
 /**
- * Render the submissions admin page for one form (list, detail, CSV export).
+ * Form submissions: send surveys to their results, delete, mark read.
+ *
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_form_submissions_page(): void {
+function sp_handle_form_submissions_actions(): void {
     if ( ! sp_module_enabled( 'forms' ) ) {
-        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+        return;
     }
     if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
-        wp_die( esc_html__( 'You do not have permission to view form submissions.', 'societypress' ) );
+        return; // The screen itself says why.
     }
 
     global $wpdb;
     $prefix  = $wpdb->prefix . 'sp_';
     $form_id = absint( $_GET['form_id'] ?? 0 );
-    $form    = sp_get_form( $form_id );
+
+    $form = sp_get_form( $form_id );
     if ( ! $form ) {
-        wp_die( esc_html__( 'Form not found.', 'societypress' ) );
+        return; // The screen itself says so.
     }
 
     // A survey's answers are read on the survey's own Results tab. This
@@ -136423,6 +136490,29 @@ function sp_render_form_submissions_page(): void {
         wp_safe_redirect( $list_url );
         exit;
     }
+}
+sp_handle_screen_load( 'sp-form-submissions', 'sp_handle_form_submissions_actions' );
+
+/**
+ * Render the submissions admin page for one form (list, detail, CSV export).
+ */
+function sp_render_form_submissions_page(): void {
+    if ( ! sp_module_enabled( 'forms' ) ) {
+        wp_die( esc_html__( 'The Forms module is not enabled.', 'societypress' ) );
+    }
+    if ( ! current_user_can( 'sp_manage_content' ) && ! current_user_can( 'manage_options' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view form submissions.', 'societypress' ) );
+    }
+
+    global $wpdb;
+    $prefix  = $wpdb->prefix . 'sp_';
+    $form_id = absint( $_GET['form_id'] ?? 0 );
+    $form    = sp_get_form( $form_id );
+    if ( ! $form ) {
+        wp_die( esc_html__( 'Form not found.', 'societypress' ) );
+    }
+
+    $list_url = admin_url( 'admin.php?page=sp-form-submissions&form_id=' . $form_id );
 
     // Detail view of a single submission.
     if ( isset( $_GET['submission_id'] ) ) {

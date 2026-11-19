@@ -66,7 +66,9 @@ WordPress pattern and makes post/redirect/get work without any help.
 
 **Progress.** Moved so far, using `sp_handle_screen_post()`: Modules settings;
 Donations, donation edit, Campaigns, campaign edit, Checks in the Mail
-(1.5.142). Each group was tested by saving real forms on the demo site with the
+(1.5.142). Finances, Record Payment, Pages, form editor, form
+submissions (1.5.143; screens that also act on a plain link click use
+`sp_handle_screen_load()`). Each group was tested by saving real forms on the demo site with the
 debug log watched.
 
 That means lifting the handler out of each of ~30 render functions, where it is

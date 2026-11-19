@@ -16,6 +16,10 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Secret ballots — 1.5.140
+
+A ballot can be marked secret. The record of who voted is kept, so members still can't vote twice, but the votes themselves are stored with no member and no time attached.
+
 ### Paid research is for researchers — 1.5.63
 
 Open paid research cases, and the button to claim one, are now limited to
@@ -141,18 +145,6 @@ under the symptom, not the fix.
 diagnosis and the rule against widening the buffer are in
 [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md). Also still owed: one person
 saving a real form and confirming the debug log stays clean.
-**Blockers:** None.
-
-#### Secret ballots
-
-**Motivation:** Many bylaws require board elections by secret ballot. Today
-every vote is stored with the member who cast it (`sp_ballot_votes.user_id`),
-so a society bound by that rule can't run its election online. Members never
-see who voted for what, but anyone with database access could.
-**Scope:** A "Secret ballot" choice on the ballot. One-vote-per-member stays
-enforced through `sp_ballot_voters`, which records only *that* someone voted;
-the votes themselves are written with no member attached, and nothing on the
-results screen, CSV export or privacy export can join them back.
 **Blockers:** None.
 
 #### Privacy export and erase: research cases, store orders, ballots

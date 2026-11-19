@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.140] — 2026-11-18
+
+**Secret ballots.** A ballot can now be set to "Secret Ballot." SocietyPress still records that each member voted, so nobody can vote twice and turnout still counts, but it doesn't record how anyone voted. Not even an administrator looking at the database can find out. The choice is on the ballot's Options. It's locked once voting starts, so the rules can't change partway through an election.
+
 ## [1.5.139] — 2026-11-18
 
 **Bring periodical issue lists over from EasyNetSites.** The EasyNetSites catalog export includes each periodical but not its list of issues on hand. Library Import now has a "Bring Over Periodical Issues" step: paste the old website's address and SocietyPress copies each periodical's issue list from it. Periodicals that already have issues are left alone, so the step is safe to run again. If the old site can't be reached, it says so and suggests trying again later.

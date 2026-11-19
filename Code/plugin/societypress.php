@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.139
+ * Version:     1.5.140
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.139' );
+define( 'SOCIETYPRESS_VERSION', '1.5.140' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2830,6 +2830,7 @@ function sp_create_tables(): void {
         voting_start      DATETIME            NULL,
         voting_end        DATETIME            NULL,
         allow_abstain     TINYINT(1)          NOT NULL DEFAULT 1,
+        secret_ballot     TINYINT(1)          NOT NULL DEFAULT 0,
         results_visibility VARCHAR(20)        NOT NULL DEFAULT 'after_close',
         created_by        BIGINT(20) UNSIGNED NULL,
         created_at        DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2889,14 +2890,20 @@ function sp_create_tables(): void {
     //      votes impossible — the second selection collided and the whole
     //      ballot rolled back. choice_id is NULL for abstain votes — this lets
     //      us distinguish "voted but abstained" from "didn't vote at all."
+    //
+    //      On a secret ballot, user_id AND voted_at are both NULL. Dropping
+    //      the time matters as much as dropping the member: a vote stamped at
+    //      the same second as a row in ballot_voters names its voter anyway.
+    //      NULL user_id also never collides in the unique key, so any number
+    //      of secret voters can pick the same choice.
     // ========================================================================
     dbDelta( "CREATE TABLE {$prefix}ballot_votes (
         id          BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         ballot_id   BIGINT(20) UNSIGNED NOT NULL,
         question_id BIGINT(20) UNSIGNED NOT NULL,
         choice_id   BIGINT(20) UNSIGNED NULL,
-        user_id     BIGINT(20) UNSIGNED NOT NULL,
-        voted_at    DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        user_id     BIGINT(20) UNSIGNED NULL,
+        voted_at    DATETIME            NULL,
         PRIMARY KEY (id),
         UNIQUE KEY question_user_choice (question_id, user_id, choice_id),
         KEY ballot_id (ballot_id),
@@ -41753,7 +41760,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.139',
+            'version'     => '1.5.140',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41761,7 +41768,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.139',
+            'version'     => '1.5.140',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41769,7 +41776,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.139',
+            'version'     => '1.5.140',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41777,7 +41784,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.139',
+            'version'     => '1.5.140',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41785,7 +41792,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.139',
+            'version'     => '1.5.140',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -114806,8 +114813,16 @@ add_action( 'admin_init', function () {
         'voting_start'       => $voting_start,
         'voting_end'         => $voting_end,
         'allow_abstain'      => ! empty( $_POST['allow_abstain'] ) ? 1 : 0,
+        'secret_ballot'      => ! empty( $_POST['secret_ballot'] ) ? 1 : 0,
         'results_visibility' => $results_visibility,
     ];
+
+    // WHY frozen once anyone has voted: switching it on later would promise
+    // secrecy for votes already stored with names; switching it off would
+    // change the rules mid-election for the people still to vote.
+    if ( $ballot_id > 0 && $wpdb->get_var( $wpdb->prepare( "SELECT 1 FROM {$prefix}ballot_voters WHERE ballot_id = %d LIMIT 1", $ballot_id ) ) ) {
+        unset( $data['secret_ballot'] );
+    }
 
     // ---- Insert or update the ballot ----
     if ( $ballot_id > 0 ) {
@@ -115050,7 +115065,7 @@ function sp_render_voting_frontend(): void {
         $open_ballot_ids  = array_map( 'intval', array_column( (array) $open_ballots, 'id' ) );
         $id_placeholders  = implode( ',', array_fill( 0, count( $open_ballot_ids ), '%d' ) );
         $voted_ballot_ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT DISTINCT ballot_id FROM {$prefix}ballot_votes WHERE user_id = %d AND ballot_id IN ({$id_placeholders})",
+            "SELECT DISTINCT ballot_id FROM {$prefix}ballot_voters WHERE user_id = %d AND ballot_id IN ({$id_placeholders})",
             $user_id,
             ...$open_ballot_ids
         ) );
@@ -115583,7 +115598,7 @@ class SP_Ballots_List_Table extends WP_List_Table {
 
             case 'votes_cast':
                 $count = (int) $wpdb->get_var( $wpdb->prepare(
-                    "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d",
+                    "SELECT COUNT(*) FROM {$prefix}ballot_voters WHERE ballot_id = %d",
                     $item->id
                 ) );
                 return esc_html( (string) $count );
@@ -115954,6 +115969,20 @@ function sp_render_ballot_edit_page(): void {
                     </td>
                 </tr>
                 <tr>
+                    <th scope="col"><?php esc_html_e( 'Secret Ballot', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="secret_ballot" value="1"
+                                   <?php checked( $ballot->secret_ballot ?? 0, 1 ); ?>
+                                   <?php disabled( $has_votes ); ?>>
+                            <?php esc_html_e( 'Keep every vote secret. SocietyPress records that a member voted, but not how they voted, so nobody can ever look it up, not even an administrator.', 'societypress' ); ?>
+                        </label>
+                        <?php if ( $has_votes ) : ?>
+                            <p class="description"><?php esc_html_e( 'This can’t be changed now that voting has started.', 'societypress' ); ?></p>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="col"><label for="sp-results-vis"><?php esc_html_e( 'Results Visibility', 'societypress' ); ?></label></th>
                     <td>
                         <select name="results_visibility" id="sp-results-vis">
@@ -116262,7 +116291,7 @@ function sp_render_ballot_results_page(): void {
     }
 
     $total_voters = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(DISTINCT user_id) FROM {$prefix}ballot_votes WHERE ballot_id = %d",
+        "SELECT COUNT(*) FROM {$prefix}ballot_voters WHERE ballot_id = %d",
         $ballot_id
     ) );
 
@@ -116505,7 +116534,8 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     }
 
     // ---- Check voting period ----
-    $now = current_time( 'mysql' );
+    $now    = current_time( 'mysql' );
+    $secret = ! empty( $ballot->secret_ballot );
     if ( $ballot->voting_start && $now < $ballot->voting_start ) {
         wp_send_json_error( __( 'Voting has not started yet.', 'societypress' ) );
     }
@@ -116533,7 +116563,7 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     // two concurrent submissions can both pass it. The real, atomic gate is the
     // INSERT IGNORE into ballot_voters inside the transaction below.
     $already_voted = (int) $wpdb->get_var( $wpdb->prepare(
-        "SELECT COUNT(*) FROM {$prefix}ballot_votes WHERE ballot_id = %d AND user_id = %d",
+        "SELECT COUNT(*) FROM {$prefix}ballot_voters WHERE ballot_id = %d AND user_id = %d",
         $ballot_id, $user_id
     ) );
     if ( $already_voted > 0 ) {
@@ -116585,8 +116615,8 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
                 'ballot_id'   => $ballot_id,
                 'question_id' => (int) $question->id,
                 'choice_id'   => null,
-                'user_id'     => $user_id,
-                'voted_at'    => $now,
+                'user_id'     => $secret ? null : $user_id,
+                'voted_at'    => $secret ? null : $now,
             ];
             continue;
         }
@@ -116600,8 +116630,8 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
                 'ballot_id'   => $ballot_id,
                 'question_id' => (int) $question->id,
                 'choice_id'   => null,
-                'user_id'     => $user_id,
-                'voted_at'    => $now,
+                'user_id'     => $secret ? null : $user_id,
+                'voted_at'    => $secret ? null : $now,
             ];
             continue;
         }
@@ -116628,8 +116658,8 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
                 'ballot_id'   => $ballot_id,
                 'question_id' => (int) $question->id,
                 'choice_id'   => $choice_id,
-                'user_id'     => $user_id,
-                'voted_at'    => $now,
+                'user_id'     => $secret ? null : $user_id,
+                'voted_at'    => $secret ? null : $now,
             ];
         }
     }
@@ -116645,7 +116675,8 @@ add_action( 'wp_ajax_sp_submit_vote', function () {
     // recorded. This closes the race for single-select questions too.
     $claimed = $wpdb->query( $wpdb->prepare(
         "INSERT IGNORE INTO {$prefix}ballot_voters (ballot_id, user_id, voted_at) VALUES (%d, %d, %s)",
-        $ballot_id, $user_id, $now
+        // Day only on a secret ballot, so the time can't be matched to a vote.
+        $ballot_id, $user_id, $secret ? substr( $now, 0, 10 ) . ' 00:00:00' : $now
     ) );
     if ( $claimed !== 1 ) {
         $wpdb->query( 'ROLLBACK' );

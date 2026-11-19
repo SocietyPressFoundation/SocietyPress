@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.140
+ * Version:     1.5.141
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.140' );
+define( 'SOCIETYPRESS_VERSION', '1.5.141' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41760,7 +41760,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.140',
+            'version'     => '1.5.141',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41768,7 +41768,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.140',
+            'version'     => '1.5.141',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41776,7 +41776,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.140',
+            'version'     => '1.5.141',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41784,7 +41784,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.140',
+            'version'     => '1.5.141',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41792,7 +41792,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.140',
+            'version'     => '1.5.141',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -95306,6 +95306,363 @@ function sp_privacy_erase_donation_data( string $email_address, int $page = 1 ):
             : [],
         'done'           => true,
     ];
+}
+
+// ============================================================================
+// Privacy export and erase: research cases, store orders, ballots
+//
+// WHY: WordPress's Export / Erase Personal Data tools only find what a plugin
+//      tells them about. Without these, a society answering a request would
+//      have to dig through three more screens by hand. Same rule as donations:
+//      keep what the books and the election results need, remove what points
+//      at the person.
+//
+//      Work that's still underway is left alone and reported: erasing the
+//      address on an order that hasn't shipped, or the question on a case a
+//      researcher is working, would break a job the person paid for. The
+//      admin finishes or cancels it, then runs the erase again.
+// ============================================================================
+
+add_filter( 'wp_privacy_personal_data_exporters', function ( $exporters ) {
+    $exporters['societypress-research'] = [
+        'exporter_friendly_name' => __( 'SocietyPress Research Requests', 'societypress' ),
+        'callback'               => 'sp_privacy_export_research_data',
+    ];
+    $exporters['societypress-orders'] = [
+        'exporter_friendly_name' => __( 'SocietyPress Store Orders', 'societypress' ),
+        'callback'               => 'sp_privacy_export_order_data',
+    ];
+    $exporters['societypress-ballots'] = [
+        'exporter_friendly_name' => __( 'SocietyPress Voting', 'societypress' ),
+        'callback'               => 'sp_privacy_export_ballot_data',
+    ];
+    return $exporters;
+} );
+
+add_filter( 'wp_privacy_personal_data_erasers', function ( $erasers ) {
+    $erasers['societypress-research'] = [
+        'eraser_friendly_name' => __( 'SocietyPress Research Requests', 'societypress' ),
+        'callback'             => 'sp_privacy_erase_research_data',
+    ];
+    $erasers['societypress-orders'] = [
+        'eraser_friendly_name' => __( 'SocietyPress Store Orders', 'societypress' ),
+        'callback'             => 'sp_privacy_erase_order_data',
+    ];
+    $erasers['societypress-ballots'] = [
+        'eraser_friendly_name' => __( 'SocietyPress Voting', 'societypress' ),
+        'callback'             => 'sp_privacy_erase_ballot_data',
+    ];
+    return $erasers;
+} );
+
+/**
+ * Research cases the person asked for, matched by account or by the email
+ * they typed (non-members can request research).
+ */
+function sp_privacy_research_cases_for( string $email_address ): array {
+    global $wpdb;
+    $user = get_user_by( 'email', $email_address );
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_research_cases
+         WHERE requester_email = %s OR ( %d > 0 AND requester_user_id = %d )
+         ORDER BY created_at DESC",
+        $email_address, $user ? $user->ID : 0, $user ? $user->ID : 0
+    ) );
+}
+
+function sp_privacy_export_research_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $items = [];
+
+    foreach ( sp_privacy_research_cases_for( $email_address ) as $case ) {
+        $data = [
+            [ 'name' => __( 'Name', 'societypress' ),            'value' => $case->requester_name ],
+            [ 'name' => __( 'Email', 'societypress' ),           'value' => $case->requester_email ],
+            [ 'name' => __( 'Phone', 'societypress' ),           'value' => $case->requester_phone ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Request', 'societypress' ),         'value' => $case->title ],
+            [ 'name' => __( 'Details', 'societypress' ),         'value' => $case->description ],
+            [ 'name' => __( 'Ancestor', 'societypress' ),        'value' => $case->ancestor_name ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Surname', 'societypress' ),         'value' => $case->surname ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Time Period', 'societypress' ),     'value' => $case->time_period ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Place', 'societypress' ),           'value' => $case->location ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Anything Else', 'societypress' ),   'value' => $case->additional_details ?: __( '(none)', 'societypress' ) ],
+            [ 'name' => __( 'Amount Paid', 'societypress' ),     'value' => sp_format_currency( $case->paid_amount ) ],
+            [ 'name' => __( 'Status', 'societypress' ),          'value' => $case->status ],
+            [ 'name' => __( 'Requested', 'societypress' ),       'value' => $case->created_at ],
+        ];
+
+        // The conversation is part of what the person gave us and got back.
+        $messages = $wpdb->get_results( $wpdb->prepare(
+            "SELECT sender_name, body, created_at FROM {$wpdb->prefix}sp_research_messages WHERE case_id = %d ORDER BY created_at",
+            $case->id
+        ) );
+        foreach ( $messages as $msg ) {
+            $data[] = [
+                /* translators: 1: date, 2: sender name */
+                'name'  => sprintf( __( 'Message, %1$s, from %2$s', 'societypress' ), $msg->created_at, $msg->sender_name ?: __( 'the society', 'societypress' ) ),
+                'value' => wp_strip_all_tags( $msg->body ),
+            ];
+        }
+
+        $items[] = [
+            'group_id'          => 'societypress-research',
+            'group_label'       => __( 'Research Requests', 'societypress' ),
+            'group_description' => __( 'Research you asked the society to do.', 'societypress' ),
+            'item_id'           => 'research-' . $case->id,
+            'data'              => $data,
+        ];
+    }
+
+    return [ 'data' => $items, 'done' => true ];
+}
+
+/**
+ * WHY keep the row: the fee, hours and dates are the society's income
+ * record. Everything else — who asked, about whose family, and the whole
+ * conversation — goes.
+ */
+function sp_privacy_erase_research_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $removed  = 0;
+    $retained = 0;
+    $open     = 0;
+
+    foreach ( sp_privacy_research_cases_for( $email_address ) as $case ) {
+        if ( ! in_array( $case->status, [ 'completed', 'cancelled', 'refunded' ], true ) ) {
+            $open++;
+            $retained++;
+            continue;
+        }
+
+        $wpdb->update( $wpdb->prefix . 'sp_research_cases', [
+            'requester_user_id'  => null,
+            'requester_name'     => __( 'Removed', 'societypress' ),
+            'requester_email'    => '',
+            'requester_phone'    => null,
+            'title'              => __( 'Removed at the requester’s request', 'societypress' ),
+            'description'        => '',
+            'ancestor_name'      => null,
+            'surname'            => null,
+            'time_period'        => null,
+            'location'           => null,
+            'additional_details' => null,
+            'admin_note'         => null,
+        ], [ 'id' => $case->id ] );
+        $wpdb->delete( $wpdb->prefix . 'sp_research_messages', [ 'case_id' => $case->id ] );
+        $removed++;
+        $retained++;
+    }
+
+    $messages = [];
+    if ( $removed ) {
+        /* translators: %d: number of research requests */
+        $messages[] = sprintf( _n( '%d research request cleared. The amount paid and the dates were kept for the books.', '%d research requests cleared. The amounts paid and the dates were kept for the books.', $removed, 'societypress' ), $removed );
+    }
+    if ( $open ) {
+        /* translators: %d: number of research requests */
+        $messages[] = sprintf( _n( '%d research request is still being worked and was left alone. Finish or cancel it, then erase again.', '%d research requests are still being worked and were left alone. Finish or cancel them, then erase again.', $open, 'societypress' ), $open );
+    }
+
+    return [ 'items_removed' => $removed, 'items_retained' => $retained, 'messages' => $messages, 'done' => true ];
+}
+
+/**
+ * Store orders placed by the person, by account or by checkout email.
+ */
+function sp_privacy_orders_for( string $email_address ): array {
+    global $wpdb;
+    $user = get_user_by( 'email', $email_address );
+    return $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_orders
+         WHERE customer_email = %s OR ( %d > 0 AND user_id = %d )
+         ORDER BY created_at DESC",
+        $email_address, $user ? $user->ID : 0, $user ? $user->ID : 0
+    ) );
+}
+
+function sp_privacy_export_order_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $items = [];
+
+    foreach ( sp_privacy_orders_for( $email_address ) as $order ) {
+        $address = implode( ', ', array_filter( [
+            $order->shipping_address_1, $order->shipping_address_2, $order->shipping_city,
+            $order->shipping_state, $order->shipping_postal, $order->shipping_country,
+        ] ) );
+
+        $lines = $wpdb->get_results( $wpdb->prepare(
+            "SELECT title, quantity, line_total FROM {$wpdb->prefix}sp_order_items WHERE order_id = %d",
+            $order->id
+        ) );
+        $bought = [];
+        foreach ( $lines as $line ) {
+            $bought[] = sprintf( '%s × %d (%s)', $line->title, $line->quantity, sp_format_currency( $line->line_total ) );
+        }
+
+        $items[] = [
+            'group_id'          => 'societypress-orders',
+            'group_label'       => __( 'Store Orders', 'societypress' ),
+            'group_description' => __( 'Things you bought from the society’s store.', 'societypress' ),
+            'item_id'           => 'order-' . $order->id,
+            'data'              => [
+                [ 'name' => __( 'Order Number', 'societypress' ),     'value' => $order->id ],
+                [ 'name' => __( 'Date', 'societypress' ),             'value' => $order->created_at ],
+                [ 'name' => __( 'Name', 'societypress' ),             'value' => $order->customer_name ],
+                [ 'name' => __( 'Email', 'societypress' ),            'value' => $order->customer_email ],
+                [ 'name' => __( 'Phone', 'societypress' ),            'value' => $order->customer_phone ?: __( '(none)', 'societypress' ) ],
+                [ 'name' => __( 'Shipping Address', 'societypress' ), 'value' => $address ?: __( '(none)', 'societypress' ) ],
+                [ 'name' => __( 'Items', 'societypress' ),            'value' => implode( '; ', $bought ) ?: __( '(none)', 'societypress' ) ],
+                [ 'name' => __( 'Total', 'societypress' ),            'value' => sp_format_currency( $order->total ) ],
+                [ 'name' => __( 'Status', 'societypress' ),           'value' => $order->status ],
+            ],
+        ];
+    }
+
+    return [ 'data' => $items, 'done' => true ];
+}
+
+/**
+ * WHY keep the row: totals, tax and payment references are sales records
+ * the treasurer and the payment processor both rely on. The buyer's name,
+ * contact details and address go. Pending and paid-not-shipped orders are
+ * skipped so the parcel can still go out.
+ */
+function sp_privacy_erase_order_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $removed  = 0;
+    $retained = 0;
+    $open     = 0;
+
+    foreach ( sp_privacy_orders_for( $email_address ) as $order ) {
+        if ( in_array( $order->status, [ 'pending', 'paid' ], true ) ) {
+            $open++;
+            $retained++;
+            continue;
+        }
+
+        $wpdb->update( $wpdb->prefix . 'sp_orders', [
+            'user_id'            => null,
+            'customer_name'      => __( 'Removed', 'societypress' ),
+            'customer_email'     => '',
+            'customer_phone'     => null,
+            'shipping_address_1' => null,
+            'shipping_address_2' => null,
+            'shipping_city'      => null,
+            'shipping_state'     => null,
+            'shipping_postal'    => null,
+            'shipping_country'   => null,
+            'admin_note'         => null,
+        ], [ 'id' => $order->id ] );
+        $removed++;
+        $retained++;
+    }
+
+    $messages = [];
+    if ( $removed ) {
+        /* translators: %d: number of orders */
+        $messages[] = sprintf( _n( '%d store order cleared of name, contact details and address. Totals were kept for the books.', '%d store orders cleared of name, contact details and address. Totals were kept for the books.', $removed, 'societypress' ), $removed );
+    }
+    if ( $open ) {
+        /* translators: %d: number of orders */
+        $messages[] = sprintf( _n( '%d store order hasn’t shipped yet and was left alone. Ship or refund it, then erase again.', '%d store orders haven’t shipped yet and were left alone. Ship or refund them, then erase again.', $open, 'societypress' ), $open );
+    }
+
+    return [ 'items_removed' => $removed, 'items_retained' => $retained, 'messages' => $messages, 'done' => true ];
+}
+
+/**
+ * Ballots the person voted on, and on open (non-secret) ballots, how they
+ * voted. Secret ballots never recorded that, so there's nothing to show.
+ */
+function sp_privacy_export_ballot_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $items = [];
+    $user  = get_user_by( 'email', $email_address );
+    if ( ! $user ) {
+        return [ 'data' => $items, 'done' => true ];
+    }
+
+    $ballots = $wpdb->get_results( $wpdb->prepare(
+        "SELECT b.id, b.title, b.secret_ballot, v.voted_at
+         FROM {$wpdb->prefix}sp_ballot_voters v
+         JOIN {$wpdb->prefix}sp_ballots b ON b.id = v.ballot_id
+         WHERE v.user_id = %d
+         ORDER BY v.voted_at DESC",
+        $user->ID
+    ) );
+
+    foreach ( $ballots as $ballot ) {
+        $data = [
+            [ 'name' => __( 'Ballot', 'societypress' ), 'value' => $ballot->title ],
+            [ 'name' => __( 'Voted', 'societypress' ),  'value' => $ballot->secret_ballot ? substr( (string) $ballot->voted_at, 0, 10 ) : $ballot->voted_at ],
+        ];
+
+        if ( $ballot->secret_ballot ) {
+            $data[] = [ 'name' => __( 'Your Choices', 'societypress' ), 'value' => __( 'Secret ballot. How you voted was never recorded with your name.', 'societypress' ) ];
+        } else {
+            $choices = $wpdb->get_results( $wpdb->prepare(
+                "SELECT q.question_text, c.choice_text
+                 FROM {$wpdb->prefix}sp_ballot_votes vt
+                 JOIN {$wpdb->prefix}sp_ballot_questions q ON q.id = vt.question_id
+                 LEFT JOIN {$wpdb->prefix}sp_ballot_choices c ON c.id = vt.choice_id
+                 WHERE vt.ballot_id = %d AND vt.user_id = %d
+                 ORDER BY q.id",
+                $ballot->id, $user->ID
+            ) );
+            foreach ( $choices as $choice ) {
+                $data[] = [ 'name' => $choice->question_text, 'value' => $choice->choice_text ?: __( 'Abstained', 'societypress' ) ];
+            }
+        }
+
+        $items[] = [
+            'group_id'          => 'societypress-ballots',
+            'group_label'       => __( 'Voting', 'societypress' ),
+            'group_description' => __( 'Ballots you voted on.', 'societypress' ),
+            'item_id'           => 'ballot-' . $ballot->id,
+            'data'              => $data,
+        ];
+    }
+
+    return [ 'data' => $items, 'done' => true ];
+}
+
+/**
+ * WHY votes are unlinked, not deleted: deleting them would change an
+ * election's result after the fact. Taking the name off each vote makes it
+ * exactly like a secret-ballot vote.
+ *
+ * WHY the "voted" record stays: it's the society's list of who took part —
+ * the same as a signed sign-in sheet at a meeting. Removing it would lower
+ * the turnout on record and, on a ballot still open, let the person vote a
+ * second time.
+ */
+function sp_privacy_erase_ballot_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+    $user = get_user_by( 'email', $email_address );
+    if ( ! $user ) {
+        return [ 'items_removed' => 0, 'items_retained' => 0, 'messages' => [], 'done' => true ];
+    }
+
+    $unlinked = (int) $wpdb->query( $wpdb->prepare(
+        "UPDATE {$wpdb->prefix}sp_ballot_votes SET user_id = NULL, voted_at = NULL WHERE user_id = %d",
+        $user->ID
+    ) );
+    $ballots = (int) $wpdb->get_var( $wpdb->prepare(
+        "SELECT COUNT(*) FROM {$wpdb->prefix}sp_ballot_voters WHERE user_id = %d",
+        $user->ID
+    ) );
+
+    $messages = [];
+    if ( $unlinked ) {
+        /* translators: %d: number of votes */
+        $messages[] = sprintf( _n( '%d vote no longer shows who cast it. Ballot results are unchanged.', '%d votes no longer show who cast them. Ballot results are unchanged.', $unlinked, 'societypress' ), $unlinked );
+    }
+    if ( $ballots ) {
+        /* translators: %d: number of ballots */
+        $messages[] = sprintf( _n( 'The record that this person voted on %d ballot was kept, so turnout stays right and nobody can vote twice.', 'The record that this person voted on %d ballots was kept, so turnout stays right and nobody can vote twice.', $ballots, 'societypress' ), $ballots );
+    }
+
+    return [ 'items_removed' => $unlinked ? 1 : 0, 'items_retained' => $ballots ? 1 : 0, 'messages' => $messages, 'done' => true ];
 }
 
 // ============================================================================

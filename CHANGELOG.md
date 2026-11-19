@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.141] — 2026-11-18
+
+- WordPress's Export Personal Data and Erase Personal Data tools now cover research requests, store orders and voting. Erasing keeps what the books and election results need (amounts paid, order totals, vote counts) and removes the name, contact details, address, research question and messages. Votes on open ballots lose the voter's name, just like a secret ballot; the record that the person voted is kept so turnout stays right. Orders not yet shipped and research still being worked are left alone, with a note saying so.
+
 ## [1.5.140] — 2026-11-18
 
 **Secret ballots.** A ballot can now be set to "Secret Ballot." SocietyPress still records that each member voted, so nobody can vote twice and turnout still counts, but it doesn't record how anyone voted. Not even an administrator looking at the database can find out. The choice is on the ballot's Options. It's locked once voting starts, so the rules can't change partway through an election.

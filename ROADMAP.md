@@ -16,6 +16,10 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Privacy export and erase for research, store orders and voting — 1.5.141
+
+WordPress's privacy tools now find research requests, store orders and votes. Erasing keeps the money and the results, and removes the person.
+
 ### Secret ballots — 1.5.140
 
 A ballot can be marked secret. The record of who voted is kept, so members still can't vote twice, but the votes themselves are stored with no member and no time attached.
@@ -145,18 +149,6 @@ under the symptom, not the fix.
 diagnosis and the rule against widening the buffer are in
 [`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md). Also still owed: one person
 saving a real form and confirming the debug log stays clean.
-**Blockers:** None.
-
-#### Privacy export and erase: research cases, store orders, ballots
-
-**Motivation:** WordPress's Export and Erase Personal Data tools cover most of
-what SocietyPress holds, but not paid research cases (requester name, email
-and case details), store orders (customer name, email and address) or ballot
-votes (which record the voter). A society answering a deletion request has to
-find those by hand.
-**Scope:** Exporters and erasers for the three, following the donations
-pattern: keep what the books need (order totals, case fees, vote counts),
-remove what identifies the person.
 **Blockers:** None.
 
 #### Restore from a backup

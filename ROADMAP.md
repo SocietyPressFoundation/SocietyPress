@@ -16,6 +16,10 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Restore from a backup — 1.5.145 and 1.5.146
+
+Backups now hold the whole site (every table, plugins, themes, and the key to members' phone numbers and addresses), and Settings → Export & Backup can restore one — on the same site or a new host — replacing everything after first backing up the site as it is. Decisions made with Charles on 2026-11-18: replace rather than merge, works on a site with data, the person restoring always stays signed in, the key travels in the backup. Tested on the demo site through the real screen and onto a scratch install with a different prefix, keys and address.
+
 ### Admin screens save before they draw — 1.5.142 to 1.5.144
 
 Every SocietyPress admin screen now handles its saves and redirects before WordPress starts the page, the standard way, instead of relying on the page being held open.
@@ -142,26 +146,6 @@ the Forms builder; who can answer (members only, the public, chosen groups);
 and what happens to surveys already on existing sites.
 **Blockers:** The design questions above.
 
-#### Restore from a backup
-
-**Motivation:** Scheduled backups capture SocietyPress data, sign-in accounts,
-settings and uploaded files — but not pages, posts, menus, the media library's
-records, plugins or themes, and getting any of it back means phpMyAdmin by
-hand. A volunteer facing a dead host needs a button.
-**Decided with Charles (2026-11-18):**
-- Restore works on a site that already has data, not only a fresh install.
-- It **replaces** everything rather than merging, after automatically taking a
-  backup of the current site so a mistaken restore can be undone.
-- Backups cover the **entire site**: every database table, uploaded files,
-  and installed plugins and themes (including custom child themes).
-- The person running the restore can always still sign in: if their account
-  isn't in the backup it comes along as an administrator.
-- The backup carries the key that unlocks members' phone numbers and
-  addresses, so a restore works on any host; the backup screen says plainly
-  that the file must be guarded like a printed roster.
-- Off-site copies are a separate item, next after this.
-**Blockers:** None.
-
 #### Send backups off the server automatically
 
 **Motivation:** Backups are saved on the same server as the site, and the
@@ -170,7 +154,7 @@ host dies, the backups die with the site and Restore has nothing to restore.
 **Scope:** After each backup, copy it to a cloud account the society connects
 (Google Drive and Dropbox first), keeping the last few. Charles wants this soon
 after Restore ships (2026-11-18).
-**Blockers:** Restore from a backup.
+**Blockers:** None.
 
 ### Medium
 

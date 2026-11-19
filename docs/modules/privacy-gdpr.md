@@ -69,7 +69,7 @@ SocietyPress sets no tracking cookies — only the sign-in cookie, which doesn't
 
 The key is worked out from the secret keys in your site's `wp-config.php` (`AUTH_KEY` and `SECURE_AUTH_KEY`). Nothing to set up — but if those keys change or are lost, the encrypted fields can't be read again.
 
-When moving to a new host, either keep the same `wp-config.php` secret keys, or move with a SocietyPress backup, which stores those fields readable so they're re-encrypted on the new site. See [Backup & Restore](backup-restore.md).
+When moving to a new host, either keep the same `wp-config.php` secret keys, or move with a SocietyPress backup and its **Restore** button: the backup carries the key, and the restore locks the fields again with the new site's key. See [Backup & Restore](backup-restore.md).
 
 ## If something looks wrong
 

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.145
+ * Version:     1.5.146
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.145' );
+define( 'SOCIETYPRESS_VERSION', '1.5.146' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5849,7 +5849,7 @@ function sp_encrypt( string $plaintext ): string {
  * @return string|false The original plaintext, or false if decryption fails
  *                      (tampered data, wrong key, etc.).
  */
-function sp_decrypt( string $encrypted ) {
+function sp_decrypt( string $encrypted, ?string $key = null ) {
     if ( $encrypted === '' ) {
         return '';
     }
@@ -5874,7 +5874,8 @@ function sp_decrypt( string $encrypted ) {
         return false;
     }
 
-    $key        = sp_get_encryption_key();
+    // A restore passes the backup's own key to read data locked on another server.
+    $key        = $key ?? sp_get_encryption_key();
     $nonce_len  = SODIUM_CRYPTO_SECRETBOX_NONCEBYTES; // 24
 
     if ( strlen( $decoded ) < $nonce_len ) {
@@ -41444,6 +41445,10 @@ function sp_render_settings_export_page(): void {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup deleted.', 'societypress' ) . '</p></div>';
         } elseif ( $msg === 'ran' ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup created.', 'societypress' ) . '</p></div>';
+        } elseif ( $msg === 'uploaded' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup file uploaded. It’s in the list below — use its Restore button to restore it.', 'societypress' ) . '</p></div>';
+        } elseif ( $msg === 'restored' ) {
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'The site has been restored from the backup. The backup SocietyPress made of the site just before is in the list below, in case you need to undo this. If the backup came from another host, re-enter your payment settings if card payments don’t work.', 'societypress' ) . '</p></div>';
         }
 
         $settings  = sp_settings();
@@ -41529,9 +41534,13 @@ function sp_render_settings_export_page(): void {
                 echo '<td>' . esc_html( sp_format_wall_clock( $b->created_at, $date_fmt ) ) . '</td>';
                 echo '<td>' . esc_html( size_format( (int) $b->file_size ) ) . '</td>';
                 echo '<td>' . esc_html( implode( ', ', $inc ) ) . '</td>';
-                echo '<td>' . esc_html( $b->trigger_type === 'scheduled' ? __( 'Scheduled', 'societypress' ) : __( 'Manual', 'societypress' ) ) . '</td>';
+                $source = [ 'scheduled' => __( 'Scheduled', 'societypress' ), 'uploaded' => __( 'Uploaded', 'societypress' ) ][ $b->trigger_type ] ?? __( 'Manual', 'societypress' );
+                echo '<td>' . esc_html( $source ) . '</td>';
                 echo '<td>';
                 echo '<a href="' . esc_url( $dl ) . '" class="button button-small">' . esc_html__( 'Download', 'societypress' ) . '</a> ';
+                if ( $b->includes_db && sp_restore_allowed() ) {
+                    echo '<button type="button" class="button button-small sp-restore-btn" data-backup="' . (int) $b->id . '" data-when="' . esc_attr( sp_format_wall_clock( $b->created_at, $date_fmt ) ) . '">' . esc_html__( 'Restore', 'societypress' ) . '</button> ';
+                }
                 echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '" class="sp-inline" data-sp-confirm="' . esc_attr__( 'Delete this backup? This cannot be undone.', 'societypress' ) . '">';
                 echo '<input type="hidden" name="action" value="sp_delete_backup">';
                 echo '<input type="hidden" name="backup_id" value="' . (int) $b->id . '">';
@@ -41551,6 +41560,105 @@ function sp_render_settings_export_page(): void {
                 <button type="submit" class="button"><?php esc_html_e( 'Create a backup now', 'societypress' ); ?></button>
             </form>
         </p>
+
+        <?php if ( sp_restore_allowed() ) : ?>
+        <h2><?php esc_html_e( 'Restore a Backup', 'societypress' ); ?></h2>
+        <p class="description"><?php esc_html_e( 'Restoring puts the whole site back the way it was when the backup was made — members, pages, settings, sign-in accounts, plugins and themes. Everything on the site now is replaced. SocietyPress backs up the site as it is first, so a restore can be undone by restoring that backup.', 'societypress' ); ?></p>
+        <p class="description"><?php esc_html_e( 'To restore a backup from this list, use its Restore button. To restore a backup file saved on your computer — for example, after moving to a new host — upload it here first.', 'societypress' ); ?></p>
+        <p>
+            <input type="file" id="sp-restore-file" accept=".zip">
+            <button type="button" class="button" id="sp-restore-upload"><?php esc_html_e( 'Upload Backup File', 'societypress' ); ?></button>
+        </p>
+        <div id="sp-restore-progress" class="notice notice-info inline" hidden><p></p></div>
+        <script>
+        ( function () {
+            var ajax   = <?php echo wp_json_encode( admin_url( 'admin-ajax.php' ) ); ?>;
+            var nonce  = <?php echo wp_json_encode( wp_create_nonce( 'sp_restore' ) ); ?>;
+            var box    = document.getElementById( 'sp-restore-progress' );
+            var t      = <?php echo wp_json_encode( [
+                'pick'      => __( 'Choose a backup file first.', 'societypress' ),
+                'uploading' => __( 'Uploading: %s%…', 'societypress' ),
+                'uploaded'  => __( 'Uploaded. It now appears in the list above — use its Restore button.', 'societypress' ),
+                /* translators: %s: date and time the backup was made */
+                'confirm'   => __( 'Restore the backup from %s? Everything on the site now — members, pages, settings and sign-in accounts — will be replaced with what was in that backup. A backup of the site as it is now is made first.', 'societypress' ),
+                'starting'  => __( 'Making a backup of the site as it is now. This can take a few minutes…', 'societypress' ),
+                'failed'    => __( 'The restore stopped:', 'societypress' ),
+                'lost'      => __( 'Lost contact with the server. Reload this page to see where things stand.', 'societypress' ),
+                'leave'     => __( 'A restore is running. Leaving now will stop it partway.', 'societypress' ),
+            ] ); ?>;
+            var running = false;
+            function say( msg, kind ) {
+                box.hidden = false;
+                box.className = 'notice inline notice-' + ( kind || 'info' );
+                box.firstElementChild.textContent = msg;
+            }
+            function post( data, cb ) {
+                var fd = new FormData();
+                Object.keys( data ).forEach( function ( k ) { fd.append( k, data[ k ] ); } );
+                fetch( ajax, { method: 'POST', body: fd, credentials: 'same-origin' } )
+                    .then( function ( r ) { return r.json(); } )
+                    .then( cb )
+                    .catch( function () { running = false; say( t.lost, 'error' ); } );
+            }
+            window.addEventListener( 'beforeunload', function ( e ) { if ( running ) { e.preventDefault(); e.returnValue = t.leave; } } );
+
+            function step( secret ) {
+                post( { action: 'sp_restore_step', secret: secret }, function ( r ) {
+                    if ( ! r.success ) { running = false; say( t.failed + ' ' + r.data.message, 'error' ); return; }
+                    say( r.data.message );
+                    if ( r.data.done ) {
+                        running = false;
+                        window.location = <?php echo wp_json_encode( add_query_arg( 'sp_backup_msg', 'restored', admin_url( 'admin.php?page=sp-settings-export' ) ) ); ?>;
+                        return;
+                    }
+                    step( secret );
+                } );
+            }
+            document.querySelectorAll( '.sp-restore-btn' ).forEach( function ( btn ) {
+                btn.addEventListener( 'click', function () {
+                    if ( running ) { return; }
+                    spConfirm( t.confirm.replace( '%s', btn.dataset.when ), function () {
+                        running = true;
+                        say( t.starting );
+                        post( { action: 'sp_restore_start', _ajax_nonce: nonce, backup_id: btn.dataset.backup }, function ( r ) {
+                            if ( ! r.success ) { running = false; say( t.failed + ' ' + r.data.message, 'error' ); return; }
+                            say( r.data.message );
+                            step( r.data.secret );
+                        } );
+                    } );
+                } );
+            } );
+
+            document.getElementById( 'sp-restore-upload' ).addEventListener( 'click', function () {
+                var file = document.getElementById( 'sp-restore-file' ).files[0];
+                if ( ! file ) { say( t.pick, 'warning' ); return; }
+                var size  = 2 * 1024 * 1024;
+                var count = Math.max( 1, Math.ceil( file.size / size ) );
+                var token = Array.from( crypto.getRandomValues( new Uint8Array( 12 ) ), function ( b ) { return ( b % 36 ).toString( 36 ); } ).join( '' ) + 'aaaa';
+                running = true;
+                ( function send( i ) {
+                    say( t.uploading.replace( '%s', Math.round( i / count * 100 ) ) );
+                    var fd = new FormData();
+                    fd.append( 'action', 'sp_backup_upload_chunk' );
+                    fd.append( '_ajax_nonce', nonce );
+                    fd.append( 'token', token );
+                    fd.append( 'index', i );
+                    if ( i === count - 1 ) { fd.append( 'last', '1' ); }
+                    fd.append( 'chunk', file.slice( i * size, ( i + 1 ) * size ), 'chunk' );
+                    fetch( ajax, { method: 'POST', body: fd, credentials: 'same-origin' } )
+                        .then( function ( r ) { return r.json(); } )
+                        .then( function ( r ) {
+                            if ( ! r.success ) { running = false; say( r.data.message, 'error' ); return; }
+                            if ( i < count - 1 ) { send( i + 1 ); return; }
+                            running = false;
+                            window.location = <?php echo wp_json_encode( add_query_arg( 'sp_backup_msg', 'uploaded', admin_url( 'admin.php?page=sp-settings-export' ) ) ); ?>;
+                        } )
+                        .catch( function () { running = false; say( t.lost, 'error' ); } );
+                } )( 0 );
+            } );
+        } )();
+        </script>
+        <?php endif; ?>
     </div>
     <?php
 }
@@ -41831,7 +41939,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.145',
+            'version'     => '1.5.146',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41839,7 +41947,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.145',
+            'version'     => '1.5.146',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41847,7 +41955,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.145',
+            'version'     => '1.5.146',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41855,7 +41963,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.145',
+            'version'     => '1.5.146',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41863,7 +41971,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.145',
+            'version'     => '1.5.146',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -72015,7 +72123,11 @@ function sp_backup_export_table( string $table, string $output_dir ): int {
                     if ( $val === null ) {
                         $vals[] = 'NULL';
                     } else {
-                        $vals[] = "'" . $wpdb->_real_escape( $val ) . "'";
+                        // WHY remove_placeholder_escape(): _real_escape() swaps every
+                        // % for a random {hash} meant for prepare(), and writing that
+                        // to a file corrupts "20% off" in every backup. Backups made
+                        // before 1.5.146 carry the hash; restore turns it back into %.
+                        $vals[] = "'" . $wpdb->remove_placeholder_escape( $wpdb->_real_escape( $val ) ) . "'";
                     }
                 }
                 $value_rows[] = '(' . implode( ', ', $vals ) . ')';
@@ -72196,16 +72308,33 @@ function sp_backup_create_zip( string $source_dir, string $zip_path ): bool {
  *      completed backups and deletes the rest — both the ZIP file on disk
  *      and the metadata row in sp_backups.
  */
+/**
+ * The backup a restore is using right now, which pruning must not delete.
+ * Call with an ID to set it; with nothing to read it.
+ */
+function sp_backup_protected_id( ?int $id = null ): int {
+    static $protected = 0;
+    if ( null !== $id ) {
+        $protected = $id;
+    }
+    return $protected;
+}
+
 function sp_prune_old_backups(): void {
     global $wpdb;
     $settings  = sp_settings();
     $retention = max( 1, (int) ( $settings['backup_retention'] ?? 5 ) );
     $prefix    = $wpdb->prefix . 'sp_';
 
-    // Get all completed backups ordered newest-first
-    $backups = $wpdb->get_results(
-        "SELECT id, filename FROM {$prefix}backups WHERE status = 'complete' ORDER BY created_at DESC"
-    );
+    // Get all completed backups ordered newest-first. Two are never pruned:
+    // a file someone uploaded (it's theirs to delete, and its date is the day
+    // it was made, so it would otherwise look old and go at once), and the
+    // backup a restore is about to load — the restore's own safety backup
+    // runs this, and could otherwise delete the very file being restored.
+    $backups = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, filename FROM {$prefix}backups WHERE status = 'complete' AND trigger_type <> 'uploaded' AND id <> %d ORDER BY created_at DESC",
+        sp_backup_protected_id()
+    ) );
 
     // Keep the newest $retention, delete the rest
     if ( count( $backups ) <= $retention ) return;
@@ -72670,6 +72799,663 @@ add_action( 'admin_post_sp_run_backup_now', function () {
     sp_run_scheduled_backup( 'manual' );
     wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'ran', admin_url( 'admin.php?page=sp-settings-export' ) ) );
     exit;
+} );
+
+// ============================================================================
+// RESTORE FROM A BACKUP
+//
+// WHY: a backup nobody can load back is only half a backup. A volunteer whose
+//      host died needs a button, not phpMyAdmin and a table-prefix lesson.
+//
+// Decided with Charles (2026-11-18), see ROADMAP.md:
+//   - Works on a site that already has data, and REPLACES rather than merges.
+//   - Takes a fresh backup of the current site first, so it can be undone.
+//   - The person running it can always still sign in afterwards.
+//
+// HOW: the restore runs as a series of short steps the browser calls one
+// after another, because shared hosts stop any request after 30–60 seconds.
+//   start    → check the file, take the safety backup
+//   extract  → unpack the ZIP a few hundred files at a time
+//   tables   → load each table into a side copy (spr_ + prefix), never the
+//              live one, so a failure here leaves the site untouched
+//   files    → put plugins, themes and uploaded files in place
+//   swap     → switch the side copies in, fix the table prefix, keep the
+//              restoring person signed in, keep this site's own address
+//   encrypt  → re-lock phone numbers and addresses with this server's key
+//   urls     → change links from the old web address to this one
+//   finish   → tidy up
+//
+// The steps after "start" are authorised by a random secret held in the
+// restore's state rather than a WordPress nonce: the swap can change the
+// signed-in person's user ID, and a nonce is tied to it.
+// ============================================================================
+
+/**
+ * Who may restore: full administrators only. A restore replaces every
+ * sign-in account, so anyone who could run it could make themselves anyone.
+ */
+function sp_restore_allowed(): bool {
+    return current_user_can( 'manage_options' ) && ! is_multisite();
+}
+
+function sp_restore_state( ?array $state = null ): array {
+    if ( null !== $state ) {
+        update_option( 'sp_restore_state', $state, false );
+        return $state;
+    }
+    $s = get_option( 'sp_restore_state' );
+    return is_array( $s ) ? $s : [];
+}
+
+/** Seconds a step may keep working before handing back to the browser. */
+function sp_restore_out_of_time( float $started ): bool {
+    return ( microtime( true ) - $started ) > 15;
+}
+
+/**
+ * Read a backup's manifest. Returns null for anything that isn't a
+ * SocietyPress backup.
+ */
+function sp_restore_read_manifest( string $zip_path ): ?array {
+    if ( ! class_exists( 'ZipArchive' ) ) {
+        return null;
+    }
+    $zip = new ZipArchive();
+    if ( true !== $zip->open( $zip_path ) ) {
+        return null;
+    }
+    $raw = $zip->getFromName( 'manifest.json' );
+    $zip->close();
+    $m = $raw ? json_decode( $raw, true ) : null;
+    return ( is_array( $m ) && ! empty( $m['plugin_version'] ) && ! empty( $m['includes'] ) ) ? $m : null;
+}
+
+/** The SocietyPress plugin and themes always stay at the installed version. */
+function sp_restore_keep_current(): array {
+    return [
+        'plugins' => [ 'societypress' ],
+        'themes'  => [ 'societypress', 'coastline', 'heritage', 'ledger', 'parlor', 'prairie' ],
+    ];
+}
+
+/**
+ * Move a file or folder into place, keeping what was there until the
+ * restore finishes (the safety backup is the real undo; this is a spare).
+ */
+function sp_restore_move_into_place( string $from, string $to, string $parking ): bool {
+    if ( file_exists( $to ) ) {
+        wp_mkdir_p( $parking );
+        if ( ! rename( $to, $parking . '/' . basename( $to ) ) ) {
+            return false;
+        }
+    }
+    wp_mkdir_p( dirname( $to ) );
+    return rename( $from, $to );
+}
+
+/**
+ * Replace a string inside a value that may be PHP-serialized, keeping the
+ * serialized lengths right. A plain str_replace on serialized data breaks it
+ * the moment the two addresses differ in length.
+ */
+function sp_restore_replace_deep( $value, string $from, string $to ) {
+    if ( is_string( $value ) ) {
+        if ( is_serialized( $value ) ) {
+            $data = @unserialize( $value, [ 'allowed_classes' => false ] );
+            if ( false !== $data || 'b:0;' === $value ) {
+                return serialize( sp_restore_replace_deep( $data, $from, $to ) );
+            }
+        }
+        return str_replace( $from, $to, $value );
+    }
+    if ( is_array( $value ) ) {
+        foreach ( $value as $k => $v ) {
+            $value[ $k ] = sp_restore_replace_deep( $v, $from, $to );
+        }
+    }
+    return $value;
+}
+
+/**
+ * Run one restore step. Called by the browser over and over until it says
+ * it's done.
+ *
+ * @return array { stage, message, done?, error? }
+ */
+function sp_restore_run_step( float $started ): array {
+    global $wpdb;
+    $st = sp_restore_state();
+    if ( empty( $st['stage'] ) ) {
+        return [ 'error' => __( 'No restore is in progress.', 'societypress' ) ];
+    }
+    $dir = $st['dir'];
+
+    switch ( $st['stage'] ) {
+
+        case 'extract':
+            $zip = new ZipArchive();
+            if ( true !== $zip->open( $st['zip'] ) ) {
+                return sp_restore_fail( __( 'The backup file could not be opened.', 'societypress' ) );
+            }
+            $n = $zip->numFiles;
+            for ( $i = (int) $st['index']; $i < $n; $i++ ) {
+                $name = $zip->getNameIndex( $i );
+                // Refuse anything that would land outside the restore folder.
+                if ( '' === $name || str_contains( $name, '..' ) || str_starts_with( $name, '/' ) || str_contains( $name, '\\' ) ) {
+                    continue;
+                }
+                $zip->extractTo( $dir, $name );
+                if ( 0 === $i % 50 && sp_restore_out_of_time( $started ) ) {
+                    $st['index'] = $i + 1;
+                    $zip->close();
+                    sp_restore_state( $st );
+                    /* translators: 1: files unpacked so far, 2: total files */
+                    return [ 'stage' => 'extract', 'message' => sprintf( __( 'Unpacking the backup: %1$s of %2$s files…', 'societypress' ), number_format_i18n( $i + 1 ), number_format_i18n( $n ) ) ];
+                }
+            }
+            $zip->close();
+            $tables = glob( $dir . '/database/*.sql' ) ?: [];
+            sort( $tables );
+            $st['tables'] = array_map( 'basename', $tables );
+            $st['stage']  = 'tables';
+            $st['index']  = 0;
+            $st['offset'] = 0;
+            $st['loaded'] = [];
+            sp_restore_state( $st );
+            return [ 'stage' => 'tables', 'message' => __( 'Loading the backup’s data…', 'societypress' ) ];
+
+        case 'tables':
+            $old_prefix = $st['manifest']['table_prefix'] ?? $wpdb->prefix;
+            $tmp_prefix = 'spr_' . $wpdb->prefix;
+            // Backups made before 1.5.146 turned every % into a random {hash}.
+            $fix_percent = version_compare( $st['manifest']['plugin_version'], '1.5.146', '<' );
+
+            while ( $st['index'] < count( $st['tables'] ) ) {
+                $file   = $st['tables'][ $st['index'] ];
+                $table  = substr( $file, 0, -4 );
+                $suffix = str_starts_with( $table, $old_prefix ) ? substr( $table, strlen( $old_prefix ) ) : null;
+
+                // The list of backups belongs to this server's files, not the
+                // backup's — keep ours, or the safety backup would vanish from it.
+                if ( null === $suffix || 'sp_backups' === $suffix ) {
+                    $st['index']++;
+                    $st['offset'] = 0;
+                    continue;
+                }
+
+                $fh = fopen( $dir . '/database/' . $file, 'r' );
+                if ( ! $fh ) {
+                    return sp_restore_fail( __( 'Part of the backup could not be read.', 'societypress' ) );
+                }
+                fseek( $fh, (int) $st['offset'] );
+                $sql = '';
+                while ( false !== ( $line = fgets( $fh ) ) ) {
+                    if ( '' === $sql && ( '' === trim( $line ) || str_starts_with( $line, '--' ) ) ) {
+                        continue;
+                    }
+                    $sql .= $line;
+                    // Newlines inside values are escaped in the export, so a raw
+                    // line ending in ; always closes a statement.
+                    if ( ! str_ends_with( rtrim( $line ), ';' ) ) {
+                        continue;
+                    }
+                    $sql = preg_replace_callback(
+                        '/^(DROP TABLE IF EXISTS|CREATE TABLE|INSERT INTO) `([^`]+)`/',
+                        static fn( $m ) => $m[1] . ' `' . $tmp_prefix . $suffix . '`',
+                        $sql,
+                        1
+                    );
+                    if ( $fix_percent && str_starts_with( $sql, 'INSERT' ) ) {
+                        $sql = preg_replace( '/\{[a-f0-9]{64}\}/', '%', $sql );
+                    }
+                    // WHY off: wpdb re-reads every non-ASCII query character by
+                    // character to strip invalid text, which is slow on big rows
+                    // and would reject binary data. These rows came from MySQL.
+                    $wpdb->check_current_query = false;
+                    if ( false === $wpdb->query( $sql ) ) {
+                        // A host on an older database server may not know the
+                        // collation the backup was made with; fall back to ours.
+                        if ( str_starts_with( $sql, 'CREATE' ) ) {
+                            $retry = preg_replace( '/\s*(DEFAULT )?(CHARSET|CHARACTER SET|COLLATE)\s*=?\s*\w+/i', '', $sql );
+                            $retry = rtrim( rtrim( $retry ), ';' ) . ' ' . $wpdb->get_charset_collate() . ';';
+                            $wpdb->check_current_query = false;
+                            if ( false !== $wpdb->query( $retry ) ) {
+                                $sql = '';
+                                continue;
+                            }
+                        }
+                        fclose( $fh );
+                        /* translators: %s: table name */
+                        return sp_restore_fail( sprintf( __( 'The backup’s %s data could not be loaded. Nothing on your site has been changed.', 'societypress' ), $suffix ) . ' ' . $wpdb->last_error );
+                    }
+                    $sql = '';
+                    if ( sp_restore_out_of_time( $started ) ) {
+                        $st['offset'] = ftell( $fh );
+                        fclose( $fh );
+                        sp_restore_state( $st );
+                        /* translators: 1: tables loaded so far, 2: total tables */
+                        return [ 'stage' => 'tables', 'message' => sprintf( __( 'Loading the backup’s data: table %1$s of %2$s…', 'societypress' ), number_format_i18n( $st['index'] + 1 ), number_format_i18n( count( $st['tables'] ) ) ) ];
+                    }
+                }
+                fclose( $fh );
+                $st['loaded'][] = $suffix;
+                $st['index']++;
+                $st['offset'] = 0;
+            }
+            $st['stage'] = 'files';
+            sp_restore_state( $st );
+            return [ 'stage' => 'files', 'message' => __( 'Putting plugins, themes and files in place…', 'societypress' ) ];
+
+        case 'files':
+            $keep    = sp_restore_keep_current();
+            $parking = $dir . '/replaced';
+            $targets = [
+                'plugins' => WP_PLUGIN_DIR,
+                'themes'  => get_theme_root(),
+            ];
+            foreach ( $targets as $kind => $root ) {
+                foreach ( glob( $dir . '/' . $kind . '/*' ) ?: [] as $item ) {
+                    $name = basename( $item );
+                    if ( in_array( $name, $keep[ $kind ], true ) || 'index.php' === $name ) {
+                        continue;
+                    }
+                    if ( ! sp_restore_move_into_place( $item, $root . '/' . $name, $parking . '/' . $kind ) ) {
+                        /* translators: %s: plugin or theme folder name */
+                        return sp_restore_fail( sprintf( __( 'Could not put “%s” in place. The server may not allow SocietyPress to change plugin and theme files.', 'societypress' ), $name ) );
+                    }
+                }
+            }
+            // Uploaded files are laid over what's there: a file only on this
+            // site does no harm, and the backup may not include uploads at all.
+            $src = $dir . '/uploads';
+            if ( is_dir( $src ) ) {
+                $base = wp_upload_dir()['basedir'];
+                $it   = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $src, RecursiveDirectoryIterator::SKIP_DOTS ), RecursiveIteratorIterator::SELF_FIRST );
+                foreach ( $it as $f ) {
+                    if ( $f->isDir() ) {
+                        continue;
+                    }
+                    $rel = substr( $f->getPathname(), strlen( $src ) + 1 );
+                    wp_mkdir_p( dirname( $base . '/' . $rel ) );
+                    @rename( $f->getPathname(), $base . '/' . $rel );
+                    if ( sp_restore_out_of_time( $started ) ) {
+                        return [ 'stage' => 'files', 'message' => __( 'Putting uploaded files in place…', 'societypress' ) ];
+                    }
+                }
+                sp_backup_rmdir( $src );
+            }
+            $st['stage'] = 'swap';
+            sp_restore_state( $st );
+            return [ 'stage' => 'swap', 'message' => __( 'Switching your site over to the backup…', 'societypress' ) ];
+
+        case 'swap':
+            return sp_restore_swap( $st );
+
+        case 'encrypt':
+            return sp_restore_reencrypt( $st, $started );
+
+        case 'urls':
+            return sp_restore_fix_urls( $st, $started );
+
+        case 'finish':
+            foreach ( $st['loaded'] as $suffix ) {
+                $wpdb->query( 'DROP TABLE IF EXISTS `sprold_' . $wpdb->prefix . $suffix . '`' );
+            }
+            sp_backup_rmdir( $dir );
+            delete_option( 'rewrite_rules' );
+            delete_option( 'sp_restore_state' );
+            wp_cache_flush();
+            sp_audit( 'backup_restored', sprintf( 'Site restored from a backup made %s (safety backup #%d taken first)', $st['manifest']['created_at'] ?? '?', (int) $st['safety_id'] ), 'backup', (int) $st['backup_id'] );
+            return [ 'stage' => 'done', 'done' => true, 'message' => __( 'Restore finished.', 'societypress' ) ];
+    }
+    return sp_restore_fail( __( 'The restore stopped in an unexpected state.', 'societypress' ) );
+}
+
+/**
+ * Give up: drop the side copies, delete the unpacked files, and say why.
+ * Before the swap the live site hasn't been touched.
+ */
+function sp_restore_fail( string $why ): array {
+    global $wpdb;
+    $st = sp_restore_state();
+    foreach ( $wpdb->get_col( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( 'spr_' . $wpdb->prefix ) . '%' ) ) as $t ) {
+        $wpdb->query( "DROP TABLE IF EXISTS `{$t}`" );
+    }
+    if ( ! empty( $st['dir'] ) ) {
+        sp_backup_rmdir( $st['dir'] );
+    }
+    delete_option( 'sp_restore_state' );
+    return [ 'error' => $why ];
+}
+
+/**
+ * Switch the loaded copies in and repair what a move between servers breaks.
+ * All in one request so the next request finds the person still signed in.
+ */
+function sp_restore_swap( array $st ): array {
+    global $wpdb;
+    $p          = $wpdb->prefix;
+    $old_prefix = $st['manifest']['table_prefix'] ?? $p;
+
+    // What has to survive the switch: this site's address, and the person
+    // running the restore, with everything that keeps them signed in.
+    $home    = get_option( 'home' );
+    $siteurl = get_option( 'siteurl' );
+    $me      = wp_get_current_user();
+    $my_row  = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->users} WHERE ID = %d", $me->ID ), ARRAY_A );
+    $my_sess = get_user_meta( $me->ID, 'session_tokens', true );
+
+    foreach ( $st['loaded'] as $suffix ) {
+        $live = $p . $suffix;
+        $tmp  = 'spr_' . $p . $suffix;
+        $old  = 'sprold_' . $p . $suffix;
+        $wpdb->query( "DROP TABLE IF EXISTS `{$old}`" );
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $live ) ) ) {
+            $ok = $wpdb->query( "RENAME TABLE `{$live}` TO `{$old}`, `{$tmp}` TO `{$live}`" );
+        } else {
+            $ok = $wpdb->query( "RENAME TABLE `{$tmp}` TO `{$live}`" );
+        }
+        if ( false === $ok ) {
+            /* translators: %s: table name */
+            return [ 'error' => sprintf( __( 'The switch-over stopped at %s. Restore the safety backup listed on this screen to put things back.', 'societypress' ), $suffix ) ];
+        }
+    }
+    wp_cache_flush();
+
+    // A backup from a site with a different table prefix keys its roles and
+    // each person's permissions by that prefix.
+    if ( $old_prefix !== $p ) {
+        $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_name = %s WHERE option_name = %s", $p . 'user_roles', $old_prefix . 'user_roles' ) );
+        $wpdb->query( $wpdb->prepare(
+            "UPDATE {$wpdb->usermeta} SET meta_key = CONCAT( %s, SUBSTRING( meta_key, %d ) ) WHERE meta_key LIKE %s",
+            $p, strlen( $old_prefix ) + 1, $wpdb->esc_like( $old_prefix ) . '%'
+        ) );
+    }
+
+    // This site keeps its own address; links in the content are fixed later.
+    $wpdb->update( $wpdb->options, [ 'option_value' => $home ], [ 'option_name' => 'home' ] );
+    $wpdb->update( $wpdb->options, [ 'option_value' => $siteurl ], [ 'option_name' => 'siteurl' ] );
+
+    // Keep the person running this signed in (Charles, 2026-11-18): if their
+    // account is in the backup it keeps the password they just used; if it
+    // isn't, it comes along as an administrator.
+    if ( $my_row && in_array( 'users', $st['loaded'], true ) ) {
+        $id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT ID FROM {$wpdb->users} WHERE user_login = %s", $my_row['user_login'] ) );
+        if ( $id ) {
+            $wpdb->update( $wpdb->users, [ 'user_pass' => $my_row['user_pass'] ], [ 'ID' => $id ] );
+        } else {
+            unset( $my_row['ID'] );
+            $wpdb->insert( $wpdb->users, $my_row );
+            $id = (int) $wpdb->insert_id;
+        }
+        clean_user_cache( $id );
+        if ( $my_sess ) {
+            update_user_meta( $id, 'session_tokens', $my_sess );
+        }
+        ( new WP_User( $id ) )->add_role( 'administrator' );
+    }
+
+    wp_cache_flush();
+    $st['stage'] = 'encrypt';
+    $st['index'] = 0;
+    sp_restore_state( $st );
+    return [ 'stage' => 'encrypt', 'message' => __( 'Re-locking phone numbers and addresses…', 'societypress' ) ];
+}
+
+/**
+ * Phone numbers and addresses came over locked with the old server's key;
+ * unlock each with that key and lock it again with this server's.
+ */
+function sp_restore_reencrypt( array $st, float $started ): array {
+    global $wpdb;
+    $old_key = ! empty( $st['manifest']['encryption_key'] ) ? base64_decode( $st['manifest']['encryption_key'] ) : '';
+    if ( '' === $old_key || hash_equals( $old_key, sp_get_encryption_key() ) ) {
+        $st['stage'] = 'urls';
+        sp_restore_state( $st );
+        return [ 'stage' => 'urls', 'message' => __( 'Updating links…', 'societypress' ) ];
+    }
+
+    $relock = static function ( $v ) use ( $old_key ) {
+        if ( ! is_string( $v ) || '' === $v ) {
+            return $v;
+        }
+        $plain = sp_decrypt( $v, $old_key );
+        return ( false === $plain ) ? $v : sp_encrypt( $plain );
+    };
+
+    $jobs = [
+        [ $wpdb->prefix . 'sp_members', 'user_id', sp_encrypted_member_fields() ],
+        [ $wpdb->prefix . 'sp_donations', 'id', [ 'donor_address_1', 'donor_address_2' ] ],
+    ];
+    for ( $j = (int) $st['index']; $j < count( $jobs ); $j++ ) {
+        [ $table, $pk, $cols ] = $jobs[ $j ];
+        $last = (int) ( $st['last_pk'] ?? 0 );
+        do {
+            $rows = $wpdb->get_results( $wpdb->prepare(
+                "SELECT `{$pk}`, `" . implode( '`, `', $cols ) . "` FROM `{$table}` WHERE `{$pk}` > %d ORDER BY `{$pk}` LIMIT 200",
+                $last
+            ), ARRAY_A );
+            foreach ( $rows as $row ) {
+                $last    = (int) $row[ $pk ];
+                $changes = [];
+                foreach ( $cols as $c ) {
+                    $new = $relock( $row[ $c ] );
+                    if ( $new !== $row[ $c ] ) {
+                        $changes[ $c ] = $new;
+                    }
+                }
+                if ( $changes ) {
+                    $wpdb->update( $table, $changes, [ $pk => $last ] );
+                }
+            }
+            if ( sp_restore_out_of_time( $started ) ) {
+                $st['index']   = $j;
+                $st['last_pk'] = $last;
+                sp_restore_state( $st );
+                return [ 'stage' => 'encrypt', 'message' => __( 'Re-locking phone numbers and addresses…', 'societypress' ) ];
+            }
+        } while ( $rows );
+        $st['last_pk'] = 0;
+    }
+
+    // Payment keys and webhook secrets in the settings.
+    $settings = get_option( 'societypress_settings' );
+    if ( is_array( $settings ) ) {
+        foreach ( $settings as $k => $v ) {
+            if ( is_string( $v ) && strlen( $v ) > 40 ) {
+                $settings[ $k ] = $relock( $v );
+            }
+        }
+        update_option( 'societypress_settings', $settings );
+    }
+
+    $st['stage'] = 'urls';
+    $st['index'] = 0;
+    sp_restore_state( $st );
+    return [ 'stage' => 'urls', 'message' => __( 'Updating links…', 'societypress' ) ];
+}
+
+/**
+ * A backup from another web address has that address in its pages, menus
+ * and settings. Point them at this site.
+ */
+function sp_restore_fix_urls( array $st, float $started ): array {
+    global $wpdb;
+    $pairs = [];
+    foreach ( [ 'site_url' => home_url(), 'wp_site_url' => site_url() ] as $key => $now ) {
+        $was = untrailingslashit( (string) ( $st['manifest'][ $key ] ?? '' ) );
+        $now = untrailingslashit( $now );
+        if ( '' !== $was && $was !== $now ) {
+            $pairs[ $was ] = $now;
+        }
+    }
+    if ( ! $pairs ) {
+        $st['stage'] = 'finish';
+        sp_restore_state( $st );
+        return [ 'stage' => 'finish', 'message' => __( 'Tidying up…', 'societypress' ) ];
+    }
+
+    for ( $t = (int) $st['index']; $t < count( $st['loaded'] ); $t++ ) {
+        $table = $wpdb->prefix . $st['loaded'][ $t ];
+        $pk    = $wpdb->get_results( "SHOW KEYS FROM `{$table}` WHERE Key_name = 'PRIMARY'" );
+        if ( 1 !== count( $pk ) ) {
+            continue;
+        }
+        $pk   = $pk[0]->Column_name;
+        $cols = [];
+        foreach ( $wpdb->get_results( "SHOW COLUMNS FROM `{$table}`" ) as $c ) {
+            if ( preg_match( '/char|text/i', $c->Type ) && $c->Field !== $pk ) {
+                $cols[] = $c->Field;
+            }
+        }
+        foreach ( $cols as $col ) {
+            foreach ( $pairs as $was => $now ) {
+                $rows = $wpdb->get_results( $wpdb->prepare(
+                    "SELECT `{$pk}` AS k, `{$col}` AS v FROM `{$table}` WHERE `{$col}` LIKE %s",
+                    '%' . $wpdb->esc_like( $was ) . '%'
+                ) );
+                foreach ( $rows as $r ) {
+                    $new = sp_restore_replace_deep( $r->v, $was, $now );
+                    if ( $new !== $r->v ) {
+                        $wpdb->update( $table, [ $col => $new ], [ $pk => $r->k ] );
+                    }
+                }
+            }
+        }
+        if ( sp_restore_out_of_time( $started ) ) {
+            $st['index'] = $t + 1;
+            sp_restore_state( $st );
+            return [ 'stage' => 'urls', 'message' => __( 'Updating links…', 'societypress' ) ];
+        }
+    }
+    $st['stage'] = 'finish';
+    sp_restore_state( $st );
+    return [ 'stage' => 'finish', 'message' => __( 'Tidying up…', 'societypress' ) ];
+}
+
+/**
+ * Begin a restore: check the file, take the safety backup, set up the state.
+ *
+ * @return array { secret, message } on success, or { error }.
+ */
+function sp_restore_begin( int $backup_id ): array {
+    global $wpdb;
+    $existing = sp_restore_state();
+    if ( ! empty( $existing['stage'] ) && ( time() - (int) $existing['began'] ) < HOUR_IN_SECONDS ) {
+        return [ 'error' => __( 'A restore is already running.', 'societypress' ) ];
+    }
+    $zip      = sp_backup_resolve_path( $backup_id );
+    $manifest = $zip ? sp_restore_read_manifest( $zip ) : null;
+    if ( ! $manifest ) {
+        return [ 'error' => __( 'That file isn’t a SocietyPress backup this version can read.', 'societypress' ) ];
+    }
+    if ( empty( $manifest['includes']['database'] ) ) {
+        return [ 'error' => __( 'That backup has no database in it, so there is nothing to restore.', 'societypress' ) ];
+    }
+
+    set_time_limit( 600 );
+    sp_backup_protected_id( $backup_id );
+    $before = (int) $wpdb->get_var( "SELECT MAX(id) FROM {$wpdb->prefix}sp_backups" );
+    sp_run_scheduled_backup( 'manual' );
+    $safety = $wpdb->get_row( "SELECT id, status FROM {$wpdb->prefix}sp_backups ORDER BY id DESC LIMIT 1" );
+    if ( ! $safety || (int) $safety->id <= $before || 'complete' !== $safety->status ) {
+        return [ 'error' => __( 'SocietyPress couldn’t make a backup of the site as it is now, so it hasn’t restored anything. Try again, or check that the server has enough free space.', 'societypress' ) ];
+    }
+
+    $dir = sp_get_backup_dir() . '/restore-' . wp_generate_password( 12, false );
+    wp_mkdir_p( $dir );
+    $secret = wp_generate_password( 32, false );
+    sp_restore_state( [
+        'stage'     => 'extract',
+        'began'     => time(),
+        'secret'    => $secret,
+        'backup_id' => $backup_id,
+        'safety_id' => (int) $safety->id,
+        'zip'       => $zip,
+        'dir'       => $dir,
+        'manifest'  => $manifest,
+        'index'     => 0,
+    ] );
+    return [ 'secret' => $secret, 'stage' => 'extract', 'message' => __( 'Safety backup made. Unpacking the backup…', 'societypress' ) ];
+}
+
+// ---- Begin a restore ----
+add_action( 'wp_ajax_sp_restore_start', function () {
+    check_ajax_referer( 'sp_restore' );
+    if ( ! sp_restore_allowed() ) {
+        wp_send_json_error( [ 'message' => __( 'Only a site administrator can restore a backup.', 'societypress' ) ], 403 );
+    }
+    $r = sp_restore_begin( (int) ( $_POST['backup_id'] ?? 0 ) );
+    if ( ! empty( $r['error'] ) ) {
+        wp_send_json_error( [ 'message' => $r['error'] ] );
+    }
+    wp_send_json_success( $r );
+} );
+
+// ---- Each following step ----
+add_action( 'wp_ajax_sp_restore_step', function () {
+    $st = sp_restore_state();
+    if ( empty( $st['secret'] ) || ! hash_equals( $st['secret'], (string) wp_unslash( $_POST['secret'] ?? '' ) ) || ! sp_restore_allowed() ) {
+        wp_send_json_error( [ 'message' => __( 'This restore can’t continue. Reload the page to see where things stand.', 'societypress' ) ], 403 );
+    }
+    set_time_limit( 120 );
+    $result = sp_restore_run_step( microtime( true ) );
+    if ( ! empty( $result['error'] ) ) {
+        wp_send_json_error( [ 'message' => $result['error'] ] );
+    }
+    wp_send_json_success( $result );
+} );
+
+// ---- Upload a backup file in pieces ----
+// WHY pieces: shared hosts cap a single upload at a few megabytes, and a
+// whole-site backup is often hundreds. Each piece fits under the cap.
+add_action( 'wp_ajax_sp_backup_upload_chunk', function () {
+    check_ajax_referer( 'sp_restore' );
+    if ( ! sp_restore_allowed() ) {
+        wp_send_json_error( [ 'message' => __( 'Only a site administrator can upload a backup.', 'societypress' ) ], 403 );
+    }
+    global $wpdb;
+    $token = preg_replace( '/[^a-z0-9]/', '', strtolower( (string) ( $_POST['token'] ?? '' ) ) );
+    $index = (int) ( $_POST['index'] ?? 0 );
+    $last  = ! empty( $_POST['last'] );
+    if ( strlen( $token ) < 12 || empty( $_FILES['chunk']['tmp_name'] ) || ! is_uploaded_file( $_FILES['chunk']['tmp_name'] ) ) {
+        wp_send_json_error( [ 'message' => __( 'The upload was interrupted. Please try again.', 'societypress' ) ] );
+    }
+    $part = sp_get_backup_dir() . '/upload-' . $token . '.part';
+    if ( 0 === $index && file_exists( $part ) ) {
+        unlink( $part );
+    }
+    $out = fopen( $part, 'ab' );
+    $in  = fopen( $_FILES['chunk']['tmp_name'], 'rb' );
+    stream_copy_to_stream( $in, $out );
+    fclose( $in );
+    fclose( $out );
+    if ( ! $last ) {
+        wp_send_json_success( [ 'received' => $index ] );
+    }
+
+    $manifest = sp_restore_read_manifest( $part );
+    if ( ! $manifest ) {
+        unlink( $part );
+        wp_send_json_error( [ 'message' => __( 'That file isn’t a SocietyPress backup.', 'societypress' ) ] );
+    }
+    $filename = 'sp-backup-uploaded-' . current_time( 'Y-m-d' ) . '-' . substr( $token, 0, 8 ) . '.zip';
+    rename( $part, sp_get_backup_dir() . '/' . $filename );
+    $made = ! empty( $manifest['created_at'] ) ? gmdate( 'Y-m-d H:i:s', strtotime( $manifest['created_at'] ) + (int) ( get_option( 'gmt_offset' ) * HOUR_IN_SECONDS ) ) : current_time( 'mysql' );
+    $wpdb->insert( $wpdb->prefix . 'sp_backups', [
+        'filename'          => $filename,
+        'backup_type'       => 'full',
+        'includes_db'       => empty( $manifest['includes']['database'] ) ? 0 : 1,
+        'includes_uploads'  => empty( $manifest['includes']['uploads'] ) ? 0 : 1,
+        'includes_settings' => empty( $manifest['includes']['settings'] ) ? 0 : 1,
+        'status'            => 'complete',
+        'trigger_type'      => 'uploaded',
+        'file_size'         => filesize( sp_get_backup_dir() . '/' . $filename ),
+        'started_at'        => $made,
+        'completed_at'      => $made,
+        'created_at'        => $made,
+    ] );
+    wp_send_json_success( [ 'done' => true ] );
 } );
 
 // ---- Save the scheduled-backup settings ----
@@ -96772,7 +97558,9 @@ add_action( 'wp_ajax_sp_export_full_site', function () {
                         if ( $v === null ) {
                             $vals[] = 'NULL';
                         } else {
-                            $vals[] = "'" . esc_sql( $v ) . "'";
+                            // WHY remove_placeholder_escape(): esc_sql() turns every % into a
+                            // random {hash} meant for prepare(); in a file it's corruption.
+                            $vals[] = "'" . $GLOBALS['wpdb']->remove_placeholder_escape( esc_sql( $v ) ) . "'";
                         }
                     }
                     $values_parts[] = '(' . implode( ', ', $vals ) . ')';

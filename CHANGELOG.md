@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.146] — 2026-11-18
+
+- **Restore a backup.** Settings → Export & Backup now has a Restore button on each backup, and a way to upload a backup file from your computer (sent in small pieces, so a large file is fine on any host). A restore replaces the whole site with the backup — members, pages, settings, sign-in accounts, plugins and themes — after first making a backup of the site as it is, so it can be undone. It works on a different host too: the site keeps its own address and links are updated, a different table prefix is handled, members' phone numbers and addresses are locked again with the new server's key, and the person running the restore stays signed in. SocietyPress itself stays at the installed version. Only full administrators can restore.
+- Fixed: backups and the Site Export turned every percent sign in the data into a long code (so "20% off" came out garbled). New backups are correct, and restoring an older backup repairs them.
+- Backup pruning no longer deletes an uploaded backup file, or the backup a restore is loading.
+
 ## [1.5.145] — 2026-11-18
 
 - Scheduled backups now hold the whole site: every database table (pages, news posts, menus, the media library's records, settings, and other plugins' data, not just SocietyPress's own), plus installed plugins and themes, including a custom child theme. Uploaded files stay optional because they're large.

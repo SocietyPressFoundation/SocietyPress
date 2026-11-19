@@ -16,6 +16,10 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Admin screens save before they draw — 1.5.142 to 1.5.144
+
+Every SocietyPress admin screen now handles its saves and redirects before WordPress starts the page, the standard way, instead of relying on the page being held open.
+
 ### Privacy export and erase for research, store orders and voting — 1.5.141
 
 WordPress's privacy tools now find research requests, store orders and votes. Erasing keeps the money and the results, and removes the person.
@@ -137,19 +141,6 @@ settle first, one at a time: whether surveys get their own tool or keep sharing
 the Forms builder; who can answer (members only, the public, chosen groups);
 and what happens to surveys already on existing sites.
 **Blockers:** The design questions above.
-
-#### Handle admin form saves before the page renders
-
-**Motivation:** About thirty admin screens save their forms inside the
-function that draws the screen, after output has begun. 1.5.x holds the
-response open so the redirect after a save still works, but that is a floor
-under the symptom, not the fix.
-**Scope:** Move each screen's POST handling to `admin_init` or
-`load-{$page_hook}`, one screen group at a time with a test after each. The
-diagnosis and the rule against widening the buffer are in
-[`docs/KNOWN-ISSUES.md`](docs/KNOWN-ISSUES.md). Also still owed: one person
-saving a real form and confirming the debug log stays clean.
-**Blockers:** None.
 
 #### Restore from a backup
 

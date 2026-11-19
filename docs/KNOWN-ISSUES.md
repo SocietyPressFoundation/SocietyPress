@@ -8,8 +8,8 @@ the diagnosis rather than the symptom.
 
 ## Redirects fire after output has begun — "headers already sent"
 
-**Status:** symptom fixed 2026-08-12. The underlying structure is still wrong; the
-cleanup under *Still to do* is worth finishing.
+**Status:** fixed. Symptom fixed 2026-08-12; the underlying structure fixed in
+1.5.142–1.5.144 (2026-11-18), when every screen's save moved before output.
 **Severity:** was medium — saving worked, but the screen did not move on afterwards.
 
 ### The symptom
@@ -68,7 +68,14 @@ WordPress pattern and makes post/redirect/get work without any help.
 Donations, donation edit, Campaigns, campaign edit, Checks in the Mail
 (1.5.142). Finances, Record Payment, Pages, form editor, form
 submissions (1.5.143; screens that also act on a plain link click use
-`sp_handle_screen_load()`). Each group was tested by saving real forms on the demo site with the
+`sp_handle_screen_load()`). Email list, Compose email, Order detail, Lineage
+application, Lineage program, Research case (1.5.144). A scan of every function
+that both prints and redirects now finds none, and a person-style save of each
+group on the demo site left the debug log clean.
+
+The two response-holding guards from 2026-08-12 are still in place as a safety
+net. With nothing left that needs them they can come out once a few releases
+have run without a `headers already sent` warning. Each group was tested by saving real forms on the demo site with the
 debug log watched.
 
 That means lifting the handler out of each of ~30 render functions, where it is

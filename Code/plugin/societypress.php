@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.143
+ * Version:     1.5.144
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.143' );
+define( 'SOCIETYPRESS_VERSION', '1.5.144' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -41828,7 +41828,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.143',
+            'version'     => '1.5.144',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41836,7 +41836,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.143',
+            'version'     => '1.5.144',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41844,7 +41844,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.143',
+            'version'     => '1.5.144',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41852,7 +41852,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.143',
+            'version'     => '1.5.144',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41860,7 +41860,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.143',
+            'version'     => '1.5.144',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -90240,13 +90240,11 @@ function sp_render_email_log_detail( int $log_id ): void {
 // ============================================================================
 
 /**
- * Render the Blast Email list page.
+ * Email list: delete, set the sending speed, copy a past email into a new draft.
  *
- * WHY: Shows all blast emails — drafts, sent, failed — with filtering by
- *      status. Each row shows subject, sender, date, recipient count, and
- *      delivery stats. Clicking a sent email shows a read-only preview.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_blast_email_page(): void {
+function sp_handle_blast_email_actions(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
@@ -90301,6 +90299,19 @@ function sp_render_blast_email_page(): void {
         wp_redirect( admin_url( 'admin.php?page=sp-blast-email' ) );
         exit;
     }
+}
+sp_handle_screen_load( 'sp-blast-email', 'sp_handle_blast_email_actions' );
+
+/**
+ * Render the Blast Email list page.
+ *
+ * WHY: Shows all blast emails — drafts, sent, failed — with filtering by
+ *      status. Each row shows subject, sender, date, recipient count, and
+ *      delivery stats. Clicking a sent email shows a read-only preview.
+ */
+function sp_render_blast_email_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
 
     // View a single blast email (read-only)
     $view_id = isset( $_GET['view'] ) ? absint( $_GET['view'] ) : 0;
@@ -90822,86 +90833,21 @@ function sp_render_blast_email_detail( int $blast_id ): void {
 }
 
 /**
- * Render the Blast Email compose/edit page.
+ * Compose email: save the draft or send it.
  *
- * WHY: The compose page is where Harold crafts his weekly email. It uses
- *      wp_editor() for rich text editing (media insertion, formatting),
- *      radio buttons for recipient targeting, and AJAX to show the estimated
- *      recipient count as targeting changes. Preview shows the rendered
- *      email exactly as recipients will see it.
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_blast_email_compose_page(): void {
+function sp_handle_blast_compose_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
     $blast_id = (int) ( $_GET['blast_id'] ?? 0 );
-    $blast    = null;
-
-    if ( $blast_id ) {
-        $blast = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$prefix}blast_emails WHERE id = %d", $blast_id
-        ) );
-        // Only allow editing drafts
-        if ( $blast && $blast->status !== 'draft' ) {
-            echo '<div class="wrap"><h1>' . esc_html__( 'Cannot Edit', 'societypress' ) . '</h1>';
-            echo '<p>' . esc_html__( 'This blast email has already been sent and cannot be edited.', 'societypress' ) . '</p>';
-            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ) . '">' . esc_html__( '&larr; Back', 'societypress' ) . '</a></p></div>';
-            return;
-        }
-    }
-
-    // Pre-fill from an event when arriving via the "Email this event" row
-    // action (no blast_id, GET request). We synthesize a draft-shaped object so
-    // the existing subject/body fields render pre-populated; the admin edits and
-    // chooses recipients before anything is saved or sent.
-    if ( ! $blast_id && $_SERVER['REQUEST_METHOD'] !== 'POST' && ! empty( $_GET['sp_event'] ) ) {
-        $event = $wpdb->get_row( $wpdb->prepare(
-            "SELECT title, description, event_date, start_time, location_name, location_address, virtual_url, attachment_id
-             FROM {$prefix}events WHERE id = %d",
-            (int) $_GET['sp_event']
-        ) );
-        if ( $event ) {
-            $when = $event->event_date ? sp_format_wall_clock( $event->event_date, get_option( 'date_format', 'F j, Y' ) ) : '';
-            if ( $when !== '' && $event->start_time ) {
-                $when .= ' ' . __( 'at', 'societypress' ) . ' ' . sp_format_wall_clock( $event->event_date . ' ' . $event->start_time, get_option( 'time_format', 'g:i a' ) );
-            }
-            $where = trim( (string) $event->location_name );
-            if ( $event->location_address ) {
-                $where .= ( $where !== '' ? ', ' : '' ) . $event->location_address;
-            }
-            if ( $where === '' && $event->virtual_url ) {
-                $where = __( 'Online', 'societypress' );
-            }
-
-            // Friendly, fully-editable HTML starting point (body is a wp_editor).
-            $lines   = [];
-            /* translators: %s: event title */
-            $lines[] = '<p>' . esc_html( sprintf( __( 'Join us for %s.', 'societypress' ), $event->title ) ) . '</p>';
-            if ( $when !== '' ) {
-                $lines[] = '<p><strong>' . esc_html__( 'When:', 'societypress' ) . '</strong> ' . esc_html( $when ) . '</p>';
-            }
-            if ( $where !== '' ) {
-                $lines[] = '<p><strong>' . esc_html__( 'Where:', 'societypress' ) . '</strong> ' . esc_html( $where ) . '</p>';
-            }
-            if ( $event->virtual_url ) {
-                $lines[] = '<p><strong>' . esc_html__( 'Join online:', 'societypress' ) . '</strong> <a href="' . esc_url( $event->virtual_url ) . '">' . esc_html( $event->virtual_url ) . '</a></p>';
-            }
-            if ( trim( (string) $event->description ) !== '' ) {
-                $lines[] = wpautop( wp_kses_post( $event->description ) );
-            }
-            if ( ! empty( $event->attachment_id ) ) {
-                $att_url = wp_get_attachment_url( (int) $event->attachment_id );
-                if ( $att_url ) {
-                    $att_name = get_the_title( (int) $event->attachment_id ) ?: __( 'Download', 'societypress' );
-                    $lines[]  = '<p><strong>' . esc_html__( 'Attachment:', 'societypress' ) . '</strong> <a href="' . esc_url( $att_url ) . '">' . esc_html( $att_name ) . '</a></p>';
-                }
-            }
-
-            $blast = (object) [
-                'subject' => $event->title,
-                'body'    => implode( "\n", $lines ),
-            ];
-        }
+    // A sent email can't be changed; the screen says so.
+    $status = $blast_id ? $wpdb->get_var( $wpdb->prepare(
+        "SELECT status FROM {$prefix}blast_emails WHERE id = %d", $blast_id
+    ) ) : null;
+    if ( null !== $status && 'draft' !== $status ) {
+        return;
     }
 
     // Handle save/send
@@ -91004,6 +90950,91 @@ function sp_render_blast_email_compose_page(): void {
 
         wp_redirect( admin_url( 'admin.php?page=sp-blast-email&saved=1' ) );
         exit;
+    }
+}
+sp_handle_screen_post( 'sp-blast-email-compose', 'sp_handle_blast_compose_post' );
+
+/**
+ * Render the Blast Email compose/edit page.
+ *
+ * WHY: The compose page is where Harold crafts his weekly email. It uses
+ *      wp_editor() for rich text editing (media insertion, formatting),
+ *      radio buttons for recipient targeting, and AJAX to show the estimated
+ *      recipient count as targeting changes. Preview shows the rendered
+ *      email exactly as recipients will see it.
+ */
+function sp_render_blast_email_compose_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $blast_id = (int) ( $_GET['blast_id'] ?? 0 );
+    $blast    = null;
+
+    if ( $blast_id ) {
+        $blast = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$prefix}blast_emails WHERE id = %d", $blast_id
+        ) );
+        // Only allow editing drafts
+        if ( $blast && $blast->status !== 'draft' ) {
+            echo '<div class="wrap"><h1>' . esc_html__( 'Cannot Edit', 'societypress' ) . '</h1>';
+            echo '<p>' . esc_html__( 'This blast email has already been sent and cannot be edited.', 'societypress' ) . '</p>';
+            echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=sp-blast-email' ) ) . '">' . esc_html__( '&larr; Back', 'societypress' ) . '</a></p></div>';
+            return;
+        }
+    }
+
+    // Pre-fill from an event when arriving via the "Email this event" row
+    // action (no blast_id, GET request). We synthesize a draft-shaped object so
+    // the existing subject/body fields render pre-populated; the admin edits and
+    // chooses recipients before anything is saved or sent.
+    if ( ! $blast_id && $_SERVER['REQUEST_METHOD'] !== 'POST' && ! empty( $_GET['sp_event'] ) ) {
+        $event = $wpdb->get_row( $wpdb->prepare(
+            "SELECT title, description, event_date, start_time, location_name, location_address, virtual_url, attachment_id
+             FROM {$prefix}events WHERE id = %d",
+            (int) $_GET['sp_event']
+        ) );
+        if ( $event ) {
+            $when = $event->event_date ? sp_format_wall_clock( $event->event_date, get_option( 'date_format', 'F j, Y' ) ) : '';
+            if ( $when !== '' && $event->start_time ) {
+                $when .= ' ' . __( 'at', 'societypress' ) . ' ' . sp_format_wall_clock( $event->event_date . ' ' . $event->start_time, get_option( 'time_format', 'g:i a' ) );
+            }
+            $where = trim( (string) $event->location_name );
+            if ( $event->location_address ) {
+                $where .= ( $where !== '' ? ', ' : '' ) . $event->location_address;
+            }
+            if ( $where === '' && $event->virtual_url ) {
+                $where = __( 'Online', 'societypress' );
+            }
+
+            // Friendly, fully-editable HTML starting point (body is a wp_editor).
+            $lines   = [];
+            /* translators: %s: event title */
+            $lines[] = '<p>' . esc_html( sprintf( __( 'Join us for %s.', 'societypress' ), $event->title ) ) . '</p>';
+            if ( $when !== '' ) {
+                $lines[] = '<p><strong>' . esc_html__( 'When:', 'societypress' ) . '</strong> ' . esc_html( $when ) . '</p>';
+            }
+            if ( $where !== '' ) {
+                $lines[] = '<p><strong>' . esc_html__( 'Where:', 'societypress' ) . '</strong> ' . esc_html( $where ) . '</p>';
+            }
+            if ( $event->virtual_url ) {
+                $lines[] = '<p><strong>' . esc_html__( 'Join online:', 'societypress' ) . '</strong> <a href="' . esc_url( $event->virtual_url ) . '">' . esc_html( $event->virtual_url ) . '</a></p>';
+            }
+            if ( trim( (string) $event->description ) !== '' ) {
+                $lines[] = wpautop( wp_kses_post( $event->description ) );
+            }
+            if ( ! empty( $event->attachment_id ) ) {
+                $att_url = wp_get_attachment_url( (int) $event->attachment_id );
+                if ( $att_url ) {
+                    $att_name = get_the_title( (int) $event->attachment_id ) ?: __( 'Download', 'societypress' );
+                    $lines[]  = '<p><strong>' . esc_html__( 'Attachment:', 'societypress' ) . '</strong> <a href="' . esc_url( $att_url ) . '">' . esc_html( $att_name ) . '</a></p>';
+                }
+            }
+
+            $blast = (object) [
+                'subject' => $event->title,
+                'body'    => implode( "\n", $lines ),
+            ];
+        }
     }
 
     // Load groups and tiers for targeting
@@ -109466,19 +109497,16 @@ function sp_render_orders_page(): void {
 
 
 /**
- * Render the Order Detail admin page.
+ * Order detail: change status, re-price at member rates, mark complimentary.
  *
- * WHY: Harold needs to see the full details of an individual order — what items
- *      were purchased, customer info, payment details, and the ability to update
- *      the order status (e.g., mark as shipped after mailing the items).
+ * Runs before the screen is drawn; see sp_handle_screen_post().
  */
-function sp_render_order_detail_page(): void {
+function sp_handle_order_detail_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
     $order_id = (int) ( $_GET['order_id'] ?? 0 );
     if ( ! $order_id ) {
-        echo '<div class="wrap"><h1>' . esc_html__( 'Order not found.', 'societypress' ) . '</h1></div>';
         return;
     }
 
@@ -109586,6 +109614,25 @@ function sp_render_order_detail_page(): void {
             wp_redirect( admin_url( 'admin.php?page=sp-order-detail&order_id=' . $order_id . '&comped=1' ) );
             exit;
         }
+    }
+}
+sp_handle_screen_post( 'sp-order-detail', 'sp_handle_order_detail_post' );
+
+/**
+ * Render the Order Detail admin page.
+ *
+ * WHY: Harold needs to see the full details of an individual order — what items
+ *      were purchased, customer info, payment details, and the ability to update
+ *      the order status (e.g., mark as shipped after mailing the items).
+ */
+function sp_render_order_detail_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $order_id = (int) ( $_GET['order_id'] ?? 0 );
+    if ( ! $order_id ) {
+        echo '<div class="wrap"><h1>' . esc_html__( 'Order not found.', 'societypress' ) . '</h1></div>';
+        return;
     }
 
     $order = $wpdb->get_row( $wpdb->prepare(
@@ -118883,10 +118930,17 @@ function sp_render_lineage_programs_page(): void {
  * handles edit. Kept as a simple redirect so the registered submenu slug
  * resolves correctly when accessed via direct URL.)
  */
-function sp_render_lineage_program_edit_page(): void {
+function sp_handle_lineage_program_edit_load(): void {
     $id = (int) ( $_GET['id'] ?? 0 );
     wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-programs' . ( $id ? '&edit=' . $id : '' ) ) );
     exit;
+}
+sp_handle_screen_load( 'sp-lineage-program-edit', 'sp_handle_lineage_program_edit_load' );
+
+/**
+ * Never reached: the load handler above has already redirected.
+ */
+function sp_render_lineage_program_edit_page(): void {
 }
 
 
@@ -119042,6 +119096,24 @@ function sp_render_lineage_applications_page(): void {
 
 
 /**
+ * Lineage application: a link with no application, or one that's gone, goes
+ * back to the list before the screen is drawn.
+ */
+function sp_handle_lineage_application_edit_load(): void {
+    global $wpdb;
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications' ) );
+        exit;
+    }
+    if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}sp_lineage_applications WHERE id = %d", $id ) ) ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications&sp_error=missing' ) );
+        exit;
+    }
+}
+sp_handle_screen_load( 'sp-lineage-application-edit', 'sp_handle_lineage_application_edit_load' );
+
+/**
  * ADMIN: Single application review page.
  */
 function sp_render_lineage_application_edit_page(): void {
@@ -119054,11 +119126,6 @@ function sp_render_lineage_application_edit_page(): void {
     $proofs_t = $wpdb->prefix . 'sp_lineage_proofs';
 
     $id = (int) ( $_GET['id'] ?? 0 );
-    if ( ! $id ) {
-        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications' ) );
-        exit;
-    }
-
     $app = $wpdb->get_row( $wpdb->prepare(
         "SELECT a.*, p.name AS program_name, p.cutoff_year, p.geographic_scope
          FROM {$apps_t} a
@@ -119067,8 +119134,7 @@ function sp_render_lineage_application_edit_page(): void {
         $id
     ) );
     if ( ! $app ) {
-        wp_safe_redirect( admin_url( 'admin.php?page=sp-lineage-applications&sp_error=missing' ) );
-        exit;
+        return; // sp_handle_lineage_application_edit_load() has already sent them back to the list.
     }
 
     $applicant = get_user_by( 'id', $app->user_id );
@@ -126148,6 +126214,20 @@ function sp_render_research_cases_page(): void {
 
 
 /**
+ * Research case: a link with no case, or one that's gone, goes back to the
+ * list before the screen is drawn.
+ */
+function sp_handle_research_case_edit_load(): void {
+    global $wpdb;
+    $id = (int) ( $_GET['id'] ?? 0 );
+    if ( ! $id || ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}sp_research_cases WHERE id = %d", $id ) ) ) {
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
+        exit;
+    }
+}
+sp_handle_screen_load( 'sp-research-case-edit', 'sp_handle_research_case_edit_load' );
+
+/**
  * ADMIN: Single case review page with status workflow + hours logging.
  */
 function sp_render_research_case_edit_page(): void {
@@ -126160,16 +126240,10 @@ function sp_render_research_case_edit_page(): void {
     $hours_t = $wpdb->prefix . 'sp_volunteer_hours';
     $invoices_t = $wpdb->prefix . 'sp_research_invoices';
 
-    $id = (int) ( $_GET['id'] ?? 0 );
-    if ( ! $id ) {
-        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
-        exit;
-    }
-
+    $id   = (int) ( $_GET['id'] ?? 0 );
     $case = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$cases_t} WHERE id = %d", $id ) );
     if ( ! $case ) {
-        wp_safe_redirect( admin_url( 'admin.php?page=sp-research-cases' ) );
-        exit;
+        return; // sp_handle_research_case_edit_load() has already sent them back to the list.
     }
 
     $researcher = $case->claimed_by_user_id ? get_user_by( 'id', $case->claimed_by_user_id ) : null;

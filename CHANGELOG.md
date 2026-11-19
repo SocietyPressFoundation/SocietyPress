@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.144] — 2026-11-18
+
+- The last admin screens that saved or redirected while being drawn now do it first: the Email list (delete, sending speed, copy a past email), Compose email, Order detail, Lineage application, Lineage program and Research case. Every SocietyPress admin screen now saves before it draws.
+
 ## [1.5.143] — 2026-11-18
 
 - Finances, Record Payment, Pages, the form editor and form submissions now do their saving and deleting before the screen is drawn. Second group of the admin-screen cleanup; nothing looks different.

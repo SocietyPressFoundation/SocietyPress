@@ -151,10 +151,20 @@ and what happens to surveys already on existing sites.
 **Motivation:** Backups are saved on the same server as the site, and the
 volunteer is only emailed a reminder to download one. If nobody does and the
 host dies, the backups die with the site and Restore has nothing to restore.
-**Scope:** After each backup, copy it to a cloud account the society connects
-(Google Drive and Dropbox first), keeping the last few. Charles wants this soon
-after Restore ships (2026-11-18).
-**Blockers:** None.
+**Scope:** After each backup, copy it to the society's Google Drive, keeping
+as many copies as the backup screen's retention setting. Google Drive first,
+decided 2026-11-19: volunteers have Google accounts far more often than
+Dropbox. Google's app secret cannot ship in a downloadable plugin, so a small
+stateless relay on societypress.net holds it, swaps the sign-in code for
+access passes, and renews the hourly pass before each upload. Backup files
+never pass through the relay. If societypress.net is down, that day's copy
+fails, the local backup still runs, and the volunteer is warned. Ask only for
+access to files SocietyPress creates (the `drive.file` permission). The relay
+shows which site is being connected before the volunteer signs in. Dropbox
+and OneDrive maybe later.
+**Blockers:** Charles creates a Google account on dev@societypress.net (the
+mailbox exists as of 2026-11-19), then a Google Cloud project for the
+SocietyPress app. Build after that, so it is tested against the real Google.
 
 ### Medium
 

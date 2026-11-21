@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.149] — 2026-11-21
+
+- **A photo has one caption.** The caption in the Media Library is the caption everywhere: in every album, the photo viewer, and member submissions. Typing a caption on the album screen changes that same caption, and changing it in the Media Library updates every gallery that shows the photo. Adding a photo with no caption no longer fills the box with the file name. On update, captions that were only a file name are cleared (or replaced by the Media Library caption), and any other album caption is copied into the Media Library so nothing written is lost.
+- **Galleries show every photo by default.** A gallery showing one album now shows all its photos unless a smaller number is chosen, and existing single-album galleries are switched to all photos. "All" on an albums grid also works now; it used to show no albums at all.
+- Deleting a photo from the Media Library now takes it out of its albums too. Albums that still held deleted photos are cleaned up on update.
+- **An empty page section no longer shows a lone heading.** When a page-builder section has nothing to show, it is left out, heading and all. On an empty Latest News section, people who can write news see a "Write a news item" link instead.
+- The page builder's "Save & Preview" button is now "Save & View": it has always saved the page to the live site before opening it.
+
 ## [1.5.148] — 2026-11-21
 
 - Fixed: volunteer opportunity cards on the public Volunteer page now show which committee each opportunity belongs to. The committee was never loaded for that page, so the line was always missing.

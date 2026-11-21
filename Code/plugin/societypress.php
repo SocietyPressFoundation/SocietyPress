@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.148
+ * Version:     1.5.149
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.148' );
+define( 'SOCIETYPRESS_VERSION', '1.5.149' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -4281,6 +4281,127 @@ function sp_forget_attachment_file( int $attachment_id ): void {
     }
 }
 add_action( 'delete_attachment', 'sp_forget_attachment_file' );
+
+/**
+ * Take a deleted photo out of every album that held it.
+ *
+ * WHY: the album row outlived the file. The gallery skipped it silently, so an
+ *      album counted photos it could not show, and a "show 24" limit spent its
+ *      places on pictures that would never appear.
+ *
+ * @param int $attachment_id Media library id being deleted.
+ */
+function sp_forget_attachment_album_items( int $attachment_id ): void {
+    global $wpdb;
+    if ( $attachment_id > 0 ) {
+        $wpdb->delete( $wpdb->prefix . 'sp_photo_album_items', [ 'attachment_id' => $attachment_id ], [ '%d' ] );
+    }
+}
+add_action( 'delete_attachment', 'sp_forget_attachment_album_items' );
+
+/**
+ * A photo has one caption: the Media Library's.
+ *
+ * WHY: album rows used to keep their own copy, filled once when the photo was
+ *      added and never again. A caption corrected in the Media Library never
+ *      reached the gallery, and a photo added before anyone captioned it showed
+ *      its file name for good. The album column stays as a copy so everything
+ *      that reads it keeps working; this keeps the copy in step.
+ *
+ * @param int $attachment_id Media library id whose caption changed.
+ */
+function sp_photo_caption_mirror( int $attachment_id ): void {
+    global $wpdb;
+    $post = get_post( $attachment_id );
+    if ( ! $post || 'attachment' !== $post->post_type ) {
+        return;
+    }
+    $wpdb->update(
+        $wpdb->prefix . 'sp_photo_album_items',
+        [ 'caption' => mb_substr( sanitize_text_field( $post->post_excerpt ), 0, 500 ) ],
+        [ 'attachment_id' => $attachment_id ]
+    );
+}
+add_action( 'edit_attachment', 'sp_photo_caption_mirror' );
+
+/**
+ * Set a photo's one caption, from wherever it was typed.
+ *
+ * @param int    $attachment_id Media library id.
+ * @param string $caption       Already-sanitized caption; empty clears it.
+ */
+function sp_photo_caption_set( int $attachment_id, string $caption ): void {
+    $post = get_post( $attachment_id );
+    if ( ! $post || 'attachment' !== $post->post_type ) {
+        return;
+    }
+    if ( $post->post_excerpt === $caption ) {
+        sp_photo_caption_mirror( $attachment_id );
+        return;
+    }
+    // wp_update_post fires edit_attachment, which refreshes the album copies.
+    wp_update_post( [ 'ID' => $attachment_id, 'post_excerpt' => wp_slash( $caption ) ] );
+}
+
+/**
+ * One-time tidy for galleries built before captions were unified.
+ *
+ * Order matters. A Media Library caption wins wherever there is one. An album
+ * caption that is only the photo's title is the old file-name seeding and is
+ * dropped. Any other album caption is real writing nobody put in the Media
+ * Library, so it moves there rather than being lost. Photos whose file is gone
+ * leave their albums, and single-album galleries go to "all photos", the new
+ * default.
+ */
+function sp_maybe_unify_photo_captions(): void {
+    if ( get_option( 'sp_photo_captions_unified_v1' ) ) {
+        return;
+    }
+    global $wpdb;
+    $items = $wpdb->prefix . 'sp_photo_album_items';
+    if ( ! sp_table_exists( $items ) ) {
+        return;
+    }
+
+    $wpdb->query( "DELETE i FROM {$items} i LEFT JOIN {$wpdb->posts} p ON p.ID = i.attachment_id WHERE p.ID IS NULL" );
+
+    $wpdb->query( "UPDATE {$items} i JOIN {$wpdb->posts} p ON p.ID = i.attachment_id
+                   SET i.caption = LEFT( p.post_excerpt, 500 ) WHERE p.post_excerpt <> ''" );
+    $wpdb->query( "UPDATE {$items} i JOIN {$wpdb->posts} p ON p.ID = i.attachment_id
+                   SET i.caption = '' WHERE p.post_excerpt = '' AND i.caption = p.post_title" );
+
+    $orphans = $wpdb->get_results(
+        "SELECT i.attachment_id, i.caption FROM {$items} i JOIN {$wpdb->posts} p ON p.ID = i.attachment_id
+         WHERE p.post_excerpt = '' AND i.caption <> '' GROUP BY i.attachment_id"
+    );
+    foreach ( (array) $orphans as $row ) {
+        sp_photo_caption_set( (int) $row->attachment_id, (string) $row->caption );
+    }
+
+    $pages = $wpdb->get_col( "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_sp_page_widgets' AND meta_value LIKE '%photo_gallery%'" );
+    foreach ( $pages as $page_id ) {
+        $widgets = get_post_meta( (int) $page_id, '_sp_page_widgets', true );
+        if ( ! is_array( $widgets ) ) {
+            continue;
+        }
+        $changed = false;
+        foreach ( $widgets as &$w ) {
+            if ( 'photo_gallery' === ( $w['type'] ?? '' ) && 'single' === ( $w['settings']['display_mode'] ?? '' ) && 0 !== (int) ( $w['settings']['count'] ?? 0 ) ) {
+                $w['settings']['count'] = 0;
+                $changed                = true;
+            }
+        }
+        unset( $w );
+        if ( $changed ) {
+            // wp_slash because update_post_meta unslashes: without it every
+            // backslash in the page's other widgets would be eaten.
+            update_post_meta( (int) $page_id, '_sp_page_widgets', wp_slash( $widgets ) );
+        }
+    }
+
+    update_option( 'sp_photo_captions_unified_v1', 1, true );
+}
+add_action( 'admin_init', 'sp_maybe_unify_photo_captions' );
 
 /**
  * Bring every upload already in the media library onto the Files screen.
@@ -20790,6 +20911,16 @@ function sp_render_builder_widget_latest_news( array $settings ): void {
     ] );
 
     if ( ! $q->have_posts() ) {
+        // Visitors get nothing, and with nothing printed the builder drops the
+        // section heading too. Someone who can write news gets told where it
+        // comes from instead — the widget has no content box of its own, and
+        // an empty heading gave no hint that News is where it is written.
+        if ( current_user_can( 'edit_posts' ) ) {
+            echo '<p class="sp-latest-news-empty">'
+                . esc_html__( 'No news yet. This section shows the newest items from News.', 'societypress' )
+                . ' <a href="' . esc_url( admin_url( 'post-new.php' ) ) . '">' . esc_html__( 'Write a news item', 'societypress' ) . '</a>'
+                . ' <span class="sp-latest-news-empty-note">' . esc_html__( '(Only people who can write news see this message.)', 'societypress' ) . '</span></p>';
+        }
         return;
     }
 
@@ -39580,7 +39711,7 @@ add_action( 'wp_enqueue_scripts', function (): void {
  * used to live: a render function runs while the page is being drawn, by which
  * point admin_head has already emitted the admin stylesheet. wp_redirect() then
  * failed with "Cannot modify header information", the exit() right after it cut
- * the response off mid-draw, and Save & Preview opened a blank white tab. The
+ * the response off mid-draw, and Save & View opened a blank white tab. The
  * save itself had worked — only the trip to the preview was lost, which is the
  * cruellest version of the bug because nothing looks saved.
  *
@@ -39802,7 +39933,12 @@ function sp_render_page_edit(): void {
                          * jumping to the pages list mid-edit.
                          */
                         ?>
-                        <button type="submit" name="sp_preview" value="1" class="button" formtarget="_blank"><?php esc_html_e( 'Save & Preview', 'societypress' ); ?></button>
+                        <button type="submit" name="sp_preview" value="1" class="button" formtarget="_blank"><?php
+                            // "View", not "Preview": the button saves first, so the
+                            // page is live before the tab opens. "Preview" promised
+                            // a look before publishing that it never gave.
+                            esc_html_e( 'Save & View', 'societypress' );
+                        ?></button>
                         <label class="sp-review-link-reset">
                             <input type="checkbox" name="sp_reset_review_link" value="1">
                             <?php esc_html_e( 'Generate a new link when I save (turns off the old one)', 'societypress' ); ?>
@@ -40068,7 +40204,7 @@ function sp_handle_page_save(): void {
     // ensure one exists so the Copy Review Link button always has a URL.
     sp_page_review_token( $saved_id, ! empty( $_POST['sp_reset_review_link'] ) );
 
-    // "Save & Preview" posts into a new tab, so land that tab on the page
+    // "Save & View" posts into a new tab, so land that tab on the page
     // itself. A published page is just viewed; a draft needs its review link,
     // which is the only way to see an unpublished page without an account.
     if ( ! empty( $_POST['sp_preview'] ) ) {
@@ -41939,7 +42075,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.148',
+            'version'     => '1.5.149',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -41947,7 +42083,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.148',
+            'version'     => '1.5.149',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -41955,7 +42091,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.148',
+            'version'     => '1.5.149',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -41963,7 +42099,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.148',
+            'version'     => '1.5.149',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -41971,7 +42107,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.148',
+            'version'     => '1.5.149',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -50553,7 +50689,7 @@ function sp_builder_fields_photo_gallery( $index, array $settings ): void {
     $display_mode   = $settings['display_mode'] ?? 'albums';
     $album_id       = $settings['album_id'] ?? '';
     $columns        = $settings['columns'] ?? 3;
-    $count          = $settings['count'] ?? 12;
+    $count          = $settings['count'] ?? 0;
     $login_required = $settings['login_required'] ?? false;
 
     $albums = $wpdb->get_results(
@@ -51286,7 +51422,7 @@ function sp_sanitize_builder_widget( string $type, array $settings ): array {
                 'columns'        => in_array( (int) ( $settings['columns'] ?? -1 ), [ 2, 3, 4, 5 ], true )
                                     ? (int) $settings['columns'] : 3,
                 'count'          => in_array( (int) ( $settings['count'] ?? -1 ), sp_photo_gallery_count_choices(), true )
-                                    ? (int) $settings['count'] : 12,
+                                    ? (int) $settings['count'] : 0,
                 'login_required' => ! empty( $settings['login_required'] ),
             ];
 
@@ -52013,6 +52149,16 @@ function sp_render_builder_widgets( int $post_id ): void {
 
         $fn = 'sp_render_builder_widget_' . $type;
         if ( function_exists( $fn ) ) {
+            // A widget with nothing to show prints nothing — then its section,
+            // heading and all, is left out. Otherwise visitors saw a lone
+            // heading over an empty space (Latest News on a site with no news).
+            ob_start();
+            $fn( $settings );
+            $body = ob_get_clean();
+            if ( '' === trim( $body ) ) {
+                continue;
+            }
+
             echo '<section class="sp-widget sp-widget--' . esc_attr( $type ) . '">';
 
             // Optional section heading — every widget can have one.
@@ -52027,7 +52173,7 @@ function sp_render_builder_widgets( int $post_id ): void {
                 echo '</div>';
             }
 
-            $fn( $settings );
+            echo $body; // phpcs:ignore WordPress.Security.EscapeOutput -- each renderer escapes its own output.
             echo '</section>';
         }
     }
@@ -74966,9 +75112,11 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
     $columns      = max( 2, min( 6, (int) ( $s['columns'] ?? 3 ) ) );
 
     // Zero is the "all photos" sentinel, so this cannot be clamped with a
-    // minimum of 1 the way the column count is.
-    $count        = (int) ( $s['count'] ?? 12 );
-    $count        = in_array( $count, sp_photo_gallery_count_choices(), true ) ? $count : 12;
+    // minimum of 1 the way the column count is. It is also the default: a
+    // gallery that quietly stopped at twelve left visitors (and the volunteer
+    // who uploaded ninety) thinking the rest had gone missing.
+    $count        = (int) ( $s['count'] ?? 0 );
+    $count        = in_array( $count, sp_photo_gallery_count_choices(), true ) ? $count : 0;
 
     /*
      * WHY a <style> block here: All static presentational rules for this widget
@@ -75226,11 +75374,13 @@ function sp_render_builder_widget_photo_gallery( array $s ): void {
         }
     } else {
         // Albums grid view — show album covers
+        // Same zero-means-all rule as the photo grid. Passing zero straight
+        // into LIMIT showed no albums at all.
         $visibility_clause = is_user_logged_in() ? '' : " AND visibility = 'public'";
-        $albums = $wpdb->get_results( $wpdb->prepare(
-            "SELECT * FROM {$prefix}photo_albums WHERE 1=1{$visibility_clause} ORDER BY sort_order ASC, created_at DESC LIMIT %d",
-            $count
-        ) );
+        $albums = $wpdb->get_results(
+            "SELECT * FROM {$prefix}photo_albums WHERE 1=1{$visibility_clause} ORDER BY sort_order ASC, created_at DESC"
+            . ( $count > 0 ? $wpdb->prepare( ' LIMIT %d', $count ) : '' )
+        );
 
         if ( empty( $albums ) ) {
             echo '<p class="sp-gallery-empty">' . esc_html__( 'No photo albums yet.', 'societypress' ) . '</p>';
@@ -77047,6 +77197,13 @@ function sp_render_album_edit_page(): void {
             }
         }
 
+        // The caption box edits the photo's one caption, which lives on the
+        // Media Library entry. Setting it there also refreshes every album
+        // row that shows this photo.
+        foreach ( $photo_ids as $attachment_id ) {
+            sp_photo_caption_set( $attachment_id, sanitize_text_field( wp_unslash( $captions[ $attachment_id ] ?? '' ) ) );
+        }
+
         // Whatever is left in $existing was removed from the album in this save.
         if ( $existing ) {
             $removed_ids = implode( ',', array_map( 'intval', $existing ) );
@@ -77261,14 +77418,11 @@ function sp_render_album_edit_page(): void {
                         if (currentIds.indexOf(att.id) !== -1) return; // skip dupes
                         currentIds.push(att.id);
                         var thumb = att.sizes && att.sizes.thumbnail ? att.sizes.thumbnail.url : att.url;
-                        // Carry the caption the volunteer typed in the WordPress
-                        // media uploader straight into the album's caption box, so
-                        // adding one captioned photo really is a single step (no
-                        // retyping). Fall back to the media Title if no caption was
-                        // set, but skip a bare filename-style title (no spaces, has
-                        // a dot) so we don't seed noise like "speaker-photo.jpg".
+                        // The box shows the photo's one caption — the Media
+                        // Library's. No fallback to the Title: WordPress makes the
+                        // Title from the file name, so that fallback filled
+                        // galleries with names like "1-A_Los_Toros".
                         var seed = att.caption || '';
-                        if (!seed && att.title && !/^\S+\.\S+$/.test(att.title)) { seed = att.title; }
                         var esc = function (s) {
                             return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
                                 .replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -121257,6 +121411,7 @@ add_action( 'init', function () {
             'submission_status' => 'pending',
             'submission_note'   => sanitize_textarea_field( wp_unslash( $_POST['submission_note'] ?? '' ) ),
         ] );
+        sp_photo_caption_set( (int) $attach_id, sanitize_text_field( wp_unslash( $_POST['caption'] ?? '' ) ) );
 
         // A submitted photo is filed with the rest of its album straight away,
         // before it is moderated. Pending is a status on the photo, not a
@@ -134651,6 +134806,14 @@ function sp_gallery_import_add_item( int $album_id, int $attachment_id, int $sor
     ] );
 
     $item_id = (int) $wpdb->insert_id;
+
+    // A caption from the import becomes the photo's caption; without one, the
+    // album row takes whatever the Media Library already has.
+    if ( '' !== trim( $caption ) ) {
+        sp_photo_caption_set( $attachment_id, sanitize_text_field( $caption ) );
+    } else {
+        sp_photo_caption_mirror( $attachment_id );
+    }
 
     // An imported photo is a file like any other. Filing it as it arrives
     // means the Files screen is already sorted when the import finishes.

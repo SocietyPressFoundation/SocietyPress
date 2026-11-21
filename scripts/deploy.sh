@@ -25,7 +25,7 @@
 
 set -o pipefail
 
-HOST="skystra"
+HOST="societypress-net"
 DEMO_BASE="~/demo.societypress.net/wp-content"
 
 # Two more sites on the primary host run the plugin, and until now nothing
@@ -41,8 +41,9 @@ DEMO_BASE="~/demo.societypress.net/wp-content"
 # WHY ensdemo: it is the ENS-comparison demo a prospective society is pointed
 # at. A stale one quietly misrepresents the product to exactly the audience
 # the comparison exists to persuade.
-# WHY a second host: societypress.net, the public site, lives on its own
-# Hawk Host account, apart from the demo and ensdemo installs on Skystra. Its
+# WHY one host: societypress.net, the demo and the ENS demo all live on the
+# same Hawk Host account (the ENS demo kept its getsocietypress.org/ensdemo URL
+# because that link was already handed to prospective societies). The site's
 # WordPress sits in wp/ under the web root, with downloads/ and
 # sp-docs-source/ beside it so the theme and the download logger find them.
 SITE_HOST="societypress-net"
@@ -52,7 +53,7 @@ MARKETING_BASE="$SITE_ROOT/wp/wp-content"
 # WHY the demo uses SITE_HOST: it moved to its own folder and database on the
 # societypress.net account, beside the public site rather than inside it.
 DEMO_HOST="$SITE_HOST"
-ENSDEMO_BASE="~/domains/getsocietypress.org/public_html/ensdemo/wp-content"
+ENSDEMO_BASE="~/getsocietypress.org/ensdemo/wp-content"
 
 LOCAL_BASE="$(cd "$(dirname "$0")/.." && pwd)"
 

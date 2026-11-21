@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.147] — 2026-11-20
+
+- No change to the product. The project's ENS-comparison demo moved to a new server, and the deploy script now sends updates there.
+
 ## [1.5.146] — 2026-11-18
 
 - **Restore a backup.** Settings → Export & Backup now has a Restore button on each backup, and a way to upload a backup file from your computer (sent in small pieces, so a large file is fine on any host). A restore replaces the whole site with the backup — members, pages, settings, sign-in accounts, plugins and themes — after first making a backup of the site as it is, so it can be undone. It works on a different host too: the site keeps its own address and links are updated, a different table prefix is handled, members' phone numbers and addresses are locked again with the new server's key, and the person running the restore stays signed in. SocietyPress itself stays at the installed version. Only full administrators can restore.

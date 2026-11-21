@@ -20,6 +20,10 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.148] — 2026-11-21
+
+- Fixed: volunteer opportunity cards on the public Volunteer page now show which committee each opportunity belongs to. The committee was never loaded for that page, so the line was always missing.
+
 ## [1.5.147] — 2026-11-20
 
 - No change to the product. The project's ENS-comparison demo moved to a new server, and the deploy script now sends updates there.

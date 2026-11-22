@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.155
+ * Version:     1.5.156
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.155' );
+define( 'SOCIETYPRESS_VERSION', '1.5.156' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7090,6 +7090,7 @@ function sp_template_module_map(): array {
         'sp-help-requests'      => 'help_requests',
         'sp-documents'          => 'documents',
         'sp-voting'             => 'voting',
+        'sp-meetings'           => 'governance',
         'sp-lineage'            => 'lineage',
         'sp-lineage-roster'     => 'lineage',
         'sp-lineage-apply'      => 'lineage',
@@ -21089,6 +21090,7 @@ function sp_screen_public_pages(): array {
         'sp-help-requests'    => [ 'template' => 'sp-help-requests',   'title' => __( 'Research Help', 'societypress' ),      'module' => 'help_requests' ],
         'sp-library'          => [ 'template' => 'sp-resources',       'title' => __( 'Resource Links', 'societypress' ),     'module' => 'resources' ],
         'sp-newsletter-archive' => [ 'template' => 'sp-newsletter-archive', 'title' => __( 'Newsletters', 'societypress' ),   'module' => 'newsletters' ],
+        'sp-meetings'         => [ 'template' => 'sp-meetings',        'title' => __( 'Meetings', 'societypress' ),           'module' => 'governance' ],
         'sp-ballots'          => [ 'template' => 'sp-voting',          'title' => __( 'Voting', 'societypress' ),             'module' => 'voting' ],
         'sp-donations'        => [ 'template' => 'sp-donate',          'title' => __( 'Donate', 'societypress' ),             'module' => 'donations' ],
     ];
@@ -42515,7 +42517,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.155',
+            'version'     => '1.5.156',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42523,7 +42525,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.155',
+            'version'     => '1.5.156',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42531,7 +42533,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.155',
+            'version'     => '1.5.156',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42539,7 +42541,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.155',
+            'version'     => '1.5.156',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42547,7 +42549,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.155',
+            'version'     => '1.5.156',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -117089,6 +117091,280 @@ add_action( 'admin_init', function () {
     wp_redirect( admin_url( 'admin.php?page=sp-ballot-edit&ballot_id=' . $ballot_id . '&saved=1' ) );
     exit;
 } );
+
+
+// ============================================================================
+// MEETINGS AND MINUTES ON THE PUBLIC SITE
+//
+// WHY: Every meeting carries a Visibility setting, but nothing on the public
+//      site listed meetings, so the setting did nothing — and a society that
+//      records minutes on the Meetings screen had to upload them again under
+//      Documents for members to read them. This lists past meetings with their
+//      agenda, minutes and notes, honoring each meeting's visibility the same
+//      way events do.
+// ============================================================================
+
+/**
+ * Meeting type labels as visitors see them.
+ *
+ * @return array<string,string>
+ */
+function sp_meeting_public_type_labels(): array {
+    return [
+        'board'      => __( 'Board', 'societypress' ),
+        'membership' => __( 'Membership', 'societypress' ),
+        'committee'  => __( 'Committee', 'societypress' ),
+    ];
+}
+
+/**
+ * Render the list of past meetings this visitor may see.
+ *
+ * @param array $args {
+ *     @type string $type         'board', 'membership', 'committee' or '' for all.
+ *     @type int    $limit        Most meetings to show; 0 for all.
+ *     @type bool   $show_filters Offer type and year filters (the full page does).
+ * }
+ */
+function sp_render_meetings_list( array $args ): string {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $labels = sp_meeting_public_type_labels();
+
+    $type    = isset( $labels[ $args['type'] ?? '' ] ) ? $args['type'] : '';
+    $limit   = max( 0, (int) ( $args['limit'] ?? 0 ) );
+    $filters = ! empty( $args['show_filters'] );
+    $year    = 0;
+
+    if ( $filters ) {
+        $get_type = sanitize_key( wp_unslash( $_GET['sp_mtype'] ?? '' ) );
+        $type     = isset( $labels[ $get_type ] ) ? $get_type : $type;
+        $year     = absint( $_GET['sp_myear'] ?? 0 );
+    }
+
+    $today   = current_time( 'Y-m-d' );
+    $visible = sp_event_visibility_sql( 'm' );
+    $where   = $wpdb->prepare( 'm.meeting_date <= %s', $today ) . " AND {$visible}";
+    if ( $type !== '' ) {
+        $where .= $wpdb->prepare( ' AND m.meeting_type = %s', $type );
+    }
+
+    // Years come from what this person can see, so the menu never offers a
+    // year that turns up empty.
+    $years = $filters ? array_map( 'intval', $wpdb->get_col(
+        "SELECT DISTINCT YEAR(m.meeting_date) FROM {$prefix}meetings m WHERE {$where} ORDER BY 1 DESC"
+    ) ) : [];
+    if ( $year && ! in_array( $year, $years, true ) ) {
+        $year = 0;
+    }
+    if ( $year ) {
+        $where .= $wpdb->prepare( ' AND YEAR(m.meeting_date) = %d', $year );
+    }
+
+    $sql = "SELECT m.*, c.name AS committee_name
+              FROM {$prefix}meetings m
+              LEFT JOIN {$prefix}committees c ON c.id = m.committee_id
+             WHERE {$where}
+             ORDER BY m.meeting_date DESC, m.id DESC";
+    if ( $limit ) {
+        $sql .= $wpdb->prepare( ' LIMIT %d', $limit );
+    }
+    $meetings = $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL -- pieces prepared above.
+
+    // Tell a signed-out visitor that more exists, rather than letting a short
+    // public list read as everything the society has recorded.
+    $hidden = 0;
+    if ( ! is_user_logged_in() ) {
+        $hidden = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$prefix}meetings WHERE meeting_date <= %s AND visibility <> 'public'",
+            $today
+        ) );
+    }
+
+    ob_start();
+    ?>
+    <div class="sp-meetings">
+        <?php if ( $filters && ( $years || $type !== '' ) ) : ?>
+            <form class="sp-meetings-filters" method="get">
+                <label for="sp-mtype"><?php esc_html_e( 'Meeting', 'societypress' ); ?></label>
+                <select id="sp-mtype" name="sp_mtype">
+                    <option value=""><?php esc_html_e( 'All meetings', 'societypress' ); ?></option>
+                    <?php foreach ( $labels as $key => $label ) : ?>
+                        <option value="<?php echo esc_attr( $key ); ?>" <?php selected( $type, $key ); ?>><?php echo esc_html( $label ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <label for="sp-myear"><?php esc_html_e( 'Year', 'societypress' ); ?></label>
+                <select id="sp-myear" name="sp_myear">
+                    <option value=""><?php esc_html_e( 'All years', 'societypress' ); ?></option>
+                    <?php foreach ( $years as $y ) : ?>
+                        <option value="<?php echo esc_attr( $y ); ?>" <?php selected( $year, $y ); ?>><?php echo esc_html( $y ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" class="sp-meetings-filter-btn"><?php esc_html_e( 'Show', 'societypress' ); ?></button>
+            </form>
+        <?php endif; ?>
+
+        <?php if ( ! $meetings ) : ?>
+            <p class="sp-meetings-empty"><?php esc_html_e( 'No meetings to show yet.', 'societypress' ); ?></p>
+        <?php else :
+            $current_year = null;
+            foreach ( $meetings as $m ) :
+                $m_year = (int) substr( $m->meeting_date, 0, 4 );
+                if ( ! $limit && $m_year !== $current_year ) :
+                    if ( $current_year !== null ) {
+                        echo '</ul>';
+                    }
+                    $current_year = $m_year; ?>
+                    <h2 class="sp-meetings-year"><?php echo esc_html( $m_year ); ?></h2>
+                    <ul class="sp-meetings-list">
+                <?php elseif ( $current_year === null ) :
+                    $current_year = $m_year; ?>
+                    <ul class="sp-meetings-list">
+                <?php endif;
+
+                $kind = $labels[ $m->meeting_type ] ?? '';
+                if ( $m->meeting_type === 'committee' && ! empty( $m->committee_name ) ) {
+                    $kind = $m->committee_name;
+                } ?>
+                <li class="sp-meeting">
+                    <h3 class="sp-meeting-title"><?php echo esc_html( $m->title ); ?></h3>
+                    <p class="sp-meeting-meta">
+                        <?php
+                        echo esc_html( mysql2date( get_option( 'date_format' ), $m->meeting_date ) );
+                        if ( $kind !== '' ) {
+                            echo ' · ' . esc_html( $kind );
+                        }
+                        if ( ! empty( $m->location ) ) {
+                            echo ' · ' . esc_html( $m->location );
+                        }
+                        ?>
+                    </p>
+                    <?php if ( ! empty( $m->agenda_url ) || ! empty( $m->minutes_url ) ) : ?>
+                        <p class="sp-meeting-links">
+                            <?php if ( ! empty( $m->agenda_url ) ) : ?>
+                                <a href="<?php echo esc_url( $m->agenda_url ); ?>"><?php esc_html_e( 'Agenda', 'societypress' ); ?></a>
+                            <?php endif; ?>
+                            <?php if ( ! empty( $m->minutes_url ) ) : ?>
+                                <a href="<?php echo esc_url( $m->minutes_url ); ?>"><?php esc_html_e( 'Minutes', 'societypress' ); ?></a>
+                            <?php endif; ?>
+                        </p>
+                    <?php endif; ?>
+                    <?php if ( trim( (string) $m->notes ) !== '' ) : ?>
+                        <details class="sp-meeting-notes">
+                            <summary><?php esc_html_e( 'Notes', 'societypress' ); ?></summary>
+                            <?php echo wp_kses_post( wpautop( $m->notes ) ); ?>
+                        </details>
+                    <?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+
+        <?php if ( $hidden ) : ?>
+            <p class="sp-meetings-more">
+                <?php
+                printf(
+                    /* translators: %s: log in link */
+                    esc_html__( 'Members can %s to see more meetings and minutes.', 'societypress' ),
+                    '<a href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'log in', 'societypress' ) . '</a>'
+                );
+                ?>
+            </p>
+        <?php endif; ?>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
+/**
+ * Styles for the meetings list, on the page and in the widget.
+ */
+function sp_meetings_frontend_css(): void {
+    static $done = false;
+    if ( $done ) {
+        return;
+    }
+    $done = true;
+    ?>
+    <style id="sp-meetings-css">
+        .sp-meetings-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 1.5em; }
+        .sp-meetings-year { margin: 1.5em 0 0.5em; font-size: 1.3rem; }
+        .sp-meetings-list { list-style: none; margin: 0; padding: 0; }
+        .sp-meeting { padding: 14px 0; border-bottom: 1px solid var(--sp-color-border, #e5e7eb); }
+        .sp-meeting-title { margin: 0 0 4px; font-size: 1.1rem; }
+        .sp-meeting-meta { margin: 0; color: var(--sp-color-text-secondary, #6d7175); }
+        .sp-meeting-links { margin: 6px 0 0; display: flex; gap: 16px; font-weight: 600; }
+        .sp-meeting-notes { margin-top: 8px; }
+        .sp-meeting-notes summary { cursor: pointer; }
+        .sp-meetings-more { margin-top: 1.5em; }
+    </style>
+    <?php
+}
+
+add_filter( 'theme_page_templates', function ( $templates ) {
+    $templates['sp-meetings'] = __( 'Meetings & Minutes', 'societypress' );
+    return $templates;
+} );
+
+add_filter( 'template_include', function ( $template ) {
+    if ( ! is_page() || get_page_template_slug() !== 'sp-meetings' || ! sp_module_enabled( 'governance' ) ) {
+        return $template;
+    }
+
+    get_header();
+    sp_meetings_frontend_css();
+    echo '<div class="entry-content sp-meetings-wrap">';
+    echo '<h1 class="entry-title">' . esc_html( get_the_title() ) . '</h1>';
+    // The page's own text goes first, so a society can introduce its meetings.
+    while ( have_posts() ) {
+        the_post();
+        the_content();
+    }
+    echo sp_render_meetings_list( [ 'show_filters' => true ] ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in renderer.
+    echo '</div>';
+    get_footer();
+    return sp_get_blank_template_path();
+} );
+
+add_filter( 'sp_builder_widget_types', function ( array $types ): array {
+    if ( ! sp_module_enabled( 'governance' ) ) {
+        return $types;
+    }
+    $types['meetings'] = [
+        'label'       => __( 'Meetings & Minutes', 'societypress' ),
+        'description' => __( 'The most recent meetings with their agenda and minutes. Each meeting shows only to the people its Visibility setting allows.', 'societypress' ),
+        'fields'      => [
+            'title' => [
+                'label'   => __( 'Heading', 'societypress' ),
+                'type'    => 'text',
+                'default' => __( 'Recent Meetings', 'societypress' ),
+            ],
+            'type'  => [
+                'label'   => __( 'Which meetings', 'societypress' ),
+                'type'    => 'select',
+                'default' => '',
+                'options' => [ '' => __( 'All meetings', 'societypress' ) ] + sp_meeting_public_type_labels(),
+            ],
+            'count' => [
+                'label'   => __( 'How many to show', 'societypress' ),
+                'type'    => 'number',
+                'default' => 5,
+            ],
+        ],
+    ];
+    return $types;
+} );
+
+function sp_render_builder_widget_meetings( array $s ): void {
+    sp_meetings_frontend_css();
+    if ( trim( (string) ( $s['title'] ?? '' ) ) !== '' ) {
+        echo '<h2 class="sp-meetings-heading">' . esc_html( $s['title'] ) . '</h2>';
+    }
+    echo sp_render_meetings_list( [ // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in renderer.
+        'type'  => (string) ( $s['type'] ?? '' ),
+        'limit' => max( 1, (int) ( $s['count'] ?? 5 ) ),
+    ] );
+}
 
 
 // --------------------------------------------------------------------------

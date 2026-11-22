@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.156] — 2026-11-21
+
+- **Meetings and minutes on the public site.** A new Meetings & Minutes page
+  lists past meetings by year, with agenda and minutes links and the notes,
+  and lets visitors filter by meeting type and year. Each meeting shows only
+  to the people its Visibility setting allows; signed-out visitors are told
+  members can log in to see more. The Meetings screen offers to make the page,
+  and a Meetings & Minutes page-builder widget shows the most recent few.
+
 ## [1.5.155] — 2026-11-21
 
 - **More join form questions**, each switched on or off under Settings →

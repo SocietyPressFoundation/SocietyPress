@@ -16,6 +16,12 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Meetings and minutes on the public site — 1.5.156
+
+A Meetings & Minutes page type (offered from the Meetings screen) and
+page-builder widget list past meetings with agenda, minutes and notes, filtered
+by type and year, each honoring its Visibility setting.
+
 ### More join form questions — 1.5.155
 
 Willing to volunteer (with skills), printed journal by mail (only when the
@@ -198,18 +204,6 @@ mailbox exists as of 2026-11-19), then a Google Cloud project for the
 SocietyPress app. Build after that, so it is tested against the real Google.
 
 ### Medium
-
-#### Meetings and minutes on the public site
-
-**Motivation:** Each meeting has a Visibility setting — Public, Members only,
-Committee only — but nothing on the public site lists meetings, so the
-setting does nothing. Societies that record minutes on the Meetings screen
-have to upload them again under Documents for members to read them.
-**Scope:** A Meetings page type (and page-builder widget) listing past
-meetings by type and year, with agenda and minutes links and inline notes,
-honoring each meeting's visibility, and offered by the Meetings screen's
-"make the page for me" banner.
-**Blockers:** None.
 
 #### AI assistant and problem reports
 

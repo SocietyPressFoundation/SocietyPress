@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.153] — 2026-11-21
+
+- **Picture Wall albums can take member photos.** The album edit screen has a
+  "Let members send in photos for this album" checkbox and an instructions
+  box. Until now no screen could switch an album on, so the Picture Wall
+  form never had anywhere to send a photo.
+
 ## [1.5.152] — 2026-11-21
 
 - **Send a test email.** Settings → Organization has a Sending Email section

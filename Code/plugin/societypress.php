@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.152
+ * Version:     1.5.153
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.152' );
+define( 'SOCIETYPRESS_VERSION', '1.5.153' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -42331,7 +42331,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.152',
+            'version'     => '1.5.153',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42339,7 +42339,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.152',
+            'version'     => '1.5.153',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42347,7 +42347,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.152',
+            'version'     => '1.5.153',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42355,7 +42355,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.152',
+            'version'     => '1.5.153',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42363,7 +42363,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.152',
+            'version'     => '1.5.153',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -77392,6 +77392,15 @@ function sp_render_album_edit_page(): void {
             'sort_order'      => absint( $_POST['sort_order'] ?? 0 ),
         ];
 
+        // WHY one checkbox drives two columns: the Picture Wall form only takes
+        // photos for an album that is both a submissions album and switched on.
+        // A volunteer has one question — "can members send photos here?" — so
+        // the screen asks that once and keeps the pair in step.
+        $accepts = ! empty( $_POST['accepts_submissions'] );
+        $data['accepts_submissions']     = $accepts ? 1 : 0;
+        $data['submission_type']         = $accepts ? 'submissions' : 'curated';
+        $data['submission_instructions'] = wp_kses_post( wp_unslash( $_POST['submission_instructions'] ?? '' ) );
+
         if ( $album_id ) {
             $wpdb->update( $prefix . 'photo_albums', $data, [ 'id' => $album_id ] );
         } else {
@@ -77577,6 +77586,23 @@ function sp_render_album_edit_page(): void {
                             <option value="public" <?php selected( $album->visibility ?? 'public', 'public' ); ?>><?php esc_html_e( 'Public', 'societypress' ); ?></option>
                             <option value="members_only" <?php selected( $album->visibility ?? '', 'members_only' ); ?>><?php esc_html_e( 'Members Only', 'societypress' ); ?></option>
                         </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="col"><?php esc_html_e( 'Member Photos', 'societypress' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="accepts_submissions" value="1" <?php checked( ( $album->submission_type ?? '' ) === 'submissions' && (int) ( $album->accepts_submissions ?? 0 ) === 1 ); ?>>
+                            <?php esc_html_e( 'Let members send in photos for this album', 'societypress' ); ?>
+                        </label>
+                        <p class="description"><?php esc_html_e( 'Turns on the Picture Wall form for this album. Each photo waits for a volunteer to approve it before anyone else sees it.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="col"><label for="submission_instructions"><?php esc_html_e( 'Instructions for Members', 'societypress' ); ?></label></th>
+                    <td>
+                        <textarea name="submission_instructions" id="submission_instructions" rows="3" class="large-text"><?php echo esc_textarea( $album->submission_instructions ?? '' ); ?></textarea>
+                        <p class="description"><?php esc_html_e( 'Shown above the photo form — for example, what kind of photos you want and how to name the people in them. Optional.', 'societypress' ); ?></p>
                     </td>
                 </tr>
                 <tr>

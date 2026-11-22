@@ -16,6 +16,11 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Picture Wall albums take member photos — 1.5.153
+
+The album edit screen can switch an album on for member submissions, with
+instructions shown above the form.
+
 ### Send a test email — 1.5.152
 
 Settings → Organization → Sending Email: a Send a Test Email button that mails
@@ -191,16 +196,6 @@ have to upload them again under Documents for members to read them.
 meetings by type and year, with agenda and minutes links and inline notes,
 honoring each meeting's visibility, and offered by the Meetings screen's
 "make the page for me" banner.
-**Blockers:** None.
-
-#### Picture Wall: let an album accept submissions
-
-**Motivation:** The Picture Wall submission form only accepts photos into an
-album marked to take them, and the album screen has no way to mark one, so
-the form never has anywhere to send a photo.
-**Scope:** "Accept member submissions" and submission type on the album edit
-screen, writing the existing `accepts_submissions` and `submission_type`
-fields.
 **Blockers:** None.
 
 #### Join form: volunteering, print by mail, how they heard about us

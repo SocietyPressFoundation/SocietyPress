@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.155] — 2026-11-21
+
+- **More join form questions**, each switched on or off under Settings →
+  Membership → Join Form Questions:
+  - "I'm willing to volunteer", which opens a box for skills they could offer.
+  - "I'd like the printed journal by mail" — off until the society says it
+    mails a printed journal.
+  - "How did you hear about us?" — a drop down menu the society edits, plus
+    Other with a box to type in.
+  - "I agree to the privacy policy", linked to the Privacy Policy page. Off
+    by default; when on, it must be ticked to join.
+- The answers show on the member record under From the Join Form, and in
+  member exports.
+
 ## [1.5.154] — 2026-11-21
 
 - **Notepad on the dashboard.** The dashboard opens with a Notepad card

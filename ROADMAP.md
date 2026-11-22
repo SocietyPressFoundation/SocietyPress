@@ -16,6 +16,13 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### More join form questions — 1.5.155
+
+Willing to volunteer (with skills), printed journal by mail (only when the
+society mails one), how did you hear about us (editable drop down menu plus
+Other), and an optional privacy policy agreement with its date kept. Each is
+switched on or off under Join Form Questions; answers show on the member record.
+
 ### Notepad on the dashboard — 1.5.154
 
 The notes board already existed (Notepad); its dashboard panel had been left
@@ -202,20 +209,6 @@ have to upload them again under Documents for members to read them.
 meetings by type and year, with agenda and minutes links and inline notes,
 honoring each meeting's visibility, and offered by the Meetings screen's
 "make the page for me" banner.
-**Blockers:** None.
-
-#### Join form: volunteering, print by mail, how they heard about us
-
-**Motivation:** Three questions on nearly every society's paper application
-are missing from the online one, so a society moving online loses them.
-**Scope:** An optional "Willing to volunteer?" checkbox that reveals a skills
-box (writes the existing `volunteer` and `skills` columns); "I'd like the
-printed journal by mail" (writes the existing `receive_print` column); and
-"How did you hear about us?" with an Other box, kept in member meta. Also an optional "I agree to the privacy policy" checkbox, linked to the
-page set under Settings → Privacy, with the date of agreement kept on the
-member record. Built
-once on a pre-1.5 branch in PR #5 and never merged; rebuild it on the current
-join form rather than merging that.
 **Blockers:** None.
 
 #### AI assistant and problem reports

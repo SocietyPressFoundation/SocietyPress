@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.154
+ * Version:     1.5.155
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.154' );
+define( 'SOCIETYPRESS_VERSION', '1.5.155' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -28887,6 +28887,36 @@ function sp_render_member_edit_page(): void {
                             </div>
                         </div>
 
+                        <?php
+                        // Answers from the join form. Read-only: they record what
+                        // the member said when joining, not something to edit.
+                        $sp_join_answers = [];
+                        if ( ! empty( $member->user_id ) ) {
+                            global $wpdb;
+                            $sp_join_answers = $wpdb->get_results( $wpdb->prepare(
+                                "SELECT meta_key, meta_value FROM {$wpdb->prefix}sp_member_meta
+                                  WHERE user_id = %d AND meta_key IN ('heard_about_us','privacy_policy_agreed')",
+                                (int) $member->user_id
+                            ), OBJECT_K );
+                        }
+                        if ( $sp_join_answers ) : ?>
+                            <div class="sp-field">
+                                <label class="sp-member-edit-group-label"><?php esc_html_e( 'From the Join Form', 'societypress' ); ?></label>
+                                <?php if ( isset( $sp_join_answers['heard_about_us'] ) ) : ?>
+                                    <p><?php
+                                    /* translators: %s: how the member heard about the society */
+                                    printf( esc_html__( 'Heard about us: %s', 'societypress' ), esc_html( $sp_join_answers['heard_about_us']->meta_value ) );
+                                    ?></p>
+                                <?php endif; ?>
+                                <?php if ( isset( $sp_join_answers['privacy_policy_agreed'] ) ) : ?>
+                                    <p><?php
+                                    /* translators: %s: date the member agreed */
+                                    printf( esc_html__( 'Agreed to the privacy policy on %s', 'societypress' ), esc_html( mysql2date( get_option( 'date_format' ), $sp_join_answers['privacy_policy_agreed']->meta_value ) ) );
+                                    ?></p>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+
                     </div>
                 </div>
             </div>
@@ -34411,6 +34441,77 @@ add_action( 'admin_init', function () {
         );
     }
 
+    // ---- More join form questions ----
+    // WHY these sit outside the four checklists: each is a single question with
+    // its own shape (a yes/no, a drop down menu, an agreement), and the
+    // printed-journal one only makes sense for a society that mails one.
+    add_settings_field(
+        'sp_join_willing',
+        __( 'Willing to Volunteer?', 'societypress' ),
+        function () {
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[join_ask_willing]" value="1"%s> %s</label>',
+                checked( sp_join_asks( 'willing' ), true, false ),
+                esc_html__( 'Ask "Willing to volunteer?" on the join form, with a box for skills they could offer', 'societypress' )
+            );
+        },
+        'sp-settings-membership',
+        'sp_join_questions_section'
+    );
+
+    add_settings_field(
+        'sp_join_print_journal',
+        __( 'Printed Journal by Mail', 'societypress' ),
+        function () {
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[join_print_journal]" value="1"%s> %s</label>',
+                checked( ! empty( sp_settings()['join_print_journal'] ), true, false ),
+                esc_html__( 'We mail a printed journal — ask new members if they would like it by mail', 'societypress' )
+            );
+            echo '<p class="description">' . esc_html__( 'Their answer is the "Receives Print Mail" box on the member record.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_join_questions_section'
+    );
+
+    add_settings_field(
+        'sp_join_heard',
+        __( 'How Did You Hear About Us?', 'societypress' ),
+        function () {
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[join_ask_heard]" value="1"%s> %s</label>',
+                checked( sp_join_asks( 'heard' ), true, false ),
+                esc_html__( 'Ask on the join form', 'societypress' )
+            );
+            printf(
+                '<br><textarea name="societypress_settings[join_heard_choices]" rows="6" class="large-text">%s</textarea>',
+                esc_textarea( implode( "\n", sp_join_heard_choices() ) )
+            );
+            echo '<p class="description">' . esc_html__( 'The choices in the drop down menu, one per line. "Other" with a box to type in is always added at the end.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-membership',
+        'sp_join_questions_section'
+    );
+
+    add_settings_field(
+        'sp_join_privacy',
+        __( 'Privacy Policy Agreement', 'societypress' ),
+        function () {
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[join_ask_privacy]" value="1"%s> %s</label>',
+                checked( ! empty( sp_settings()['join_ask_privacy'] ), true, false ),
+                esc_html__( 'New members must tick "I agree to the privacy policy" to join', 'societypress' )
+            );
+            if ( ! sp_join_privacy_url() ) {
+                echo '<p class="description">' . esc_html__( 'Choose your Privacy Policy page under Settings → Privacy first. Until then the box is not shown.', 'societypress' ) . '</p>';
+            } else {
+                echo '<p class="description">' . esc_html__( 'The box links to your Privacy Policy page, and the date they agreed is kept on the member record.', 'societypress' ) . '</p>';
+            }
+        },
+        'sp-settings-membership',
+        'sp_join_questions_section'
+    );
+
     foreach ( [
         'volunteer_coordinator_email' => [ __( 'Volunteer Offers Go To', 'societypress' ), __( 'Who is emailed when a member ticks something under Volunteering. Leave blank to use the society\'s main email address.', 'societypress' ) ],
         'lineage_chair_email'         => [ __( 'Lineage Interest Goes To', 'societypress' ), __( 'Who is emailed when a member says they might apply to one of your lineage programs. Leave blank to use the society\'s main email address.', 'societypress' ) ],
@@ -35611,6 +35712,11 @@ function sp_sanitize_settings( array $input ): array {
         'join_skill_choices'          => fn() => sp_sanitize_choice_list_input( $input['join_skill_choices'] ?? '' ),
         'volunteer_coordinator_email' => fn() => sp_email_list_string( (string) ( $input['volunteer_coordinator_email'] ?? '' ) ),
         'lineage_chair_email'         => fn() => sp_email_list_string( (string) ( $input['lineage_chair_email'] ?? '' ) ),
+        'join_ask_willing'            => fn() => ! empty( $input['join_ask_willing'] ) ? 1 : 0,
+        'join_print_journal'          => fn() => ! empty( $input['join_print_journal'] ) ? 1 : 0,
+        'join_ask_heard'              => fn() => ! empty( $input['join_ask_heard'] ) ? 1 : 0,
+        'join_heard_choices'          => fn() => sp_sanitize_choice_list_input( $input['join_heard_choices'] ?? '' ),
+        'join_ask_privacy'            => fn() => ! empty( $input['join_ask_privacy'] ) ? 1 : 0,
 
         // Member self-service locks (Privacy tab)
         'member_lock_contact'     => fn() => ! empty( $input['member_lock_contact'] ) ? 1 : 0,
@@ -35857,6 +35963,7 @@ function sp_sanitize_settings( array $input ): array {
             'join_ask_volunteer', 'join_ask_lineage', 'join_ask_interests', 'join_ask_skills',
             'join_volunteer_areas', 'join_lineage_groups', 'join_interest_choices', 'join_skill_choices',
             'volunteer_coordinator_email', 'lineage_chair_email',
+            'join_ask_willing', 'join_print_journal', 'join_ask_heard', 'join_heard_choices', 'join_ask_privacy',
         ]);
     }
 
@@ -42408,7 +42515,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.154',
+            'version'     => '1.5.155',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42416,7 +42523,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.154',
+            'version'     => '1.5.155',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42424,7 +42531,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.154',
+            'version'     => '1.5.155',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42432,7 +42539,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.154',
+            'version'     => '1.5.155',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42440,7 +42547,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.154',
+            'version'     => '1.5.155',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -66213,6 +66320,162 @@ function sp_join_asks( string $section ): bool {
 }
 
 /**
+ * The "How did you hear about us?" choices, without the always-present Other.
+ *
+ * @return string[]
+ */
+function sp_join_heard_choices(): array {
+    return sp_choice_list_setting( 'join_heard_choices', [
+        __( 'A friend or family member', 'societypress' ),
+        __( 'Another society', 'societypress' ),
+        __( 'A library or archive', 'societypress' ),
+        __( 'A newspaper or magazine', 'societypress' ),
+        __( 'A web search', 'societypress' ),
+        __( 'Social media', 'societypress' ),
+        __( 'One of our events or seminars', 'societypress' ),
+    ] );
+}
+
+/**
+ * The privacy policy link for the join form, or '' when it should not be asked.
+ *
+ * WHY both conditions: an "I agree" box that links nowhere asks a person to
+ * accept terms they cannot read, so the box waits until a page is chosen.
+ */
+function sp_join_privacy_url(): string {
+    $page_id = (int) get_option( 'wp_page_for_privacy_policy', 0 );
+    if ( ! $page_id || get_post_status( $page_id ) !== 'publish' ) {
+        return '';
+    }
+    return (string) get_permalink( $page_id );
+}
+
+/**
+ * Join form fields for the single questions: volunteering, print, how heard,
+ * privacy. Values come back from $_POST so a failed submission keeps them.
+ */
+function sp_join_extra_fields_html(): string {
+    $post     = wp_unslash( $_POST );
+    $settings = sp_settings();
+    ob_start();
+
+    if ( sp_join_asks( 'willing' ) ) : ?>
+        <fieldset>
+            <legend><?php esc_html_e( 'Helping Out', 'societypress' ); ?></legend>
+            <label class="sp-choice"><input type="checkbox" name="sp_join_willing" value="1" id="sp-join-willing" <?php checked( ! empty( $post['sp_join_willing'] ) ); ?>> <?php esc_html_e( 'I\'m willing to volunteer', 'societypress' ); ?></label>
+            <div class="sp-field" id="sp-join-skills-wrap" <?php echo empty( $post['sp_join_willing'] ) ? 'hidden' : ''; ?>>
+                <label for="sp-join-skills"><?php esc_html_e( 'Skills or experience you could offer', 'societypress' ); ?></label>
+                <textarea id="sp-join-skills" name="sp_join_skills" rows="2"><?php echo esc_textarea( $post['sp_join_skills'] ?? '' ); ?></textarea>
+            </div>
+        </fieldset>
+    <?php endif;
+
+    $heard = sp_join_asks( 'heard' );
+    $print = ! empty( $settings['join_print_journal'] );
+    if ( $heard || $print ) : ?>
+        <fieldset>
+            <legend><?php esc_html_e( 'A Little More', 'societypress' ); ?></legend>
+            <?php if ( $print ) : ?>
+                <label class="sp-choice"><input type="checkbox" name="receive_print" value="1" <?php checked( ! empty( $post['receive_print'] ) ); ?>> <?php esc_html_e( 'I\'d like the printed journal by mail', 'societypress' ); ?></label>
+            <?php endif; ?>
+            <?php if ( $heard ) :
+                $picked = (string) ( $post['sp_join_heard'] ?? '' ); ?>
+                <div class="sp-field">
+                    <label for="sp-join-heard"><?php esc_html_e( 'How did you hear about us?', 'societypress' ); ?></label>
+                    <select id="sp-join-heard" name="sp_join_heard">
+                        <option value=""><?php esc_html_e( '— Choose one (optional) —', 'societypress' ); ?></option>
+                        <?php foreach ( sp_join_heard_choices() as $choice ) : ?>
+                            <option value="<?php echo esc_attr( $choice ); ?>" <?php selected( $picked, $choice ); ?>><?php echo esc_html( $choice ); ?></option>
+                        <?php endforeach; ?>
+                        <option value="__other" <?php selected( $picked, '__other' ); ?>><?php esc_html_e( 'Other', 'societypress' ); ?></option>
+                    </select>
+                </div>
+                <div class="sp-field" id="sp-join-heard-other-wrap" <?php echo $picked === '__other' ? '' : 'hidden'; ?>>
+                    <label for="sp-join-heard-other"><?php esc_html_e( 'Where did you hear about us?', 'societypress' ); ?></label>
+                    <input type="text" id="sp-join-heard-other" name="sp_join_heard_other" maxlength="200" value="<?php echo esc_attr( $post['sp_join_heard_other'] ?? '' ); ?>">
+                </div>
+            <?php endif; ?>
+        </fieldset>
+    <?php endif;
+
+    $privacy_url = ! empty( $settings['join_ask_privacy'] ) ? sp_join_privacy_url() : '';
+    if ( $privacy_url ) : ?>
+        <label class="sp-choice sp-join-privacy"><input type="checkbox" name="sp_join_privacy" value="1" required <?php checked( ! empty( $post['sp_join_privacy'] ) ); ?>>
+            <?php
+            printf(
+                /* translators: %s: link to the privacy policy page */
+                esc_html__( 'I agree to the %s', 'societypress' ),
+                '<a href="' . esc_url( $privacy_url ) . '" target="_blank" rel="noopener">' . esc_html__( 'privacy policy', 'societypress' ) . '</a>'
+            );
+            ?>
+        </label>
+    <?php endif; ?>
+    <script>
+    (function () {
+        // Show the follow-up box only when its question asks for one.
+        function link(triggerId, wrapId, test) {
+            var t = document.getElementById(triggerId), w = document.getElementById(wrapId);
+            if (!t || !w) { return; }
+            var sync = function () { w.hidden = !test(t); };
+            t.addEventListener('change', sync);
+            sync();
+        }
+        link('sp-join-willing', 'sp-join-skills-wrap', function (t) { return t.checked; });
+        link('sp-join-heard', 'sp-join-heard-other-wrap', function (t) { return t.value === '__other'; });
+    })();
+    </script>
+    <?php
+    return (string) ob_get_clean();
+}
+
+/**
+ * Save the single join questions onto a new member.
+ *
+ * WHY volunteer and skills go in the members columns: they are the long-
+ * standing Volunteering yes/no and Skills text the member record, exports and
+ * imports already use, so an answer here appears everywhere those do.
+ */
+function sp_join_extra_fields_save( int $user_id, array $post ): void {
+    global $wpdb;
+    $prefix   = $wpdb->prefix . 'sp_';
+    $settings = sp_settings();
+    $update   = [];
+
+    if ( sp_join_asks( 'willing' ) && ! empty( $post['sp_join_willing'] ) ) {
+        $update['volunteer'] = 1;
+        $skills = sanitize_textarea_field( $post['sp_join_skills'] ?? '' );
+        if ( $skills !== '' ) {
+            $update['skills'] = $skills;
+        }
+    }
+    if ( ! empty( $settings['join_print_journal'] ) ) {
+        $update['receive_print'] = ! empty( $post['receive_print'] ) ? 1 : 0;
+    }
+    if ( $update ) {
+        $wpdb->update( $prefix . 'members', $update, [ 'user_id' => $user_id ] );
+    }
+
+    $meta = [];
+    if ( sp_join_asks( 'heard' ) ) {
+        $picked = sanitize_text_field( $post['sp_join_heard'] ?? '' );
+        if ( $picked === '__other' ) {
+            $other = sanitize_text_field( $post['sp_join_heard_other'] ?? '' );
+            /* translators: %s: what the person typed in the Other box */
+            $meta['heard_about_us'] = $other !== '' ? sprintf( __( 'Other: %s', 'societypress' ), $other ) : __( 'Other', 'societypress' );
+        } elseif ( $picked !== '' && in_array( $picked, sp_join_heard_choices(), true ) ) {
+            $meta['heard_about_us'] = $picked;
+        }
+    }
+    if ( ! empty( $settings['join_ask_privacy'] ) && sp_join_privacy_url() && ! empty( $post['sp_join_privacy'] ) ) {
+        $meta['privacy_policy_agreed'] = current_time( 'mysql' );
+    }
+    foreach ( $meta as $key => $value ) {
+        $wpdb->delete( $prefix . 'member_meta', [ 'user_id' => $user_id, 'meta_key' => $key ] );
+        $wpdb->insert( $prefix . 'member_meta', [ 'user_id' => $user_id, 'meta_key' => $key, 'meta_value' => $value ] );
+    }
+}
+
+/**
  * Read a one-entry-per-line list setting, falling back to a starter list.
  *
  * WHY not sp_parse_picklist_setting(): that one also splits on commas and is
@@ -67545,6 +67808,13 @@ add_action( 'init', function () {
         return;
     }
 
+    // WHY checked on the server too: the box is marked required in the form,
+    // but a form can be submitted without a browser enforcing that.
+    if ( ! empty( sp_settings()['join_ask_privacy'] ) && sp_join_privacy_url() && empty( $_POST['sp_join_privacy'] ) ) {
+        $GLOBALS['sp_join_result'] = [ 'success' => false, 'message' => __( 'Please tick the box to agree to the privacy policy.', 'societypress' ) ];
+        return;
+    }
+
     // Create WordPress user (or link existing)
     $user_id = sp_create_or_link_user( $email, $first_name, $last_name );
     if ( is_wp_error( $user_id ) ) {
@@ -67651,6 +67921,7 @@ add_action( 'init', function () {
 
     // Volunteering, lineage groups, interests and skills from the join form.
     sp_member_choices_notify( $user_id, sp_member_choices_save( $user_id, wp_unslash( $_POST ) ) );
+    sp_join_extra_fields_save( $user_id, wp_unslash( $_POST ) );
 
     if ( $possible ) {
         sp_join_flag_possible_duplicate( $user_id, $first_name . ' ' . $last_name, $possible );
@@ -68302,6 +68573,8 @@ function sp_render_join_form(): string {
         </fieldset>
 
         <?php echo sp_member_choices_fields( sp_member_choices_from_post( wp_unslash( $_POST ) ), 'join' ); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
+
+        <?php echo sp_join_extra_fields_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
 
         <button type="submit" class="sp-submit"><?php esc_html_e( 'Complete Membership', 'societypress' ); ?></button>
         <?php if ( sp_donation_check_giving_enabled( $settings ) ) : ?>

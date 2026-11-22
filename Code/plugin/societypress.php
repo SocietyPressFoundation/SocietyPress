@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.151
+ * Version:     1.5.152
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.151' );
+define( 'SOCIETYPRESS_VERSION', '1.5.152' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -22148,6 +22148,80 @@ add_action( 'admin_bar_menu', function ( $bar ) {
 
 // ---- Filing ----------------------------------------------------------------
 
+/**
+ * Send the Settings → Organization test email to the person who clicked.
+ *
+ * WHY report what WordPress said rather than "sent": wp_mail() returning true
+ *      only means the server accepted the message, not that it arrived. The
+ *      notice says exactly that and tells the volunteer to look in their
+ *      inbox (and spam folder), because overclaiming here is how "email works"
+ *      gets believed while reminders quietly vanish.
+ */
+add_action( 'admin_post_sp_send_test_email', function () {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_send_test_email', 'sp_test_email_nonce' );
+
+    $user  = wp_get_current_user();
+    $error = '';
+    $catch = function ( $wp_error ) use ( &$error ) {
+        $error = $wp_error instanceof WP_Error ? $wp_error->get_error_message() : '';
+    };
+    add_action( 'wp_mail_failed', $catch );
+
+    $site = get_bloginfo( 'name' );
+    $ok   = wp_mail(
+        $user->user_email,
+        /* translators: %s: site name */
+        sprintf( __( 'Test email from %s', 'societypress' ), $site ),
+        sprintf(
+            /* translators: 1: site name, 2: date and time */
+            __( "This is a test message from %1\$s, sent %2\$s.\n\nIf you are reading this, your website can send email. Check the sender name and address at the top of this message — that is what your members see.", 'societypress' ),
+            $site,
+            wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) )
+        )
+    );
+    remove_action( 'wp_mail_failed', $catch );
+
+    set_transient( 'sp_test_email_result_' . $user->ID, [
+        'ok'    => (bool) $ok,
+        'to'    => $user->user_email,
+        'error' => $error,
+    ], 5 * MINUTE_IN_SECONDS );
+
+    $back = wp_get_referer() ?: admin_url();
+    wp_safe_redirect( remove_query_arg( 'settings-updated', $back ) );
+    exit;
+} );
+
+/**
+ * Show the result of the last test email, once, to the person who sent it.
+ */
+function sp_render_test_email_notice(): void {
+    $key    = 'sp_test_email_result_' . get_current_user_id();
+    $result = get_transient( $key );
+    if ( ! is_array( $result ) ) {
+        return;
+    }
+    delete_transient( $key );
+
+    if ( $result['ok'] ) {
+        echo '<div class="notice notice-success is-dismissible"><p>' . sprintf(
+            /* translators: %s: email address */
+            esc_html__( 'Your website handed the test email to its mail server for %s. Check that inbox in the next few minutes, and the spam folder too. If it never arrives, your host\'s mail server is not delivering it.', 'societypress' ),
+            '<strong>' . esc_html( $result['to'] ) . '</strong>'
+        ) . '</p></div>';
+        return;
+    }
+
+    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Your website could not send the test email. Your host\'s mail settings need attention — send them the message below.', 'societypress' ) . '</p>';
+    if ( $result['error'] !== '' ) {
+        echo '<p><code>' . esc_html( $result['error'] ) . '</code></p>';
+    }
+    echo '</div>';
+}
+
 add_action( 'admin_post_sp_file_ticket', function () {
     if ( ! current_user_can( 'sp_access_admin' ) ) {
         wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
@@ -33949,6 +34023,83 @@ add_action( 'admin_init', function () {
 
 
     // ====================================================================
+    // SECTION: Sending Email
+    // WHY: "Is my site's email working?" sits behind most "nobody got the
+    //      reminder" problems, and the only way to find out was to ask for a
+    //      password reset. The sender name and address every email carries
+    //      could only be set once, in the setup wizard — so a volunteer who
+    //      saw the wrong name on the test had nowhere to fix it. They live
+    //      here together: set them, send a test, see the result.
+    // ====================================================================
+
+    add_settings_section(
+        'sp_sending_email_section',
+        __( 'Sending Email', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'Who the emails your site sends appear to come from, and a way to check that email is working.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org'
+    );
+
+    add_settings_field(
+        'email_from_name',
+        __( 'Sender Name', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="text" name="societypress_settings[email_from_name]" value="%s" class="regular-text" placeholder="%s">',
+                esc_attr( $settings['email_from_name'] ?? '' ),
+                esc_attr( get_bloginfo( 'name' ) )
+            );
+            echo '<p class="description">' . esc_html__( 'The name members see in their inbox. Leave blank to use your site name.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_sending_email_section'
+    );
+
+    add_settings_field(
+        'email_from_email',
+        __( 'Sender Address', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="email" name="societypress_settings[email_from_email]" value="%s" class="regular-text" placeholder="%s">',
+                esc_attr( $settings['email_from_email'] ?? '' ),
+                esc_attr( get_option( 'admin_email' ) )
+            );
+            echo '<p class="description">' . esc_html__( 'Use an address at your own website\'s domain if you can — mail from a free address like Gmail is often treated as spam. Leave blank to use the site administrator\'s address.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_sending_email_section'
+    );
+
+    add_settings_field(
+        'sp_send_test_email',
+        __( 'Test Email', 'societypress' ),
+        function () {
+            $user = wp_get_current_user();
+            // WHY formaction on a button inside the settings form: forms can't
+            // nest, and the test belongs beside the fields it checks. The
+            // button posts the same form to its own handler instead of
+            // options.php, so it never saves anything by accident.
+            wp_nonce_field( 'sp_send_test_email', 'sp_test_email_nonce' );
+            printf(
+                '<button type="submit" class="button" formaction="%s" name="action" value="sp_send_test_email">%s</button>',
+                esc_url( admin_url( 'admin-post.php' ) ),
+                esc_html__( 'Send a Test Email', 'societypress' )
+            );
+            echo '<p class="description">' . sprintf(
+                /* translators: %s: the email address of the person signed in */
+                esc_html__( 'Sends a short test message to you at %s, from the sender name and address above as they are saved now. Save any changes first.', 'societypress' ),
+                '<strong>' . esc_html( $user->user_email ) . '</strong>'
+            ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_sending_email_section'
+    );
+
+
+    // ====================================================================
     // SECTION: Membership
     // WHY: Every society has different rules for how long a membership
     //      lasts and when it expires. These settings let each society
@@ -35609,6 +35760,7 @@ function sp_sanitize_settings( array $input ): array {
             'organization_email', 'tax_id', 'community_forum_url', 'help_requests_notify_all',
             'help_requests_require_approval', 'help_requests_per_email_per_day',
             'research_default_rate', 'research_default_max_hours', 'research_sla_days',
+            'email_from_name', 'email_from_email',
             'currency_symbol', 'currency_position',
             'store_acq_code', 'store_intro_text', 'store_flat_shipping',
             'store_tax_rate', 'store_tax_label', 'store_tax_physical_only',
@@ -41391,6 +41543,7 @@ function sp_render_settings_organization_page(): void {
         if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] === 'true' ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'societypress' ) . '</p></div>';
         }
+        sp_render_test_email_notice();
         ?>
 
         <form method="post" action="options.php">
@@ -42178,7 +42331,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.151',
+            'version'     => '1.5.152',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42186,7 +42339,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.151',
+            'version'     => '1.5.152',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42194,7 +42347,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.151',
+            'version'     => '1.5.152',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42202,7 +42355,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.151',
+            'version'     => '1.5.152',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42210,7 +42363,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.151',
+            'version'     => '1.5.152',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

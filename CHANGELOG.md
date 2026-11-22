@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.152] — 2026-11-21
+
+- **Send a test email.** Settings → Organization has a Sending Email section
+  with a Send a Test Email button. It mails the person clicking and says
+  plainly whether the site handed the message to its mail server, or shows
+  the error if it could not.
+- The sender name and address on every email can now be changed there. Until
+  now they could only be set once, in the setup wizard.
+
 ## [1.5.151] — 2026-11-21
 
 - **Research Requests settings.** Settings → Organization has a new Research

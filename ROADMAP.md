@@ -16,6 +16,12 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Notepad on the dashboard — 1.5.154
+
+The notes board already existed (Notepad); its dashboard panel had been left
+behind when the dashboard moved to cards. A Notepad card now opens the
+dashboard with the five newest open notes.
+
 ### Picture Wall albums take member photos — 1.5.153
 
 The album edit screen can switch an album on for member submissions, with
@@ -236,19 +242,6 @@ never merged; rebuild it on current code from that design:
 **Blockers:** None. The Anthropic round trip, the GitHub push and the upgrade
 path were never run against a live site on the old branch; they are part of
 the rebuild.
-
-#### Notes between admins
-
-**Motivation:** Volunteers run a society in shifts and rarely meet. There is
-nowhere in the admin to leave "waiting on the treasurer to confirm the
-refund" or "don't send the newsletter until Friday" for whoever signs in
-next, so it happens by email and gets lost.
-**Scope:** A simple notes board in the admin, visible only to staff: post a
-note, see who wrote it and when, mark it resolved or delete it. The newest
-open notes show on the dashboard. Never on the public site, gated behind an
-admin capability, and deliberately not a ticketing system. First written up
-in PR #6.
-**Blockers:** None.
 
 #### iPad kiosk
 

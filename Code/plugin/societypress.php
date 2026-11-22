@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.153
+ * Version:     1.5.154
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.153' );
+define( 'SOCIETYPRESS_VERSION', '1.5.154' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -17956,6 +17956,18 @@ function sp_get_dashboard_tiles(): array {
     };
 
     $tiles = [
+        // ---- Notepad ------------------------------------------------------
+        // WHY a tile at all for a card that lists notes: a card is offered when
+        // a tile inside it is, and the tile carries the capability gate. Its
+        // count is what Screen Options and the urgency check read.
+        'notes_open' => [
+            'label'      => __( 'Open Notes', 'societypress' ),
+            'group'      => 'notes',
+            'module'     => '',
+            'capability' => 'sp_use_notepad',
+            'url'        => static fn() => admin_url( 'admin.php?page=sp-notepad' ),
+            'value'      => static fn() => $count( "SELECT COUNT(*) FROM {$prefix}notes WHERE is_done = 0" ),
+        ],
 
         // ---- My committee -------------------------------------------------
         // WHY a chair gets her own card rather than a smaller version of the
@@ -18412,6 +18424,13 @@ function sp_get_dashboard_tiles(): array {
  */
 function sp_dashboard_cards(): array {
     $cards = [
+        // WHY first: a handoff note is only useful the moment somebody signs
+        // in, and the dashboard is where they land.
+        'notes' => [
+            'label'    => __( 'Notepad', 'societypress' ),
+            'describe' => __( 'The newest open notes volunteers have left for each other.', 'societypress' ),
+            'layout'   => 'notes',
+        ],
         'inbox' => [
             'label'    => __( 'Waiting on You', 'societypress' ),
             'describe' => __( 'Research requests and form submissions nobody has answered yet.', 'societypress' ),
@@ -18924,6 +18943,12 @@ function sp_render_dashboard_card( $object, array $box ): void {
     }
 
     $card   = $cards[ $key ];
+
+    if ( ( $card['layout'] ?? '' ) === 'notes' ) {
+        sp_render_dashboard_notes_card();
+        return;
+    }
+
     $values = sp_dashboard_tile_values( $card['tiles'] );
     $rows   = ( ( $card['layout'] ?? 'numbers' ) === 'rows' );
     ?>
@@ -18947,6 +18972,48 @@ function sp_render_dashboard_card( $object, array $box ): void {
     <?php endforeach; ?>
     </div>
     <?php
+}
+
+/**
+ * The Notepad card: the newest open notes, not a count of them.
+ *
+ * WHY the notes themselves: "3 open notes" makes a volunteer click through to
+ * learn whether any of them is for her. The opening words, who left it and
+ * when answer that on the screen she signed in to.
+ */
+function sp_render_dashboard_notes_card(): void {
+    $notes = sp_notepad_open_notes( 5 );
+    $url   = admin_url( 'admin.php?page=sp-notepad' );
+
+    if ( ! $notes ) {
+        echo '<p class="sp-dash-notes-empty">' . esc_html__( 'Nothing on the notepad. Leave a note for whoever runs the site next.', 'societypress' ) . '</p>';
+    } else {
+        echo '<ul class="sp-dash-notes">';
+        foreach ( $notes as $note ) {
+            // A note needs no title, so fall back to its opening words rather
+            // than a blank row nobody can recognise.
+            $label = trim( (string) $note->title );
+            if ( $label === '' ) {
+                $label = wp_trim_words( wp_strip_all_tags( $note->content ), 12, '…' );
+            }
+            $author = get_userdata( (int) $note->author_id );
+
+            echo '<li class="sp-dash-note">';
+            if ( ! empty( $note->is_pinned ) ) {
+                echo '<span class="dashicons dashicons-sticky sp-dash-note-pin" title="' . esc_attr__( 'Pinned', 'societypress' ) . '"></span>';
+            }
+            echo '<span class="sp-dash-note-text"><a class="sp-dash-note-title" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a>';
+            echo '<span class="sp-dash-note-meta">' . sprintf(
+                /* translators: 1: name of the person who posted the note, 2: how long ago, e.g. "3 days" */
+                esc_html__( '%1$s, %2$s ago', 'societypress' ),
+                esc_html( $author ? $author->display_name : __( 'Unknown', 'societypress' ) ),
+                esc_html( human_time_diff( strtotime( $note->updated_at ), current_time( 'timestamp' ) ) )
+            ) . '</span></span></li>';
+        }
+        echo '</ul>';
+    }
+
+    echo '<p class="sp-dash-notes-more"><a href="' . esc_url( $url ) . '">' . esc_html__( 'Open the notepad →', 'societypress' ) . '</a></p>';
 }
 
 /**
@@ -18982,6 +19049,16 @@ function sp_dashboard_card_is_urgent( string $key ): bool {
 function sp_dashboard_card_css(): void {
     ?>
     <style>
+        .sp-dash-notes { margin: 0; padding: 0; list-style: none; }
+        .sp-dash-note { display: flex; align-items: baseline; gap: 8px; padding: 10px 0; border-bottom: 1px solid #f0f0f1; }
+        .sp-dash-note:last-child { border-bottom: none; }
+        .sp-dash-note-pin { color: #C9973A; font-size: 16px; flex-shrink: 0; }
+        .sp-dash-note-text { flex: 1; }
+        .sp-dash-note-title { font-weight: 600; text-decoration: none; }
+        .sp-dash-note-title:hover { text-decoration: underline; }
+        .sp-dash-note-meta { display: block; margin-top: 2px; color: #646970; font-size: 12px; }
+        .sp-dash-notes-empty { color: #50575e; margin: 4px 0 8px; }
+        .sp-dash-notes-more { margin: 8px 0 0; }
         .sp-dash-who { color: #646970; margin: 4px 0 20px; }
         .sp-dash-empty {
             background: #fff;
@@ -42331,7 +42408,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.153',
+            'version'     => '1.5.154',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42339,7 +42416,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.153',
+            'version'     => '1.5.154',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42347,7 +42424,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.153',
+            'version'     => '1.5.154',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42355,7 +42432,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.153',
+            'version'     => '1.5.154',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42363,7 +42440,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.153',
+            'version'     => '1.5.154',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

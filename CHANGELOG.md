@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.154] — 2026-11-21
+
+- **Notepad on the dashboard.** The dashboard opens with a Notepad card
+  listing the five newest open notes — the opening words, who left each one
+  and when — with a link to the full notepad. The notes panel was lost when
+  the dashboard moved to cards.
+
 ## [1.5.153] — 2026-11-21
 
 - **Picture Wall albums can take member photos.** The album edit screen has a

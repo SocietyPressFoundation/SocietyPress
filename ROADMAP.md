@@ -16,6 +16,13 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Research Requests settings — 1.5.151
+
+Research Help moderation and daily limit, and the starting rate, hours paid up
+front and response days for paid research, are now on Settings → Organization.
+The tax-exempt statement on donation receipts was already wired to the EIN box
+there; checked on the emailed receipt and the thank-you page.
+
 ### Restore from a backup — 1.5.145 and 1.5.146
 
 Backups now hold the whole site (every table, plugins, themes, and the key to members' phone numbers and addresses), and Settings → Export & Backup can restore one — on the same site or a new host — replacing everything after first backing up the site as it is. Decisions made with Charles on 2026-11-18: replace rather than merge, works on a site with data, the person restoring always stays signed in, the key travels in the backup. Tested on the demo site through the real screen and onto a scratch install with a different prefix, keys and address.
@@ -189,34 +196,6 @@ a password reset.
 **Scope:** A button on a settings screen that sends a test message to the
 person clicking it and reports whether WordPress accepted it, with the same
 "from" name members' emails use.
-**Blockers:** None.
-
-#### Paid Research Services: set your own rate
-
-**Motivation:** Every new paid research request is quoted at $30 an hour,
-for one hour up front, with a 14-day response time. An admin can change the
-terms on each case afterwards, but not the starting terms. The code reads `research_default_rate`,
-`research_default_max_hours` and `research_sla_days`, but no screen sets them.
-**Scope:** Put the three on a settings screen. The intake form's quote and
-every new case already use them.
-**Blockers:** None.
-
-#### Research Help: moderation and limits
-
-**Motivation:** A society facing spam can't hold questions for a moderator or
-change the three-a-day limit. The code already reads
-`help_requests_require_approval` and `help_requests_per_email_per_day`, but
-no screen sets them.
-**Scope:** Put the approval switch and the daily limit on a settings screen.
-**Blockers:** None.
-
-#### Donation receipts: the tax-exempt statement
-
-**Motivation:** A donor claiming a deduction needs the society's EIN and a
-501(c)(3) statement on the receipt. The receipt code prints them when
-`tax_id` is set, but no screen sets it, so no receipt has ever carried them.
-**Scope:** An EIN box on **Settings → Organization**, and confirm the
-statement appears on the emailed and printable receipts.
 **Blockers:** None.
 
 #### Picture Wall: let an album accept submissions

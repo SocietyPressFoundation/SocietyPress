@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.150
+ * Version:     1.5.151
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.150' );
+define( 'SOCIETYPRESS_VERSION', '1.5.151' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -33854,6 +33854,101 @@ add_action( 'admin_init', function () {
 
 
     // ====================================================================
+    // SECTION: Research Requests
+    // WHY: Research Help and Paid Research Services always read these values,
+    //      but nothing let a society change them — every society was stuck
+    //      with three questions a day, no moderation, and $30 an hour for
+    //      fourteen days. The values sit with the rest of the organization's
+    //      terms because they are society policy, not per-case details.
+    // ====================================================================
+
+    add_settings_section(
+        'sp_research_requests_section',
+        __( 'Research Requests', 'societypress' ),
+        function () {
+            echo '<p>' . esc_html__( 'How the public can ask your society research questions, and the starting terms for paid research.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org'
+    );
+
+    add_settings_field(
+        'help_requests_require_approval',
+        __( 'Review Questions First', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[help_requests_require_approval]" value="1" %s> %s</label>',
+                checked( ! empty( $settings['help_requests_require_approval'] ), true, false ),
+                esc_html__( 'Hold each new Research Help question until a volunteer approves it', 'societypress' )
+            );
+            echo '<p class="description">' . esc_html__( 'Turn this on if your site gets spam. Held questions wait on the Research Help screen until someone approves them; nobody else sees them until then.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_research_requests_section'
+    );
+
+    add_settings_field(
+        'help_requests_per_email_per_day',
+        __( 'Questions Per Day', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="number" name="societypress_settings[help_requests_per_email_per_day]" value="%d" min="1" max="50" step="1" class="small-text">',
+                max( 1, (int) ( $settings['help_requests_per_email_per_day'] ?? 3 ) )
+            );
+            echo '<p class="description">' . esc_html__( 'The most Research Help questions one email address can post in a day. Three is a good starting point.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_research_requests_section'
+    );
+
+    add_settings_field(
+        'research_default_rate',
+        __( 'Paid Research Hourly Rate', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="number" name="societypress_settings[research_default_rate]" value="%s" min="0" step="0.01" class="small-text sp-w-100">',
+                esc_attr( number_format( (float) ( $settings['research_default_rate'] ?? 30.00 ), 2, '.', '' ) )
+            );
+            echo '<p class="description">' . esc_html__( 'What a new paid research request is quoted per hour. You can still change the terms on any single case.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_research_requests_section'
+    );
+
+    add_settings_field(
+        'research_default_max_hours',
+        __( 'Hours Paid Up Front', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="number" name="societypress_settings[research_default_max_hours]" value="%s" min="0.25" max="100" step="0.25" class="small-text">',
+                esc_attr( (string) (float) ( $settings['research_default_max_hours'] ?? 1.00 ) )
+            );
+            echo '<p class="description">' . esc_html__( 'How many hours the requester pays for when they submit a request. The researcher stops at this limit unless the requester agrees to more.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_research_requests_section'
+    );
+
+    add_settings_field(
+        'research_sla_days',
+        __( 'Days to Respond', 'societypress' ),
+        function () {
+            $settings = sp_settings();
+            printf(
+                '<input type="number" name="societypress_settings[research_sla_days]" value="%d" min="1" max="365" step="1" class="small-text">',
+                max( 1, (int) ( $settings['research_sla_days'] ?? 14 ) )
+            );
+            echo '<p class="description">' . esc_html__( 'How many days your society promises to answer a paid research request within. Requesters see this before they pay.', 'societypress' ) . '</p>';
+        },
+        'sp-settings-org',
+        'sp_research_requests_section'
+    );
+
+
+    // ====================================================================
     // SECTION: Membership
     // WHY: Every society has different rules for how long a membership
     //      lasts and when it expires. These settings let each society
@@ -35323,6 +35418,12 @@ function sp_sanitize_settings( array $input ): array {
         'tax_id'                  => fn() => sanitize_text_field( $input['tax_id'] ?? '' ),
         'community_forum_url'    => fn() => esc_url_raw( $input['community_forum_url'] ?? '' ),
         'help_requests_notify_all'=> fn() => ! empty( $input['help_requests_notify_all'] ) ? 1 : 0,
+        // Research Requests — clamped to the same bounds the per-case editor uses.
+        'help_requests_require_approval'  => fn() => ! empty( $input['help_requests_require_approval'] ) ? 1 : 0,
+        'help_requests_per_email_per_day' => fn() => max( 1, min( 50, (int) ( $input['help_requests_per_email_per_day'] ?? 3 ) ) ),
+        'research_default_rate'           => fn() => round( max( 0, (float) ( $input['research_default_rate'] ?? 30 ) ), 2 ),
+        'research_default_max_hours'      => fn() => round( max( 0.25, min( 100, (float) ( $input['research_default_max_hours'] ?? 1 ) ) ), 2 ),
+        'research_sla_days'               => fn() => max( 1, min( 365, (int) ( $input['research_sla_days'] ?? 14 ) ) ),
         // Currency — symbol and position for all monetary displays
         'currency_symbol'         => fn() => sanitize_text_field( $input['currency_symbol'] ?? '$' ),
         'currency_position'       => fn() => in_array( $input['currency_position'] ?? '', [ 'before', 'after' ], true )
@@ -35506,6 +35607,8 @@ function sp_sanitize_settings( array $input ): array {
         $page_keys = array_merge( $page_keys, [
             'organization_name', 'organization_address', 'organization_phone',
             'organization_email', 'tax_id', 'community_forum_url', 'help_requests_notify_all',
+            'help_requests_require_approval', 'help_requests_per_email_per_day',
+            'research_default_rate', 'research_default_max_hours', 'research_sla_days',
             'currency_symbol', 'currency_position',
             'store_acq_code', 'store_intro_text', 'store_flat_shipping',
             'store_tax_rate', 'store_tax_label', 'store_tax_physical_only',
@@ -42075,7 +42178,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.150',
+            'version'     => '1.5.151',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42083,7 +42186,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.150',
+            'version'     => '1.5.151',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42091,7 +42194,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.150',
+            'version'     => '1.5.151',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42099,7 +42202,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.150',
+            'version'     => '1.5.151',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42107,7 +42210,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.150',
+            'version'     => '1.5.151',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.151] — 2026-11-21
+
+- **Research Requests settings.** Settings → Organization has a new Research
+  Requests section: hold new Research Help questions for approval, set how
+  many questions one email address can post a day, and set the hourly rate,
+  hours paid up front and days to respond that every new paid research
+  request starts with.
+
 ## [1.5.150] — 2026-11-21
 
 - New installs start with a general-purpose library vocabulary. Subjects and

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.149
+ * Version:     1.5.150
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.149' );
+define( 'SOCIETYPRESS_VERSION', '1.5.150' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -5519,7 +5519,7 @@ add_action( 'admin_init', function () {
 //      and legacy imports packed several values into one cell separated by
 //      commas. The public catalog then offered "Book, Rare Books" and "Rare
 //      Books, Book" as two different collections, and the subject facets split
-//      "Alamo, The" into "Alamo" and "The" — a subject nobody chose.
+//      "West, The" into "West" and "The" — a subject nobody chose.
 //
 // WHY the split consults the society's own vocabulary: a comma is inside some
 //      real terms. Matching the longest known terms first rescues them before
@@ -42075,7 +42075,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.149',
+            'version'     => '1.5.150',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42083,7 +42083,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.149',
+            'version'     => '1.5.150',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42091,7 +42091,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.149',
+            'version'     => '1.5.150',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42099,7 +42099,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.149',
+            'version'     => '1.5.150',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42107,7 +42107,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.149',
+            'version'     => '1.5.150',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -80428,16 +80428,14 @@ function sp_default_library_lists(): array {
             'Addresses, Lectures & Essays',
             'Adoption',
             'African Americans',
-            'Alamo, The',
             'Almanacs',
             'American Colonies',
             'American Revolution',
-            'Atlas & Gazeetter',
+            'Atlas & Gazetteer',
             'Bible Records',
             'Bibliography',
             'Biography',
             'Business & Industry',
-            'Canary Islanders',
             'Catalogs',
             'Cemeteries',
             'Census',
@@ -80506,8 +80504,6 @@ function sp_default_library_lists(): array {
             'Societies',
             'Surnames',
             'Taxation',
-            'Texas Republic',
-            'Texas Revolution',
             'Travel & Description',
             'Vietnam War, 1961-1975',
             'Vital Records',
@@ -80536,12 +80532,9 @@ function sp_default_library_lists(): array {
             'Brazil',
             'California',
             'Canada',
-            'Canary Islands',
             'Caribbean',
             'Central America',
-            'Chihuahua',
             'China',
-            'Coahuila',
             'Colorado',
             'Connecticut',
             'Croatia',
@@ -80564,7 +80557,6 @@ function sp_default_library_lists(): array {
             'Iowa',
             'Ireland',
             'Italy',
-            'Jalisco',
             'Kansas',
             'Kentucky',
             'Korea',
@@ -80599,7 +80591,6 @@ function sp_default_library_lists(): array {
             'Northern Ireland',
             'Norway',
             'Nova Scotia',
-            'Nuevo Leon',
             'Ohio',
             'Oklahoma',
             'Ontario',
@@ -80615,11 +80606,9 @@ function sp_default_library_lists(): array {
             'Quebec',
             'Rhode Island',
             'Russia',
-            'San Antonio',
             'Scandinavia',
             'Scotland',
             'Serbia',
-            'Sinaloa',
             'South Carolina',
             'South Dakota',
             'South, The',
@@ -80645,7 +80634,6 @@ function sp_default_library_lists(): array {
             'World',
             'Wyoming',
             'Yugoslavia',
-            'Zacatecas',
         ],
     ];
 }
@@ -80755,10 +80743,10 @@ function sp_library_list_choices( string $kind, string $current = '' ): array {
 /**
  * How several values share one catalog field.
  *
- * WHY a pipe and not a comma: a comma is already inside the vocabulary. "Alamo,
- *      The" and "Addresses, Lectures & Essays" are single subjects, so splitting
+ * WHY a pipe and not a comma: a comma is already inside the vocabulary. "West,
+ *      The" and "Addresses, Lectures & Essays" are single terms, so splitting
  *      a stored value on commas tears real terms in half and invents facets
- *      ("Alamo", "The") that no cataloger chose. A pipe appears in none of the
+ *      ("West", "The") that no cataloger chose. A pipe appears in none of the
  *      shipped lists and is not something a cataloger types, so it can separate
  *      values without ever being mistaken for one.
  */
@@ -80770,7 +80758,7 @@ const SP_LIBRARY_VALUE_SEP = '|';
  * WHY the legacy branch: catalogs imported before multi-select arrived hold
  *      comma-joined text from the old system. Rather than demand a migration
  *      before anything reads correctly, an un-migrated value is split against
- *      the society's own vocabulary — longest term first, so "Alamo, The" is
+ *      the society's own vocabulary — longest term first, so "West, The" is
  *      recognised whole before its comma is considered a separator.
  *
  * @param string $stored The raw column value.

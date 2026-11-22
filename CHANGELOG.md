@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.150] — 2026-11-21
+
+- New installs start with a general-purpose library vocabulary. Subjects and
+  places that only one region needs are gone from the starter lists; a
+  society adds its own under Catalog Options.
+- "Atlas & Gazetteer" is spelled correctly in the starter subject list.
+
 ## [1.5.149] — 2026-11-21
 
 - **A photo has one caption.** The caption in the Media Library is the caption everywhere: in every album, the photo viewer, and member submissions. Typing a caption on the album screen changes that same caption, and changing it in the Media Library updates every gallery that shows the photo. Adding a photo with no caption no longer fills the box with the file name. On update, captions that were only a file name are cleared (or replaced by the Media Library caption), and any other album caption is copied into the Media Library so nothing written is lost.

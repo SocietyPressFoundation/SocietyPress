@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.164] — 2026-11-23
+
+- **Forms & Surveys builder (still hidden while in progress): Results.** A
+  Results step shows how many have answered ("48 of 212 members, 23%") and:
+  - **Summary:** a bar and percentage for every choice, averages and a
+    breakdown for star ratings and number scales, grids as a table, rankings
+    in average order, and written answers listed (first ten, then "Show more").
+  - **Compare groups:** split everyone by their answer to one question, such as
+    age group, and see how each group answered the rest.
+  - **One at a time:** each set of answers in full, with a Delete button for
+    spam or a test entry.
+  - **Printable version** for board meetings, and **Download as a
+    spreadsheet** with one row per person.
+  - **Who has answered:** listed by name. On an anonymous survey, names are
+    shown in alphabetical order with no dates, so they can't be matched to
+    answers.
+  The list's main button now leads to Results once answers arrive, and to
+  Open & Send while something is still a draft.
+
 ## [1.5.163] — 2026-11-23
 
 - **The daily check-in now tells us more, and says so plainly.** Each

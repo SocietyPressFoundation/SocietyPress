@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.163
+ * Version:     1.5.164
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.163' );
+define( 'SOCIETYPRESS_VERSION', '1.5.164' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -7068,7 +7068,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Surveys', 'societypress' ),
             'description' => __( 'Ask your members questions and see everyone\'s answers added up. Surveys can be anonymous, and each member can answer only once.', 'societypress' ),
             'icon'        => 'dashicons-clipboard',
-            'menu_slugs'  => [ 'sp-surveys', 'sp-survey-edit', 'sp-qn', 'sp-qn-settings', 'sp-qn-edit', 'sp-qn-send' ],
+            'menu_slugs'  => [ 'sp-surveys', 'sp-survey-edit', 'sp-qn', 'sp-qn-settings', 'sp-qn-edit', 'sp-qn-send', 'sp-qn-results' ],
         ],
     ];
 }
@@ -8758,6 +8758,14 @@ add_action( 'admin_menu', function () {
     );
     sp_add_admin_page(
         '',
+        __( 'Results — SocietyPress', 'societypress' ),
+        __( 'Results', 'societypress' ),
+        'manage_options',
+        'sp-qn-results',
+        'sp_qn_render_results_page'
+    );
+    sp_add_admin_page(
+        '',
         __( 'Open & Send — SocietyPress', 'societypress' ),
         __( 'Open & Send', 'societypress' ),
         'manage_options',
@@ -9626,6 +9634,7 @@ function sp_get_menu_capability_map(): array {
         'sp-qn-settings'           => 'sp_manage_content',
         'sp-qn-edit'               => 'sp_manage_content',
         'sp-qn-send'               => 'sp_manage_content',
+        'sp-qn-results'            => 'sp_manage_content',
         'sp-survey-edit'           => 'sp_manage_content',
         'sp-form-edit'             => 'sp_manage_content',
         'sp-form-submissions'      => 'sp_manage_content',
@@ -43291,7 +43300,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.163',
+            'version'     => '1.5.164',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43299,7 +43308,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.163',
+            'version'     => '1.5.164',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43307,7 +43316,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.163',
+            'version'     => '1.5.164',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43315,7 +43324,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.163',
+            'version'     => '1.5.164',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43323,7 +43332,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.163',
+            'version'     => '1.5.164',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -145837,7 +145846,14 @@ function sp_qn_render_list_page(): void {
                                     ?>
                                 </div>
                             </div>
-                            <a class="button" href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            <?php $n_row = sp_qn_answer_count( (int) $r->id ); ?>
+                            <?php if ( $n_row ) : ?>
+                                <a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-results&id=' . (int) $r->id ) ); ?>"><?php printf( esc_html__( 'Results (%s)', 'societypress' ), esc_html( number_format_i18n( $n_row ) ) ); ?></a>
+                            <?php elseif ( 'draft' === $r->status ) : ?>
+                                <a class="button" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-send&id=' . (int) $r->id ) ); ?>"><?php esc_html_e( 'Open & Send', 'societypress' ); ?></a>
+                            <?php else : ?>
+                                <a class="button" href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            <?php endif; ?>
                             <details class="sp-qn-menu">
                                 <summary aria-label="<?php esc_attr_e( 'More actions', 'societypress' ); ?>"><span class="dashicons dashicons-ellipsis" aria-hidden="true"></span></summary>
                                 <div class="sp-qn-menu-panel">
@@ -145845,6 +145861,7 @@ function sp_qn_render_list_page(): void {
                                     <a href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $edit . '&preview=1' ); ?>"><?php esc_html_e( 'Preview', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-send&id=' . (int) $r->id ) ); ?>"><?php esc_html_e( 'Open & Send', 'societypress' ); ?></a>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-results&id=' . (int) $r->id ) ); ?>"><?php esc_html_e( 'See results', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $set . '#sp-qn-audience' ); ?>"><?php esc_html_e( 'Who can answer', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $set . '#sp-qn-notify' ); ?>"><?php esc_html_e( 'Notifications', 'societypress' ); ?></a>
                                     <div class="sp-qn-menu-move">
@@ -146046,6 +146063,8 @@ function sp_qn_render_header( object $item, string $current ): void {
         'design'   => [ __( 'Design', 'societypress' ), admin_url( 'admin.php?page=sp-qn-edit&id=' . (int) $item->id ) ],
         'settings' => [ __( 'Settings', 'societypress' ), admin_url( 'admin.php?page=sp-qn-settings&id=' . (int) $item->id ) ],
         'send'     => [ __( 'Open & Send', 'societypress' ), admin_url( 'admin.php?page=sp-qn-send&id=' . (int) $item->id ) ],
+        /* translators: %s: number of answers */
+        'results'  => [ sprintf( __( 'Results (%s)', 'societypress' ), number_format_i18n( sp_qn_answer_count( (int) $item->id ) ) ), admin_url( 'admin.php?page=sp-qn-results&id=' . (int) $item->id ) ],
     ];
     ?>
     <div class="sp-qn-header">
@@ -146055,6 +146074,11 @@ function sp_qn_render_header( object $item, string $current ): void {
         <span class="sp-qn-badge sp-qn-badge--<?php echo esc_attr( $item->status ); ?>"><?php echo esc_html( $statuses[ $item->status ] ?? '' ); ?></span>
         <span class="sp-qn-kind"><?php echo 'form' === $item->kind ? esc_html__( 'Form', 'societypress' ) : esc_html__( 'Survey', 'societypress' ); ?></span>
     </div>
+    <?php
+    // WHY: WordPress moves admin notices to just after the first heading or
+    // this marker. Without it they landed inside the first results card.
+    ?>
+    <hr class="wp-header-end">
     <nav class="sp-qn-steps" aria-label="<?php esc_attr_e( 'Steps', 'societypress' ); ?>">
         <?php $i = 0; foreach ( $steps as $key => $step ) : ?>
             <?php if ( $i++ ) : ?><span class="sp-qn-step-arrow" aria-hidden="true">→</span><?php endif; ?>
@@ -148249,5 +148273,589 @@ function sp_qn_render_send_page(): void {
         } );
     } )();
     </script>
+    <?php
+}
+
+// ---- Results -------------------------------------------------------------------
+
+/**
+ * Every set of answers for a form or survey, newest first, decoded.
+ *
+ * @return array[] Each: id, user_id, created_at, answers (question id => answer).
+ */
+function sp_qn_responses( int $item_id ): array {
+    global $wpdb;
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, user_id, answers, created_at FROM {$wpdb->prefix}sp_qn_responses WHERE item_id = %d ORDER BY created_at DESC, id DESC", $item_id
+    ) );
+    $out = [];
+    foreach ( (array) $rows as $r ) {
+        $by = [];
+        foreach ( (array) json_decode( (string) $r->answers, true ) as $a ) {
+            $by[ (int) ( $a['id'] ?? 0 ) ] = $a;
+        }
+        $out[] = [ 'id' => (int) $r->id, 'user_id' => (int) $r->user_id, 'created_at' => $r->created_at, 'answers' => $by ];
+    }
+    return $out;
+}
+
+/**
+ * The questions as they stand now, in order, without text-only blocks.
+ *
+ * @return array[]
+ */
+function sp_qn_answerable( int $item_id ): array {
+    $out = [];
+    foreach ( sp_qn_structure( $item_id ) as $sec ) {
+        foreach ( $sec['questions'] as $q ) {
+            if ( 'text_block' !== $q['type'] ) {
+                $out[] = $q;
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * The choices a question's answer counts against, in the order they were
+ * offered, plus any answer that is no longer offered but was given.
+ *
+ * @return string[]
+ */
+function sp_qn_choice_labels( array $q, array $responses ): array {
+    $s      = $q['settings'];
+    $labels = [];
+    if ( 'picture_choice' === $q['type'] ) {
+        foreach ( (array) ( $s['choices'] ?? [] ) as $i => $c ) {
+            $labels[] = '' !== $c['label'] ? $c['label'] : sprintf( /* translators: %d: picture number */ __( 'Picture %d', 'societypress' ), $i + 1 );
+        }
+    } else {
+        $labels = (array) ( $s['choices'] ?? [] );
+    }
+    foreach ( $responses as $r ) {
+        $a = $r['answers'][ $q['id'] ]['answer'] ?? null;
+        foreach ( sp_qn_picked( $q['type'], $a ) as $v ) {
+            if ( ! in_array( $v, $labels, true ) ) {
+                $labels[] = $v;
+            }
+        }
+    }
+    return $labels;
+}
+
+/**
+ * The choice labels one answer picked (Other excluded).
+ *
+ * @param mixed $a
+ * @return string[]
+ */
+function sp_qn_picked( string $type, $a ): array {
+    if ( null === $a ) {
+        return [];
+    }
+    if ( in_array( $type, [ 'multiple_choice', 'checkboxes' ], true ) ) {
+        return array_map( 'strval', (array) ( $a['choices'] ?? [] ) );
+    }
+    if ( in_array( $type, [ 'dropdown', 'picture_choice' ], true ) ) {
+        return [ (string) $a ];
+    }
+    return [];
+}
+
+/**
+ * A row of the summary: label, count, and a bar drawn to scale.
+ *
+ * WHY an SVG bar: its length is an attribute, so no inline styles are needed
+ * and it prints the same as it shows.
+ */
+function sp_qn_bar_row( string $label, int $n, int $of ): string {
+    $pct = $of ? round( $n / $of * 100 ) : 0;
+    return '<tr><th scope="row">' . esc_html( $label ) . '</th>'
+        . '<td class="sp-qn-r-bar"><svg width="100%" height="18" role="img" aria-label="' . esc_attr( $pct . '%' ) . '"><rect class="sp-qn-r-track" width="100%" height="18" rx="3"/><rect class="sp-qn-r-fill" width="' . (int) $pct . '%" height="18" rx="3"/></svg></td>'
+        . '<td class="sp-qn-r-num">' . esc_html( $pct . '%' ) . '</td>'
+        . '<td class="sp-qn-r-num">' . esc_html( number_format_i18n( $n ) ) . '</td></tr>';
+}
+
+/**
+ * One question's summary.
+ */
+function sp_qn_summary_html( array $q, array $responses ): string {
+    $given = [];
+    foreach ( $responses as $r ) {
+        $a = $r['answers'][ $q['id'] ]['answer'] ?? null;
+        if ( null !== $a && '' !== $a && [] !== $a ) {
+            $given[] = $a;
+        }
+    }
+    $n    = count( $given );
+    $html = '<p class="sp-qn-r-answered">' . esc_html( sprintf( /* translators: 1: answered, 2: total */ __( 'Answered by %1$s of %2$s', 'societypress' ), number_format_i18n( $n ), number_format_i18n( count( $responses ) ) ) ) . '</p>';
+    $s    = $q['settings'];
+
+    switch ( $q['type'] ) {
+        case 'multiple_choice':
+        case 'checkboxes':
+        case 'dropdown':
+        case 'picture_choice':
+            $counts = array_fill_keys( sp_qn_choice_labels( $q, $responses ), 0 );
+            $others = [];
+            foreach ( $given as $a ) {
+                foreach ( sp_qn_picked( $q['type'], $a ) as $v ) {
+                    $counts[ $v ] = ( $counts[ $v ] ?? 0 ) + 1;
+                }
+                if ( is_array( $a ) && '' !== (string) ( $a['other'] ?? '' ) ) {
+                    $others[] = $a['other'];
+                }
+            }
+            $html .= '<table class="sp-qn-r-table">';
+            foreach ( $counts as $label => $c ) {
+                $html .= sp_qn_bar_row( (string) $label, $c, $n );
+            }
+            if ( $others ) {
+                $html .= sp_qn_bar_row( __( 'Other', 'societypress' ), count( $others ), $n );
+            }
+            $html .= '</table>';
+            if ( 'checkboxes' === $q['type'] ) {
+                $html .= '<p class="description">' . esc_html__( 'People could tick more than one, so the percentages can add up to more than 100.', 'societypress' ) . '</p>';
+            }
+            if ( $others ) {
+                $html .= sp_qn_text_list( __( '"Other" answers', 'societypress' ), $others );
+            }
+            break;
+        case 'star_rating':
+        case 'scale':
+            $min = 'scale' === $q['type'] ? (int) $s['min'] : 1;
+            $max = 'scale' === $q['type'] ? (int) $s['max'] : (int) $s['stars'];
+            if ( $n ) {
+                $avg   = array_sum( array_map( 'intval', $given ) ) / $n;
+                $html .= '<p class="sp-qn-r-avg">' . esc_html( sprintf( /* translators: 1: average, 2: highest possible */ __( 'Average: %1$s out of %2$s', 'societypress' ), number_format_i18n( $avg, 1 ), $max ) ) . '</p>';
+            }
+            $tally = array_count_values( array_map( 'intval', $given ) );
+            $html .= '<table class="sp-qn-r-table">';
+            for ( $i = $max; $i >= $min; $i-- ) {
+                $label = 'star_rating' === $q['type'] ? str_repeat( '★', $i ) : (string) $i;
+                if ( 'scale' === $q['type'] && $i === $min && '' !== ( $s['low'] ?? '' ) ) {
+                    $label .= ' — ' . $s['low'];
+                } elseif ( 'scale' === $q['type'] && $i === $max && '' !== ( $s['high'] ?? '' ) ) {
+                    $label .= ' — ' . $s['high'];
+                }
+                $html .= sp_qn_bar_row( $label, (int) ( $tally[ $i ] ?? 0 ), $n );
+            }
+            $html .= '</table>';
+            break;
+        case 'grid':
+            $cols  = (array) ( $s['columns'] ?? [] );
+            $html .= '<div class="sp-qn-r-scroll"><table class="sp-qn-r-grid"><thead><tr><td></td>';
+            foreach ( $cols as $c ) {
+                $html .= '<th scope="col">' . esc_html( $c ) . '</th>';
+            }
+            $html .= '</tr></thead><tbody>';
+            foreach ( (array) ( $s['rows'] ?? [] ) as $row ) {
+                $tally = array_fill_keys( $cols, 0 );
+                $rown  = 0;
+                foreach ( $given as $a ) {
+                    if ( isset( $a[ $row ] ) ) {
+                        $rown++;
+                        foreach ( (array) $a[ $row ] as $v ) {
+                            if ( isset( $tally[ $v ] ) ) {
+                                $tally[ $v ]++;
+                            }
+                        }
+                    }
+                }
+                $html .= '<tr><th scope="row">' . esc_html( $row ) . '</th>';
+                foreach ( $tally as $c ) {
+                    $html .= '<td>' . esc_html( ( $rown ? round( $c / $rown * 100 ) : 0 ) . '%' ) . ' <span class="sp-qn-r-small">(' . esc_html( number_format_i18n( $c ) ) . ')</span></td>';
+                }
+                $html .= '</tr>';
+            }
+            $html .= '</tbody></table></div>';
+            break;
+        case 'ranking':
+            $sum = [];
+            $cnt = [];
+            foreach ( $given as $a ) {
+                foreach ( (array) $a as $pos => $item ) {
+                    $sum[ $item ] = ( $sum[ $item ] ?? 0 ) + $pos + 1;
+                    $cnt[ $item ] = ( $cnt[ $item ] ?? 0 ) + 1;
+                }
+            }
+            $avg = [];
+            foreach ( $sum as $item => $total ) {
+                $avg[ $item ] = $total / $cnt[ $item ];
+            }
+            asort( $avg );
+            $html .= '<ol class="sp-qn-r-rank">';
+            foreach ( $avg as $item => $a ) {
+                $html .= '<li><strong>' . esc_html( $item ) . '</strong> <span class="sp-qn-r-small">' . esc_html( sprintf( /* translators: %s: average position */ __( 'average place %s', 'societypress' ), number_format_i18n( $a, 1 ) ) ) . '</span></li>';
+            }
+            $html .= '</ol>';
+            break;
+        case 'file_upload':
+            $items = array_map( static function ( $u ) { return '<a href="' . esc_url( (string) $u ) . '" target="_blank" rel="noopener">' . esc_html( wp_basename( (string) $u ) ) . '</a>'; }, $given );
+            $html .= $items ? '<ul class="sp-qn-r-list"><li>' . implode( '</li><li>', $items ) . '</li></ul>' : '';
+            break;
+        default:
+            $html .= sp_qn_text_list( '', array_map( static function ( $a ) use ( $q ) { return sp_qn_answer_text( $q['type'], $a ); }, $given ) );
+    }
+    return $html;
+}
+
+/**
+ * Written answers as a list, the first ten shown and the rest a click away.
+ *
+ * @param string[] $texts
+ */
+function sp_qn_text_list( string $heading, array $texts ): string {
+    if ( ! $texts ) {
+        return '';
+    }
+    $html  = $heading ? '<p class="sp-qn-sub">' . esc_html( $heading ) . '</p>' : '';
+    $first = array_slice( $texts, 0, 10 );
+    $rest  = array_slice( $texts, 10 );
+    $li    = static function ( $t ) { return '<li>' . nl2br( esc_html( (string) $t ) ) . '</li>'; };
+    $html .= '<ul class="sp-qn-r-list">' . implode( '', array_map( $li, $first ) ) . '</ul>';
+    if ( $rest ) {
+        $html .= '<details class="sp-qn-r-more"><summary>' . esc_html( sprintf( /* translators: %s: number */ __( 'Show %s more', 'societypress' ), number_format_i18n( count( $rest ) ) ) ) . '</summary><ul class="sp-qn-r-list">' . implode( '', array_map( $li, $rest ) ) . '</ul></details>';
+    }
+    return $html;
+}
+
+/**
+ * Compare groups: every other choice question, split by the answers to one.
+ */
+function sp_qn_breakdown_html( array $by, array $questions, array $responses ): string {
+    $groups = sp_qn_choice_labels( $by, $responses );
+    $html   = '';
+    foreach ( $questions as $q ) {
+        if ( (int) $q['id'] === (int) $by['id'] || ! in_array( $q['type'], [ 'multiple_choice', 'checkboxes', 'dropdown', 'picture_choice', 'star_rating', 'scale' ], true ) ) {
+            continue;
+        }
+        $is_num = in_array( $q['type'], [ 'star_rating', 'scale' ], true );
+        $rows   = $is_num ? [ __( 'Average', 'societypress' ) ] : sp_qn_choice_labels( $q, $responses );
+        $html  .= '<h3>' . esc_html( $q['prompt'] ) . '</h3><div class="sp-qn-r-scroll"><table class="sp-qn-r-grid"><thead><tr><td></td>';
+        $cells  = [];
+        foreach ( $groups as $g ) {
+            $in    = array_filter( $responses, static function ( $r ) use ( $by, $g ) { return in_array( $g, sp_qn_picked( $by['type'], $r['answers'][ $by['id'] ]['answer'] ?? null ), true ); } );
+            $vals  = array_values( array_filter( array_map( static function ( $r ) use ( $q ) { return $r['answers'][ $q['id'] ]['answer'] ?? null; }, $in ), static function ( $v ) { return null !== $v; } ) );
+            $html .= '<th scope="col">' . esc_html( $g ) . ' <span class="sp-qn-r-small">(' . esc_html( number_format_i18n( count( $in ) ) ) . ')</span></th>';
+            foreach ( $rows as $label ) {
+                if ( $is_num ) {
+                    $cells[ $label ][] = $vals ? number_format_i18n( array_sum( array_map( 'intval', $vals ) ) / count( $vals ), 1 ) : '—';
+                } else {
+                    $hit = count( array_filter( $vals, static function ( $v ) use ( $q, $label ) { return in_array( $label, sp_qn_picked( $q['type'], $v ), true ); } ) );
+                    $cells[ $label ][] = $vals ? round( $hit / count( $vals ) * 100 ) . '%' : '—';
+                }
+            }
+        }
+        $html .= '</tr></thead><tbody>';
+        foreach ( $rows as $label ) {
+            $html .= '<tr><th scope="row">' . esc_html( $label ) . '</th><td>' . implode( '</td><td>', array_map( 'esc_html', $cells[ $label ] ?? [] ) ) . '</td></tr>';
+        }
+        $html .= '</tbody></table></div>';
+    }
+    return $html ?: '<p>' . esc_html__( 'There are no other multiple-choice or rating questions to compare.', 'societypress' ) . '</p>';
+}
+
+/**
+ * How many people could have answered, for "X of Y". Null for "Anyone".
+ */
+function sp_qn_possible_count( object $item ): ?int {
+    if ( 'public' === $item->audience ) {
+        return null;
+    }
+    global $wpdb;
+    if ( 'members' === $item->audience ) {
+        return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members WHERE status = 'active' AND user_id > 0" );
+    }
+    return count( sp_qn_group_user_ids( (array) json_decode( (string) $item->audience_groups, true ) ) );
+}
+
+/**
+ * Who took part. Named: who and when. Anonymous: who, never when.
+ *
+ * @return array[] name, date
+ */
+function sp_qn_who_answered( object $item ): array {
+    global $wpdb;
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT user_id, responded_on FROM {$wpdb->prefix}sp_qn_respondents WHERE item_id = %d", (int) $item->id
+    ) );
+    $out = [];
+    foreach ( (array) $rows as $r ) {
+        $u     = get_userdata( (int) $r->user_id );
+        $out[] = [ 'name' => $u ? $u->display_name : __( '(account removed)', 'societypress' ), 'date' => $r->responded_on ];
+    }
+    // Alphabetical, never arrival order: on an anonymous survey the order
+    // people answered in could be matched against the answers.
+    usort( $out, static function ( $a, $b ) { return strcasecmp( $a['name'], $b['name'] ); } );
+    return $out;
+}
+
+sp_handle_screen_load( 'sp-qn-results', 'sp_qn_handle_results_load' );
+
+/**
+ * Spreadsheet download, printable page and deleting one response — all done
+ * before the admin screen draws.
+ */
+function sp_qn_handle_results_load(): void {
+    if ( ! sp_qn_can_manage() ) {
+        return;
+    }
+    $item = sp_qn_get( absint( $_GET['id'] ?? 0 ) );
+    if ( ! $item ) {
+        return;
+    }
+    if ( 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' ) && isset( $_POST['sp_qn_delete_response'] ) ) {
+        check_admin_referer( 'sp_qn_results' );
+        global $wpdb;
+        $rid = absint( $_POST['sp_qn_delete_response'] );
+        $uid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT user_id FROM {$wpdb->prefix}sp_qn_responses WHERE id = %d AND item_id = %d", $rid, (int) $item->id ) );
+        $wpdb->delete( $wpdb->prefix . 'sp_qn_responses', [ 'id' => $rid, 'item_id' => (int) $item->id ] );
+        // A named answer removed lets that person answer again.
+        if ( $uid ) {
+            $wpdb->delete( $wpdb->prefix . 'sp_qn_respondents', [ 'item_id' => (int) $item->id, 'user_id' => $uid ] );
+        }
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-qn-results&tab=each&id=' . (int) $item->id . '&deleted=1' ) );
+        exit;
+    }
+    if ( isset( $_GET['csv'] ) ) {
+        check_admin_referer( 'sp_qn_csv_' . (int) $item->id );
+        sp_qn_send_csv( $item );
+    }
+    if ( isset( $_GET['print'] ) ) {
+        sp_qn_print_page( $item );
+    }
+}
+
+/**
+ * Keep a spreadsheet program from treating an answer as a formula.
+ */
+function sp_qn_csv_cell( string $v ): string {
+    return preg_match( '/^[=+\-@\t\r]/', $v ) ? "'" . $v : $v;
+}
+
+/**
+ * One row per set of answers, one column per question (a grid gets a column
+ * per statement, contact details a column per box).
+ */
+function sp_qn_send_csv( object $item ): void {
+    $questions = sp_qn_answerable( (int) $item->id );
+    $named     = ! ( 'survey' === $item->kind && (int) $item->anonymous );
+    $head      = [ __( 'Date', 'societypress' ) ];
+    if ( $named ) {
+        $head[] = __( 'Name', 'societypress' );
+        $head[] = __( 'Email', 'societypress' );
+    }
+    $cols = [];
+    foreach ( $questions as $q ) {
+        if ( 'grid' === $q['type'] ) {
+            foreach ( (array) $q['settings']['rows'] as $row ) {
+                $cols[]  = [ $q, $row ];
+                $head[]  = $q['prompt'] . ' — ' . $row;
+            }
+        } elseif ( 'contact' === $q['type'] ) {
+            foreach ( (array) $q['settings']['fields'] as $f ) {
+                $cols[] = [ $q, $f ];
+                $head[] = $q['prompt'] . ' — ' . ucfirst( $f );
+            }
+        } else {
+            $cols[] = [ $q, null ];
+            $head[] = $q['prompt'];
+        }
+    }
+    nocache_headers();
+    header( 'Content-Type: text/csv; charset=utf-8' );
+    header( 'Content-Disposition: attachment; filename=' . sanitize_file_name( sp_qn_page_slug( $item ) ?: 'answers' ) . '-' . gmdate( 'Y-m-d' ) . '.csv' );
+    $out = fopen( 'php://output', 'w' );
+    fwrite( $out, "\xEF\xBB\xBF" ); // So Excel reads accented names correctly.
+    fputcsv( $out, array_map( 'sp_qn_csv_cell', $head ), ',', '"', '\\' );
+    foreach ( array_reverse( sp_qn_responses( (int) $item->id ) ) as $r ) {
+        $line = [ substr( $r['created_at'], 0, $named ? 16 : 10 ) ];
+        if ( $named ) {
+            $u      = $r['user_id'] ? get_userdata( $r['user_id'] ) : null;
+            $line[] = $u ? $u->display_name : '';
+            $line[] = $u ? $u->user_email : '';
+        }
+        foreach ( $cols as [ $q, $part ] ) {
+            $a = $r['answers'][ $q['id'] ]['answer'] ?? null;
+            if ( null !== $part ) {
+                $v      = is_array( $a ) ? ( $a[ $part ] ?? '' ) : '';
+                $line[] = is_array( $v ) ? implode( ', ', $v ) : (string) $v;
+            } else {
+                $line[] = null === $a ? '' : sp_qn_answer_text( $q['type'], $a );
+            }
+        }
+        fputcsv( $out, array_map( 'sp_qn_csv_cell', $line ), ',', '"', '\\' );
+    }
+    fclose( $out );
+    exit;
+}
+
+/**
+ * The summary on a plain page, for printing and handing out.
+ */
+function sp_qn_print_page( object $item ): void {
+    $responses = sp_qn_responses( (int) $item->id );
+    $possible  = sp_qn_possible_count( $item );
+    ?><!DOCTYPE html>
+<html <?php language_attributes(); ?>><head><meta charset="utf-8"><title><?php echo esc_html( $item->title ); ?></title>
+<?php sp_qn_results_styles(); ?>
+<style>body{font-family:Georgia,serif;margin:2em auto;max-width:760px;color:#111}.sp-qn-r-q{page-break-inside:avoid}.sp-qn-noprint{margin-bottom:1em}@media print{.sp-qn-noprint{display:none}}</style>
+</head><body class="sp-qn-print">
+<p class="sp-qn-noprint"><button type="button" onclick="window.print()"><?php esc_html_e( 'Print', 'societypress' ); ?></button></p>
+<h1><?php echo esc_html( $item->title ); ?></h1>
+<p><?php
+    echo esc_html( null !== $possible
+        ? sprintf( /* translators: 1: answers, 2: possible */ __( '%1$s of %2$s answered', 'societypress' ), number_format_i18n( count( $responses ) ), number_format_i18n( $possible ) )
+        : sprintf( /* translators: %s: answers */ _n( '%s answer', '%s answers', count( $responses ), 'societypress' ), number_format_i18n( count( $responses ) ) ) );
+    echo ' · ' . esc_html( sprintf( /* translators: %s: date */ __( 'Printed %s', 'societypress' ), date_i18n( get_option( 'date_format' ) ) ) );
+?></p>
+<?php foreach ( sp_qn_answerable( (int) $item->id ) as $i => $q ) : ?>
+    <div class="sp-qn-r-q"><h2><?php echo esc_html( ( $i + 1 ) . '. ' . $q['prompt'] ); ?></h2><?php echo sp_qn_summary_html( $q, $responses ); // phpcs:ignore WordPress.Security.EscapeOutput -- built escaped. ?></div>
+<?php endforeach; ?>
+</body></html>
+    <?php
+    exit;
+}
+
+/**
+ * Styles shared by the Results screen and its printable page.
+ */
+function sp_qn_results_styles(): void {
+    ?>
+    <style id="sp-qn-results-css">
+    .sp-qn-r-q { background: #fff; border: 1px solid #dcdcde; border-radius: 6px; padding: 16px 20px; margin: 0 0 16px; }
+    .sp-qn-r-q h2, .sp-qn-r-q h3 { font-size: 16px; margin: 0 0 6px; }
+    .sp-qn-r-answered { color: #50575e; margin: 0 0 10px; }
+    .sp-qn-r-avg { font-size: 18px; font-weight: 600; margin: 0 0 8px; }
+    .sp-qn-r-table { width: 100%; max-width: 640px; border-collapse: collapse; }
+    .sp-qn-r-table th { text-align: left; font-weight: 400; padding: 4px 10px 4px 0; width: 32%; }
+    .sp-qn-r-bar { width: 50%; padding: 4px 0; }
+    .sp-qn-r-track { fill: #f0f0f1; }
+    .sp-qn-r-fill { fill: #2271b1; }
+    .sp-qn-r-num { text-align: right; padding: 4px 0 4px 10px; white-space: nowrap; color: #1d2327; }
+    .sp-qn-r-grid { border-collapse: collapse; }
+    .sp-qn-r-grid th, .sp-qn-r-grid td { padding: 6px 10px; border-bottom: 1px solid #f0f0f1; text-align: center; }
+    .sp-qn-r-grid tbody th { text-align: left; font-weight: 400; }
+    .sp-qn-r-scroll { overflow-x: auto; }
+    .sp-qn-r-small { color: #50575e; font-size: 12px; }
+    .sp-qn-r-list { margin: 6px 0 0 18px; list-style: disc; }
+    .sp-qn-r-list li { margin: 4px 0; }
+    .sp-qn-r-rank li { margin: 4px 0; }
+    .sp-qn-r-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 16px; }
+    .sp-qn-r-big { font-size: 20px; }
+    .sp-qn-r-each { background: #fff; border: 1px solid #dcdcde; border-radius: 6px; padding: 12px 18px; margin: 0 0 12px; }
+    .sp-qn-r-each dt { font-weight: 600; margin-top: 8px; }
+    .sp-qn-r-each dd { margin: 2px 0 0; white-space: pre-wrap; }
+    .sp-qn-r-eachhead { display: flex; justify-content: space-between; gap: 10px; align-items: center; color: #50575e; }
+    </style>
+    <?php
+}
+
+/**
+ * The Results step.
+ */
+function sp_qn_render_results_page(): void {
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms and surveys.', 'societypress' ) );
+    }
+    $item = sp_qn_get( absint( $_GET['id'] ?? 0 ) );
+    if ( ! $item ) {
+        wp_die( esc_html__( 'That form or survey no longer exists.', 'societypress' ) );
+    }
+    $responses = sp_qn_responses( (int) $item->id );
+    $questions = sp_qn_answerable( (int) $item->id );
+    $possible  = sp_qn_possible_count( $item );
+    $anon      = 'survey' === $item->kind && (int) $item->anonymous;
+    $tab       = in_array( $_GET['tab'] ?? '', [ 'compare', 'each' ], true ) ? $_GET['tab'] : 'summary';
+    $base      = admin_url( 'admin.php?page=sp-qn-results&id=' . (int) $item->id );
+    $choiceq   = array_values( array_filter( $questions, static function ( $q ) { return in_array( $q['type'], [ 'multiple_choice', 'dropdown', 'picture_choice' ], true ); } ) );
+    sp_qn_admin_styles();
+    sp_qn_results_styles();
+    ?>
+    <div class="wrap sp-qn">
+        <?php sp_qn_render_header( $item, 'results' ); ?>
+        <?php if ( isset( $_GET['deleted'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'That set of answers was deleted.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <div class="sp-qn-r-top">
+            <span class="sp-qn-r-big"><?php
+                echo wp_kses_post( null !== $possible
+                    ? sprintf( /* translators: 1: answers, 2: possible, 3: percent */ __( '<strong>%1$s</strong> of %2$s have answered (%3$s%%)', 'societypress' ), number_format_i18n( count( $responses ) ), number_format_i18n( $possible ), $possible ? round( count( $responses ) / $possible * 100 ) : 0 )
+                    : sprintf( /* translators: %s: answers */ _n( '<strong>%s</strong> answer', '<strong>%s</strong> answers', count( $responses ), 'societypress' ), number_format_i18n( count( $responses ) ) ) );
+            ?></span>
+            <?php if ( $responses ) : ?>
+                <a class="button" href="<?php echo esc_url( wp_nonce_url( $base . '&csv=1', 'sp_qn_csv_' . (int) $item->id ) ); ?>"><?php esc_html_e( 'Download as a spreadsheet', 'societypress' ); ?></a>
+                <a class="button" href="<?php echo esc_url( $base . '&print=1' ); ?>" target="_blank"><?php esc_html_e( 'Printable version', 'societypress' ); ?></a>
+            <?php endif; ?>
+        </div>
+
+        <nav class="nav-tab-wrapper">
+            <a class="nav-tab<?php echo 'summary' === $tab ? ' nav-tab-active' : ''; ?>" href="<?php echo esc_url( $base ); ?>"><?php esc_html_e( 'Summary', 'societypress' ); ?></a>
+            <?php if ( $choiceq ) : ?>
+                <a class="nav-tab<?php echo 'compare' === $tab ? ' nav-tab-active' : ''; ?>" href="<?php echo esc_url( $base . '&tab=compare' ); ?>"><?php esc_html_e( 'Compare groups', 'societypress' ); ?></a>
+            <?php endif; ?>
+            <a class="nav-tab<?php echo 'each' === $tab ? ' nav-tab-active' : ''; ?>" href="<?php echo esc_url( $base . '&tab=each' ); ?>"><?php esc_html_e( 'One at a time', 'societypress' ); ?></a>
+        </nav>
+        <br>
+
+        <?php if ( ! $responses ) : ?>
+            <div class="sp-qn-empty"><p><?php esc_html_e( 'No answers yet. They will be added up here as they come in.', 'societypress' ); ?></p></div>
+        <?php elseif ( 'summary' === $tab ) : ?>
+            <?php foreach ( $questions as $i => $q ) : ?>
+                <div class="sp-qn-r-q"><h2><?php echo esc_html( ( $i + 1 ) . '. ' . $q['prompt'] ); ?></h2><?php echo sp_qn_summary_html( $q, $responses ); // phpcs:ignore WordPress.Security.EscapeOutput -- built escaped. ?></div>
+            <?php endforeach; ?>
+            <?php $who = 'public' === $item->audience && ! $anon ? [] : sp_qn_who_answered( $item ); ?>
+            <?php if ( $who ) : ?>
+                <details class="sp-qn-r-q">
+                    <summary><strong><?php printf( esc_html__( 'Who has answered (%s)', 'societypress' ), esc_html( number_format_i18n( count( $who ) ) ) ); ?></strong></summary>
+                    <?php if ( $anon ) : ?><p class="description"><?php esc_html_e( 'This survey is anonymous: you can see who took part, but not which answers were theirs.', 'societypress' ); ?></p><?php endif; ?>
+                    <ul class="sp-qn-r-list">
+                        <?php foreach ( $who as $w ) : ?>
+                            <li><?php echo esc_html( $w['name'] ); ?><?php if ( $w['date'] ) : ?> <span class="sp-qn-r-small"><?php echo esc_html( date_i18n( get_option( 'date_format' ), strtotime( $w['date'] ) ) ); ?></span><?php endif; ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </details>
+            <?php endif; ?>
+        <?php elseif ( 'compare' === $tab ) : ?>
+            <?php $by_id = absint( $_GET['by'] ?? 0 ); $by = null; foreach ( $choiceq as $q ) { if ( (int) $q['id'] === $by_id ) { $by = $q; } } ?>
+            <form method="get" class="sp-qn-filters">
+                <input type="hidden" name="page" value="sp-qn-results"><input type="hidden" name="id" value="<?php echo (int) $item->id; ?>"><input type="hidden" name="tab" value="compare">
+                <label for="sp-qn-by"><?php esc_html_e( 'Split everyone up by their answer to:', 'societypress' ); ?></label>
+                <select id="sp-qn-by" name="by">
+                    <option value=""><?php esc_html_e( '— Choose a question —', 'societypress' ); ?></option>
+                    <?php foreach ( $choiceq as $q ) : ?>
+                        <option value="<?php echo (int) $q['id']; ?>" <?php selected( $by_id, (int) $q['id'] ); ?>><?php echo esc_html( $q['prompt'] ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" class="button"><?php esc_html_e( 'Show', 'societypress' ); ?></button>
+            </form>
+            <p class="description"><?php esc_html_e( 'For example, choose an age-group question to see how each age group answered everything else. Each column is the people who gave that answer.', 'societypress' ); ?></p>
+            <?php if ( $by ) : ?>
+                <div class="sp-qn-r-q"><?php echo sp_qn_breakdown_html( $by, $questions, $responses ); // phpcs:ignore WordPress.Security.EscapeOutput -- built escaped. ?></div>
+            <?php endif; ?>
+        <?php else : ?>
+            <?php foreach ( $responses as $n => $r ) : $u = ( ! $anon && $r['user_id'] ) ? get_userdata( $r['user_id'] ) : null; ?>
+                <div class="sp-qn-r-each">
+                    <div class="sp-qn-r-eachhead">
+                        <span><strong>#<?php echo (int) ( count( $responses ) - $n ); ?></strong>
+                            <?php echo esc_html( $u ? $u->display_name . ' · ' : ( $anon ? '' : __( 'Not logged in', 'societypress' ) . ' · ' ) ); ?>
+                            <?php echo esc_html( $anon ? date_i18n( get_option( 'date_format' ), strtotime( $r['created_at'] ) ) : date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $r['created_at'] ) ) ); ?></span>
+                        <form method="post" data-sp-confirm="<?php esc_attr_e( 'Delete this set of answers? It will no longer be counted. This cannot be undone.', 'societypress' ); ?>">
+                            <?php wp_nonce_field( 'sp_qn_results' ); ?>
+                            <button type="submit" name="sp_qn_delete_response" value="<?php echo (int) $r['id']; ?>" class="button-link sp-qn-danger"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                        </form>
+                    </div>
+                    <dl>
+                        <?php foreach ( $questions as $q ) : $a = $r['answers'][ $q['id'] ]['answer'] ?? null; ?>
+                            <dt><?php echo esc_html( $q['prompt'] ); ?></dt>
+                            <dd><?php if ( 'file_upload' === $q['type'] && $a ) : ?><a href="<?php echo esc_url( (string) $a ); ?>" target="_blank" rel="noopener"><?php echo esc_html( wp_basename( (string) $a ) ); ?></a><?php else : echo esc_html( sp_qn_answer_text( $q['type'], $a ) ); endif; ?></dd>
+                        <?php endforeach; ?>
+                    </dl>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
     <?php
 }

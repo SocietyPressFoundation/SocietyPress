@@ -20,6 +20,21 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.158] — 2026-11-23
+
+- **Preview changes to a live page before visitors see them.** When editing a
+  page that is already live, you can now choose "Not yet — keep my changes
+  unpublished." Visitors keep seeing the page as it was, while your changes get
+  their own private review link. Publish them when they're right, or throw them
+  away. The pages list marks any page that has unpublished changes.
+- **Page approval (optional).** A new switch under Settings → Website makes page
+  changes and new pages wait for approval before they go live. Approvers are
+  administrators plus anyone given the new **Approve Pages** access, so a
+  webmaster or committee chair can approve without being a full administrator.
+  Editors tick "send it to an approver," approvers get an email with a preview
+  link, and they can approve and publish or send it back with a note. Either
+  way, the editor is emailed. The switch is off by default.
+
 ## [1.5.157] — 2026-11-23
 
 - **Choose what the footer offers for contact.** Settings → Organization has a

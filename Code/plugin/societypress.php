@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.157
+ * Version:     1.5.158
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.157' );
+define( 'SOCIETYPRESS_VERSION', '1.5.158' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -70,6 +70,7 @@ register_activation_hook( __FILE__, function () {
             'footer_contact_mode'     => 'email',
             'footer_contact_page_id'  => 0,
             'footer_contact_label'    => '',
+            'page_approval_required'  => 0,
             'tax_id'                  => '',
             'membership_period_type'  => 'annual',
             'membership_start_month'  => 7,
@@ -7396,6 +7397,12 @@ function sp_get_access_areas(): array {
             'icon'       => 'dashicons-admin-page',
             'description'=> __( 'Pages, media library, resources, documents, gallery, and the page builder.', 'societypress' ),
         ],
+        'approve_pages' => [
+            'name'       => __( 'Approve Pages', 'societypress' ),
+            'capability' => 'sp_approve_pages',
+            'icon'       => 'dashicons-yes-alt',
+            'description'=> __( 'Review page changes and new pages, then publish them or send them back. Needed only when Settings → Website requires approval. Includes editing pages.', 'societypress' ),
+        ],
         'settings' => [
             'name'       => __( 'Settings & Design', 'societypress' ),
             'capability' => 'sp_manage_settings',
@@ -7465,6 +7472,7 @@ function sp_get_access_area_caps(): array {
         'records'        => 'sp_manage_records',
         'governance'     => 'sp_manage_governance',
         'content'        => 'sp_manage_content',
+        'approve_pages'  => 'sp_approve_pages',
         'settings'       => 'sp_manage_settings',
         'reports'        => 'sp_view_reports',
         'research'       => 'sp_claim_research_cases',
@@ -7866,6 +7874,13 @@ add_filter( 'user_has_cap', function ( array $allcaps, array $caps, array $args,
         if ( isset( $area_caps[ $area_slug ] ) ) {
             $allcaps[ $area_caps[ $area_slug ] ] = true;
         }
+    }
+
+    // WHY approving includes editing: an approver has to open a page to review
+    // it, and often fixes a typo on the way to publishing. Making the society
+    // tick Content & Pages as well would be a trap they'd only find by failing.
+    if ( ! empty( $allcaps['sp_approve_pages'] ) ) {
+        $allcaps['sp_manage_content'] = true;
     }
 
     // A researcher-only volunteer stays a front-end user: no menu, no wp-admin.
@@ -13812,6 +13827,7 @@ add_action( 'admin_head', function () {
 .sp-text-error     { color: #d63638; }
 .sp-text-success   { color: #0a6b2e; }
 .sp-text-success-strong { color: #1d6b30; font-weight: 600; }
+.sp-text-warning-strong { color: #8a5a00; font-weight: 600; }
 
 /* Live "these colors may be hard to read" warning under the header/footer text
    color pickers (Design settings). Toggled by the contrast check in updatePreview. */
@@ -16133,6 +16149,207 @@ function sp_review_token_valid_for( int $post_id ): bool {
     // down by timing.
     return '' !== $stored && hash_equals( $stored, $token );
 }
+
+// ============================================================================
+// PAGE APPROVAL — pending changes and sign-off before a page goes live
+// ============================================================================
+//
+// WHY pending changes live in a hidden copy of the page: editing a live page
+// used to change it for the public on save, so nobody could check their work
+// first. Keeping the edits in a draft copy (meta _sp_pending_of → live page,
+// and _sp_pending_copy on the live page pointing back) means the public keeps
+// seeing the old version, the copy gets its own private review link through
+// the existing review-token machinery, and publishing is just copying the
+// fields across and throwing the copy away. A draft is invisible to the public
+// by construction, so the copy can't leak into menus, search or sitemaps.
+//
+// Approval itself is a switch (Settings → Website), off by default: a society
+// with one webmaster shouldn't wait on itself. With it on, only approvers —
+// administrators, or anyone given the Approve Pages access area — can make a
+// page or a change public.
+
+/**
+ * Must page changes be approved before they go live on this site?
+ */
+function sp_page_approval_required(): bool {
+    return ! empty( sp_settings()['page_approval_required'] );
+}
+
+/**
+ * Can the current user approve (publish) pages and page changes?
+ */
+function sp_can_approve_pages(): bool {
+    return current_user_can( 'manage_options' ) || current_user_can( 'sp_approve_pages' );
+}
+
+/**
+ * Can the current user make a page or a change live without asking anyone?
+ */
+function sp_can_publish_pages(): bool {
+    return ! sp_page_approval_required() || sp_can_approve_pages();
+}
+
+/**
+ * The hidden copy holding pending changes to a live page, or 0.
+ *
+ * WHY verify both directions: a copy deleted by some other route would leave
+ * the live page pointing at nothing, and opening the editor would then load a
+ * missing post. A stale pointer is cleared on sight.
+ */
+function sp_page_pending_copy_id( int $live_id ): int {
+    $copy_id = (int) get_post_meta( $live_id, '_sp_pending_copy', true );
+    if ( ! $copy_id ) {
+        return 0;
+    }
+    $copy = get_post( $copy_id );
+    if ( ! $copy || (int) get_post_meta( $copy_id, '_sp_pending_of', true ) !== $live_id ) {
+        delete_post_meta( $live_id, '_sp_pending_copy' );
+        return 0;
+    }
+    return $copy_id;
+}
+
+/**
+ * Everyone who can approve pages, for the "waiting for you" email.
+ *
+ * @return WP_User[]
+ */
+function sp_page_approvers(): array {
+    $by_id = [];
+    foreach ( get_users( [ 'role' => 'administrator' ] ) as $u ) {
+        $by_id[ $u->ID ] = $u;
+    }
+    // WHY LIKE on the serialized array: sp_access_areas is a PHP-serialized
+    // list of slugs, and the quoted slug only matches a whole entry.
+    $granted = get_users( [
+        'meta_key'     => 'sp_access_areas',
+        'meta_value'   => '"approve_pages"',
+        'meta_compare' => 'LIKE',
+    ] );
+    foreach ( $granted as $u ) {
+        $by_id[ $u->ID ] = $u;
+    }
+    return array_values( $by_id );
+}
+
+/**
+ * Email about a page's approval: asking approvers, or answering the editor.
+ *
+ * @param int    $page_id The draft or pending copy (for 'submitted' and
+ *                        'sent_back') or the now-live page (for 'approved').
+ * @param string $event   'submitted', 'approved' or 'sent_back'.
+ * @param int    $editor  The user who submitted the change.
+ * @param string $note    The approver's note when sending a change back.
+ */
+function sp_page_approval_notify( int $page_id, string $event, int $editor, string $note = '' ): void {
+    $title = get_the_title( $page_id );
+    $actor = wp_get_current_user();
+    $who   = $actor && $actor->exists() ? $actor->display_name : __( 'Somebody', 'societypress' );
+    $edit  = admin_url( 'admin.php?page=sp-page-edit&post_id=' . $page_id );
+
+    if ( 'submitted' === $event ) {
+        $body = sprintf(
+            /* translators: 1: editor's name, 2: page title, 3: private preview link, 4: link to the editor */
+            __( "%1\$s has a page waiting for your approval: %2\$s\n\nSee it as it will look:\n%3\$s\n\nApprove it, or send it back with a note, here:\n%4\$s", 'societypress' ),
+            $who,
+            $title,
+            sp_page_review_url( $page_id ),
+            $edit
+        );
+        /* translators: %s: page title */
+        $subject = sprintf( __( 'Waiting for your approval: %s', 'societypress' ), $title );
+        foreach ( sp_page_approvers() as $u ) {
+            if ( (int) $u->ID !== get_current_user_id() ) {
+                wp_mail( $u->user_email, $subject, $body );
+            }
+        }
+        return;
+    }
+
+    $to = get_userdata( $editor );
+    if ( ! $to || $editor === get_current_user_id() ) {
+        return;
+    }
+
+    if ( 'approved' === $event ) {
+        /* translators: %s: page title */
+        $subject = sprintf( __( 'Approved and live: %s', 'societypress' ), $title );
+        $body    = sprintf(
+            /* translators: 1: approver's name, 2: page title, 3: link to the live page */
+            __( "%1\$s approved your changes to %2\$s. They are live now:\n%3\$s", 'societypress' ),
+            $who,
+            $title,
+            get_permalink( $page_id )
+        );
+    } else {
+        /* translators: %s: page title */
+        $subject = sprintf( __( 'Sent back for changes: %s', 'societypress' ), $title );
+        $body    = sprintf(
+            /* translators: 1: approver's name, 2: page title, 3: the approver's note, 4: link to the editor */
+            __( "%1\$s sent %2\$s back to you for changes.\n\nTheir note:\n%3\$s\n\nPick it up here:\n%4\$s", 'societypress' ),
+            $who,
+            $title,
+            '' !== $note ? $note : __( '(no note)', 'societypress' ),
+            $edit
+        );
+    }
+    wp_mail( $to->user_email, $subject, $body );
+}
+
+/**
+ * Plain-English approval state for a page, for the pages list and editor.
+ *
+ * @return string '' when nothing is pending.
+ */
+function sp_page_approval_label( int $page_id ): string {
+    $holder = sp_page_pending_copy_id( $page_id ) ?: $page_id;
+    $state  = get_post_meta( $holder, '_sp_approval_state', true );
+    if ( 'submitted' === $state ) {
+        return __( 'Waiting for approval', 'societypress' );
+    }
+    if ( 'sent_back' === $state ) {
+        return __( 'Sent back for changes', 'societypress' );
+    }
+    if ( $holder !== $page_id ) {
+        return __( 'Has unpublished changes', 'societypress' );
+    }
+    return '';
+}
+
+// Deleting a live page takes its pending copy with it, and discarding a copy
+// clears the live page's pointer — neither should be left dangling.
+add_action( 'before_delete_post', function ( $post_id ) {
+    $post_id = (int) $post_id;
+    if ( 'page' !== get_post_type( $post_id ) ) {
+        return;
+    }
+    $live_id = (int) get_post_meta( $post_id, '_sp_pending_of', true );
+    if ( $live_id ) {
+        delete_post_meta( $live_id, '_sp_pending_copy' );
+        return;
+    }
+    $copy_id = (int) get_post_meta( $post_id, '_sp_pending_copy', true );
+    if ( $copy_id && (int) get_post_meta( $copy_id, '_sp_pending_of', true ) === $post_id ) {
+        wp_delete_post( $copy_id, true );
+    }
+} );
+add_action( 'wp_trash_post', function ( $post_id ) {
+    $copy_id = (int) get_post_meta( (int) $post_id, '_sp_pending_copy', true );
+    if ( $copy_id && (int) get_post_meta( $copy_id, '_sp_pending_of', true ) === (int) $post_id ) {
+        wp_delete_post( $copy_id, true );
+    }
+} );
+
+// Keep pending copies out of WordPress's own Pages screen, where they would
+// read as a second, duplicate draft of the page.
+add_action( 'pre_get_posts', function ( $q ) {
+    if ( ! is_admin() || ! $q->is_main_query() || 'page' !== $q->get( 'post_type' ) ) {
+        return;
+    }
+    $meta   = (array) $q->get( 'meta_query' );
+    $meta[] = [ 'key' => '_sp_pending_of', 'compare' => 'NOT EXISTS' ];
+    $q->set( 'meta_query', $meta );
+} );
 
 // Open draft/pending pages to the main query when a review token is present —
 // but only for a single-page request, never a listing, so an unpublished post
@@ -33671,6 +33888,29 @@ add_action( 'admin_init', function () {
         'sp_website_section'
     );
 
+    // --- Page approval ---
+    // WHY a switch, off by default: a society run by one webmaster would only
+    // be approving its own work. A society with several people editing pages
+    // turns it on so a second pair of eyes sees every change before the public.
+    add_settings_field(
+        'page_approval_required',
+        __( 'Page Approval', 'societypress' ),
+        function () {
+            $enabled = ! empty( sp_settings()['page_approval_required'] );
+            echo '<input type="hidden" name="societypress_settings[page_approval_required]" value="0">';
+            printf(
+                '<label><input type="checkbox" name="societypress_settings[page_approval_required]" value="1" %s> %s</label>',
+                checked( $enabled, true, false ),
+                esc_html__( 'Page changes and new pages need approval before they go live', 'societypress' )
+            );
+            echo '<p class="description">'
+               . esc_html__( 'When this is on, people who edit pages can save and preview their work, then send it for approval. Only administrators and people given the Approve Pages access can make it live. Approvers get an email when something is waiting.', 'societypress' )
+               . '</p>';
+        },
+        'sp-settings-website',
+        'sp_website_section'
+    );
+
     // --- Breadcrumbs ---
     // WHY on the Website tab: Breadcrumbs are a site-wide navigation UI
     // element, not org-specific. The admin should be able to toggle them,
@@ -35804,6 +36044,7 @@ function sp_sanitize_settings( array $input ): array {
         'social_pinterest'        => fn() => esc_url_raw( $input['social_pinterest'] ?? '' ),
         'social_threads'          => fn() => esc_url_raw( $input['social_threads'] ?? '' ),
         'breadcrumbs_enabled'     => fn() => ! empty( $input['breadcrumbs_enabled'] ) ? 1 : 0,
+        'page_approval_required'  => fn() => ! empty( $input['page_approval_required'] ) ? 1 : 0,
         'breadcrumb_home_label'   => fn() => sanitize_text_field( $input['breadcrumb_home_label'] ?? 'Home' ),
         'breadcrumb_separator'    => fn() => sanitize_text_field( $input['breadcrumb_separator'] ?? '›' ),
 
@@ -36072,6 +36313,7 @@ function sp_sanitize_settings( array $input ): array {
             'social_facebook', 'social_youtube', 'social_instagram',
             'social_tiktok', 'social_x',
             'breadcrumbs_enabled', 'breadcrumb_home_label', 'breadcrumb_separator',
+            'page_approval_required',
             'analytics_google_id', 'analytics_exclude_admins',
         ]);
     }
@@ -39580,10 +39822,16 @@ class SP_Pages_List_Table extends WP_List_Table {
      * Status column — color-coded so Harold can see at a glance.
      */
     protected function column_status( $item ): string {
-        if ( $item->post_status === 'publish' ) {
-            return '<span class="sp-text-success-strong">' . esc_html__( 'Published', 'societypress' ) . '</span>';
+        $html = ( $item->post_status === 'publish' )
+            ? '<span class="sp-text-success-strong">' . esc_html__( 'Published', 'societypress' ) . '</span>'
+            : '<span class="sp-text-muted-strong">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
+        // Pending changes and approvals show here so an approver scanning the
+        // list sees what is waiting without opening every page.
+        $approval = sp_page_approval_label( (int) $item->ID );
+        if ( '' !== $approval ) {
+            $html .= '<br><em class="sp-text-warning-strong">' . esc_html( $approval ) . '</em>';
         }
-        return '<span class="sp-text-muted-strong">' . esc_html__( 'Draft', 'societypress' ) . '</span>';
+        return $html;
     }
 
     /**
@@ -39613,6 +39861,8 @@ class SP_Pages_List_Table extends WP_List_Table {
             'post_type'      => 'page',
             'post_status'    => [ 'publish', 'draft' ],
             'posts_per_page' => $per_page,
+            // Pending copies are reached through their live page, never listed.
+            'meta_query'     => [ [ 'key' => '_sp_pending_of', 'compare' => 'NOT EXISTS' ] ],
             'paged'          => $show_all ? 1 : $this->get_pagenum(),
         ];
 
@@ -39740,8 +39990,9 @@ function sp_handle_pages_actions(): void {
          && isset( $_POST['post_id'] ) && ! is_array( $_POST['post_id'] ) ) {
         $post_id = (int) $_POST['post_id'];
         check_admin_referer( 'sp_delete_page_' . $post_id );
+        $is_copy = (bool) get_post_meta( $post_id, '_sp_pending_of', true );
         wp_delete_post( $post_id, true ); // true = bypass trash, permanent delete
-        wp_redirect( admin_url( 'admin.php?page=sp-pages&deleted=1' ) );
+        wp_redirect( admin_url( $is_copy ? 'admin.php?page=sp-pages&saved=1&sp_notice=discarded' : 'admin.php?page=sp-pages&deleted=1' ) );
         exit;
     }
 
@@ -39801,7 +40052,15 @@ function sp_render_pages_page(): void {
             }
         }
         if ( isset( $_GET['saved'] ) ) {
-            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Page saved.', 'societypress' ) . '</p></div>';
+            $sp_saved_msgs = [
+                'saved'     => __( 'Page saved.', 'societypress' ),
+                'pending'   => __( 'Your changes are saved but not live yet. Visitors still see the page as it was.', 'societypress' ),
+                'submitted' => __( 'Saved and sent for approval. Approvers have been emailed.', 'societypress' ),
+                'sent_back' => __( 'Sent back with your note. The editor has been emailed.', 'societypress' ),
+                'discarded' => __( 'Unpublished changes thrown away. The live page is unchanged.', 'societypress' ),
+            ];
+            $sp_saved_key = sanitize_key( $_GET['sp_notice'] ?? 'saved' );
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $sp_saved_msgs[ $sp_saved_key ] ?? $sp_saved_msgs['saved'] ) . '</p></div>';
         }
         ?>
 
@@ -39983,6 +40242,14 @@ function sp_handle_quick_edit_page(): void {
 
     if ( empty( $title ) ) {
         wp_send_json_error( __( 'Title cannot be empty.', 'societypress' ) );
+    }
+
+    // WHY: Quick Edit writes straight to the page, so with approval on it
+    // would be a way round it. Anyone who can't publish uses the full editor,
+    // where changes to a live page wait for an approver.
+    if ( ! sp_can_publish_pages()
+         && ( 'publish' === $status || 'publish' === get_post_status( $post_id ) ) ) {
+        wp_send_json_error( __( 'Changes to live pages need approval. Open the page to edit it and send it for approval.', 'societypress' ) );
     }
 
     // Validate template slug
@@ -40322,7 +40589,19 @@ function sp_render_page_edit(): void {
     // Load existing page data if editing
     $post_id  = (int) ( $_GET['post_id'] ?? 0 );
     $post     = $post_id ? get_post( $post_id ) : null;
-    $is_edit  = (bool) $post;
+
+    // A live page with unpublished changes opens on those changes, so editing
+    // carries on where it left off instead of starting again from the live
+    // version and losing the pending work.
+    if ( $post && ( $sp_copy_id = sp_page_pending_copy_id( $post_id ) ) ) {
+        $post_id = $sp_copy_id;
+        $post    = get_post( $post_id );
+    }
+    $is_edit     = (bool) $post;
+    $sp_live_id  = $is_edit ? (int) get_post_meta( $post_id, '_sp_pending_of', true ) : 0;
+    $sp_is_live  = $is_edit && ( $sp_live_id || 'publish' === $post->post_status );
+    $sp_can_pub  = sp_can_publish_pages();
+    $sp_state    = $is_edit ? (string) get_post_meta( $post_id, '_sp_approval_state', true ) : '';
 
     $title    = $is_edit ? $post->post_title : '';
     $content  = $is_edit ? $post->post_content : '';
@@ -40351,6 +40630,29 @@ function sp_render_page_edit(): void {
     </style>
     <div class="wrap">
         <h1><?php echo $is_edit ? esc_html__( 'Edit Page', 'societypress' ) : esc_html__( 'Add New Page', 'societypress' ); ?></h1>
+
+        <?php if ( $sp_live_id ) : ?>
+            <div class="notice notice-info inline"><p><?php
+                printf(
+                    /* translators: %s: link to the live page */
+                    esc_html__( 'You are editing unpublished changes. Visitors still see the live page (%s) exactly as it was until these changes are published.', 'societypress' ),
+                    '<a href="' . esc_url( get_permalink( $sp_live_id ) ) . '" target="_blank">' . esc_html__( 'view it', 'societypress' ) . '</a>'
+                ); // phpcs:ignore WordPress.Security.EscapeOutput -- pieces escaped above.
+            ?></p></div>
+        <?php endif; ?>
+        <?php if ( 'submitted' === $sp_state ) :
+            $sp_by = get_userdata( (int) get_post_meta( $post_id, '_sp_approval_by', true ) ); ?>
+            <div class="notice notice-warning inline"><p><?php
+                printf(
+                    /* translators: %s: name of the person who asked for approval */
+                    esc_html__( 'Waiting for approval — sent by %s.', 'societypress' ),
+                    esc_html( $sp_by ? $sp_by->display_name : __( 'somebody', 'societypress' ) )
+                );
+            ?></p></div>
+        <?php elseif ( 'sent_back' === $sp_state ) : ?>
+            <div class="notice notice-warning inline"><p><strong><?php esc_html_e( 'Sent back for changes.', 'societypress' ); ?></strong>
+                <?php echo esc_html( (string) get_post_meta( $post_id, '_sp_approval_note', true ) ); ?></p></div>
+        <?php endif; ?>
 
         <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-page-edit' ) ); ?>">
             <?php wp_nonce_field( 'sp_save_page', 'sp_page_nonce' ); ?>
@@ -40484,11 +40786,31 @@ function sp_render_page_edit(): void {
                 <tr>
                     <th scope="row"><label for="page_status"><?php esc_html_e( 'Status', 'societypress' ); ?></label></th>
                     <td>
+                        <?php if ( $sp_is_live ) :
+                            // A live page: the choice is whether this save
+                            // changes what visitors see, or is kept aside.
+                            $sp_pick = ( $sp_live_id || ! $sp_can_pub ) ? 'pending' : 'publish'; ?>
                         <select id="page_status" name="page_status">
-                            <option value="publish" <?php selected( $status, 'publish' ); ?>><?php esc_html_e( 'Published', 'societypress' ); ?></option>
-                            <option value="draft" <?php selected( $status, 'draft' ); ?>><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
+                            <?php if ( $sp_can_pub ) : ?>
+                            <option value="publish" <?php selected( $sp_pick, 'publish' ); ?>><?php esc_html_e( 'Live — my changes go public when I save', 'societypress' ); ?></option>
+                            <?php endif; ?>
+                            <option value="pending" <?php selected( $sp_pick, 'pending' ); ?>><?php esc_html_e( 'Not yet — keep my changes unpublished', 'societypress' ); ?></option>
                         </select>
-                        <p class="description"><?php esc_html_e( 'Draft keeps the page off the live site. Use the review link below to show it to someone first, then switch to Published to make it live.', 'societypress' ); ?></p>
+                        <p class="description"><?php esc_html_e( 'This page is live. Keeping your changes unpublished lets you preview them with the review link below while visitors still see the page as it was.', 'societypress' ); ?></p>
+                        <?php else :
+                            $sp_pick = ( 'publish' === $status && $sp_can_pub ) ? 'publish' : 'draft'; ?>
+                        <select id="page_status" name="page_status">
+                            <?php if ( $sp_can_pub ) : ?>
+                            <option value="publish" <?php selected( $sp_pick, 'publish' ); ?>><?php esc_html_e( 'Published', 'societypress' ); ?></option>
+                            <?php endif; ?>
+                            <option value="draft" <?php selected( $sp_pick, 'draft' ); ?>><?php esc_html_e( 'Draft', 'societypress' ); ?></option>
+                        </select>
+                        <p class="description"><?php
+                            echo $sp_can_pub
+                                ? esc_html__( 'Draft keeps the page off the live site. Use the review link below to show it to someone first, then switch to Published to make it live.', 'societypress' )
+                                : esc_html__( 'Draft keeps the page off the live site. Use the review link below to check it, then send it for approval.', 'societypress' );
+                        ?></p>
+                        <?php endif; ?>
                     </td>
                 </tr>
 
@@ -40523,6 +40845,36 @@ function sp_render_page_edit(): void {
                             <input type="checkbox" name="sp_reset_review_link" value="1">
                             <?php esc_html_e( 'Generate a new link when I save (turns off the old one)', 'societypress' ); ?>
                         </label>
+                    </td>
+                </tr>
+                <?php endif; ?>
+
+                <!-- Approval -->
+                <?php if ( sp_page_approval_required() || 'submitted' === $sp_state ) : ?>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Approval', 'societypress' ); ?></th>
+                    <td>
+                        <?php if ( sp_can_approve_pages() && 'submitted' === $sp_state ) : ?>
+                            <p>
+                                <button type="submit" name="sp_approve" value="1" class="button button-primary"><?php esc_html_e( 'Approve & Publish', 'societypress' ); ?></button>
+                            </p>
+                            <p class="description"><?php esc_html_e( 'Publishes the page as it stands in this form, including anything you changed just now.', 'societypress' ); ?></p>
+                            <p class="sp-mt-12">
+                                <label for="sp_send_back_note"><?php esc_html_e( 'Or send it back with a note:', 'societypress' ); ?></label><br>
+                                <textarea id="sp_send_back_note" name="sp_send_back_note" rows="3" class="large-text"></textarea>
+                            </p>
+                            <p><button type="submit" name="sp_send_back" value="1" class="button"><?php esc_html_e( 'Send Back', 'societypress' ); ?></button></p>
+                        <?php elseif ( ! $sp_can_pub && 'submitted' !== $sp_state ) : ?>
+                            <label>
+                                <input type="checkbox" name="sp_submit_approval" value="1">
+                                <?php esc_html_e( 'This is ready — send it to an approver when I save', 'societypress' ); ?>
+                            </label>
+                            <p class="description"><?php esc_html_e( 'Approvers get an email with a link to preview it. You will hear back when it is published or sent back.', 'societypress' ); ?></p>
+                        <?php elseif ( 'submitted' === $sp_state ) : ?>
+                            <p class="description"><?php esc_html_e( 'Sent for approval. You can keep making changes; the approver will see the latest version.', 'societypress' ); ?></p>
+                        <?php else : ?>
+                            <p class="description"><?php esc_html_e( 'You can approve pages, so your own changes go live when you choose Live or Published.', 'societypress' ); ?></p>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endif; ?>
@@ -40564,11 +40916,18 @@ function sp_render_page_edit(): void {
             </p>
         </form>
         <?php if ( $is_edit ) : ?>
-            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" class="sp-inline-form sp-inline-form--tight" data-sp-confirm="<?php echo esc_attr( __( 'Delete this page? This cannot be undone.', 'societypress' ) ); ?>">
+            <?php
+            // On a pending copy the same button throws away the unpublished
+            // changes only; the live page is untouched.
+            $sp_del_confirm = $sp_live_id
+                ? __( 'Throw away your unpublished changes? The live page stays as it is.', 'societypress' )
+                : __( 'Delete this page? This cannot be undone.', 'societypress' );
+            ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=sp-pages' ) ); ?>" class="sp-inline-form sp-inline-form--tight" data-sp-confirm="<?php echo esc_attr( $sp_del_confirm ); ?>">
                 <?php wp_nonce_field( 'sp_delete_page_' . $post_id ); ?>
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>">
-                <button type="submit" class="button sp-btn-danger"><?php esc_html_e( 'Delete Page', 'societypress' ); ?></button>
+                <button type="submit" class="button sp-btn-danger"><?php echo $sp_live_id ? esc_html__( 'Discard Unpublished Changes', 'societypress' ) : esc_html__( 'Delete Page', 'societypress' ); ?></button>
             </form>
             <script>
             (function () {
@@ -40671,6 +41030,58 @@ function sp_handle_page_save(): void {
         wp_redirect( $redirect );
         exit;
     }
+
+    // ---- Where this save lands, and whether it goes live ----
+    // The form says what the editor wants; approval rules say what they may
+    // have. A live page saved as "not yet" goes into its pending copy, and a
+    // pending copy saved as live is copied onto the real page and discarded.
+    $want         = in_array( $_POST['page_status'] ?? '', [ 'publish', 'draft', 'pending' ], true )
+                    ? $_POST['page_status'] : 'draft';
+    $approving    = ! empty( $_POST['sp_approve'] ) && sp_can_approve_pages();
+    $sending_back = ! $approving && ! empty( $_POST['sp_send_back'] ) && sp_can_approve_pages();
+    if ( $approving ) {
+        $want = 'publish';
+    } elseif ( $sending_back || ( 'publish' === $want && ! sp_can_publish_pages() ) ) {
+        $want = 'pending';
+    }
+
+    $existing     = $post_id ? get_post( $post_id ) : null;
+    if ( $existing && 'page' !== $existing->post_type ) {
+        wp_die( esc_html__( 'That is not a page.', 'societypress' ) );
+    }
+    $live_id      = $existing ? (int) get_post_meta( $post_id, '_sp_pending_of', true ) : 0;
+    $discard_copy = 0;
+
+    if ( $existing && ! $live_id && 'publish' === $existing->post_status && 'publish' !== $want ) {
+        // First unpublished edit to a live page: start (or reuse) its copy.
+        $copy_id = sp_page_pending_copy_id( $post_id );
+        if ( ! $copy_id ) {
+            $copy_id = wp_insert_post( [
+                'post_type'   => 'page',
+                'post_status' => 'draft',
+                'post_title'  => $title,
+                'post_author' => get_current_user_id(),
+            ], true );
+            if ( is_wp_error( $copy_id ) ) {
+                /* translators: %s: error message */
+                wp_die( esc_html( sprintf( __( 'Error saving page: %s', 'societypress' ), $copy_id->get_error_message() ) ) );
+            }
+            update_post_meta( $copy_id, '_sp_pending_of', $post_id );
+            update_post_meta( $post_id, '_sp_pending_copy', $copy_id );
+        }
+        $live_id = $post_id;
+        $post_id = (int) $copy_id;
+    } elseif ( $live_id && 'publish' === $want ) {
+        // Publishing pending changes: they land on the live page.
+        $discard_copy = $post_id;
+        $post_id      = $live_id;
+    }
+    $status = ( 'publish' === $want ) ? 'publish' : 'draft';
+
+    // Approval bookkeeping lives on whatever held the unpublished work.
+    $holder     = $discard_copy ?: $post_id;
+    $prev_state = $holder ? (string) get_post_meta( $holder, '_sp_approval_state', true ) : '';
+    $submitter  = $holder ? (int) get_post_meta( $holder, '_sp_approval_by', true ) : 0;
 
     $post_data = [
         'post_title'   => $title,
@@ -40784,6 +41195,34 @@ function sp_handle_page_save(): void {
     // ensure one exists so the Copy Review Link button always has a URL.
     sp_page_review_token( $saved_id, ! empty( $_POST['sp_reset_review_link'] ) );
 
+    // ---- Approval ----
+    $sp_notice = 'saved';
+    if ( $discard_copy ) {
+        wp_delete_post( $discard_copy, true );
+    }
+    if ( 'publish' === $status ) {
+        delete_post_meta( $saved_id, '_sp_approval_state' );
+        delete_post_meta( $saved_id, '_sp_approval_by' );
+        delete_post_meta( $saved_id, '_sp_approval_note' );
+        if ( 'submitted' === $prev_state && $submitter ) {
+            sp_page_approval_notify( $saved_id, 'approved', $submitter );
+        }
+    } elseif ( $sending_back && 'submitted' === $prev_state ) {
+        $note = sanitize_textarea_field( wp_unslash( $_POST['sp_send_back_note'] ?? '' ) );
+        update_post_meta( $saved_id, '_sp_approval_state', 'sent_back' );
+        update_post_meta( $saved_id, '_sp_approval_note', $note );
+        sp_page_approval_notify( $saved_id, 'sent_back', $submitter, $note );
+        $sp_notice = 'sent_back';
+    } elseif ( ! empty( $_POST['sp_submit_approval'] ) && sp_page_approval_required() && 'submitted' !== $prev_state ) {
+        update_post_meta( $saved_id, '_sp_approval_state', 'submitted' );
+        update_post_meta( $saved_id, '_sp_approval_by', get_current_user_id() );
+        delete_post_meta( $saved_id, '_sp_approval_note' );
+        sp_page_approval_notify( $saved_id, 'submitted', get_current_user_id() );
+        $sp_notice = 'submitted';
+    } elseif ( $live_id ) {
+        $sp_notice = 'pending';
+    }
+
     // "Save & View" posts into a new tab, so land that tab on the page
     // itself. A published page is just viewed; a draft needs its review link,
     // which is the only way to see an unpublished page without an account.
@@ -40795,7 +41234,7 @@ function sp_handle_page_save(): void {
         exit;
     }
 
-    wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1' ) );
+    wp_redirect( admin_url( 'admin.php?page=sp-pages&saved=1&sp_notice=' . $sp_notice ) );
     exit;
 }
 
@@ -42656,7 +43095,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.157',
+            'version'     => '1.5.158',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42664,7 +43103,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.157',
+            'version'     => '1.5.158',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42672,7 +43111,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.157',
+            'version'     => '1.5.158',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42680,7 +43119,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.157',
+            'version'     => '1.5.158',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42688,7 +43127,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.157',
+            'version'     => '1.5.158',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

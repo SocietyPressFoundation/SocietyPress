@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.161] — 2026-11-23
+
+- **Forms & Surveys builder (still hidden while in progress):** "Paste in
+  questions" now opens as a pop-up over the page, and the kind-of-answer menu
+  shows the eight most-used kinds first, with "View more kinds" for the rest.
+
 ## [1.5.160] — 2026-11-23
 
 - **The new Forms & Surveys builder is hidden until it's finished.** It can

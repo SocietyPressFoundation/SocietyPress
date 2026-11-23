@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.160
+ * Version:     1.5.161
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.160' );
+define( 'SOCIETYPRESS_VERSION', '1.5.161' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43198,7 +43198,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.160',
+            'version'     => '1.5.161',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43206,7 +43206,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.160',
+            'version'     => '1.5.161',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43214,7 +43214,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.160',
+            'version'     => '1.5.161',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43222,7 +43222,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.160',
+            'version'     => '1.5.161',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43230,7 +43230,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.160',
+            'version'     => '1.5.161',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -146380,6 +146380,7 @@ function sp_qn_editor_strings(): array {
         'pasteExample'  => __( "What is your favorite color?\nBlue\nOrange\nRed\n\nWhat is your favorite shape?\nCircle\nSquare", 'societypress' ),
         'pastePreview'  => __( 'Start typing to see how your questions will look.', 'societypress' ),
         'pasteAdd'      => __( 'Add these questions', 'societypress' ),
+        'viewMore'      => __( 'View more kinds', 'societypress' ),
         'cancel'        => __( 'Cancel', 'societypress' ),
         'noQuestions'   => __( 'No questions in this section yet.', 'societypress' ),
         'leave'         => __( 'You have changes that are not saved.', 'societypress' ),
@@ -146402,7 +146403,10 @@ function sp_qn_editor_script(): void {
         var CHOICE_TYPES = [ 'multiple_choice', 'checkboxes', 'dropdown', 'ranking' ];
         var state = { title: boot.title, description: boot.description, sections: boot.sections };
         if ( ! state.sections.length ) { state.sections.push( { id: 0, title: '', description: '', questions: [] } ); }
-        var preview = !! boot.preview, dirty = false, device = 'desktop', pasteOpen = !! boot.paste, pendingFocus = null, openMenu = null;
+        var preview = !! boot.preview, dirty = false, device = 'desktop', pasteOpen = !! boot.paste, pendingFocus = null, openMenu = null, menuAll = false;
+        // The menu opens on the kinds most surveys use; the rest wait behind
+        // "View more" so a volunteer isn't faced with fifteen choices at once.
+        var SHORT_LIST = 8;
         var canvas = document.getElementById( 'sp-qn-canvas' );
         var statusEl = document.getElementById( 'sp-qn-status' );
         var previewBtn = document.getElementById( 'sp-qn-preview-btn' );
@@ -146588,12 +146592,14 @@ function sp_qn_editor_script(): void {
             var wrap = el( 'div', { 'class': 'sp-qn-typepick' } );
             var listId = 'sp-qn-types-' + q.key;
             var btn = el( 'button', { type: 'button', 'class': 'sp-qn-typebtn', 'aria-haspopup': 'listbox', 'aria-expanded': openMenu === q.key ? 'true' : 'false', 'aria-controls': listId, 'data-focus': 'type' + q.key,
-                onclick: function () { openMenu = openMenu === q.key ? null : q.key; pendingFocus = 'type' + q.key; render(); } },
+                onclick: function () { openMenu = openMenu === q.key ? null : q.key; menuAll = false; pendingFocus = 'type' + q.key; render(); } },
                 [ icon( cur.icon ), el( 'span', { text: cur.label } ), icon( 'dashicons-arrow-down-alt2' ) ] );
             wrap.appendChild( btn );
             if ( openMenu === q.key ) {
                 var ul = el( 'ul', { 'class': 'sp-qn-typelist', role: 'listbox', id: listId } );
-                boot.types.forEach( function ( t ) {
+                var curIndex = boot.types.findIndex( function ( t ) { return t.key === q.type; } );
+                var showAll = menuAll || curIndex >= SHORT_LIST;
+                ( showAll ? boot.types : boot.types.slice( 0, SHORT_LIST ) ).forEach( function ( t ) {
                     ul.appendChild( el( 'li', { role: 'option', 'aria-selected': t.key === q.type ? 'true' : 'false' }, [
                         el( 'button', { type: 'button', onclick: function () {
                             if ( t.key !== q.type ) { q.settings = defaults( t.key, q.settings ); q.type = t.key; if ( t.key === 'text_block' ) { q.required = false; } mark(); }
@@ -146601,6 +146607,10 @@ function sp_qn_editor_script(): void {
                         } }, [ icon( t.icon ), el( 'span', { text: t.label } ) ] )
                     ] ) );
                 } );
+                if ( ! showAll ) {
+                    ul.appendChild( el( 'li', { 'class': 'sp-qn-typemore' }, [ el( 'button', { type: 'button', 'data-focus': 'more' + q.key, text: T.viewMore,
+                        onclick: function () { menuAll = true; pendingFocus = 'more' + q.key; render(); } } ) ] ) );
+                }
                 wrap.appendChild( ul );
             }
             return wrap;
@@ -146678,7 +146688,9 @@ function sp_qn_editor_script(): void {
                     if ( ! qs.length ) { out.appendChild( el( 'p', { 'class': 'description', text: T.pastePreview } ) ); }
                     qs.forEach( function ( q, i ) { out.appendChild( el( 'div', { 'class': 'sp-qn-q' }, [ questionHead( q, i + 1 ), answerPreview( q ) ] ) ); } );
                 } } );
-            return el( 'div', { 'class': 'sp-qn-card sp-qn-paste', role: 'dialog', 'aria-label': T.pasteTitle }, [
+            var close = function () { pasteOpen = false; render(); };
+            var panel = el( 'div', { 'class': 'sp-qn-card sp-qn-paste', role: 'dialog', 'aria-modal': 'true', 'aria-label': T.pasteTitle }, [
+                el( 'button', { type: 'button', 'class': 'button-link sp-qn-paste-x', 'aria-label': T.cancel, title: T.cancel, onclick: close }, [ icon( 'dashicons-no-alt' ) ] ),
                 el( 'h2', { text: T.pasteTitle } ),
                 el( 'p', { 'class': 'description', text: T.pasteHelp } ),
                 el( 'div', { 'class': 'sp-qn-paste-cols' }, [ ta, out ] ),
@@ -146694,9 +146706,11 @@ function sp_qn_editor_script(): void {
                         pasteOpen = false; render();
                     } } ),
                     ' ',
-                    el( 'button', { type: 'button', 'class': 'button', text: T.cancel, onclick: function () { pasteOpen = false; render(); } } )
+                    el( 'button', { type: 'button', 'class': 'button', text: T.cancel, onclick: close } )
                 ] )
             ] );
+            // Clicking the dimmed page behind the pop-up closes it, like the ×.
+            return el( 'div', { 'class': 'sp-qn-overlay', onclick: function ( e ) { if ( e.target === e.currentTarget ) { close(); } } }, [ panel ] );
         }
 
         // ---- The whole page ----------------------------------------------------
@@ -146791,6 +146805,7 @@ function sp_qn_editor_script(): void {
         document.getElementById( 'sp-qn-save-btn' ).addEventListener( 'click', save );
         document.addEventListener( 'keydown', function ( e ) {
             if ( ( e.metaKey || e.ctrlKey ) && e.key === 's' ) { e.preventDefault(); save(); }
+            if ( e.key === 'Escape' && pasteOpen ) { pasteOpen = false; render(); return; }
             if ( e.key === 'Escape' && openMenu ) { openMenu = null; render(); }
         } );
         window.addEventListener( 'beforeunload', function ( e ) { if ( dirty ) { e.preventDefault(); e.returnValue = T.leave; } } );
@@ -146936,6 +146951,10 @@ function sp_qn_admin_styles(): void {
     .sp-qn-addq { margin-top: 8px; }
     .sp-qn-page-tools { margin-top: 28px; display: flex; gap: 14px; align-items: center; }
     .sp-qn-paste-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .sp-qn-overlay { position: fixed; inset: 0; z-index: 100000; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .sp-qn-overlay .sp-qn-paste { position: relative; width: min(1000px, 100%); max-height: 90vh; overflow-y: auto; margin: 0; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+    .sp-qn-paste-x { position: absolute; top: 12px; right: 12px; }
+    .sp-qn-typemore button { justify-content: center; color: #2271b1; border-top: 1px solid #f0f0f1 !important; }
     .sp-qn-paste-preview { border-left: 1px solid #dcdcde; padding-left: 16px; max-height: 360px; overflow-y: auto; }
     .sp-qn-not-open { font-style: italic; }
     @media (max-width: 960px) {

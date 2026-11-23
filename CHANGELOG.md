@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.163] — 2026-11-23
+
+- **The daily check-in now tells us more, and says so plainly.** Each
+  SocietyPress site now checks in once a day instead of once a week. Along with
+  the society's name, website and SocietyPress version, it sends the WordPress
+  and PHP versions, the theme, which features are switched on, the number of
+  active members (a number only), and the web server's name so the hosting
+  company can be worked out. It's for diagnostics and to understand who uses
+  SocietyPress. Nothing about any person is ever sent. The setup wizard now
+  mentions it, Settings → Privacy lists every item and its current value, and
+  it still can't be switched off.
+
 ## [1.5.162] — 2026-11-23
 
 - **Forms & Surveys builder (still hidden while in progress): answering and

@@ -1657,6 +1657,14 @@ function gsp_create_installs_table(): void {
             site_url VARCHAR(255) NOT NULL,
             society VARCHAR(255) NOT NULL DEFAULT '',
             version VARCHAR(32) NOT NULL DEFAULT '',
+            wp_version VARCHAR(32) NOT NULL DEFAULT '',
+            php_version VARCHAR(32) NOT NULL DEFAULT '',
+            theme VARCHAR(120) NOT NULL DEFAULT '',
+            modules TEXT NULL,
+            members INT UNSIGNED NOT NULL DEFAULT 0,
+            server_name VARCHAR(255) NOT NULL DEFAULT '',
+            server_ip VARCHAR(64) NOT NULL DEFAULT '',
+            host_company VARCHAR(120) NOT NULL DEFAULT '',
             first_seen DATETIME NOT NULL,
             last_seen DATETIME NOT NULL,
             check_ins BIGINT UNSIGNED NOT NULL DEFAULT 1,
@@ -1668,6 +1676,57 @@ function gsp_create_installs_table(): void {
     );
 }
 add_action( 'after_switch_theme', 'gsp_create_installs_table' );
+
+/**
+ * Bring the table up to date when its shape changes.
+ *
+ * WHY: after_switch_theme only fires when the theme is activated, and this
+ *      theme stays active across deploys, so new columns would never arrive.
+ */
+function gsp_maybe_upgrade_installs_table(): void {
+    if ( '2' !== get_option( 'gsp_installs_schema' ) ) {
+        gsp_create_installs_table();
+        update_option( 'gsp_installs_schema', '2', false );
+    }
+}
+add_action( 'admin_init', 'gsp_maybe_upgrade_installs_table' );
+add_action( 'rest_api_init', 'gsp_maybe_upgrade_installs_table' );
+
+/**
+ * Work out a site's hosting company from its server.
+ *
+ * WHY from the address the check-in arrived from, not only what the site
+ * says: the reverse lookup of the connecting address is set by the host
+ * itself and can't be mistyped. The server name the site reports fills in
+ * when the reverse lookup says nothing useful.
+ */
+function gsp_host_company( string $ip, string $server_name ): string {
+    $rdns  = $ip ? (string) @gethostbyaddr( $ip ) : '';
+    $hay   = strtolower( $rdns . ' ' . $server_name );
+    $known = [
+        'arandomserver' => 'Hawk Host', 'hawkhost' => 'Hawk Host', 'bluehost' => 'Bluehost', 'hostgator' => 'HostGator',
+        'siteground' => 'SiteGround', 'sgvps' => 'SiteGround', 'secureserver' => 'GoDaddy', 'godaddy' => 'GoDaddy',
+        'dreamhost' => 'DreamHost', 'dreamhostps' => 'DreamHost', 'a2hosting' => 'A2 Hosting', 'inmotionhosting' => 'InMotion Hosting',
+        'webhostbox' => 'Namecheap', 'web-hosting.com' => 'Namecheap', 'namecheap' => 'Namecheap', 'hostinger' => 'Hostinger',
+        'hstgr' => 'Hostinger', 'ionos' => 'IONOS', '1and1' => 'IONOS', 'kundenserver' => 'IONOS', 'greengeeks' => 'GreenGeeks',
+        'liquidweb' => 'Liquid Web', 'wpengine' => 'WP Engine', 'kinsta' => 'Kinsta', 'cloudways' => 'Cloudways',
+        'pressable' => 'Pressable', 'flywheel' => 'Flywheel', 'skystra' => 'Skystra', 'fastcomet' => 'FastComet',
+        'interserver' => 'InterServer', 'websitewelcome' => 'HostGator', 'unifiedlayer' => 'Bluehost', 'hostmonster' => 'HostMonster',
+        'justhost' => 'JustHost', 'ipage' => 'iPage', 'stablehost' => 'StableHost', 'scalahosting' => 'ScalaHosting',
+        'chemicloud' => 'ChemiCloud', 'wordpress.com' => 'WordPress.com', 'digitalocean' => 'DigitalOcean',
+        'amazonaws' => 'Amazon Web Services', 'googleusercontent' => 'Google Cloud', 'linode' => 'Akamai / Linode',
+        'vultr' => 'Vultr', 'ovh' => 'OVHcloud', 'hetzner' => 'Hetzner', 'azure' => 'Microsoft Azure',
+    ];
+    foreach ( $known as $needle => $company ) {
+        if ( false !== strpos( $hay, $needle ) ) {
+            return $company;
+        }
+    }
+    // Unknown: show the host's own domain so it can be added to the list.
+    $name = $rdns && $rdns !== $ip ? $rdns : $server_name;
+    $bits = array_slice( explode( '.', $name ), -2 );
+    return count( $bits ) === 2 ? implode( '.', $bits ) : '';
+}
 
 /**
  * Accept a check-in.
@@ -1731,15 +1790,32 @@ function gsp_receive_install_report( WP_REST_Request $request ) {
     $society = sanitize_text_field( (string) $request->get_param( 'society' ) );
     $version = sanitize_text_field( (string) $request->get_param( 'version' ) );
     $now     = current_time( 'mysql' );
+    $short   = static function ( string $key, int $len ) use ( $request ): string {
+        return mb_substr( sanitize_text_field( (string) $request->get_param( $key ) ), 0, $len );
+    };
+    $modules = array_slice( array_filter( array_map( 'sanitize_key', (array) $request->get_param( 'modules' ) ) ), 0, 40 );
+    $ip      = filter_var( (string) ( $_SERVER['REMOTE_ADDR'] ?? '' ), FILTER_VALIDATE_IP ) ?: '';
+    $server  = $short( 'server', 255 );
 
     $wpdb->query(
         $wpdb->prepare(
-            'INSERT INTO ' . gsp_installs_table() . ' (site_url, society, version, first_seen, last_seen, check_ins)
-             VALUES (%s, %s, %s, %s, %s, 1)
-             ON DUPLICATE KEY UPDATE society = VALUES(society), version = VALUES(version), last_seen = VALUES(last_seen), check_ins = check_ins + 1',
+            'INSERT INTO ' . gsp_installs_table() . ' (site_url, society, version, wp_version, php_version, theme, modules, members, server_name, server_ip, host_company, first_seen, last_seen, check_ins)
+             VALUES (%s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, 1)
+             ON DUPLICATE KEY UPDATE society = VALUES(society), version = VALUES(version), wp_version = VALUES(wp_version),
+                php_version = VALUES(php_version), theme = VALUES(theme), modules = VALUES(modules), members = VALUES(members),
+                server_name = VALUES(server_name), server_ip = VALUES(server_ip), host_company = VALUES(host_company),
+                last_seen = VALUES(last_seen), check_ins = check_ins + 1',
             mb_substr( $url, 0, 255 ),
             mb_substr( $society, 0, 255 ),
             mb_substr( $version, 0, 32 ),
+            $short( 'wp_version', 32 ),
+            $short( 'php_version', 32 ),
+            $short( 'theme', 120 ),
+            implode( ',', $modules ),
+            min( 1000000, absint( $request->get_param( 'members' ) ) ),
+            $server,
+            $ip,
+            mb_substr( gsp_host_company( $ip, $server ), 0, 120 ),
             $now,
             $now
         )
@@ -1755,8 +1831,8 @@ function gsp_receive_install_report( WP_REST_Request $request ) {
  */
 function gsp_add_installs_page(): void {
     add_menu_page(
-        'SocietyPress Installs',
-        'Installs',
+        'Societies using SocietyPress',
+        'Societies',
         'manage_options',
         'gsp-installs',
         'gsp_render_installs_page',
@@ -1880,45 +1956,94 @@ function gsp_render_installs_page(): void {
     global $wpdb;
 
     $table = gsp_installs_table();
+    $rows  = (array) $wpdb->get_results( "SELECT * FROM {$table} ORDER BY last_seen DESC" );
+    $ours  = gsp_own_sites();
 
-    // A society that has not checked in for a month is probably gone — either
-    // uninstalled, or the site is down. Worth seeing separately from the
-    // total, which would otherwise only ever go up.
-    $rows = $wpdb->get_results( "SELECT * FROM {$table} ORDER BY last_seen DESC LIMIT 500" );
-    $live = 0;
-    $cut  = strtotime( '-30 days' );
-
-    foreach ( (array) $rows as $row ) {
-        if ( strtotime( $row->last_seen ) >= $cut ) {
-            $live++;
+    // "Using it now" means checked in within two weeks. Sites quiet for longer
+    // move to their own list rather than vanishing, so a society that dropped
+    // off is noticed, with the day it went quiet.
+    $cut     = strtotime( '-14 days', current_time( 'timestamp' ) );
+    $active  = [];
+    $quiet   = [];
+    $mine    = [];
+    foreach ( $rows as $row ) {
+        $host = (string) wp_parse_url( $row->site_url, PHP_URL_HOST );
+        if ( in_array( $host, $ours, true ) || in_array( untrailingslashit( $row->site_url ), $ours, true ) ) {
+            $mine[] = $row;
+        } elseif ( strtotime( $row->last_seen ) >= $cut ) {
+            $active[] = $row;
+        } else {
+            $quiet[] = $row;
         }
     }
+    $latest    = defined( 'SOCIETYPRESS_VERSION' ) ? SOCIETYPRESS_VERSION : '';
+    $on_latest = count( array_filter( $active, static function ( $r ) use ( $latest ) { return $r->version === $latest; } ) );
+    $hosts     = array_count_values( array_filter( wp_list_pluck( $active, 'host_company' ) ) );
+    arsort( $hosts );
+    $members   = array_sum( array_map( 'intval', wp_list_pluck( $active, 'members' ) ) );
+    $columns   = [ 'Society', 'Website', 'SocietyPress', 'WordPress', 'PHP', 'Theme', 'Features on', 'Members', 'Host', 'Last seen' ];
 
-    $versions = $wpdb->get_results( "SELECT version, COUNT(*) AS n FROM {$table} GROUP BY version ORDER BY n DESC" );
+    $table_for = static function ( array $list, string $empty ) use ( $columns ) {
+        ?>
+        <table class="widefat striped gsp-sortable">
+            <thead><tr><?php foreach ( $columns as $c ) : ?><th scope="col"><button type="button" class="button-link"><?php echo esc_html( $c ); ?></button></th><?php endforeach; ?></tr></thead>
+            <tbody>
+            <?php if ( ! $list ) : ?>
+                <tr><td colspan="<?php echo count( $columns ); ?>"><?php echo esc_html( $empty ); ?></td></tr>
+            <?php endif; ?>
+            <?php foreach ( $list as $row ) : ?>
+                <tr>
+                    <td><?php echo esc_html( $row->society !== '' ? $row->society : '—' ); ?></td>
+                    <td><a href="<?php echo esc_url( $row->site_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( preg_replace( '#^https?://#', '', $row->site_url ) ); ?></a></td>
+                    <td><?php echo esc_html( $row->version ); ?></td>
+                    <td><?php echo esc_html( $row->wp_version ); ?></td>
+                    <td><?php echo esc_html( $row->php_version ); ?></td>
+                    <td><?php echo esc_html( $row->theme ); ?></td>
+                    <td><?php echo esc_html( str_replace( ',', ', ', (string) $row->modules ) ); ?></td>
+                    <td data-sort="<?php echo (int) $row->members; ?>"><?php echo esc_html( number_format_i18n( (int) $row->members ) ); ?></td>
+                    <td title="<?php echo esc_attr( $row->server_name ); ?>"><?php echo esc_html( $row->host_company ); ?></td>
+                    <td data-sort="<?php echo esc_attr( (string) strtotime( $row->last_seen ) ); ?>"><?php echo esc_html( human_time_diff( strtotime( $row->last_seen ), current_time( 'timestamp' ) ) ); ?> ago</td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    };
     ?>
     <div class="wrap">
-        <h1>SocietyPress Installs</h1>
+        <h1>Societies using SocietyPress</h1>
 
+        <p class="gsp-installs-headline">
+            <strong><?php echo (int) count( $active ); ?></strong> societies using it now
+            &nbsp;·&nbsp; <strong><?php echo (int) $on_latest; ?></strong> on the latest version (<?php echo esc_html( $latest ); ?>)
+            &nbsp;·&nbsp; <strong><?php echo esc_html( number_format_i18n( $members ) ); ?></strong> active members between them
+            <?php if ( $hosts ) : ?>
+                &nbsp;·&nbsp; most common host: <strong><?php echo esc_html( (string) array_key_first( $hosts ) ); ?></strong>
+            <?php endif; ?>
+        </p>
+        <p class="description">"Using it now" means it checked in within the last 14 days. Each site checks in once a day. Our own sites are counted separately below.</p>
         <p>
-            <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gsp_export_installs' ), 'gsp_export_installs' ) ); ?>">Download as CSV</a>
+            <a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=gsp_export_installs' ), 'gsp_export_installs' ) ); ?>">Download as a spreadsheet</a>
         </p>
 
-        <p>
-            <strong><?php echo (int) $live; ?></strong> checked in within the last 30 days,
-            <strong><?php echo (int) count( (array) $rows ); ?></strong> ever.
-        </p>
+        <h2>Using it now</h2>
+        <?php $table_for( $active, 'No societies have checked in during the last 14 days.' ); ?>
 
-        <?php if ( $versions ) : ?>
+        <h2>Gone quiet</h2>
+        <p class="description">Checked in before, but not in the last 14 days — uninstalled, or the site may be down.</p>
+        <?php $table_for( $quiet, 'Nobody has gone quiet.' ); ?>
+
+        <h2>Our own sites</h2>
+        <?php $table_for( $mine, 'None of our own sites have checked in yet.' ); ?>
+        <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="gsp-own-sites">
+            <?php wp_nonce_field( 'gsp_own_sites' ); ?>
+            <input type="hidden" name="action" value="gsp_own_sites">
             <p>
-                <?php
-                $bits = [];
-                foreach ( $versions as $v ) {
-                    $bits[] = esc_html( $v->version !== '' ? $v->version : 'unknown' ) . ' &times; ' . (int) $v->n;
-                }
-                echo wp_kses_post( implode( ' &nbsp;·&nbsp; ', $bits ) );
-                ?>
+                <label for="gsp-own-sites"><strong>Which sites are ours</strong> — one web address per line. These are left out of the counts above.</label><br>
+                <textarea id="gsp-own-sites" name="sites" rows="4" class="large-text code"><?php echo esc_textarea( implode( "\n", $ours ) ); ?></textarea>
             </p>
-        <?php endif; ?>
+            <p><button type="submit" class="button">Save</button></p>
+        </form>
 
         <?php
         // The funnel, in the order a society walks it. The register alone only
@@ -1983,37 +2108,67 @@ function gsp_render_installs_page(): void {
             </tbody>
         </table>
 
-        <h2>Installs that checked in</h2>
-
-        <table class="widefat striped">
-            <thead>
-                <tr>
-                    <th>Society</th>
-                    <th>Website</th>
-                    <th>Version</th>
-                    <th>Last seen</th>
-                    <th>Check-ins</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if ( ! $rows ) : ?>
-                    <tr><td colspan="5">Nothing has checked in yet.</td></tr>
-                <?php else : ?>
-                    <?php foreach ( $rows as $row ) : ?>
-                        <tr>
-                            <td><?php echo esc_html( $row->society !== '' ? $row->society : '—' ); ?></td>
-                            <td><a href="<?php echo esc_url( $row->site_url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $row->site_url ); ?></a></td>
-                            <td><?php echo esc_html( $row->version ); ?></td>
-                            <td><?php echo esc_html( human_time_diff( strtotime( $row->last_seen ) ) ); ?> ago</td>
-                            <td><?php echo (int) $row->check_ins; ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
     </div>
+    <script>
+    // Click a column heading to sort by it; click again to reverse.
+    document.querySelectorAll( '.gsp-sortable' ).forEach( function ( table ) {
+        table.querySelectorAll( 'thead button' ).forEach( function ( btn, col ) {
+            btn.addEventListener( 'click', function () {
+                var body = table.tBodies[0], rows = Array.prototype.slice.call( body.rows );
+                if ( rows.length < 2 ) { return; }
+                var dir = btn.dataset.dir === 'asc' ? -1 : 1;
+                table.querySelectorAll( 'thead button' ).forEach( function ( b ) { delete b.dataset.dir; } );
+                btn.dataset.dir = dir === 1 ? 'asc' : 'desc';
+                var key = function ( r ) { var c = r.cells[ col ]; return c.dataset.sort !== undefined ? parseFloat( c.dataset.sort ) : c.textContent.trim().toLowerCase(); };
+                rows.sort( function ( a, b ) { var x = key( a ), y = key( b ); return ( x > y ? 1 : x < y ? -1 : 0 ) * dir; } );
+                rows.forEach( function ( r ) { body.appendChild( r ); } );
+            } );
+        } );
+    } );
+    </script>
     <?php
 }
+
+/**
+ * Our own sites, kept out of the headline counts.
+ *
+ * WHY a saved list rather than written into the code: this theme is public,
+ * and the list includes private test sites whose addresses must not appear
+ * in the repository.
+ *
+ * @return string[] Hosts or full addresses, as entered.
+ */
+function gsp_own_sites(): array {
+    $saved = get_option( 'gsp_own_sites', null );
+    if ( null === $saved ) {
+        $saved = [ 'societypress.net', 'demo.societypress.net', 'getsocietypress.org', 'demo.getsocietypress.org' ];
+    }
+    return array_values( array_filter( array_map( 'trim', (array) $saved ) ) );
+}
+
+/**
+ * Save the "which sites are ours" list.
+ */
+function gsp_save_own_sites(): void {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'You do not have permission to do that.' );
+    }
+    check_admin_referer( 'gsp_own_sites' );
+    $lines = preg_split( '/\r\n|\r|\n/', (string) wp_unslash( $_POST['sites'] ?? '' ) );
+    $clean = [];
+    foreach ( $lines as $line ) {
+        $line = trim( $line );
+        if ( '' === $line ) {
+            continue;
+        }
+        // Accept "example.org", "https://example.org/" or "example.org/sub".
+        $clean[] = preg_match( '#^https?://#', $line ) ? untrailingslashit( esc_url_raw( $line ) ) : sanitize_text_field( $line );
+    }
+    update_option( 'gsp_own_sites', $clean, false );
+    wp_safe_redirect( admin_url( 'admin.php?page=gsp-installs' ) );
+    exit;
+}
+add_action( 'admin_post_gsp_own_sites', 'gsp_save_own_sites' );
 
 
 /**
@@ -2030,17 +2185,17 @@ function gsp_export_installs(): void {
     check_admin_referer( 'gsp_export_installs' );
 
     global $wpdb;
-    $rows = $wpdb->get_results( 'SELECT society, site_url, version, first_seen, last_seen, check_ins FROM ' . gsp_installs_table() . ' ORDER BY last_seen DESC' );
+    $rows = $wpdb->get_results( 'SELECT society, site_url, version, wp_version, php_version, theme, modules, members, host_company, server_name, first_seen, last_seen, check_ins FROM ' . gsp_installs_table() . ' ORDER BY last_seen DESC' );
 
     nocache_headers();
     header( 'Content-Type: text/csv; charset=utf-8' );
     header( 'Content-Disposition: attachment; filename=societypress-installs-' . gmdate( 'Y-m-d' ) . '.csv' );
 
     $out = fopen( 'php://output', 'w' );
-    fputcsv( $out, [ 'Society', 'Website', 'Version', 'First seen', 'Last seen', 'Check-ins' ], ',', '"', '\\' );
+    fputcsv( $out, [ 'Society', 'Website', 'SocietyPress', 'WordPress', 'PHP', 'Theme', 'Features on', 'Active members', 'Host', 'Server name', 'First seen', 'Last seen', 'Check-ins' ], ',', '"', '\\' );
 
     foreach ( (array) $rows as $row ) {
-        fputcsv( $out, [ $row->society, $row->site_url, $row->version, $row->first_seen, $row->last_seen, $row->check_ins ], ',', '"', '\\' );
+        fputcsv( $out, [ $row->society, $row->site_url, $row->version, $row->wp_version, $row->php_version, $row->theme, str_replace( ',', ', ', (string) $row->modules ), $row->members, $row->host_company, $row->server_name, $row->first_seen, $row->last_seen, $row->check_ins ], ',', '"', '\\' );
     }
 
     fclose( $out );

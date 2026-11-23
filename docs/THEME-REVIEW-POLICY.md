@@ -80,13 +80,17 @@ Any one of these ends the review. There is no partial pass.
 A fair question, given the line above about themes: SocietyPress does phone
 home, and a theme may not.
 
-Once a week an install tells us three things — the society's name, its website
-address, and which version it is running. Nothing else, and nothing about any
-person. All three are already on the society's own public homepage. There is no
-setting to turn it off, and the Privacy screen says so in those words.
+Once a day an install tells us the society's name and website address; the
+SocietyPress, WordPress and PHP versions it runs; its active theme; which
+features are switched on; how many active members it has (a number, nothing
+more); and its server's name, so we can tell which web host it uses. Nothing
+about any person — no names, no email addresses, no member records. There is no
+setting to turn it off; the setup wizard mentions it and the Privacy screen
+shows exactly what is sent.
 
-We keep tabs on who is using our software. It is how we know which versions are
-still out there and how far an announcement reaches.
+We keep tabs on who is using our software, for diagnostics and to understand
+who our users are. It is how we know which versions are still out there, which
+features and hosts to test against, and how far an announcement reaches.
 
 A theme is held to a stricter rule than the plugin because the two are not in
 the same position. A society chooses SocietyPress, is told plainly what it

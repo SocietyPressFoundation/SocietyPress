@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.162
+ * Version:     1.5.163
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.162' );
+define( 'SOCIETYPRESS_VERSION', '1.5.163' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -21940,15 +21940,17 @@ add_action( 'admin_post_sp_add_page_to_menu', function () {
 // WHY it exists: a maintainer who cannot see the install base is guessing at
 //      everything downstream — which version to keep supporting, whether a
 //      release broke anybody, how many societies an announcement reaches, and
-//      whether the project is growing or quietly dying. Three facts answer all
-//      of that: what the society is called, where its site is, and what it is
-//      running.
+//      whether the project is growing or quietly dying.
 //
-// WHY nothing more than three: every extra field is a thing to justify later
-//      and a reason for somebody to distrust the whole product. Member counts,
-//      module usage and PHP versions have all been considered and left out.
-//      Nothing here describes a person, and nothing here is not already on the
-//      society's own public homepage.
+// WHAT is sent (widened 2026-11-23, Charles's decision, for diagnostics and
+//      to understand who uses SocietyPress): the society's name and website,
+//      the SocietyPress, WordPress and PHP versions, the active theme, which
+//      features are switched on, how many active members it has (a number
+//      only), and the server's hostname so the web host can be worked out.
+//      The versions say when it is safe to drop support for an old WordPress
+//      or PHP; features in use say where work pays off; the host says which
+//      hosting companies to test against. Nothing here describes a person:
+//      no names, no email addresses, no member records.
 //
 // WHY it is disclosed rather than quiet: this is GPL and the function is right
 //      there in the source. Something found is worse than something told, and
@@ -21961,17 +21963,31 @@ add_action( 'admin_post_sp_add_page_to_menu', function () {
 const SP_INSTALL_REGISTER_ENDPOINT = 'https://societypress.net/wp-json/societypress/v1/installs';
 
 /**
- * The three facts, and nothing else.
+ * Everything the check-in sends, and nothing else.
  *
- * @return array<string,string>
+ * @return array<string,mixed>
  */
 function sp_install_report_payload(): array {
-    $name = trim( (string) ( sp_settings()['organization_name'] ?? '' ) );
+    global $wpdb;
+    $name    = trim( (string) ( sp_settings()['organization_name'] ?? '' ) );
+    $theme   = wp_get_theme();
+    $modules = [];
+    foreach ( array_keys( sp_get_modules() ) as $slug ) {
+        if ( sp_module_enabled( $slug ) ) {
+            $modules[] = $slug;
+        }
+    }
 
     return [
-        'society' => $name !== '' ? $name : (string) get_bloginfo( 'name' ),
-        'url'     => (string) home_url(),
-        'version' => SOCIETYPRESS_VERSION,
+        'society'     => $name !== '' ? $name : (string) get_bloginfo( 'name' ),
+        'url'         => (string) home_url(),
+        'version'     => SOCIETYPRESS_VERSION,
+        'wp_version'  => (string) get_bloginfo( 'version' ),
+        'php_version' => PHP_VERSION,
+        'theme'       => $theme->get( 'Name' ) . ' ' . $theme->get( 'Version' ),
+        'modules'     => $modules,
+        'members'     => (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_members WHERE status = 'active'" ),
+        'server'      => (string) gethostname(),
     ];
 }
 
@@ -22008,12 +22024,23 @@ function sp_send_install_report(): void {
 add_action( 'sp_install_report_cron', 'sp_send_install_report' );
 
 /**
- * Weekly is often enough to keep a version number current and rare enough that
- * nobody's host notices.
+ * Once a day, at a different time for each site.
+ *
+ * WHY daily: the report is meant to answer "who is running it right now", and
+ * a week-old answer misses a release going out or a site going dark.
+ * WHY a random time: a hundred sites calling at the same minute would look
+ * like an attack to societypress.net's host.
+ * WHY the reschedule: sites set up before this change are on the old weekly
+ * timer, which would otherwise never be replaced.
  */
 function sp_schedule_install_report(): void {
-    if ( ! wp_next_scheduled( 'sp_install_report_cron' ) ) {
-        wp_schedule_event( time() + HOUR_IN_SECONDS, 'weekly', 'sp_install_report_cron' );
+    $next = wp_next_scheduled( 'sp_install_report_cron' );
+    if ( $next && 'daily' !== wp_get_schedule( 'sp_install_report_cron' ) ) {
+        wp_clear_scheduled_hook( 'sp_install_report_cron' );
+        $next = false;
+    }
+    if ( ! $next ) {
+        wp_schedule_event( time() + wp_rand( 300, DAY_IN_SECONDS ), 'daily', 'sp_install_report_cron' );
     }
 }
 add_action( 'init', 'sp_schedule_install_report' );
@@ -22046,14 +22073,19 @@ function sp_render_install_report_disclosure(): void {
     <div class="postbox">
         <h2 class="hndle sp-hndle-padded"><?php esc_html_e( 'What SocietyPress tells its maintainers', 'societypress' ); ?></h2>
         <div class="inside">
-            <p><?php esc_html_e( 'We keep tabs on who is using our software. Once a week this site sends three things, and nothing else:', 'societypress' ); ?></p>
+            <p><?php esc_html_e( 'We keep tabs on who is using our software, for diagnostics and to understand who our users are. Once a day this site sends the following, and nothing else:', 'societypress' ); ?></p>
             <ul>
                 <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your society:', 'societypress' ), esc_html( $payload['society'] ) ); ?></li>
                 <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your website:', 'societypress' ), esc_html( $payload['url'] ) ); ?></li>
-                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your version:', 'societypress' ), esc_html( $payload['version'] ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'SocietyPress version:', 'societypress' ), esc_html( $payload['version'] ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'WordPress and PHP versions:', 'societypress' ), esc_html( $payload['wp_version'] . ' / ' . $payload['php_version'] ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Theme:', 'societypress' ), esc_html( $payload['theme'] ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Features switched on:', 'societypress' ), esc_html( implode( ', ', $payload['modules'] ) ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Number of active members:', 'societypress' ), esc_html( number_format_i18n( $payload['members'] ) ) ); ?></li>
+                <li><?php printf( '<strong>%s</strong> %s', esc_html__( 'Your web server\'s name (so we can tell which hosting company you use):', 'societypress' ), esc_html( $payload['server'] ) ); ?></li>
             </ul>
-            <p><?php esc_html_e( 'No member records. No email addresses. No donations, payments, or anything about any individual person. All three of the above are already on your own public homepage.', 'societypress' ); ?></p>
-            <p><?php esc_html_e( 'It is how we know which versions are still out there, so one is not retired while societies are still running it, and how many societies an announcement actually reaches.', 'societypress' ); ?></p>
+            <p><?php esc_html_e( 'No member records. No names or email addresses. No donations, payments, or anything about any individual person — the member count is only a number.', 'societypress' ); ?></p>
+            <p><?php esc_html_e( 'It tells us which versions are still out there, so one is not retired while societies still run it; which features and hosts to test against; and how many societies an announcement reaches.', 'societypress' ); ?></p>
             <p><?php esc_html_e( 'There is no setting to turn this off. If that is not something your society is comfortable with, SocietyPress is not the software for you.', 'societypress' ); ?></p>
             <?php if ( is_array( $last ) && ! empty( $last['sent'] ) ) : ?>
                 <p class="description">
@@ -37035,6 +37067,14 @@ function sp_render_setup_wizard(): void {
                         <div class="hint"><?php esc_html_e( 'The email address that SocietyPress sends from.', 'societypress' ); ?></div>
                     </div>
 
+                    <?php
+                    // WHY here: the check-in can't be switched off, so a society
+                    // should hear about it before it starts, not find it later.
+                    ?>
+                    <p class="hint">
+                        <?php esc_html_e( 'Good to know: once a day SocietyPress lets its makers know your society uses it — your society\'s name, website, versions, theme, the features you have switched on, your number of active members, and your web host. It is for diagnostics and to understand who uses SocietyPress. No names, email addresses or anything about any person is ever sent. Settings → Privacy shows exactly what goes.', 'societypress' ); ?>
+                    </p>
+
                     <div class="sp-wizard-actions">
                         <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-setup-wizard&step=3' ) ); ?>" class="button">&larr; <?php esc_html_e( 'Back', 'societypress' ); ?></a>
                         <button type="submit" class="button button-primary"><?php esc_html_e( 'Finish Setup', 'societypress' ); ?> &check;</button>
@@ -43251,7 +43291,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.162',
+            'version'     => '1.5.163',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43259,7 +43299,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.162',
+            'version'     => '1.5.163',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43267,7 +43307,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.162',
+            'version'     => '1.5.163',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43275,7 +43315,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.162',
+            'version'     => '1.5.163',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43283,7 +43323,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.162',
+            'version'     => '1.5.163',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

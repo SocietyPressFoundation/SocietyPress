@@ -83,9 +83,23 @@ get_header();
         <h3>Downloads</h3>
         <p>
             When you download the SocietyPress bundle, your request is logged
-            the same way any other page request is. The bundle itself does
-            not call home, does not contain telemetry, and does not
-            &ldquo;phone&rdquo; anywhere once it's running on your own server.
+            the same way any other page request is.
+        </p>
+
+        <h2>What SocietyPress sends us</h2>
+        <p>
+            Once a day, every site running SocietyPress tells us: the
+            society's name and website address; the SocietyPress, WordPress
+            and PHP versions it runs; its theme; which features are switched
+            on; how many active members it has (a number only); and its web
+            server's name, so we can tell which hosting company it uses.
+        </p>
+        <p>
+            It's for diagnostics and to understand who uses SocietyPress. It
+            never includes anything about a person &mdash; no names, no email
+            addresses, no member records, no donations or payments. There is
+            no setting to turn it off. The setup wizard mentions it, and each
+            site's Settings &rarr; Privacy screen shows exactly what it sends.
         </p>
 
         <h2>What we never do</h2>

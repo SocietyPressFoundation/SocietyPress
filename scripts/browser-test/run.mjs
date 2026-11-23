@@ -176,7 +176,13 @@ function record( r ) {
 async function checkPage( page, site, path, ctxInfo, signedIn ) {
     const notes  = [];
     const errors = [];
-    const onErr  = e => errors.push( e.message.split( '\n' )[ 0 ] );
+    // WHY the first line of the stack too: a bare "NetworkError when attempting
+    // to fetch resource" names no script, and an intermittent failure has to be
+    // traceable from the one report it shows up in.
+    const onErr  = e => {
+        const where = ( e.stack || '' ).split( '\n' ).find( l => /\S/.test( l ) && ! l.includes( e.message ) ) || '';
+        errors.push( e.message.split( '\n' )[ 0 ] + ( where ? ' [at ' + where.trim() + ']' : '' ) );
+    };
     page.on( 'pageerror', onErr );
     let status = 0;
     try {

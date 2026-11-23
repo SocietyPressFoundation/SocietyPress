@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.165] — 2026-11-23
+
+- **The new Forms & Surveys replaces the old Forms and Surveys tools.** One
+  menu item, Forms & Surveys, now builds both, puts them on your website,
+  emails them to members and adds up the answers. The old Forms and Surveys
+  screens are gone. Their saved forms and answers are left in your database,
+  untouched, but no longer shown. A page that still points at an old form
+  shows nothing to visitors and tells your volunteers to make it again in
+  Forms & Surveys.
+- The page builder's **Form** box is now **Form or survey** and offers
+  everything made in Forms & Surveys.
+- A form placed on another page (such as Contact Us) returns people to that
+  page after they send it. Deleting a form never deletes a page you built
+  yourself.
+- The dashboard's "new form messages" count now covers Forms & Surveys.
+  Opening a form's Results marks its messages as read.
+- Privacy export and erase now cover answers given in Forms & Surveys.
+  Anonymous answers can't be traced to anyone, so they aren't included.
+- Known gap: the old Surveys tool could show a question only when an earlier
+  answer matched. The new builder doesn't do that yet.
+
 ## [1.5.164] — 2026-11-23
 
 - **Forms & Surveys builder (still hidden while in progress): Results.** A

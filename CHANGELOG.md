@@ -20,6 +20,26 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.162] — 2026-11-23
+
+- **Forms & Surveys builder (still hidden while in progress): answering and
+  sending.**
+  - Each form or survey's page now takes answers, one section at a time with
+    Next and Back and a progress bar. Required questions are checked before
+    moving on, and the page shows a thank-you message the society writes.
+  - It checks who may answer: members are asked to log in, and people outside
+    the chosen groups are told so. A second answer is turned away, and the
+    page says when something has closed.
+  - Anonymous surveys keep who took part apart from what they said.
+  - A new **Open & Send** step opens or closes it and gives the web address to
+    copy. It can email members a personal link that needs no password, send
+    reminders only to people who haven't answered, and show how many have.
+    Emails go out in small batches.
+  - Deadlines close a survey on time by themselves, and "Email me when someone
+    answers" sends each new answer to the people listed.
+  - The settings screen gains the wording for the send button and the
+    thank-you message.
+
 ## [1.5.161] — 2026-11-23
 
 - **Forms & Surveys builder (still hidden while in progress):** "Paste in

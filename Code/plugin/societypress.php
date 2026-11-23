@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.161
+ * Version:     1.5.162
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.161' );
+define( 'SOCIETYPRESS_VERSION', '1.5.162' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2288,6 +2288,10 @@ function sp_create_tables(): void {
         audience         VARCHAR(10)         NOT NULL DEFAULT 'members',
         audience_groups  TEXT                NULL,
         notify_emails    TEXT                NULL,
+        submit_label     VARCHAR(100)        NOT NULL DEFAULT '',
+        thanks_message   TEXT                NULL,
+        invite_subject   VARCHAR(255)        NOT NULL DEFAULT '',
+        invite_message   TEXT                NULL,
         folder_id        BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         created_by       BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
         created_at       DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2320,6 +2324,46 @@ function sp_create_tables(): void {
         PRIMARY KEY  (id),
         KEY item_id (item_id),
         KEY section_id (section_id)
+    ) {$charset_collate};" );
+
+    // One row per set of answers. `answers` holds each question's wording as
+    // it stood when answered, beside the answer, so later edits to a
+    // question never change what somebody said in the results.
+    // user_id is never written for an anonymous survey.
+    dbDelta( "CREATE TABLE {$prefix}qn_responses (
+        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        item_id          BIGINT(20) UNSIGNED NOT NULL,
+        user_id          BIGINT(20) UNSIGNED NULL,
+        answers          LONGTEXT            NULL,
+        ip_hash          VARCHAR(64)         NULL,
+        created_at       DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY  (id),
+        KEY item_id (item_id),
+        KEY user_id (user_id)
+    ) {$charset_collate};" );
+
+    // Who took part, kept apart from what they said — the same design as the
+    // old sp_survey_respondents, for the same reason: an anonymous survey can
+    // still allow one answer per member. No auto-increment id (arrival order
+    // would line up with the responses) and no date when anonymous (the only
+    // member who answered on a Tuesday would match the only Tuesday answer).
+    dbDelta( "CREATE TABLE {$prefix}qn_respondents (
+        item_id          BIGINT(20) UNSIGNED NOT NULL,
+        user_id          BIGINT(20) UNSIGNED NOT NULL,
+        responded_on     DATE                NULL,
+        PRIMARY KEY  (item_id,user_id),
+        KEY user_id (user_id)
+    ) {$charset_collate};" );
+
+    // Who was emailed, and the send queue. `queued` is 'invite', 'remind' or ''.
+    dbDelta( "CREATE TABLE {$prefix}qn_invites (
+        item_id          BIGINT(20) UNSIGNED NOT NULL,
+        user_id          BIGINT(20) UNSIGNED NOT NULL,
+        invited_on       DATE                NULL,
+        reminded_on      DATE                NULL,
+        queued           VARCHAR(10)         NOT NULL DEFAULT '',
+        PRIMARY KEY  (item_id,user_id),
+        KEY queued (queued)
     ) {$charset_collate};" );
 
     dbDelta( "CREATE TABLE {$prefix}qn_folders (
@@ -7024,7 +7068,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Surveys', 'societypress' ),
             'description' => __( 'Ask your members questions and see everyone\'s answers added up. Surveys can be anonymous, and each member can answer only once.', 'societypress' ),
             'icon'        => 'dashicons-clipboard',
-            'menu_slugs'  => [ 'sp-surveys', 'sp-survey-edit', 'sp-qn', 'sp-qn-settings', 'sp-qn-edit' ],
+            'menu_slugs'  => [ 'sp-surveys', 'sp-survey-edit', 'sp-qn', 'sp-qn-settings', 'sp-qn-edit', 'sp-qn-send' ],
         ],
     ];
 }
@@ -8712,6 +8756,14 @@ add_action( 'admin_menu', function () {
         'sp-qn-edit',
         'sp_qn_render_editor_page'
     );
+    sp_add_admin_page(
+        '',
+        __( 'Open & Send — SocietyPress', 'societypress' ),
+        __( 'Open & Send', 'societypress' ),
+        'manage_options',
+        'sp-qn-send',
+        'sp_qn_render_send_page'
+    );
 
     // Survey Edit — hidden (accessed via Add New Survey / a survey's name)
     sp_add_admin_page(
@@ -9573,6 +9625,7 @@ function sp_get_menu_capability_map(): array {
         'sp-qn'                    => 'sp_manage_content',
         'sp-qn-settings'           => 'sp_manage_content',
         'sp-qn-edit'               => 'sp_manage_content',
+        'sp-qn-send'               => 'sp_manage_content',
         'sp-survey-edit'           => 'sp_manage_content',
         'sp-form-edit'             => 'sp_manage_content',
         'sp-form-submissions'      => 'sp_manage_content',
@@ -43198,7 +43251,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.161',
+            'version'     => '1.5.162',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43206,7 +43259,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.161',
+            'version'     => '1.5.162',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43214,7 +43267,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.161',
+            'version'     => '1.5.162',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43222,7 +43275,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.161',
+            'version'     => '1.5.162',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43230,7 +43283,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.161',
+            'version'     => '1.5.162',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -145381,8 +145434,9 @@ function sp_qn_delete( int $id ): void {
     if ( $item->page_id ) {
         wp_delete_post( (int) $item->page_id, true );
     }
-    $wpdb->delete( $wpdb->prefix . 'sp_qn_questions', [ 'item_id' => $id ] );
-    $wpdb->delete( $wpdb->prefix . 'sp_qn_sections', [ 'item_id' => $id ] );
+    foreach ( [ 'questions', 'sections', 'responses', 'respondents', 'invites' ] as $t ) {
+        $wpdb->delete( $wpdb->prefix . 'sp_qn_' . $t, [ 'item_id' => $id ] );
+    }
     $wpdb->delete( $wpdb->prefix . 'sp_qn_items', [ 'id' => $id ] );
 }
 
@@ -145484,27 +145538,6 @@ function sp_qn_clean_settings( string $type, $raw ): array {
     }
 }
 
-/**
- * The shortcode each form or survey's page carries.
- *
- * WHY only a holding message for now: answering is the next round of the
- * rebuild. Until then a page that somehow gets published says so plainly
- * rather than showing a broken form.
- */
-add_shortcode( 'societypress_questionnaire', function ( $atts ) {
-    $item = sp_qn_get( absint( $atts['id'] ?? 0 ) );
-    if ( ! $item ) {
-        return '';
-    }
-    $out = '';
-    if ( '' !== trim( (string) $item->description ) ) {
-        $out .= wpautop( esc_html( $item->description ) );
-    }
-    $msg  = 'form' === $item->kind
-        ? __( 'This form is not open yet.', 'societypress' )
-        : __( 'This survey is not open yet.', 'societypress' );
-    return $out . '<p class="sp-qn-not-open">' . esc_html( $msg ) . '</p>';
-} );
 
 // ---- The list ----------------------------------------------------------------
 
@@ -145771,6 +145804,7 @@ function sp_qn_render_list_page(): void {
                                     <strong><?php echo esc_html( $r->title ); ?></strong>
                                     <a href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $edit . '&preview=1' ); ?>"><?php esc_html_e( 'Preview', 'societypress' ); ?></a>
+                                    <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-send&id=' . (int) $r->id ) ); ?>"><?php esc_html_e( 'Open & Send', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $set . '#sp-qn-audience' ); ?>"><?php esc_html_e( 'Who can answer', 'societypress' ); ?></a>
                                     <a href="<?php echo esc_url( $set . '#sp-qn-notify' ); ?>"><?php esc_html_e( 'Notifications', 'societypress' ); ?></a>
                                     <div class="sp-qn-menu-move">
@@ -145824,7 +145858,12 @@ function sp_qn_render_list_page(): void {
                         <input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
                     </form>
                     <form method="post" id="sp-qn-delete-form-<?php echo (int) $r->id; ?>" hidden
-                          data-sp-confirm="<?php echo esc_attr( sprintf( /* translators: %s: title */ __( 'Delete "%s" for good, with all its questions and answers? This cannot be undone.', 'societypress' ), $r->title ) ); ?>">
+                          data-sp-confirm="<?php
+                            $n_ans = sp_qn_answer_count( (int) $r->id );
+                            echo esc_attr( $n_ans
+                                ? sprintf( /* translators: 1: title, 2: number of answers */ _n( 'Delete "%1$s" for good? Its %2$s answer will be lost too. This cannot be undone.', 'Delete "%1$s" for good? Its %2$s answers will be lost too. This cannot be undone.', $n_ans, 'societypress' ), $r->title, number_format_i18n( $n_ans ) )
+                                : sprintf( /* translators: %s: title */ __( 'Delete "%s" for good, with all its questions? This cannot be undone.', 'societypress' ), $r->title ) );
+                          ?>">
                         <?php wp_nonce_field( 'sp_qn_list' ); ?>
                         <input type="hidden" name="sp_qn_action" value="delete">
                         <input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
@@ -145927,6 +145966,8 @@ function sp_qn_handle_settings_save(): void {
         'audience'        => $audience,
         'audience_groups' => wp_json_encode( 'groups' === $audience ? $groups : [] ),
         'notify_emails'   => sp_email_list_string( (string) wp_unslash( $_POST['notify_emails'] ?? '' ) ),
+        'submit_label'    => sanitize_text_field( wp_unslash( $_POST['submit_label'] ?? '' ) ),
+        'thanks_message'  => sanitize_textarea_field( wp_unslash( $_POST['thanks_message'] ?? '' ) ),
         'folder_id'       => absint( $_POST['folder_id'] ?? 0 ),
         'updated_at'      => current_time( 'mysql' ),
     ];
@@ -145964,6 +146005,7 @@ function sp_qn_render_header( object $item, string $current ): void {
     $steps    = [
         'design'   => [ __( 'Design', 'societypress' ), admin_url( 'admin.php?page=sp-qn-edit&id=' . (int) $item->id ) ],
         'settings' => [ __( 'Settings', 'societypress' ), admin_url( 'admin.php?page=sp-qn-settings&id=' . (int) $item->id ) ],
+        'send'     => [ __( 'Open & Send', 'societypress' ), admin_url( 'admin.php?page=sp-qn-send&id=' . (int) $item->id ) ],
     ];
     ?>
     <div class="sp-qn-header">
@@ -146105,6 +146147,18 @@ function sp_qn_render_settings_page(): void {
                 </div>
                 <p class="description"><?php esc_html_e( 'With "Anyone", a person could answer twice from different computers. Limit it to members when the count needs to be trusted.', 'societypress' ); ?></p>
             </fieldset>
+
+            <div class="sp-qn-card">
+                <p>
+                    <label for="sp-qn-submit-label"><strong><?php esc_html_e( 'Wording on the send button', 'societypress' ); ?></strong></label><br>
+                    <input type="text" id="sp-qn-submit-label" name="submit_label" class="regular-text" value="<?php echo esc_attr( (string) $val( 'submit_label' ) ); ?>" placeholder="<?php esc_attr_e( 'Send', 'societypress' ); ?>">
+                </p>
+                <p>
+                    <label for="sp-qn-thanks"><strong><?php esc_html_e( 'Thank-you message', 'societypress' ); ?></strong></label><br>
+                    <textarea id="sp-qn-thanks" name="thanks_message" class="large-text" rows="2" placeholder="<?php esc_attr_e( 'Thank you! Your answers have been received.', 'societypress' ); ?>"><?php echo esc_textarea( (string) $val( 'thanks_message' ) ); ?></textarea>
+                    <span class="description"><?php esc_html_e( 'Shown after someone presses the send button. Leave empty for the wording shown here.', 'societypress' ); ?></span>
+                </p>
+            </div>
 
             <div class="sp-qn-card" id="sp-qn-notify">
                 <label for="sp-qn-notify-emails"><strong><?php esc_html_e( 'Email me when someone answers', 'societypress' ); ?></strong> <span class="description"><?php esc_html_e( '(optional)', 'societypress' ); ?></span></label><br>
@@ -146957,11 +147011,1203 @@ function sp_qn_admin_styles(): void {
     .sp-qn-typemore button { justify-content: center; color: #2271b1; border-top: 1px solid #f0f0f1 !important; }
     .sp-qn-paste-preview { border-left: 1px solid #dcdcde; padding-left: 16px; max-height: 360px; overflow-y: auto; }
     .sp-qn-not-open { font-style: italic; }
+    .sp-qn-count { font-size: 15px; }
+    .sp-qn-remind { margin-top: 14px; }
+    .sp-qn-card h2 { margin-top: 0; display: flex; gap: 10px; align-items: center; }
     @media (max-width: 960px) {
         .sp-qn-layout, .sp-qn-kind-choice, .sp-qn-paste-cols { grid-template-columns: 1fr; }
         .sp-qn-qtop { grid-template-columns: 1fr; }
         .sp-qn-page { padding: 20px; }
     }
     </style>
+    <?php
+}
+
+
+// ---- Answering ---------------------------------------------------------------
+
+/**
+ * How many sets of answers a form or survey has received.
+ */
+function sp_qn_answer_count( int $item_id ): int {
+    global $wpdb;
+    return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_qn_responses WHERE item_id = %d", $item_id ) );
+}
+
+/**
+ * Close a form or survey whose deadline has passed, and return it fresh.
+ *
+ * WHY checked whenever it is looked at rather than by a timed job: a closing
+ * time has to hold to the minute for the person standing at the page, and a
+ * scheduled job on shared hosting only runs when somebody visits anyway.
+ */
+function sp_qn_apply_deadline( ?object $item ): ?object {
+    if ( $item && 'open' === $item->status && $item->closes_at && current_time( 'mysql' ) >= $item->closes_at ) {
+        global $wpdb;
+        $wpdb->update( $wpdb->prefix . 'sp_qn_items', [ 'status' => 'closed' ], [ 'id' => (int) $item->id ] );
+        $item->status = 'closed';
+    }
+    return $item;
+}
+
+/**
+ * The signature in a member's personal invitation link.
+ *
+ * WHY a signature and not a stored token: nothing secret sits in the
+ * database, so a copy of it hands nobody a working link, and a reminder can
+ * carry the same link as the first email.
+ */
+function sp_qn_invite_token( int $item_id, int $user_id ): string {
+    return substr( hash_hmac( 'sha256', 'sp_qn_invite|' . $item_id . '|' . $user_id, wp_salt( 'auth' ) ), 0, 32 );
+}
+
+/**
+ * A member's personal link: it lets them answer without logging in, because
+ * a forgotten password should not cost the society an answer.
+ */
+function sp_qn_invite_url( object $item, int $user_id ): string {
+    return add_query_arg( [
+        'sp_qn_u' => $user_id,
+        'sp_qn_t' => sp_qn_invite_token( (int) $item->id, $user_id ),
+    ], get_permalink( (int) $item->page_id ) );
+}
+
+/**
+ * The member a valid invitation link in this request belongs to, or 0.
+ */
+function sp_qn_invited_user( object $item ): int {
+    $uid   = absint( $_REQUEST['sp_qn_u'] ?? 0 );
+    $token = sanitize_text_field( wp_unslash( $_REQUEST['sp_qn_t'] ?? '' ) );
+    return ( $uid && '' !== $token && hash_equals( sp_qn_invite_token( (int) $item->id, $uid ), $token ) ) ? $uid : 0;
+}
+
+/**
+ * User ids in the chosen member groups and committees.
+ *
+ * @param string[] $keys Keys from sp_qn_group_choices() ("g:3", "c:5").
+ * @return int[]
+ */
+function sp_qn_group_user_ids( array $keys ): array {
+    global $wpdb;
+    $ids = [];
+    foreach ( $keys as $key ) {
+        [ $kind, $id ] = array_pad( explode( ':', (string) $key, 2 ), 2, 0 );
+        $id = (int) $id;
+        if ( 'g' === $kind ) {
+            $ids = array_merge( $ids, $wpdb->get_col( $wpdb->prepare( "SELECT user_id FROM {$wpdb->prefix}sp_group_members WHERE group_id = %d", $id ) ) );
+        } elseif ( 'c' === $kind ) {
+            $c = $wpdb->get_row( $wpdb->prepare( "SELECT name, chair_user_id FROM {$wpdb->prefix}sp_committees WHERE id = %d", $id ) );
+            if ( $c ) {
+                if ( $c->chair_user_id ) {
+                    $ids[] = (int) $c->chair_user_id;
+                }
+                $ids = array_merge( $ids, $wpdb->get_col( $wpdb->prepare(
+                    "SELECT user_id FROM {$wpdb->prefix}sp_volunteer_roles WHERE status = 'active' AND role_type = 'committee' AND committee = %s",
+                    $c->name
+                ) ) );
+            }
+        }
+    }
+    return array_values( array_unique( array_filter( array_map( 'intval', $ids ) ) ) );
+}
+
+/**
+ * May this person answer, as far as "Who can answer" goes?
+ */
+function sp_qn_user_allowed( object $item, int $uid ): bool {
+    if ( 'public' === $item->audience ) {
+        return true;
+    }
+    if ( ! $uid ) {
+        return false;
+    }
+    if ( 'members' === $item->audience ) {
+        global $wpdb;
+        return 'active' === $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$wpdb->prefix}sp_members WHERE user_id = %d", $uid ) );
+    }
+    return in_array( $uid, sp_qn_group_user_ids( (array) json_decode( (string) $item->audience_groups, true ) ), true );
+}
+
+/**
+ * Has this person answered already?
+ *
+ * WHY a cookie for people who aren't logged in: there is nobody to look up.
+ * It stops a casual second answer from the same browser, which is all a
+ * public survey can promise — the settings screen says so.
+ */
+function sp_qn_has_answered( object $item, int $uid ): bool {
+    if ( $uid ) {
+        global $wpdb;
+        return (bool) $wpdb->get_var( $wpdb->prepare(
+            "SELECT 1 FROM {$wpdb->prefix}sp_qn_respondents WHERE item_id = %d AND user_id = %d", (int) $item->id, $uid
+        ) );
+    }
+    return ! empty( $_COOKIE[ 'sp_qn_done_' . (int) $item->id ] );
+}
+
+/**
+ * Pull one question's answer out of the submitted form and check it.
+ *
+ * @return array{0:mixed,1:string} The answer (null when blank) and an error message, if any.
+ */
+function sp_qn_read_answer( array $q, array $post ): array {
+    $s     = $q['settings'];
+    $raw   = $post[ $q['id'] ] ?? null;
+    $value = null;
+    $error = '';
+    $text  = static function ( $v ): string { return is_scalar( $v ) ? trim( sanitize_textarea_field( wp_unslash( (string) $v ) ) ) : ''; };
+
+    switch ( $q['type'] ) {
+        case 'multiple_choice':
+        case 'checkboxes':
+            $picked = array_values( array_intersect( (array) ( $raw['choice'] ?? [] ), array_merge( $s['choices'] ?? [], [ '__other' ] ) ) );
+            $other  = in_array( '__other', $picked, true ) ? $text( $raw['other'] ?? '' ) : '';
+            $picked = array_values( array_diff( $picked, [ '__other' ] ) );
+            if ( 'multiple_choice' === $q['type'] ) {
+                $picked = array_slice( $picked, 0, $other ? 0 : 1 );
+            }
+            if ( $picked || '' !== $other ) {
+                $value = [ 'choices' => $picked, 'other' => $other ];
+            }
+            break;
+        case 'dropdown':
+            $v     = $text( $raw );
+            $value = in_array( $v, $s['choices'] ?? [], true ) ? $v : null;
+            break;
+        case 'ranking':
+            $ranks = [];
+            foreach ( (array) ( $s['choices'] ?? [] ) as $i => $c ) {
+                $r = (int) ( $raw[ $i ] ?? 0 );
+                if ( $r > 0 ) {
+                    $ranks[ $c ] = $r;
+                }
+            }
+            if ( $ranks ) {
+                if ( count( array_unique( $ranks ) ) !== count( $ranks ) ) {
+                    $error = __( 'Please give each item a different number.', 'societypress' );
+                }
+                asort( $ranks );
+                $value = array_keys( $ranks );
+            }
+            break;
+        case 'star_rating':
+        case 'scale':
+            $min = 'scale' === $q['type'] ? (int) $s['min'] : 1;
+            $max = 'scale' === $q['type'] ? (int) $s['max'] : (int) $s['stars'];
+            if ( is_scalar( $raw ) && '' !== (string) $raw && (int) $raw >= $min && (int) $raw <= $max ) {
+                $value = (int) $raw;
+            }
+            break;
+        case 'grid':
+            $cols = $s['columns'] ?? [];
+            $rows = [];
+            foreach ( (array) ( $s['rows'] ?? [] ) as $i => $row ) {
+                $got = array_values( array_intersect( (array) ( $raw[ $i ] ?? [] ), $cols ) );
+                if ( $got ) {
+                    $rows[ $row ] = ! empty( $s['multi'] ) ? $got : $got[0];
+                }
+            }
+            if ( $rows ) {
+                $value = $rows;
+                if ( ! empty( $q['required'] ) && count( $rows ) < count( (array) ( $s['rows'] ?? [] ) ) ) {
+                    $error = __( 'Please answer every row.', 'societypress' );
+                }
+            }
+            break;
+        case 'contact':
+            $c = [];
+            foreach ( (array) ( $s['fields'] ?? [] ) as $f ) {
+                $v = $text( $raw[ $f ] ?? '' );
+                if ( '' !== $v ) {
+                    $c[ $f ] = $v;
+                }
+            }
+            if ( isset( $c['email'] ) && ! is_email( $c['email'] ) ) {
+                $error = __( 'That email address doesn\'t look right.', 'societypress' );
+            }
+            $value = $c ?: null;
+            break;
+        case 'picture_choice':
+            $i = is_scalar( $raw ) && '' !== (string) $raw ? (int) $raw : -1;
+            if ( isset( $s['choices'][ $i ] ) ) {
+                /* translators: %d: picture number */
+                $value = '' !== $s['choices'][ $i ]['label'] ? $s['choices'][ $i ]['label'] : sprintf( __( 'Picture %d', 'societypress' ), $i + 1 );
+            }
+            break;
+        case 'file_upload':
+            $value = $raw ?: null; // Filled in by the upload step.
+            break;
+        case 'date':
+            $v     = $text( $raw );
+            $value = preg_match( '/^\d{4}-\d{2}-\d{2}$/', $v ) ? $v : null;
+            break;
+        case 'time':
+            $v     = $text( $raw );
+            $value = preg_match( '/^\d{2}:\d{2}$/', $v ) ? $v : null;
+            break;
+        case 'text_block':
+            return [ null, '' ];
+        default: // short_answer, long_answer
+            $v     = $text( $raw );
+            $value = '' !== $v ? $v : null;
+    }
+    if ( '' === $error && ! empty( $q['required'] ) && null === $value ) {
+        $error = __( 'Please answer this question.', 'societypress' );
+    }
+    return [ $value, $error ];
+}
+
+/**
+ * Store an uploaded file for a file-upload question.
+ *
+ * WHY its own folder with an unguessable name: the files answer a survey,
+ * they aren't media for the website, so they stay out of the Media Library.
+ *
+ * @return array{0:?string,1:string} URL and error.
+ */
+function sp_qn_store_upload( int $item_id, int $qid ): array {
+    $f = $_FILES['sp_qn_file']['name'][ $qid ] ?? '';
+    if ( '' === $f ) {
+        return [ null, '' ];
+    }
+    $file = [
+        'name'     => $_FILES['sp_qn_file']['name'][ $qid ],
+        'type'     => $_FILES['sp_qn_file']['type'][ $qid ],
+        'tmp_name' => $_FILES['sp_qn_file']['tmp_name'][ $qid ],
+        'error'    => $_FILES['sp_qn_file']['error'][ $qid ],
+        'size'     => $_FILES['sp_qn_file']['size'][ $qid ],
+    ];
+    if ( $file['size'] > 10 * MB_IN_BYTES ) {
+        return [ null, __( 'That file is too large. The limit is 10 MB.', 'societypress' ) ];
+    }
+    require_once ABSPATH . 'wp-admin/includes/file.php';
+    $dir = static function ( $d ) use ( $item_id ) {
+        $d['subdir'] = '/sp-qn/' . $item_id . '-' . substr( wp_hash( 'sp_qn_files' . $item_id ), 0, 12 );
+        $d['path']   = $d['basedir'] . $d['subdir'];
+        $d['url']    = $d['baseurl'] . $d['subdir'];
+        return $d;
+    };
+    add_filter( 'upload_dir', $dir );
+    $done = wp_handle_upload( $file, [
+        'test_form' => false,
+        'mimes'     => [ 'jpg|jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'pdf' => 'application/pdf', 'doc' => 'application/msword', 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'txt' => 'text/plain' ],
+    ] );
+    remove_filter( 'upload_dir', $dir );
+    if ( ! empty( $done['error'] ) ) {
+        return [ null, __( 'That file could not be accepted. Pictures, PDFs, Word documents and plain text are allowed.', 'societypress' ) ];
+    }
+    return [ $done['url'], '' ];
+}
+
+/**
+ * Answers waiting to be shown again after a failed send, and their errors.
+ */
+function sp_qn_form_state( ?array $set = null ): array {
+    static $state = [ 'values' => [], 'errors' => [] ];
+    if ( null !== $set ) {
+        $state = $set;
+    }
+    return $state;
+}
+
+/**
+ * Receive a filled-in form or survey.
+ *
+ * WHY on template_redirect: it runs before any of the page is printed, so a
+ * successful send can redirect (a refresh then can't send twice) and a failed
+ * one can hand the answers back to the page to show again.
+ */
+add_action( 'template_redirect', function () {
+    if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || empty( $_POST['sp_qn_submit'] ) || ! sp_qn_builder_on() ) {
+        return;
+    }
+    $item = sp_qn_apply_deadline( sp_qn_get( absint( $_POST['sp_qn_submit'] ) ) );
+    if ( ! $item || 'open' !== $item->status ) {
+        return; // The page itself explains that it is closed.
+    }
+    if ( ! wp_verify_nonce( $_POST['_sp_qn_nonce'] ?? '', 'sp_qn_answer_' . (int) $item->id ) ) {
+        sp_qn_form_state( [ 'values' => [], 'errors' => [ 0 => __( 'This page was open too long. Please fill it in again.', 'societypress' ) ] ] );
+        return;
+    }
+    // A hidden box people never see; anything typed in it was a robot.
+    if ( '' !== (string) ( $_POST['sp_qn_hp'] ?? '' ) ) {
+        wp_safe_redirect( add_query_arg( 'sp_qn_done', (int) $item->id, get_permalink( (int) $item->page_id ) ) );
+        exit;
+    }
+
+    $uid = sp_qn_invited_user( $item ) ?: get_current_user_id();
+    if ( ! sp_qn_user_allowed( $item, $uid ) || ( ( $uid || 'public' === $item->audience ) && sp_qn_has_answered( $item, $uid ) ) ) {
+        return;
+    }
+
+    $post    = (array) ( $_POST['q'] ?? [] );
+    $answers = [];
+    $values  = [];
+    $errors  = [];
+    foreach ( sp_qn_structure( (int) $item->id ) as $sec ) {
+        foreach ( $sec['questions'] as $q ) {
+            if ( 'text_block' === $q['type'] ) {
+                continue;
+            }
+            if ( 'file_upload' === $q['type'] ) {
+                [ $url, $err ] = sp_qn_store_upload( (int) $item->id, (int) $q['id'] );
+                $post[ $q['id'] ] = $url;
+                if ( $err ) {
+                    $errors[ $q['id'] ] = $err;
+                    continue;
+                }
+            }
+            [ $value, $err ] = sp_qn_read_answer( $q, $post );
+            $values[ $q['id'] ] = $value;
+            if ( $err ) {
+                $errors[ $q['id'] ] = $err;
+            }
+            $answers[] = [ 'id' => (int) $q['id'], 'type' => $q['type'], 'prompt' => $q['prompt'], 'answer' => $value ];
+        }
+    }
+    if ( $errors ) {
+        sp_qn_form_state( [ 'values' => $values, 'errors' => $errors ] );
+        return;
+    }
+
+    global $wpdb;
+    $anon = 'survey' === $item->kind && (int) $item->anonymous;
+    $wpdb->insert( $wpdb->prefix . 'sp_qn_responses', [
+        'item_id'    => (int) $item->id,
+        'user_id'    => ( $uid && ! $anon ) ? $uid : null,
+        'answers'    => wp_json_encode( $answers ),
+        // Only for spotting abuse on public forms; never kept when anonymous.
+        'ip_hash'    => $anon ? null : wp_hash( (string) ( $_SERVER['REMOTE_ADDR'] ?? '' ) ),
+        // An anonymous answer keeps only its day, not its minute.
+        'created_at' => $anon ? current_time( 'Y-m-d' ) . ' 00:00:00' : current_time( 'mysql' ),
+    ] );
+    if ( $uid ) {
+        $wpdb->replace( $wpdb->prefix . 'sp_qn_respondents', [
+            'item_id' => (int) $item->id, 'user_id' => $uid, 'responded_on' => $anon ? null : current_time( 'Y-m-d' ),
+        ] );
+    }
+    setcookie( 'sp_qn_done_' . (int) $item->id, '1', time() + YEAR_IN_SECONDS, COOKIEPATH ?: '/', COOKIE_DOMAIN, is_ssl(), true );
+    sp_qn_notify( $item, $answers, $anon ? 0 : $uid );
+
+    $back = get_permalink( (int) $item->page_id );
+    if ( sp_qn_invited_user( $item ) ) {
+        $back = add_query_arg( [ 'sp_qn_u' => absint( $_POST['sp_qn_u'] ), 'sp_qn_t' => sanitize_text_field( wp_unslash( $_POST['sp_qn_t'] ) ) ], $back );
+    }
+    wp_safe_redirect( add_query_arg( 'sp_qn_done', (int) $item->id, $back ) );
+    exit;
+} );
+
+/**
+ * One answer as plain text, for emails (and, later, the spreadsheet).
+ *
+ * @param mixed $a
+ */
+function sp_qn_answer_text( string $type, $a ): string {
+    if ( null === $a || '' === $a || [] === $a ) {
+        return '—';
+    }
+    switch ( $type ) {
+        case 'multiple_choice':
+        case 'checkboxes':
+            $parts = (array) ( $a['choices'] ?? [] );
+            if ( '' !== (string) ( $a['other'] ?? '' ) ) {
+                /* translators: %s: what the person typed for "Other" */
+                $parts[] = sprintf( __( 'Other: %s', 'societypress' ), $a['other'] );
+            }
+            return implode( ', ', $parts );
+        case 'ranking':
+            $out = [];
+            foreach ( (array) $a as $i => $c ) {
+                $out[] = ( $i + 1 ) . '. ' . $c;
+            }
+            return implode( '  ', $out );
+        case 'grid':
+            $out = [];
+            foreach ( (array) $a as $row => $v ) {
+                $out[] = $row . ': ' . implode( ', ', (array) $v );
+            }
+            return implode( '; ', $out );
+        case 'contact':
+            return implode( ', ', (array) $a );
+        case 'star_rating':
+            /* translators: %d: number of stars */
+            return sprintf( _n( '%d star', '%d stars', (int) $a, 'societypress' ), (int) $a );
+        default:
+            return (string) $a;
+    }
+}
+
+/**
+ * Email the people listed under "Email me when someone answers".
+ */
+function sp_qn_notify( object $item, array $answers, int $uid ): void {
+    $to = sp_form_recipient_list( (string) $item->notify_emails );
+    if ( ! $to ) {
+        return;
+    }
+    $who = $uid ? get_userdata( $uid ) : null;
+    $html = '<p>' . esc_html( $who
+        ? sprintf( /* translators: %s: person's name */ __( '%s has answered.', 'societypress' ), $who->display_name )
+        : ( 'survey' === $item->kind && (int) $item->anonymous ? __( 'Someone has answered (this survey is anonymous).', 'societypress' ) : __( 'Someone has answered.', 'societypress' ) ) ) . '</p>';
+    $html .= '<table cellpadding="6" style="border-collapse:collapse;width:100%;">';
+    foreach ( $answers as $a ) {
+        $html .= '<tr><td style="border-bottom:1px solid #eee;font-weight:600;vertical-align:top;">' . esc_html( $a['prompt'] ) . '</td><td style="border-bottom:1px solid #eee;">' . nl2br( esc_html( sp_qn_answer_text( $a['type'], $a['answer'] ) ) ) . '</td></tr>';
+    }
+    $html .= '</table>';
+    /* translators: %s: form or survey title */
+    $subject = sprintf( __( 'New answer: %s', 'societypress' ), $item->title );
+    $headers = [];
+    if ( $who && ! empty( $who->user_email ) && 'form' === $item->kind ) {
+        $headers[] = 'Reply-To: ' . $who->display_name . ' <' . $who->user_email . '>';
+    }
+    add_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+    foreach ( $to as $addr ) {
+        wp_mail( $addr, $subject, sp_build_email_html( $item->title, $html ), $headers );
+    }
+    remove_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+}
+
+/**
+ * One question's answer boxes, filled with any answer being shown again.
+ *
+ * @param mixed $v Previously given answer (after a failed send).
+ */
+function sp_qn_render_input( array $q, $v ): string {
+    $s    = $q['settings'];
+    $id   = (int) $q['id'];
+    $name = 'q[' . $id . ']';
+    $req  = ! empty( $q['required'] ) ? ' data-required="1"' : '';
+    $out  = '';
+    switch ( $q['type'] ) {
+        case 'multiple_choice':
+        case 'checkboxes':
+            $multi   = 'checkboxes' === $q['type'];
+            $choices = (array) ( $s['choices'] ?? [] );
+            if ( ! empty( $s['shuffle'] ) ) {
+                shuffle( $choices );
+            }
+            $picked = (array) ( $v['choices'] ?? [] );
+            foreach ( $choices as $c ) {
+                $out .= sprintf( '<label class="sp-qn-f-opt"><input type="%s" name="%s[choice][]" value="%s"%s> %s</label>',
+                    $multi ? 'checkbox' : 'radio', esc_attr( $name ), esc_attr( $c ), checked( in_array( $c, $picked, true ), true, false ), esc_html( $c ) );
+            }
+            if ( ! empty( $s['other'] ) ) {
+                $other = (string) ( $v['other'] ?? '' );
+                $out  .= sprintf( '<label class="sp-qn-f-opt sp-qn-f-other"><input type="%s" name="%s[choice][]" value="__other"%s> %s <input type="text" name="%s[other]" value="%s" aria-label="%s"></label>',
+                    $multi ? 'checkbox' : 'radio', esc_attr( $name ), checked( '' !== $other, true, false ), esc_html__( 'Other:', 'societypress' ), esc_attr( $name ), esc_attr( $other ), esc_attr__( 'Other — please say', 'societypress' ) );
+            }
+            break;
+        case 'dropdown':
+            $choices = (array) ( $s['choices'] ?? [] );
+            if ( ! empty( $s['shuffle'] ) ) {
+                shuffle( $choices );
+            }
+            $out .= '<select name="' . esc_attr( $name ) . '" aria-labelledby="sp-qn-q' . $id . '"><option value="">' . esc_html__( '— Choose one —', 'societypress' ) . '</option>';
+            foreach ( $choices as $c ) {
+                $out .= '<option value="' . esc_attr( $c ) . '"' . selected( $v, $c, false ) . '>' . esc_html( $c ) . '</option>';
+            }
+            $out .= '</select>';
+            break;
+        case 'ranking':
+            $choices = (array) ( $s['choices'] ?? [] );
+            $n       = count( $choices );
+            $order   = is_array( $v ) ? array_flip( $v ) : [];
+            $out    .= '<p class="sp-qn-f-hint">' . esc_html__( 'Number them in order: 1 for your top choice.', 'societypress' ) . '</p><div class="sp-qn-f-rank">';
+            foreach ( $choices as $i => $c ) {
+                $out .= '<label class="sp-qn-f-rankrow"><select name="' . esc_attr( $name ) . '[' . $i . ']" class="sp-qn-f-rankpick"><option value="">—</option>';
+                for ( $r = 1; $r <= $n; $r++ ) {
+                    $out .= '<option value="' . $r . '"' . selected( isset( $order[ $c ] ) ? $order[ $c ] + 1 : 0, $r, false ) . '>' . $r . '</option>';
+                }
+                $out .= '</select> ' . esc_html( $c ) . '</label>';
+            }
+            $out .= '</div>';
+            break;
+        case 'star_rating':
+            $stars = (int) ( $s['stars'] ?? 5 );
+            $out  .= '<div class="sp-qn-f-stars" role="radiogroup" aria-labelledby="sp-qn-q' . $id . '">';
+            // Drawn highest-first so CSS can light every star up to the one picked.
+            for ( $i = $stars; $i >= 1; $i-- ) {
+                $out .= sprintf( '<input type="radio" id="sp-qn-%1$d-s%2$d" name="%3$s" value="%2$d"%4$s><label for="sp-qn-%1$d-s%2$d" title="%5$s"><span aria-hidden="true">★</span><span class="screen-reader-text">%5$s</span></label>',
+                    $id, $i, esc_attr( $name ), checked( (int) $v, $i, false ),
+                    esc_attr( sprintf( /* translators: %d: number of stars */ _n( '%d star', '%d stars', $i, 'societypress' ), $i ) ) );
+            }
+            $out .= '</div>';
+            break;
+        case 'scale':
+            $out .= '<div class="sp-qn-f-scale" role="radiogroup" aria-labelledby="sp-qn-q' . $id . '">';
+            if ( '' !== ( $s['low'] ?? '' ) ) {
+                $out .= '<span class="sp-qn-f-scale-end">' . esc_html( $s['low'] ) . '</span>';
+            }
+            for ( $i = (int) $s['min']; $i <= (int) $s['max']; $i++ ) {
+                $out .= sprintf( '<label><input type="radio" name="%s" value="%d"%s><span>%d</span></label>', esc_attr( $name ), $i, checked( null !== $v && (int) $v === $i, true, false ), $i );
+            }
+            if ( '' !== ( $s['high'] ?? '' ) ) {
+                $out .= '<span class="sp-qn-f-scale-end">' . esc_html( $s['high'] ) . '</span>';
+            }
+            $out .= '</div>';
+            break;
+        case 'grid':
+            $multi = ! empty( $s['multi'] );
+            $out  .= '<div class="sp-qn-f-gridwrap"><table class="sp-qn-f-grid"><thead><tr><td></td>';
+            foreach ( (array) $s['columns'] as $c ) {
+                $out .= '<th scope="col">' . esc_html( $c ) . '</th>';
+            }
+            $out .= '</tr></thead><tbody>';
+            foreach ( (array) $s['rows'] as $ri => $row ) {
+                $got  = (array) ( $v[ $row ] ?? [] );
+                $out .= '<tr><th scope="row">' . esc_html( $row ) . '</th>';
+                foreach ( (array) $s['columns'] as $c ) {
+                    $out .= sprintf( '<td><input type="%s" name="%s[%d][]" value="%s"%s aria-label="%s"></td>',
+                        $multi ? 'checkbox' : 'radio', esc_attr( $name ), $ri, esc_attr( $c ), checked( in_array( $c, $got, true ), true, false ), esc_attr( $row . ': ' . $c ) );
+                }
+                $out .= '</tr>';
+            }
+            $out .= '</tbody></table></div>';
+            break;
+        case 'contact':
+            $labels = [ 'name' => __( 'Name', 'societypress' ), 'email' => __( 'Email', 'societypress' ), 'phone' => __( 'Phone', 'societypress' ), 'address' => __( 'Address', 'societypress' ) ];
+            $types  = [ 'name' => 'text', 'email' => 'email', 'phone' => 'tel', 'address' => 'text' ];
+            $auto   = [ 'name' => 'name', 'email' => 'email', 'phone' => 'tel', 'address' => 'street-address' ];
+            foreach ( (array) $s['fields'] as $f ) {
+                $out .= sprintf( '<label class="sp-qn-f-contact">%s<input type="%s" name="%s[%s]" value="%s" autocomplete="%s"></label>',
+                    esc_html( $labels[ $f ] ), $types[ $f ], esc_attr( $name ), $f, esc_attr( (string) ( $v[ $f ] ?? '' ) ), $auto[ $f ] );
+            }
+            break;
+        case 'picture_choice':
+            $out .= '<div class="sp-qn-f-pics">';
+            foreach ( (array) $s['choices'] as $i => $c ) {
+                $label = '' !== $c['label'] ? $c['label'] : sprintf( /* translators: %d: picture number */ __( 'Picture %d', 'societypress' ), $i + 1 );
+                $out  .= sprintf( '<label class="sp-qn-f-pic"><input type="radio" name="%s" value="%d"%s>%s<span>%s</span></label>',
+                    esc_attr( $name ), $i, checked( $v === $label, true, false ),
+                    wp_get_attachment_image( (int) $c['image_id'], 'medium', false, [ 'alt' => $label ] ), esc_html( '' !== $c['label'] ? $c['label'] : '' ) );
+            }
+            $out .= '</div>';
+            break;
+        case 'file_upload':
+            $out .= '<input type="file" name="sp_qn_file[' . $id . ']" accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.txt" aria-labelledby="sp-qn-q' . $id . '">';
+            $out .= '<p class="sp-qn-f-hint">' . esc_html__( 'Pictures, PDFs, Word documents or plain text, up to 10 MB.', 'societypress' ) . '</p>';
+            break;
+        case 'date':
+            $out .= '<input type="date" name="' . esc_attr( $name ) . '" value="' . esc_attr( (string) $v ) . '" aria-labelledby="sp-qn-q' . $id . '">';
+            break;
+        case 'time':
+            $out .= '<input type="time" name="' . esc_attr( $name ) . '" value="' . esc_attr( (string) $v ) . '" aria-labelledby="sp-qn-q' . $id . '">';
+            break;
+        case 'long_answer':
+            $out .= '<textarea name="' . esc_attr( $name ) . '" rows="5" aria-labelledby="sp-qn-q' . $id . '">' . esc_textarea( (string) $v ) . '</textarea>';
+            break;
+        default:
+            $out .= '<input type="text" name="' . esc_attr( $name ) . '" value="' . esc_attr( (string) $v ) . '" aria-labelledby="sp-qn-q' . $id . '">';
+    }
+    return '<div class="sp-qn-f-input"' . $req . '>' . $out . '</div>';
+}
+
+/**
+ * The page a form or survey lives on.
+ */
+add_shortcode( 'societypress_questionnaire', function ( $atts ) {
+    if ( ! sp_qn_builder_on() ) {
+        return '';
+    }
+    $item = sp_qn_apply_deadline( sp_qn_get( absint( $atts['id'] ?? 0 ) ) );
+    if ( ! $item ) {
+        return '';
+    }
+    $is_survey = 'survey' === $item->kind;
+    $wrap      = static function ( string $inner ) use ( $item ): string {
+        $desc = '' !== trim( (string) $item->description ) ? '<div class="sp-qn-f-desc">' . wpautop( esc_html( $item->description ) ) . '</div>' : '';
+        return sp_qn_front_styles() . '<div class="sp-qn-f">' . $desc . $inner . '</div>';
+    };
+    $notice = static function ( string $text ): string { return '<p class="sp-qn-f-notice">' . esc_html( $text ) . '</p>'; };
+
+    if ( absint( $_GET['sp_qn_done'] ?? 0 ) === (int) $item->id ) {
+        $thanks = '' !== trim( (string) $item->thanks_message ) ? $item->thanks_message : __( 'Thank you! Your answers have been received.', 'societypress' );
+        return $wrap( '<div class="sp-qn-f-thanks" role="status">' . wpautop( esc_html( $thanks ) ) . '</div>' );
+    }
+    if ( 'draft' === $item->status ) {
+        return $wrap( $notice( $is_survey ? __( 'This survey is not open yet.', 'societypress' ) : __( 'This form is not open yet.', 'societypress' ) ) );
+    }
+    if ( 'closed' === $item->status ) {
+        return $wrap( $notice( $is_survey ? __( 'This survey has closed. Thank you.', 'societypress' ) : __( 'This form is closed. Thank you.', 'societypress' ) ) );
+    }
+
+    $invited = sp_qn_invited_user( $item );
+    $uid     = $invited ?: get_current_user_id();
+    if ( ! sp_qn_user_allowed( $item, $uid ) ) {
+        if ( ! $uid ) {
+            return $wrap( $notice( __( 'This is for members. Please log in to answer.', 'societypress' ) )
+                . '<p><a class="sp-qn-f-btn" href="' . esc_url( wp_login_url( get_permalink() ) ) . '">' . esc_html__( 'Log in to answer', 'societypress' ) . '</a></p>' );
+        }
+        return $wrap( $notice( 'members' === $item->audience
+            ? __( 'This is for members in good standing, and your membership isn\'t active right now. Please renew to take part.', 'societypress' )
+            : __( 'This is for particular groups in the society, and you\'re not in one of them.', 'societypress' ) ) );
+    }
+    if ( ( $uid || 'public' === $item->audience ) && sp_qn_has_answered( $item, $uid ) ) {
+        return $wrap( $notice( __( 'You\'ve already answered. Thank you.', 'societypress' ) ) );
+    }
+
+    $state    = sp_qn_form_state();
+    $sections = sp_qn_structure( (int) $item->id );
+    $total    = count( $sections );
+    $html     = '';
+    // A visitor who isn't logged in has no name to record, so the "named"
+    // line would only mislead them.
+    if ( $is_survey && ( (int) $item->anonymous || $uid ) ) {
+        $html .= '<p class="sp-qn-f-anon">' . esc_html( (int) $item->anonymous ? __( 'Your answers are anonymous.', 'societypress' ) : __( 'Your name is recorded with your answers.', 'societypress' ) ) . '</p>';
+    }
+    if ( $state['errors'] ) {
+        $html .= '<div class="sp-qn-f-alert" role="alert">' . esc_html( $state['errors'][0] ?? __( 'Some answers need another look — they are marked below.', 'societypress' ) ) . '</div>';
+    }
+    $action = $invited ? add_query_arg( [ 'sp_qn_u' => $invited, 'sp_qn_t' => sp_qn_invite_token( (int) $item->id, $invited ) ], get_permalink() ) : get_permalink();
+    $html  .= '<form class="sp-qn-f-form" method="post" enctype="multipart/form-data" action="' . esc_url( $action ) . '" novalidate>';
+    $html  .= wp_nonce_field( 'sp_qn_answer_' . (int) $item->id, '_sp_qn_nonce', true, false );
+    $html  .= '<input type="hidden" name="sp_qn_submit" value="' . (int) $item->id . '">';
+    if ( $invited ) {
+        $html .= '<input type="hidden" name="sp_qn_u" value="' . (int) $invited . '"><input type="hidden" name="sp_qn_t" value="' . esc_attr( sp_qn_invite_token( (int) $item->id, $invited ) ) . '">';
+    }
+    $html .= '<div class="sp-qn-f-hp" aria-hidden="true"><label>' . esc_html__( 'Leave this empty', 'societypress' ) . '<input type="text" name="sp_qn_hp" tabindex="-1" autocomplete="off"></label></div>';
+    if ( $total > 1 ) {
+        $html .= '<div class="sp-qn-f-progress" aria-hidden="true"><div class="sp-qn-f-bar"></div></div><p class="sp-qn-f-step" aria-live="polite"></p>';
+    }
+    $num = 0;
+    foreach ( $sections as $si => $sec ) {
+        $html .= '<fieldset class="sp-qn-f-sec" data-index="' . (int) $si . '">';
+        if ( '' !== $sec['title'] ) {
+            $html .= '<legend><h2>' . esc_html( $sec['title'] ) . '</h2></legend>';
+        }
+        if ( '' !== $sec['description'] ) {
+            $html .= wpautop( esc_html( $sec['description'] ) );
+        }
+        foreach ( $sec['questions'] as $q ) {
+            if ( 'text_block' === $q['type'] ) {
+                $html .= '<div class="sp-qn-f-text">' . wpautop( esc_html( $q['prompt'] ) ) . '</div>';
+                continue;
+            }
+            $num++;
+            $err   = $state['errors'][ $q['id'] ] ?? '';
+            $html .= '<div class="sp-qn-f-q' . ( $err ? ' has-error' : '' ) . '" id="sp-qn-wrap' . (int) $q['id'] . '">';
+            $html .= '<p class="sp-qn-f-label" id="sp-qn-q' . (int) $q['id'] . '"><span class="sp-qn-f-num">' . $num . '.</span> ' . esc_html( $q['prompt'] );
+            if ( ! empty( $q['required'] ) ) {
+                $html .= ' <span class="sp-qn-f-req">' . esc_html__( '(required)', 'societypress' ) . '</span>';
+            }
+            $html .= '</p>' . sp_qn_render_input( $q, $state['values'][ $q['id'] ] ?? null );
+            $html .= '<p class="sp-qn-f-err" role="alert">' . esc_html( $err ) . '</p></div>';
+        }
+        $html .= '</fieldset>';
+    }
+    $label = '' !== trim( (string) $item->submit_label ) ? $item->submit_label : __( 'Send', 'societypress' );
+    $html .= '<div class="sp-qn-f-nav"><button type="button" class="sp-qn-f-btn sp-qn-f-back">' . esc_html__( 'Back', 'societypress' ) . '</button>'
+        . '<button type="button" class="sp-qn-f-btn sp-qn-f-next">' . esc_html__( 'Next', 'societypress' ) . '</button>'
+        . '<button type="submit" class="sp-qn-f-btn sp-qn-f-send">' . esc_html( $label ) . '</button></div>';
+    $html .= '</form>';
+    return $wrap( $html . sp_qn_front_script() );
+} );
+
+/**
+ * Styles for the answer page. Colors come from the theme (currentColor and the
+ * SocietyPress design variables, with plain fallbacks) so a survey looks like
+ * the society's own site.
+ */
+function sp_qn_front_styles(): string {
+    static $done = false;
+    if ( $done ) {
+        return '';
+    }
+    $done = true;
+    return '<style id="sp-qn-front-css">
+.sp-qn-f { max-width: 760px; }
+.sp-qn-f-anon { font-style: italic; opacity: .8; }
+.sp-qn-f-notice, .sp-qn-f-thanks { font-size: 1.15em; padding: 1em 1.25em; border-left: 4px solid var(--sp-color-primary, #2271b1); background: rgba(0,0,0,.03); }
+.sp-qn-f-alert { padding: .8em 1em; border-left: 4px solid #b32d2e; background: #fcf0f1; margin-bottom: 1em; }
+.sp-qn-f-sec { border: 0; padding: 0; margin: 0 0 1.5em; }
+.sp-qn-f-sec h2 { margin: .5em 0; }
+.sp-qn-f-q { margin: 0 0 1.75em; padding: .5em 0; }
+.sp-qn-f-label { font-weight: 600; font-size: 1.1em; margin: 0 0 .6em; }
+.sp-qn-f-req { font-weight: 400; opacity: .7; font-size: .85em; }
+.sp-qn-f-input { margin-left: 1.4em; }
+.sp-qn-f-opt { display: flex; gap: .6em; align-items: center; padding: .45em 0; font-size: 1.05em; cursor: pointer; }
+.sp-qn-f-opt input[type=radio], .sp-qn-f-opt input[type=checkbox], .sp-qn-f-grid input, .sp-qn-f-scale input { width: 1.3em; height: 1.3em; }
+.sp-qn-f-other input[type=text] { flex: 1; max-width: 22em; }
+.sp-qn-f input[type=text], .sp-qn-f input[type=email], .sp-qn-f input[type=tel], .sp-qn-f input[type=date], .sp-qn-f input[type=time], .sp-qn-f select, .sp-qn-f textarea { font-size: 1.05em; padding: .5em .6em; max-width: 100%; }
+.sp-qn-f textarea, .sp-qn-f-contact input { width: 100%; box-sizing: border-box; }
+.sp-qn-f-contact { display: block; margin: .5em 0; }
+.sp-qn-f-hint { opacity: .75; font-size: .95em; margin: .3em 0; }
+.sp-qn-f-stars { display: inline-flex; flex-direction: row-reverse; gap: .15em; }
+.sp-qn-f-stars input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.sp-qn-f-stars label { font-size: 2.2em; line-height: 1; cursor: pointer; color: #c3c4c7; }
+.sp-qn-f-stars input:checked ~ label, .sp-qn-f-stars label:hover, .sp-qn-f-stars label:hover ~ label { color: #dba617; }
+.sp-qn-f-stars input:focus-visible + label { outline: 2px solid currentColor; }
+.sp-qn-f-scale { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; }
+.sp-qn-f-scale label { display: flex; flex-direction: column; align-items: center; min-width: 2.4em; cursor: pointer; }
+.sp-qn-f-scale-end { opacity: .8; font-size: .95em; }
+.sp-qn-f-gridwrap { overflow-x: auto; }
+.sp-qn-f-grid { border-collapse: collapse; }
+.sp-qn-f-grid th, .sp-qn-f-grid td { padding: .5em .7em; text-align: center; font-weight: 400; }
+.sp-qn-f-grid tbody th { text-align: left; }
+.sp-qn-f-grid tbody tr:nth-child(odd) { background: rgba(0,0,0,.035); }
+.sp-qn-f-rankrow { display: flex; gap: .6em; align-items: center; padding: .4em 0; }
+.sp-qn-f-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1em; }
+.sp-qn-f-pic { display: flex; flex-direction: column; gap: .4em; border: 2px solid rgba(0,0,0,.12); border-radius: 8px; padding: .5em; cursor: pointer; }
+.sp-qn-f-pic:has(input:checked) { border-color: var(--sp-color-primary, #2271b1); }
+.sp-qn-f-pic img { width: 100%; height: 130px; object-fit: cover; border-radius: 4px; }
+.sp-qn-f-text { margin: 0 0 1.5em; }
+.sp-qn-f-err { color: #b32d2e; font-weight: 600; margin: .4em 0 0 1.4em; }
+.sp-qn-f-err:empty { display: none; }
+.sp-qn-f-q.has-error { border-left: 4px solid #b32d2e; padding-left: .75em; }
+.sp-qn-f-progress { height: 8px; background: rgba(0,0,0,.08); border-radius: 4px; overflow: hidden; }
+.sp-qn-f-bar { height: 100%; width: 0; background: var(--sp-color-primary, #2271b1); transition: width .25s; }
+.sp-qn-f-step { opacity: .8; margin: .4em 0 1em; }
+.sp-qn-f-nav { display: flex; gap: .75em; margin-top: 1em; }
+.sp-qn-f-btn { display: inline-block; font-size: 1.1em; padding: .65em 1.6em; border-radius: 6px; border: 2px solid var(--sp-color-primary, #2271b1); background: var(--sp-color-primary, #2271b1); color: #fff; cursor: pointer; text-decoration: none; }
+.sp-qn-f-back { background: transparent; color: var(--sp-color-primary, #2271b1); }
+.sp-qn-f-hp { position: absolute; left: -9999px; height: 1px; overflow: hidden; }
+.sp-qn-f.js .sp-qn-f-sec[hidden], .sp-qn-f-nav [hidden] { display: none; }
+</style>';
+}
+
+/**
+ * The answer page's script: one section at a time, Next/Back, the progress
+ * bar, required-answer checks and ranking numbers that can't repeat.
+ *
+ * WHY the page still works without it: every section is shown and the
+ * server checks every answer, so a phone with scripts off still gets through.
+ */
+function sp_qn_front_script(): string {
+    $t = [
+        'step'     => __( 'Section %1$d of %2$d', 'societypress' ),
+        'required' => __( 'Please answer this question.', 'societypress' ),
+    ];
+    return '<script>( function () {
+        var T = ' . wp_json_encode( $t ) . ';
+        document.querySelectorAll( ".sp-qn-f-form" ).forEach( function ( form ) {
+            var root = form.closest( ".sp-qn-f" ); root.classList.add( "js" );
+            var secs = Array.prototype.slice.call( form.querySelectorAll( ".sp-qn-f-sec" ) );
+            var back = form.querySelector( ".sp-qn-f-back" ), next = form.querySelector( ".sp-qn-f-next" ), send = form.querySelector( ".sp-qn-f-send" );
+            var bar = form.querySelector( ".sp-qn-f-bar" ), step = form.querySelector( ".sp-qn-f-step" );
+            var cur = 0, firstErr = form.querySelector( ".sp-qn-f-q.has-error" );
+            if ( firstErr ) { cur = secs.indexOf( firstErr.closest( ".sp-qn-f-sec" ) ); }
+            function show( i, focus ) {
+                cur = i;
+                secs.forEach( function ( s, j ) { s.hidden = j !== i; } );
+                back.hidden = i === 0; next.hidden = i === secs.length - 1; send.hidden = i !== secs.length - 1;
+                if ( bar ) { bar.style.width = ( ( i + 1 ) / secs.length * 100 ) + "%"; }
+                if ( step ) { step.textContent = T.step.replace( "%1$d", i + 1 ).replace( "%2$d", secs.length ); }
+                if ( focus ) { form.scrollIntoView( { behavior: "smooth", block: "start" } ); }
+            }
+            function answered( box ) {
+                if ( box.querySelector( "input[type=radio]:checked, input[type=checkbox]:checked" ) ) { return true; }
+                var filled = false;
+                box.querySelectorAll( "input[type=text], input[type=email], input[type=tel], input[type=date], input[type=time], input[type=file], textarea, select" ).forEach( function ( f ) { if ( f.value.trim() ) { filled = true; } } );
+                return filled;
+            }
+            function check( sec ) {
+                var bad = null;
+                sec.querySelectorAll( ".sp-qn-f-input[data-required]" ).forEach( function ( box ) {
+                    var q = box.closest( ".sp-qn-f-q" ), err = q.querySelector( ".sp-qn-f-err" ), ok = answered( box );
+                    q.classList.toggle( "has-error", ! ok );
+                    if ( ! ok ) { err.textContent = T.required; bad = bad || q; } else if ( err.textContent === T.required ) { err.textContent = ""; }
+                } );
+                if ( bad ) { bad.scrollIntoView( { behavior: "smooth", block: "center" } ); var f = bad.querySelector( "input, select, textarea" ); if ( f ) { f.focus( { preventScroll: true } ); } }
+                return ! bad;
+            }
+            next.addEventListener( "click", function () { if ( check( secs[ cur ] ) ) { show( cur + 1, true ); } } );
+            back.addEventListener( "click", function () { show( cur - 1, true ); } );
+            form.addEventListener( "submit", function ( e ) {
+                for ( var i = 0; i < secs.length; i++ ) { if ( ! check( secs[ i ] ) ) { e.preventDefault(); show( i, false ); check( secs[ i ] ); return; } }
+                send.disabled = true;
+            } );
+            // Picking a number already used swaps it with the other item.
+            form.querySelectorAll( ".sp-qn-f-rank" ).forEach( function ( rank ) {
+                rank.addEventListener( "focusin", function ( e ) { if ( e.target.tagName === "SELECT" ) { e.target.dataset.prev = e.target.value; } } );
+                rank.addEventListener( "change", function ( e ) {
+                    var picked = e.target.value, prev = e.target.dataset.prev || "";
+                    rank.querySelectorAll( "select" ).forEach( function ( s ) { if ( s !== e.target && picked && s.value === picked ) { s.value = prev; } } );
+                    e.target.dataset.prev = picked;
+                } );
+            } );
+            // Typing in "Other" ticks it.
+            form.querySelectorAll( ".sp-qn-f-other input[type=text]" ).forEach( function ( box ) {
+                box.addEventListener( "input", function () { var pick = box.parentNode.querySelector( "input[value=__other]" ); if ( pick && box.value.trim() ) { pick.checked = true; } } );
+            } );
+            show( Math.max( 0, cur ), false );
+        } );
+    } )();</script>';
+}
+
+// ---- Open & Send ---------------------------------------------------------------
+
+/**
+ * Members who can be emailed: active, with an email address, and not opted
+ * out of notices — the same test every other SocietyPress mailing uses.
+ *
+ * @return object[] user_id, first_name, preferred_name, email
+ */
+function sp_qn_mailable_members(): array {
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.preferred_name, m.blast_email_opt_out, m.pref_email_notices, u.user_email AS email
+           FROM {$wpdb->prefix}sp_members m
+           JOIN {$wpdb->users} u ON u.ID = m.user_id
+          WHERE m.status = 'active' AND m.user_id > 0"
+    );
+    $out = [];
+    foreach ( (array) $rows as $r ) {
+        if ( is_email( $r->email ) && sp_member_wants_email( $r, 'pref_email_notices' ) ) {
+            $out[ (int) $r->user_id ] = $r;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Who an invitation would go to.
+ *
+ * @param string[]|null $groups Narrow to these groups; null for everyone the
+ *                              form or survey is open to.
+ * @return object[] keyed by user id
+ */
+function sp_qn_recipients( object $item, ?array $groups = null ): array {
+    $people = sp_qn_mailable_members();
+    if ( 'groups' === $item->audience || $groups ) {
+        $allowed = $groups ?: (array) json_decode( (string) $item->audience_groups, true );
+        $people  = array_intersect_key( $people, array_flip( sp_qn_group_user_ids( $allowed ) ) );
+    }
+    return $people;
+}
+
+/**
+ * Default invitation wording, editable per form or survey.
+ */
+function sp_qn_invite_text( object $item, string $which ): string {
+    $saved = 'subject' === $which ? (string) $item->invite_subject : (string) $item->invite_message;
+    if ( '' !== trim( $saved ) ) {
+        return $saved;
+    }
+    return 'subject' === $which
+        /* translators: {title} is replaced with the survey's title */
+        ? __( 'Please take a few minutes: {title}', 'societypress' )
+        /* translators: {first_name} and {title} are replaced when the email is sent */
+        : __( "Dear {first_name},\n\nWe'd value your answers to \"{title}\". It only takes a few minutes. Press the button below to start.\n\nThank you!", 'societypress' );
+}
+
+/**
+ * Counts for the Open & Send screen.
+ *
+ * @return array{answers:int,invited:int,invited_answered:int,queued:int}
+ */
+function sp_qn_send_counts( int $item_id ): array {
+    global $wpdb;
+    $inv = $wpdb->prefix . 'sp_qn_invites';
+    $res = $wpdb->prefix . 'sp_qn_respondents';
+    return [
+        'answers'          => sp_qn_answer_count( $item_id ),
+        'invited'          => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$inv} WHERE item_id = %d AND invited_on IS NOT NULL", $item_id ) ),
+        'invited_answered' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$inv} i JOIN {$res} r ON r.item_id = i.item_id AND r.user_id = i.user_id WHERE i.item_id = %d AND i.invited_on IS NOT NULL", $item_id ) ),
+        'queued'           => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$inv} WHERE item_id = %d AND queued <> ''", $item_id ) ),
+    ];
+}
+
+sp_handle_screen_load( 'sp-qn-send', 'sp_qn_handle_send_actions' );
+
+/**
+ * Open, close, reopen, invite and remind.
+ */
+function sp_qn_handle_send_actions(): void {
+    if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || empty( $_POST['sp_qn_send'] ) ) {
+        return;
+    }
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_qn_send' );
+    global $wpdb;
+    $id    = absint( $_POST['id'] ?? 0 );
+    $item  = sp_qn_get( $id );
+    if ( ! $item ) {
+        wp_die( esc_html__( 'That form or survey no longer exists.', 'societypress' ) );
+    }
+    $items = $wpdb->prefix . 'sp_qn_items';
+    $inv   = $wpdb->prefix . 'sp_qn_invites';
+    $do    = sanitize_key( wp_unslash( $_POST['sp_qn_send'] ) );
+    $msg   = '';
+
+    if ( 'open' === $do || 'reopen' === $do ) {
+        $count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_qn_questions WHERE item_id = %d AND type <> 'text_block'", $id ) );
+        if ( ! $count ) {
+            sp_screen_post_error( __( 'Add at least one question on the Design step before opening it.', 'societypress' ) );
+            return;
+        }
+        $data = [ 'status' => 'open', 'updated_at' => current_time( 'mysql' ) ];
+        // Reopening after the deadline passed would close again at once.
+        if ( $item->closes_at && current_time( 'mysql' ) >= $item->closes_at ) {
+            $data['closes_at'] = null;
+        }
+        $wpdb->update( $items, $data, [ 'id' => $id ] );
+        $item = sp_qn_get( $id );
+        sp_qn_sync_page( $item, sp_qn_page_slug( $item ) );
+        $msg = 'opened';
+    } elseif ( 'close' === $do ) {
+        $wpdb->update( $items, [ 'status' => 'closed', 'updated_at' => current_time( 'mysql' ) ], [ 'id' => $id ] );
+        // Nobody should be emailed about something that has closed.
+        $wpdb->update( $inv, [ 'queued' => '' ], [ 'item_id' => $id ] );
+        $msg = 'closed';
+    } elseif ( 'invite' === $do ) {
+        $subject = sanitize_text_field( wp_unslash( $_POST['invite_subject'] ?? '' ) );
+        $message = sanitize_textarea_field( wp_unslash( $_POST['invite_message'] ?? '' ) );
+        $wpdb->update( $items, [ 'invite_subject' => $subject, 'invite_message' => $message ], [ 'id' => $id ] );
+        $groups = 'some' === ( $_POST['who'] ?? 'all' )
+            ? array_values( array_intersect( array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['groups'] ?? [] ) ), array_keys( sp_qn_group_choices() ) ) )
+            : null;
+        $n = 0;
+        foreach ( array_keys( sp_qn_recipients( $item, $groups ) ) as $uid ) {
+            if ( sp_qn_has_answered( $item, $uid ) ) {
+                continue;
+            }
+            // Anyone already invited is skipped; Remind is for them.
+            $n += (int) $wpdb->query( $wpdb->prepare(
+                "INSERT IGNORE INTO {$inv} (item_id, user_id, queued) VALUES (%d, %d, 'invite')", $id, $uid
+            ) );
+        }
+        sp_qn_schedule_mail();
+        $msg = 'invited:' . $n;
+    } elseif ( 'remind' === $do ) {
+        $n = (int) $wpdb->query( $wpdb->prepare(
+            "UPDATE {$inv} i LEFT JOIN {$wpdb->prefix}sp_qn_respondents r ON r.item_id = i.item_id AND r.user_id = i.user_id
+                SET i.queued = 'remind'
+              WHERE i.item_id = %d AND i.invited_on IS NOT NULL AND i.queued = '' AND r.user_id IS NULL",
+            $id
+        ) );
+        sp_qn_schedule_mail();
+        $msg = 'reminded:' . $n;
+    }
+    wp_safe_redirect( add_query_arg( 'sp_msg', rawurlencode( $msg ), admin_url( 'admin.php?page=sp-qn-send&id=' . $id ) ) );
+    exit;
+}
+
+/**
+ * Start the email queue if it isn't running.
+ */
+function sp_qn_schedule_mail(): void {
+    if ( ! wp_next_scheduled( 'sp_qn_mail_batch' ) ) {
+        wp_schedule_single_event( time(), 'sp_qn_mail_batch' );
+    }
+}
+add_action( 'sp_qn_mail_batch', 'sp_qn_send_mail_batch' );
+
+/**
+ * Send the next 40 invitations or reminders.
+ *
+ * WHY 40 a minute: shared hosting counts emails per hour and cuts off long
+ * page loads. Each person is checked again at send time — they may have
+ * answered, lapsed or opted out since the button was pressed, or it may
+ * have closed.
+ */
+function sp_qn_send_mail_batch(): void {
+    global $wpdb;
+    $inv  = $wpdb->prefix . 'sp_qn_invites';
+    $rows = $wpdb->get_results( "SELECT item_id, user_id, queued FROM {$inv} WHERE queued <> '' LIMIT 40" );
+    if ( ! $rows ) {
+        return;
+    }
+    $people = sp_qn_mailable_members();
+    $items  = [];
+    $today  = current_time( 'Y-m-d' );
+    foreach ( $rows as $row ) {
+        $iid = (int) $row->item_id;
+        $uid = (int) $row->user_id;
+        if ( ! array_key_exists( $iid, $items ) ) {
+            $it            = sp_qn_apply_deadline( sp_qn_get( $iid ) );
+            $items[ $iid ] = ( $it && 'open' === $it->status ) ? $it : null;
+        }
+        $item  = $items[ $iid ];
+        $where = [ 'item_id' => $iid, 'user_id' => $uid ];
+        $remind = 'remind' === $row->queued;
+        if ( ! $item || ! isset( $people[ $uid ] ) || sp_qn_has_answered( $item, $uid ) ) {
+            // An invitation that never went out is dropped, so a later Send
+            // includes that person; a reminder simply stays unsent.
+            if ( $remind ) {
+                $wpdb->update( $inv, [ 'queued' => '' ], $where );
+            } else {
+                $wpdb->delete( $inv, $where );
+            }
+            continue;
+        }
+        sp_qn_send_invite_email( $item, $people[ $uid ], $remind );
+        $wpdb->update( $inv, $remind ? [ 'queued' => '', 'reminded_on' => $today ] : [ 'queued' => '', 'invited_on' => $today ], $where );
+    }
+    if ( $wpdb->get_var( "SELECT 1 FROM {$inv} WHERE queued <> '' LIMIT 1" ) ) {
+        wp_schedule_single_event( time() + MINUTE_IN_SECONDS, 'sp_qn_mail_batch' );
+    }
+}
+
+/**
+ * One invitation or reminder email.
+ */
+function sp_qn_send_invite_email( object $item, object $member, bool $remind ): void {
+    $first = trim( (string) $member->preferred_name ) ?: trim( (string) $member->first_name ) ?: __( 'Member', 'societypress' );
+    $swap  = [ '{first_name}' => $first, '{title}' => $item->title ];
+    $subject = strtr( sp_qn_invite_text( $item, 'subject' ), $swap );
+    if ( $remind ) {
+        /* translators: %s: the invitation's subject line */
+        $subject = sprintf( __( 'Reminder: %s', 'societypress' ), $subject );
+    }
+    $button = 'form' === $item->kind ? __( 'Fill in the form', 'societypress' ) : __( 'Take the survey', 'societypress' );
+    $body   = wpautop( esc_html( strtr( sp_qn_invite_text( $item, 'message' ), $swap ) ) );
+    $body  .= '<p style="text-align:center;margin:28px 0;"><a href="' . esc_url( sp_qn_invite_url( $item, (int) $member->user_id ) ) . '" style="display:inline-block;padding:12px 24px;background:#2271b1;color:#ffffff;border-radius:6px;text-decoration:none;font-weight:600;">' . esc_html( $button ) . '</a></p>';
+    $notes  = [];
+    if ( $item->closes_at ) {
+        /* translators: %s: closing date and time */
+        $notes[] = sprintf( __( 'Answers are accepted until %s.', 'societypress' ), date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item->closes_at ) ) );
+    }
+    if ( 'survey' === $item->kind && (int) $item->anonymous ) {
+        $notes[] = __( 'Your answers are anonymous. We keep a note that you took part, but not which answers were yours.', 'societypress' );
+    }
+    $notes[] = __( 'This button is your personal link — no password needed. Please don\'t forward this email.', 'societypress' );
+    $body   .= '<p style="color:#50575e;font-size:13px;">' . implode( '<br>', array_map( 'esc_html', $notes ) ) . '</p>';
+    add_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+    wp_mail( $member->email, $subject, sp_build_email_html( $item->title, $body ) );
+    remove_filter( 'wp_mail_content_type', 'sp_email_content_type_html' );
+}
+
+/**
+ * The Open & Send screen.
+ */
+function sp_qn_render_send_page(): void {
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms and surveys.', 'societypress' ) );
+    }
+    $item = sp_qn_apply_deadline( sp_qn_get( absint( $_GET['id'] ?? 0 ) ) );
+    if ( ! $item ) {
+        wp_die( esc_html__( 'That form or survey no longer exists.', 'societypress' ) );
+    }
+    $c      = sp_qn_send_counts( (int) $item->id );
+    $link   = $item->page_id ? get_permalink( (int) $item->page_id ) : '';
+    $error  = sp_screen_post_error();
+    [ $msg, $n ] = array_pad( explode( ':', sanitize_text_field( wp_unslash( $_GET['sp_msg'] ?? '' ) ) ), 2, 0 );
+    $n      = (int) $n;
+    $notices = [
+        'opened'   => __( 'It\'s open. People can answer now.', 'societypress' ),
+        'closed'   => __( 'Closed. No more answers will be taken.', 'societypress' ),
+        /* translators: %s: number of people */
+        'invited'  => sprintf( _n( 'Sending to %s person. Emails go out in small batches over the next few minutes.', 'Sending to %s people. Emails go out in small batches over the next few minutes.', $n, 'societypress' ), number_format_i18n( $n ) ),
+        /* translators: %s: number of people */
+        'reminded' => sprintf( _n( 'Reminding %s person.', 'Reminding %s people.', $n, 'societypress' ), number_format_i18n( $n ) ),
+    ];
+    $mailable = 'public' !== $item->audience;
+    $everyone = $mailable ? count( sp_qn_recipients( $item ) ) : 0;
+    $is_form  = 'form' === $item->kind;
+    sp_qn_admin_styles();
+    ?>
+    <div class="wrap sp-qn">
+        <?php sp_qn_render_header( $item, 'send' ); ?>
+        <?php if ( '' !== $error ) : ?>
+            <div class="notice notice-error"><p><?php echo esc_html( $error ); ?></p></div>
+        <?php elseif ( isset( $notices[ $msg ] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $notices[ $msg ] ); ?></p></div>
+        <?php endif; ?>
+
+        <div class="sp-qn-settings">
+            <div class="sp-qn-card">
+                <?php if ( 'draft' === $item->status ) : ?>
+                    <h2><?php esc_html_e( 'Not open yet', 'societypress' ); ?></h2>
+                    <p><?php echo $is_form ? esc_html__( 'Nobody can see this form until you open it. Opening puts its page on your website.', 'societypress' ) : esc_html__( 'Nobody can see this survey until you open it. Opening puts its page on your website.', 'societypress' ); ?></p>
+                    <form method="post"><?php wp_nonce_field( 'sp_qn_send' ); ?><input type="hidden" name="id" value="<?php echo (int) $item->id; ?>">
+                        <button type="submit" name="sp_qn_send" value="open" class="button button-primary button-hero"><?php esc_html_e( 'Open it', 'societypress' ); ?></button></form>
+                <?php elseif ( 'open' === $item->status ) : ?>
+                    <h2><span class="sp-qn-badge sp-qn-badge--open"><?php esc_html_e( 'Open', 'societypress' ); ?></span> <?php esc_html_e( 'People can answer now', 'societypress' ); ?></h2>
+                    <p>
+                        <label for="sp-qn-link"><strong><?php esc_html_e( 'Its web address', 'societypress' ); ?></strong></label><br>
+                        <input type="text" id="sp-qn-link" class="large-text" readonly value="<?php echo esc_attr( $link ); ?>">
+                    </p>
+                    <p>
+                        <button type="button" class="button" id="sp-qn-copy"><?php esc_html_e( 'Copy the address', 'societypress' ); ?></button>
+                        <a class="button" href="<?php echo esc_url( $link ); ?>" target="_blank"><?php esc_html_e( 'View the page', 'societypress' ); ?></a>
+                    </p>
+                    <p class="description"><?php esc_html_e( 'Paste the address into a newsletter or an email, or add the page to your website\'s menu.', 'societypress' ); ?></p>
+                    <?php if ( $item->closes_at ) : ?>
+                        <p><?php printf( /* translators: %s: date and time */ esc_html__( 'It closes by itself on %s.', 'societypress' ), esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $item->closes_at ) ) ) ); ?></p>
+                    <?php endif; ?>
+                    <form method="post" data-sp-confirm="<?php esc_attr_e( 'Close it now? Nobody will be able to answer until you reopen it.', 'societypress' ); ?>"><?php wp_nonce_field( 'sp_qn_send' ); ?><input type="hidden" name="id" value="<?php echo (int) $item->id; ?>">
+                        <button type="submit" name="sp_qn_send" value="close" class="button"><?php esc_html_e( 'Close now', 'societypress' ); ?></button></form>
+                <?php else : ?>
+                    <h2><span class="sp-qn-badge sp-qn-badge--closed"><?php esc_html_e( 'Closed', 'societypress' ); ?></span> <?php esc_html_e( 'No longer taking answers', 'societypress' ); ?></h2>
+                    <p><?php esc_html_e( 'Its page now tells visitors that it has closed.', 'societypress' ); ?></p>
+                    <form method="post"><?php wp_nonce_field( 'sp_qn_send' ); ?><input type="hidden" name="id" value="<?php echo (int) $item->id; ?>">
+                        <button type="submit" name="sp_qn_send" value="reopen" class="button"><?php esc_html_e( 'Reopen', 'societypress' ); ?></button></form>
+                    <?php if ( $item->closes_at && current_time( 'mysql' ) >= $item->closes_at ) : ?>
+                        <p class="description"><?php esc_html_e( 'Its deadline has passed, so reopening removes the deadline. Set a new one under Settings if you want.', 'societypress' ); ?></p>
+                    <?php endif; ?>
+                <?php endif; ?>
+                <p class="sp-qn-count"><?php printf( esc_html( _n( '%s answer so far.', '%s answers so far.', $c['answers'], 'societypress' ) ), '<strong>' . esc_html( number_format_i18n( $c['answers'] ) ) . '</strong>' ); // phpcs:ignore WordPress.Security.EscapeOutput -- pieces escaped. ?></p>
+            </div>
+
+            <?php if ( 'open' === $item->status ) : ?>
+            <div class="sp-qn-card">
+                <h2><?php esc_html_e( 'Email it to people (optional)', 'societypress' ); ?></h2>
+                <?php if ( ! $mailable ) : ?>
+                    <p><?php esc_html_e( 'Anyone can answer this one, so there\'s no list of people to email. Share the web address above instead.', 'societypress' ); ?></p>
+                <?php else : ?>
+                    <?php if ( $c['invited'] ) : ?>
+                        <p class="sp-qn-count"><?php printf( esc_html__( '%1$s of the %2$s people invited have answered.', 'societypress' ), '<strong>' . esc_html( number_format_i18n( $c['invited_answered'] ) ) . '</strong>', esc_html( number_format_i18n( $c['invited'] ) ) ); // phpcs:ignore WordPress.Security.EscapeOutput ?></p>
+                    <?php endif; ?>
+                    <?php if ( $c['queued'] ) : ?>
+                        <p class="description"><?php printf( esc_html( _n( '%s email is waiting to go out.', '%s emails are waiting to go out.', $c['queued'], 'societypress' ) ), esc_html( number_format_i18n( $c['queued'] ) ) ); ?></p>
+                    <?php endif; ?>
+                    <form method="post" data-sp-confirm="<?php esc_attr_e( 'Send the invitation now?', 'societypress' ); ?>">
+                        <?php wp_nonce_field( 'sp_qn_send' ); ?><input type="hidden" name="id" value="<?php echo (int) $item->id; ?>">
+                        <fieldset>
+                            <legend><strong><?php esc_html_e( 'Who gets it?', 'societypress' ); ?></strong></legend>
+                            <label class="sp-qn-line"><input type="radio" name="who" value="all" checked>
+                                <?php printf( esc_html( _n( 'Everyone who can answer (%s person)', 'Everyone who can answer (%s people)', $everyone, 'societypress' ) ), esc_html( number_format_i18n( $everyone ) ) ); ?></label>
+                            <label class="sp-qn-line"><input type="radio" name="who" value="some"> <?php esc_html_e( 'Only these groups:', 'societypress' ); ?></label>
+                            <span class="sp-qn-indent">
+                                <?php
+                                $limit = 'groups' === $item->audience ? (array) json_decode( (string) $item->audience_groups, true ) : null;
+                                foreach ( sp_qn_group_choices() as $key => $name ) :
+                                    if ( $limit && ! in_array( $key, $limit, true ) ) {
+                                        continue;
+                                    }
+                                    ?>
+                                    <label class="sp-qn-line"><input type="checkbox" name="groups[]" value="<?php echo esc_attr( $key ); ?>"> <?php echo esc_html( $name ); ?></label>
+                                <?php endforeach; ?>
+                            </span>
+                            <p class="description"><?php esc_html_e( 'People who have already answered, or were already invited, are left out. Members who asked not to get notices are left out too.', 'societypress' ); ?></p>
+                        </fieldset>
+                        <p>
+                            <label for="sp-qn-inv-subject"><strong><?php esc_html_e( 'Subject', 'societypress' ); ?></strong></label><br>
+                            <input type="text" id="sp-qn-inv-subject" name="invite_subject" class="large-text" value="<?php echo esc_attr( sp_qn_invite_text( $item, 'subject' ) ); ?>">
+                        </p>
+                        <p>
+                            <label for="sp-qn-inv-message"><strong><?php esc_html_e( 'Message', 'societypress' ); ?></strong></label><br>
+                            <textarea id="sp-qn-inv-message" name="invite_message" class="large-text" rows="7"><?php echo esc_textarea( sp_qn_invite_text( $item, 'message' ) ); ?></textarea>
+                            <span class="description"><?php esc_html_e( '{first_name} becomes each person\'s first name and {title} the title. A button with their personal link is added below the message — they won\'t need a password.', 'societypress' ); ?></span>
+                        </p>
+                        <button type="submit" name="sp_qn_send" value="invite" class="button button-primary"><?php esc_html_e( 'Send the invitation', 'societypress' ); ?></button>
+                    </form>
+                    <?php if ( $c['invited'] > $c['invited_answered'] ) : ?>
+                        <form method="post" class="sp-qn-remind" data-sp-confirm="<?php esc_attr_e( 'Email a reminder to everyone invited who hasn\'t answered yet?', 'societypress' ); ?>">
+                            <?php wp_nonce_field( 'sp_qn_send' ); ?><input type="hidden" name="id" value="<?php echo (int) $item->id; ?>">
+                            <button type="submit" name="sp_qn_send" value="remind" class="button">
+                                <?php printf( esc_html( _n( 'Remind the %s person who hasn\'t answered', 'Remind the %s people who haven\'t answered', $c['invited'] - $c['invited_answered'], 'societypress' ) ), esc_html( number_format_i18n( $c['invited'] - $c['invited_answered'] ) ) ); ?>
+                            </button>
+                        </form>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <script>
+    ( function () {
+        var b = document.getElementById( 'sp-qn-copy' ), f = document.getElementById( 'sp-qn-link' );
+        if ( ! b || ! f ) { return; }
+        var label = b.textContent;
+        b.addEventListener( 'click', function () {
+            f.select();
+            var done = function () { b.textContent = <?php echo wp_json_encode( __( 'Copied!', 'societypress' ) ); ?>; setTimeout( function () { b.textContent = label; }, 1500 ); };
+            if ( navigator.clipboard ) { navigator.clipboard.writeText( f.value ).then( done, function () { document.execCommand( 'copy' ); done(); } ); } else { document.execCommand( 'copy' ); done(); }
+        } );
+    } )();
+    </script>
     <?php
 }

@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.160] — 2026-11-23
+
+- **The new Forms & Surveys builder is hidden until it's finished.** It can
+  design forms and surveys but can't yet collect answers, so it no longer
+  appears in the menu. The existing Forms and Surveys screens are unchanged.
+
 ## [1.5.159] — 2026-11-23
 
 - **New Forms & Surveys builder (first part).** A rebuilt tool for making forms

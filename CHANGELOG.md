@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.157] — 2026-11-23
+
+- **Choose what the footer offers for contact.** Settings → Organization has a
+  new "In the Footer" choice: show the contact email address, show a link to a
+  page instead (such as your Contact Us page, with wording you set), or show
+  neither. Linking to a contact form keeps the address away from spam robots
+  that collect addresses from websites. Existing sites keep showing the email
+  until someone changes it. When several contact addresses are entered, the
+  footer now shows only the first.
+
 ## [1.5.156] — 2026-11-21
 
 - **Meetings and minutes on the public site.** A new Meetings & Minutes page

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.156
+ * Version:     1.5.157
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.156' );
+define( 'SOCIETYPRESS_VERSION', '1.5.157' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -67,6 +67,9 @@ register_activation_hook( __FILE__, function () {
             'organization_address'    => '',
             'organization_phone'      => '',
             'organization_email'      => '',
+            'footer_contact_mode'     => 'email',
+            'footer_contact_page_id'  => 0,
+            'footer_contact_label'    => '',
             'tax_id'                  => '',
             'membership_period_type'  => 'annual',
             'membership_start_month'  => 7,
@@ -33832,6 +33835,20 @@ add_action( 'admin_init', function () {
         ]
     );
 
+    // --- Footer contact ---
+    // WHY: a bare email address in every page's footer is harvested by spam
+    // bots, and a society that answers through a contact form (which can
+    // reach several officers at once) would rather point people there. The
+    // Contact Email above is still used for notifications and receipts, so
+    // the footer gets its own choice instead of blanking that address.
+    add_settings_field(
+        'footer_contact_mode',
+        __( 'In the Footer', 'societypress' ),
+        'sp_render_footer_contact_field',
+        'sp-settings-org',
+        'sp_org_section'
+    );
+
     // --- Tax ID ---
     // WHY: donation receipts print the 501(c)(3) statement only when this is
     // set, and donors need that statement for their taxes. The receipts always
@@ -35581,6 +35598,123 @@ function sp_render_textarea_field( array $args ): void {
     }
 }
 
+/**
+ * Render the "In the Footer" choice on the Organization settings page.
+ *
+ * WHY one field holding three controls: the page picker and link wording only
+ * mean something when "link to a page" is chosen, so they sit directly under
+ * that choice and hide otherwise — a volunteer never sees a page dropdown
+ * that does nothing.
+ */
+function sp_render_footer_contact_field(): void {
+    $settings = sp_settings();
+    $mode     = $settings['footer_contact_mode'] ?? 'email';
+    $page_id  = (int) ( $settings['footer_contact_page_id'] ?? 0 );
+    $label    = $settings['footer_contact_label'] ?? '';
+
+    $choices = [
+        'email' => __( 'Show the contact email address', 'societypress' ),
+        'page'  => __( 'Show a link to a page instead (such as your Contact Us page)', 'societypress' ),
+        'none'  => __( 'Show neither', 'societypress' ),
+    ];
+
+    echo '<fieldset id="sp-footer-contact">';
+    foreach ( $choices as $value => $text ) {
+        printf(
+            '<label><input type="radio" name="societypress_settings[footer_contact_mode]" value="%s"%s> %s</label><br>',
+            esc_attr( $value ),
+            checked( $mode, $value, false ),
+            esc_html( $text )
+        );
+    }
+
+    printf( '<div id="sp-footer-contact-page"%s>', 'page' === $mode ? '' : ' hidden' );
+    echo '<p><label for="sp-footer-contact-page-id">' . esc_html__( 'Page to link to', 'societypress' ) . '</label><br>';
+    wp_dropdown_pages( [
+        'name'              => 'societypress_settings[footer_contact_page_id]',
+        'id'                => 'sp-footer-contact-page-id',
+        'show_option_none'  => __( '— Select a page —', 'societypress' ),
+        'option_none_value' => '0',
+        'selected'          => $page_id,
+    ] );
+    echo '</p>';
+    printf(
+        '<p><label for="sp-footer-contact-label">%s</label><br><input type="text" id="sp-footer-contact-label" name="societypress_settings[footer_contact_label]" value="%s" placeholder="%s" class="regular-text"></p>',
+        esc_html__( 'Link wording', 'societypress' ),
+        esc_attr( $label ),
+        esc_attr__( 'Contact Us', 'societypress' )
+    );
+    echo '</div></fieldset>';
+    echo '<p class="description">' . esc_html__( 'What the bottom of every page offers visitors who want to reach you. Linking to a contact form keeps your email address away from spam robots that collect addresses from websites.', 'societypress' ) . '</p>';
+    ?>
+    <script>
+    ( function () {
+        var box = document.getElementById( 'sp-footer-contact' );
+        var extra = document.getElementById( 'sp-footer-contact-page' );
+        if ( ! box || ! extra ) { return; }
+        box.addEventListener( 'change', function ( e ) {
+            if ( e.target.name === 'societypress_settings[footer_contact_mode]' ) {
+                extra.hidden = e.target.value !== 'page';
+            }
+        } );
+    } )();
+    </script>
+    <?php
+}
+
+/**
+ * The footer's contact line: the society's email, a link to a chosen page, or
+ * nothing, per Settings → Organization → In the Footer.
+ *
+ * WHY in the plugin rather than each footer template: the parent theme and any
+ * child theme that overrides footer.php must all honour the same choice. A
+ * society that hid its address to stop spam would be badly served by a theme
+ * that went on printing it.
+ *
+ * WHY a missing or unpublished page shows nothing rather than the email: the
+ * society chose not to show the address, and a deleted page shouldn't quietly
+ * undo that choice.
+ *
+ * @return string Escaped HTML, or an empty string.
+ */
+function sp_footer_contact_html(): string {
+    $settings = sp_settings();
+    $mode     = $settings['footer_contact_mode'] ?? 'email';
+
+    if ( 'page' === $mode ) {
+        $page_id = (int) ( $settings['footer_contact_page_id'] ?? 0 );
+        if ( ! $page_id || 'publish' !== get_post_status( $page_id ) ) {
+            return '';
+        }
+        $label = trim( (string) ( $settings['footer_contact_label'] ?? '' ) );
+        if ( '' === $label ) {
+            $label = __( 'Contact Us', 'societypress' );
+        }
+        return sprintf(
+            '<p class="footer-text"><a href="%s">%s</a></p>',
+            esc_url( get_permalink( $page_id ) ),
+            esc_html( $label )
+        );
+    }
+
+    if ( 'email' === $mode ) {
+        $email = trim( (string) ( $settings['organization_email'] ?? '' ) );
+        if ( '' === $email ) {
+            return '';
+        }
+        // The field accepts several addresses so notifications can reach more
+        // than one officer; the footer shows only the first.
+        $email = trim( explode( ',', $email )[0] );
+        return sprintf(
+            '<p class="footer-text"><a href="mailto:%1$s">%2$s</a></p>',
+            esc_attr( $email ),
+            esc_html( $email )
+        );
+    }
+
+    return '';
+}
+
 
 // ============================================================================
 // SANITIZE CALLBACK
@@ -35751,7 +35885,11 @@ function sp_sanitize_settings( array $input ): array {
         'organization_address'    => fn() => sanitize_textarea_field( $input['organization_address'] ?? '' ),
         'organization_phone'      => fn() => sanitize_text_field( $input['organization_phone'] ?? '' ),
         'organization_email'      => fn() => sp_email_list_string( (string) ( $input['organization_email'] ?? '' ) ),
-        'tax_id'                  => fn() => sanitize_text_field( $input['tax_id'] ?? '' ),
+        'footer_contact_mode'     => fn() => in_array( $input['footer_contact_mode'] ?? '', [ 'email', 'page', 'none' ], true )
+                                              ? $input['footer_contact_mode'] : 'email',
+        'footer_contact_page_id'  => fn() => absint( $input['footer_contact_page_id'] ?? 0 ),
+        'footer_contact_label'    => fn() => sanitize_text_field( $input['footer_contact_label'] ?? '' ),
+        'tax_id'                => fn() => sanitize_text_field( $input['tax_id'] ?? '' ),
         'community_forum_url'    => fn() => esc_url_raw( $input['community_forum_url'] ?? '' ),
         'help_requests_notify_all'=> fn() => ! empty( $input['help_requests_notify_all'] ) ? 1 : 0,
         // Research Requests — clamped to the same bounds the per-case editor uses.
@@ -35942,7 +36080,8 @@ function sp_sanitize_settings( array $input ): array {
     if ( array_key_exists( 'organization_name', $input ) ) {
         $page_keys = array_merge( $page_keys, [
             'organization_name', 'organization_address', 'organization_phone',
-            'organization_email', 'tax_id', 'community_forum_url', 'help_requests_notify_all',
+            'organization_email', 'footer_contact_mode', 'footer_contact_page_id', 'footer_contact_label',
+            'tax_id', 'community_forum_url', 'help_requests_notify_all',
             'help_requests_require_approval', 'help_requests_per_email_per_day',
             'research_default_rate', 'research_default_max_hours', 'research_sla_days',
             'email_from_name', 'email_from_email',
@@ -42517,7 +42656,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.156',
+            'version'     => '1.5.157',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -42525,7 +42664,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.156',
+            'version'     => '1.5.157',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -42533,7 +42672,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.156',
+            'version'     => '1.5.157',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -42541,7 +42680,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.156',
+            'version'     => '1.5.157',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -42549,7 +42688,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.156',
+            'version'     => '1.5.157',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

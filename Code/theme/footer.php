@@ -19,7 +19,6 @@ $sp = get_option( 'societypress_settings', [] );
 $org_name    = $sp['organization_name']    ?? get_bloginfo( 'name' );
 $org_address = $sp['organization_address'] ?? '';
 $org_phone   = $sp['organization_phone']   ?? '';
-$org_email   = $sp['organization_email']   ?? '';
 ?>
 
     <footer class="site-footer">
@@ -41,13 +40,13 @@ $org_email   = $sp['organization_email']   ?? '';
                         </a>
                     </p>
                 <?php endif; ?>
-                <?php if ( $org_email ) : ?>
-                    <p class="footer-text">
-                        <a href="mailto:<?php echo esc_attr( $org_email ); ?>">
-                            <?php echo esc_html( $org_email ); ?>
-                        </a>
-                    </p>
-                <?php endif; ?>
+                <?php
+                // Email, a contact-page link, or nothing — the society picks
+                // under Settings → Organization → In the Footer.
+                if ( function_exists( 'sp_footer_contact_html' ) ) {
+                    echo sp_footer_contact_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in the helper.
+                }
+                ?>
                 <?php endif; ?>
                 <?php
                 /*

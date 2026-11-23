@@ -16,6 +16,21 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Forms & Surveys, rebuilt from scratch — 1.5.159 to 1.5.165
+
+One builder for forms and surveys replaces the two old tools. You design it as
+people will see it, with fifteen kinds of question, sections and paste-in
+questions. It opens as a page on the site, can be emailed to members with
+personal links and reminders, and has a Results screen with a summary, Compare
+groups, each answer one at a time, a printable version and a spreadsheet.
+
+### Fuller daily check-in — 1.5.163
+
+Each site reports its versions, theme, features in use, active member count and
+host once a day. societypress.net's Societies report reads it.
+
+### Preview page changes and optional page approval — 1.5.158
+
 ### Meetings and minutes on the public site — 1.5.156
 
 A Meetings & Minutes page type (offered from the Meetings screen) and
@@ -171,17 +186,15 @@ before the session ends.
 
 ### High
 
-#### Surveys, rebuilt from scratch
+#### Show a question only when an earlier answer matches
 
-**Motivation:** The survey editor works but asks a volunteer to think in
-form-builder terms. Surveys should be something a non-technical officer can
-build and read without help.
-**Scope:** A complete redesign, started fresh (decided 2026-10-25). The
-`wip/survey-editor-redesign` branch is kept for reference only. Questions to
-settle first, one at a time: whether surveys get their own tool or keep sharing
-the Forms builder; who can answer (members only, the public, chosen groups);
-and what happens to surveys already on existing sites.
-**Blockers:** The design questions above.
+**Motivation:** The old Surveys tool could ask "How well did the online
+connection work?" only of people who said they attended online. The rebuilt
+Forms & Surveys builder can't yet, so everyone sees such a question.
+**Scope:** In the question box, an "Ask this question" choice: always, or only
+when a chosen earlier question got a chosen answer. Hidden questions are skipped
+on the page, never required, and left out of that person's results.
+**Blockers:** None.
 
 #### Send backups off the server automatically
 

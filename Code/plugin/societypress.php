@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.158
+ * Version:     1.5.159
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.158' );
+define( 'SOCIETYPRESS_VERSION', '1.5.159' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -2256,6 +2256,78 @@ function sp_create_tables(): void {
         KEY queued (queued)
     ) {$charset_collate};" );
 
+
+    // ========================================================================
+    // Forms & Surveys (rebuilt) — sp_qn_* tables
+    //
+    // WHY a fresh set of tables beside sp_forms rather than new columns on it:
+    //      the builder was redesigned from nothing (decided 2026-11-23), with
+    //      sections, one row per question and folders. Bending sp_forms's
+    //      one-JSON-blob-of-fields shape into that would carry the old model's
+    //      limits forward. The old tables stay until the new builder covers
+    //      everything they do, then go.
+    //
+    // WHY "qn" (questionnaire): one builder makes both forms and surveys, so
+    //      neither word alone names the table honestly. `kind` says which.
+    //
+    // WHY one row per question with a JSON `settings` column: every question
+    //      shares the same few facts (where it sits, its wording, whether it
+    //      is required) while each kind needs different extras (choices, grid
+    //      rows, star count). Columns for the shared facts keep ordering and
+    //      counting simple; the extras vary too much to deserve columns.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}qn_items (
+        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        kind             VARCHAR(10)         NOT NULL DEFAULT 'survey',
+        title            VARCHAR(255)        NOT NULL DEFAULT '',
+        description      TEXT                NULL,
+        page_id          BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        status           VARCHAR(10)         NOT NULL DEFAULT 'draft',
+        closes_at        DATETIME            NULL,
+        anonymous        TINYINT(1)          NOT NULL DEFAULT 0,
+        audience         VARCHAR(10)         NOT NULL DEFAULT 'members',
+        audience_groups  TEXT                NULL,
+        notify_emails    TEXT                NULL,
+        folder_id        BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        created_by       BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        created_at       DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at       DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY  (id),
+        KEY kind (kind),
+        KEY status (status),
+        KEY folder_id (folder_id)
+    ) {$charset_collate};" );
+
+    dbDelta( "CREATE TABLE {$prefix}qn_sections (
+        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        item_id          BIGINT(20) UNSIGNED NOT NULL,
+        sort_order       INT                 NOT NULL DEFAULT 0,
+        title            VARCHAR(255)        NOT NULL DEFAULT '',
+        description      TEXT                NULL,
+        PRIMARY KEY  (id),
+        KEY item_id (item_id)
+    ) {$charset_collate};" );
+
+    dbDelta( "CREATE TABLE {$prefix}qn_questions (
+        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        item_id          BIGINT(20) UNSIGNED NOT NULL,
+        section_id       BIGINT(20) UNSIGNED NOT NULL,
+        sort_order       INT                 NOT NULL DEFAULT 0,
+        type             VARCHAR(30)         NOT NULL DEFAULT 'multiple_choice',
+        prompt           TEXT                NULL,
+        required         TINYINT(1)          NOT NULL DEFAULT 0,
+        settings         LONGTEXT            NULL,
+        PRIMARY KEY  (id),
+        KEY item_id (item_id),
+        KEY section_id (section_id)
+    ) {$charset_collate};" );
+
+    dbDelta( "CREATE TABLE {$prefix}qn_folders (
+        id               BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name             VARCHAR(200)        NOT NULL DEFAULT '',
+        sort_order       INT                 NOT NULL DEFAULT 0,
+        PRIMARY KEY  (id)
+    ) {$charset_collate};" );
 
     // ========================================================================
     // EMAIL LOG
@@ -6952,7 +7024,7 @@ function sp_get_modules(): array {
             'name'        => __( 'Surveys', 'societypress' ),
             'description' => __( 'Ask your members questions and see everyone\'s answers added up. Surveys can be anonymous, and each member can answer only once.', 'societypress' ),
             'icon'        => 'dashicons-clipboard',
-            'menu_slugs'  => [ 'sp-surveys', 'sp-survey-edit' ],
+            'menu_slugs'  => [ 'sp-surveys', 'sp-survey-edit', 'sp-qn', 'sp-qn-settings', 'sp-qn-edit' ],
         ],
     ];
 }
@@ -8613,6 +8685,33 @@ add_action( 'admin_menu', function () {
         'sp_render_surveys_page'
     );
 
+    // Forms & Surveys (rebuilt) — the one list, plus its hidden settings and
+    // editor screens.
+    sp_add_admin_page(
+        'societypress',
+        __( 'Forms & Surveys — SocietyPress', 'societypress' ),
+        __( 'Forms & Surveys', 'societypress' ),
+        'manage_options',
+        'sp-qn',
+        'sp_qn_render_list_page'
+    );
+    sp_add_admin_page(
+        '',
+        __( 'Form or Survey Settings — SocietyPress', 'societypress' ),
+        __( 'Settings', 'societypress' ),
+        'manage_options',
+        'sp-qn-settings',
+        'sp_qn_render_settings_page'
+    );
+    sp_add_admin_page(
+        '',
+        __( 'Design — SocietyPress', 'societypress' ),
+        __( 'Design', 'societypress' ),
+        'manage_options',
+        'sp-qn-edit',
+        'sp_qn_render_editor_page'
+    );
+
     // Survey Edit — hidden (accessed via Add New Survey / a survey's name)
     sp_add_admin_page(
         '',
@@ -9470,6 +9569,9 @@ function sp_get_menu_capability_map(): array {
         // Forms
         'sp-forms'                 => 'sp_manage_content',
         'sp-surveys'               => 'sp_manage_content',
+        'sp-qn'                    => 'sp_manage_content',
+        'sp-qn-settings'           => 'sp_manage_content',
+        'sp-qn-edit'               => 'sp_manage_content',
         'sp-survey-edit'           => 'sp_manage_content',
         'sp-form-edit'             => 'sp_manage_content',
         'sp-form-submissions'      => 'sp_manage_content',
@@ -14988,7 +15090,7 @@ function sp_default_menu_config(): array {
                            'sp-newsletter-archive', 'sp-import-newsletters' ] ],
 
             [ 'id' => 'surveys', 'label' => __( 'Surveys', 'societypress' ), 'icon' => 'dashicons-clipboard',
-              'items' => [ 'sp-surveys' ] ],
+              'items' => [ 'sp-qn', 'sp-surveys' ] ],
 
             // WHY the website's content and its look sit in one group: a volunteer
             // changing "the website" does not know in advance whether the thing
@@ -43095,7 +43197,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.158',
+            'version'     => '1.5.159',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43103,7 +43205,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.158',
+            'version'     => '1.5.159',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43111,7 +43213,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.158',
+            'version'     => '1.5.159',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43119,7 +43221,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.158',
+            'version'     => '1.5.159',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43127,7 +43229,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.158',
+            'version'     => '1.5.159',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -145057,5 +145159,1775 @@ function sp_render_menus_page_script(): void {
         refreshArrows();
     })();
     </script>
+    <?php
+}
+
+
+// ============================================================================
+// FORMS & SURVEYS — the rebuilt builder (round 1: list, settings, design)
+// ============================================================================
+//
+// WHY one builder for both: a form and a survey ask the same kinds of
+// question. What differs is what happens to the answers — a form's response
+// is a message somebody acts on, a survey's responses are added up. So the
+// volunteer picks "Form or Survey?" first and the same editor serves both.
+// (Design settled with Charles 2026-11-23; SurveyMonkey and Google Forms are
+// the bar, minus anything AI.)
+//
+// WHY every form or survey owns a real WordPress page: members find it the
+// way they find anything else on the site — a menu, the home page, a link in
+// the newsletter — and it wears the society's own theme.
+
+/**
+ * The kinds of question, in the order the menu offers them.
+ *
+ * WHY this order: it follows how often societies reach for each — multiple
+ * choice and a comment box cover most questions, so they come first.
+ *
+ * @return array<string,array{label:string,icon:string,help:string}>
+ */
+function sp_qn_types(): array {
+    return [
+        'multiple_choice' => [ 'label' => __( 'Multiple choice', 'societypress' ), 'icon' => 'dashicons-editor-ul', 'help' => __( 'Pick one answer from a list.', 'societypress' ) ],
+        'long_answer'     => [ 'label' => __( 'Comment box', 'societypress' ), 'icon' => 'dashicons-format-chat', 'help' => __( 'A large box for a written answer of any length.', 'societypress' ) ],
+        'short_answer'    => [ 'label' => __( 'Short answer', 'societypress' ), 'icon' => 'dashicons-minus', 'help' => __( 'A single line, for a name, a town, a number.', 'societypress' ) ],
+        'checkboxes'      => [ 'label' => __( 'Checkboxes', 'societypress' ), 'icon' => 'dashicons-yes-alt', 'help' => __( 'Tick as many answers as apply.', 'societypress' ) ],
+        'star_rating'     => [ 'label' => __( 'Star rating', 'societypress' ), 'icon' => 'dashicons-star-filled', 'help' => __( 'Give it from one to five stars (or more).', 'societypress' ) ],
+        'grid'            => [ 'label' => __( 'Grid', 'societypress' ), 'icon' => 'dashicons-grid-view', 'help' => __( 'Several statements answered on the same scale, such as Agree to Disagree.', 'societypress' ) ],
+        'ranking'         => [ 'label' => __( 'Ranking', 'societypress' ), 'icon' => 'dashicons-sort', 'help' => __( 'Put a list in order, most to least.', 'societypress' ) ],
+        'dropdown'        => [ 'label' => __( 'Drop down menu', 'societypress' ), 'icon' => 'dashicons-arrow-down-alt2', 'help' => __( 'Pick one answer from a long list that folds away.', 'societypress' ) ],
+        'scale'           => [ 'label' => __( 'Number scale', 'societypress' ), 'icon' => 'dashicons-leftright', 'help' => __( 'Pick a number, such as 1 to 10.', 'societypress' ) ],
+        'date'            => [ 'label' => __( 'Date', 'societypress' ), 'icon' => 'dashicons-calendar-alt', 'help' => __( 'Pick a day from a calendar.', 'societypress' ) ],
+        'time'            => [ 'label' => __( 'Time', 'societypress' ), 'icon' => 'dashicons-clock', 'help' => __( 'Pick a time of day.', 'societypress' ) ],
+        'contact'         => [ 'label' => __( 'Contact details', 'societypress' ), 'icon' => 'dashicons-id', 'help' => __( 'Name, email, phone and address boxes together.', 'societypress' ) ],
+        'picture_choice'  => [ 'label' => __( 'Picture choice', 'societypress' ), 'icon' => 'dashicons-format-image', 'help' => __( 'Pick one of several pictures.', 'societypress' ) ],
+        'file_upload'     => [ 'label' => __( 'File upload', 'societypress' ), 'icon' => 'dashicons-upload', 'help' => __( 'Attach a file or photo.', 'societypress' ) ],
+        'text_block'      => [ 'label' => __( 'Text only (no question)', 'societypress' ), 'icon' => 'dashicons-editor-paragraph', 'help' => __( 'Instructions or a heading between questions. Nobody answers it.', 'societypress' ) ],
+    ];
+}
+
+/**
+ * Can the current user build forms and surveys?
+ */
+function sp_qn_can_manage(): bool {
+    return ( sp_module_enabled( 'surveys' ) || sp_module_enabled( 'forms' ) )
+        && ( current_user_can( 'sp_manage_content' ) || current_user_can( 'manage_options' ) );
+}
+
+/**
+ * One form or survey, or null.
+ */
+function sp_qn_get( int $id ): ?object {
+    global $wpdb;
+    $row = $id ? $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_qn_items WHERE id = %d", $id ) ) : null;
+    return $row ?: null;
+}
+
+/**
+ * Plain-English status names.
+ *
+ * @return array<string,string>
+ */
+function sp_qn_statuses(): array {
+    return [
+        'draft'  => __( 'Draft', 'societypress' ),
+        'open'   => __( 'Open', 'societypress' ),
+        'closed' => __( 'Closed', 'societypress' ),
+    ];
+}
+
+/**
+ * Sections, each holding its questions in order, ready for the editor.
+ *
+ * @return array[]
+ */
+function sp_qn_structure( int $item_id ): array {
+    global $wpdb;
+    $sections = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_qn_sections WHERE item_id = %d ORDER BY sort_order ASC, id ASC", $item_id
+    ) );
+    $questions = $wpdb->get_results( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_qn_questions WHERE item_id = %d ORDER BY sort_order ASC, id ASC", $item_id
+    ) );
+    $by_section = [];
+    foreach ( $questions as $q ) {
+        $settings = json_decode( (string) $q->settings, true );
+        $settings = is_array( $settings ) ? $settings : [];
+        // The editor previews pictures, so it needs their addresses; only the
+        // attachment id is stored, so a moved or resized image still resolves.
+        if ( 'picture_choice' === $q->type && ! empty( $settings['choices'] ) ) {
+            foreach ( $settings['choices'] as $i => $c ) {
+                $settings['choices'][ $i ]['url'] = ! empty( $c['image_id'] )
+                    ? (string) wp_get_attachment_image_url( (int) $c['image_id'], 'medium' ) : '';
+            }
+        }
+        $by_section[ (int) $q->section_id ][] = [
+            'id'       => (int) $q->id,
+            'type'     => $q->type,
+            'prompt'   => (string) $q->prompt,
+            'required' => (bool) $q->required,
+            'settings' => $settings,
+        ];
+    }
+    $out = [];
+    foreach ( $sections as $sec ) {
+        $out[] = [
+            'id'          => (int) $sec->id,
+            'title'       => (string) $sec->title,
+            'description' => (string) $sec->description,
+            'questions'   => $by_section[ (int) $sec->id ] ?? [],
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Member groups and committees a form or survey can be limited to.
+ *
+ * WHY keys like "g:3" and "c:5": the two live in different tables with
+ * overlapping ids, so the prefix keeps "group 3" and "committee 3" apart.
+ *
+ * @return array<string,string> key => name
+ */
+function sp_qn_group_choices(): array {
+    global $wpdb;
+    $out = [];
+    foreach ( (array) $wpdb->get_results( "SELECT id, name FROM {$wpdb->prefix}sp_groups WHERE status = 'active' ORDER BY sort_order ASC, name ASC" ) as $g ) {
+        $out[ 'g:' . (int) $g->id ] = $g->name;
+    }
+    foreach ( (array) $wpdb->get_results( "SELECT id, name FROM {$wpdb->prefix}sp_committees WHERE active = 1 ORDER BY sort_order ASC, name ASC" ) as $c ) {
+        /* translators: %s: committee name */
+        $out[ 'c:' . (int) $c->id ] = sprintf( __( '%s (committee)', 'societypress' ), $c->name );
+    }
+    return $out;
+}
+
+/**
+ * Create or update the WordPress page a form or survey lives on.
+ *
+ * WHY the page stays a draft until the form opens: publishing is the Send
+ * step's job. A half-built survey must not appear on the site just because
+ * somebody gave it a title.
+ *
+ * @return string The address actually used, which WordPress may have adjusted
+ *                if another page already had the one asked for.
+ */
+function sp_qn_sync_page( object $item, string $slug ): string {
+    $postarr = [
+        'post_type'    => 'page',
+        'post_title'   => $item->title,
+        'post_name'    => sanitize_title( $slug ?: $item->title ),
+        'post_status'  => 'open' === $item->status || 'closed' === $item->status ? 'publish' : 'draft',
+        'post_content' => '[societypress_questionnaire id="' . (int) $item->id . '"]',
+    ];
+    $page_id = (int) $item->page_id;
+    if ( $page_id && get_post( $page_id ) ) {
+        $postarr['ID'] = $page_id;
+        wp_update_post( $postarr );
+    } else {
+        $postarr['post_author'] = get_current_user_id();
+        $page_id = (int) wp_insert_post( $postarr );
+        if ( $page_id ) {
+            global $wpdb;
+            $wpdb->update( $wpdb->prefix . 'sp_qn_items', [ 'page_id' => $page_id ], [ 'id' => (int) $item->id ] );
+        }
+    }
+    // A draft has no slug of its own until published, so WordPress would drop
+    // the one we chose. Store it directly, made unique the way WordPress would.
+    if ( $page_id ) {
+        $want   = sanitize_title( $slug ?: $item->title );
+        $unique = wp_unique_post_slug( $want, $page_id, 'publish', 'page', 0 );
+        if ( get_post_field( 'post_name', $page_id ) !== $unique ) {
+            global $wpdb;
+            $wpdb->update( $wpdb->posts, [ 'post_name' => $unique ], [ 'ID' => $page_id ] );
+            clean_post_cache( $page_id );
+        }
+        return $unique;
+    }
+    return '';
+}
+
+/**
+ * The address a form or survey's page has (or will have once published).
+ */
+function sp_qn_page_slug( object $item ): string {
+    return $item->page_id ? (string) get_post_field( 'post_name', (int) $item->page_id ) : '';
+}
+
+/**
+ * Delete a form or survey, its questions and its page, for good.
+ */
+function sp_qn_delete( int $id ): void {
+    global $wpdb;
+    $item = sp_qn_get( $id );
+    if ( ! $item ) {
+        return;
+    }
+    if ( $item->page_id ) {
+        wp_delete_post( (int) $item->page_id, true );
+    }
+    $wpdb->delete( $wpdb->prefix . 'sp_qn_questions', [ 'item_id' => $id ] );
+    $wpdb->delete( $wpdb->prefix . 'sp_qn_sections', [ 'item_id' => $id ] );
+    $wpdb->delete( $wpdb->prefix . 'sp_qn_items', [ 'id' => $id ] );
+}
+
+/**
+ * Make a draft copy of a form or survey, questions and all.
+ *
+ * @return int The new copy's id, or 0.
+ */
+function sp_qn_copy( int $id ): int {
+    global $wpdb;
+    $src = sp_qn_get( $id );
+    if ( ! $src ) {
+        return 0;
+    }
+    $row = (array) $src;
+    unset( $row['id'] );
+    /* translators: %s: title of the form or survey being copied */
+    $row['title']      = sprintf( __( 'Copy of %s', 'societypress' ), $src->title );
+    $row['status']     = 'draft';
+    $row['page_id']    = 0;
+    $row['created_by'] = get_current_user_id();
+    $row['created_at'] = current_time( 'mysql' );
+    $row['updated_at'] = current_time( 'mysql' );
+    $wpdb->insert( $wpdb->prefix . 'sp_qn_items', $row );
+    $new_id = (int) $wpdb->insert_id;
+    if ( ! $new_id ) {
+        return 0;
+    }
+    foreach ( sp_qn_structure( $id ) as $i => $sec ) {
+        $wpdb->insert( $wpdb->prefix . 'sp_qn_sections', [
+            'item_id' => $new_id, 'sort_order' => $i, 'title' => $sec['title'], 'description' => $sec['description'],
+        ] );
+        $sec_id = (int) $wpdb->insert_id;
+        foreach ( $sec['questions'] as $j => $q ) {
+            $wpdb->insert( $wpdb->prefix . 'sp_qn_questions', [
+                'item_id' => $new_id, 'section_id' => $sec_id, 'sort_order' => $j, 'type' => $q['type'],
+                'prompt' => $q['prompt'], 'required' => $q['required'] ? 1 : 0,
+                'settings' => wp_json_encode( sp_qn_clean_settings( $q['type'], $q['settings'] ) ),
+            ] );
+        }
+    }
+    $copy = sp_qn_get( $new_id );
+    sp_qn_sync_page( $copy, $copy->title );
+    return $new_id;
+}
+
+/**
+ * Keep only the settings each kind of question uses, cleaned.
+ *
+ * @param string $type
+ * @param mixed  $raw
+ * @return array
+ */
+function sp_qn_clean_settings( string $type, $raw ): array {
+    $raw   = is_array( $raw ) ? $raw : [];
+    $lines = static function ( $list, int $max = 100 ): array {
+        $out = [];
+        foreach ( array_slice( (array) $list, 0, $max ) as $v ) {
+            $v = sanitize_text_field( is_scalar( $v ) ? (string) $v : '' );
+            if ( '' !== $v ) {
+                $out[] = $v;
+            }
+        }
+        return $out;
+    };
+    switch ( $type ) {
+        case 'multiple_choice':
+        case 'checkboxes':
+            return [ 'choices' => $lines( $raw['choices'] ?? [] ), 'other' => ! empty( $raw['other'] ), 'shuffle' => ! empty( $raw['shuffle'] ) ];
+        case 'dropdown':
+        case 'ranking':
+            return [ 'choices' => $lines( $raw['choices'] ?? [] ), 'shuffle' => ! empty( $raw['shuffle'] ) ];
+        case 'picture_choice':
+            $pics = [];
+            foreach ( array_slice( (array) ( $raw['choices'] ?? [] ), 0, 30 ) as $c ) {
+                $img = absint( $c['image_id'] ?? 0 );
+                if ( $img ) {
+                    $pics[] = [ 'image_id' => $img, 'label' => sanitize_text_field( (string) ( $c['label'] ?? '' ) ) ];
+                }
+            }
+            return [ 'choices' => $pics ];
+        case 'star_rating':
+            return [ 'stars' => max( 3, min( 10, (int) ( $raw['stars'] ?? 5 ) ) ) ];
+        case 'scale':
+            $min = 0 === (int) ( $raw['min'] ?? 1 ) ? 0 : 1;
+            return [
+                'min'  => $min,
+                'max'  => max( $min + 2, min( 10, (int) ( $raw['max'] ?? 10 ) ) ),
+                'low'  => sanitize_text_field( (string) ( $raw['low'] ?? '' ) ),
+                'high' => sanitize_text_field( (string) ( $raw['high'] ?? '' ) ),
+            ];
+        case 'grid':
+            return [ 'rows' => $lines( $raw['rows'] ?? [], 50 ), 'columns' => $lines( $raw['columns'] ?? [], 12 ), 'multi' => ! empty( $raw['multi'] ) ];
+        case 'contact':
+            $fields = array_values( array_intersect( [ 'name', 'email', 'phone', 'address' ], (array) ( $raw['fields'] ?? [] ) ) );
+            return [ 'fields' => $fields ?: [ 'name', 'email' ] ];
+        default:
+            return [];
+    }
+}
+
+/**
+ * The shortcode each form or survey's page carries.
+ *
+ * WHY only a holding message for now: answering is the next round of the
+ * rebuild. Until then a page that somehow gets published says so plainly
+ * rather than showing a broken form.
+ */
+add_shortcode( 'societypress_questionnaire', function ( $atts ) {
+    $item = sp_qn_get( absint( $atts['id'] ?? 0 ) );
+    if ( ! $item ) {
+        return '';
+    }
+    $out = '';
+    if ( '' !== trim( (string) $item->description ) ) {
+        $out .= wpautop( esc_html( $item->description ) );
+    }
+    $msg  = 'form' === $item->kind
+        ? __( 'This form is not open yet.', 'societypress' )
+        : __( 'This survey is not open yet.', 'societypress' );
+    return $out . '<p class="sp-qn-not-open">' . esc_html( $msg ) . '</p>';
+} );
+
+// ---- The list ----------------------------------------------------------------
+
+sp_handle_screen_load( 'sp-qn', 'sp_qn_handle_list_actions' );
+
+/**
+ * Everything the list screen can do: delete, copy, move, folders, and the
+ * same for several ticked at once. All POST, all behind one nonce.
+ */
+function sp_qn_handle_list_actions(): void {
+    if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || empty( $_POST['sp_qn_action'] ) ) {
+        return;
+    }
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_qn_list' );
+    global $wpdb;
+    $items   = $wpdb->prefix . 'sp_qn_items';
+    $folders = $wpdb->prefix . 'sp_qn_folders';
+    $action  = sanitize_key( wp_unslash( $_POST['sp_qn_action'] ) );
+    $id      = absint( $_POST['id'] ?? 0 );
+    $ids     = array_filter( array_map( 'absint', (array) ( $_POST['ids'] ?? [] ) ) );
+    $folder  = absint( $_POST['folder_id'] ?? 0 );
+    $msg     = '';
+
+    switch ( $action ) {
+        case 'delete':
+            sp_qn_delete( $id );
+            $msg = 'deleted';
+            break;
+        case 'bulk_delete':
+            foreach ( $ids as $one ) {
+                sp_qn_delete( $one );
+            }
+            $msg = 'deleted';
+            break;
+        case 'copy':
+            $new = sp_qn_copy( $id );
+            if ( $new ) {
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-qn-edit&id=' . $new ) );
+                exit;
+            }
+            break;
+        case 'move':
+            $wpdb->update( $items, [ 'folder_id' => $folder ], [ 'id' => $id ] );
+            $msg = 'moved';
+            break;
+        case 'bulk_move':
+            foreach ( $ids as $one ) {
+                $wpdb->update( $items, [ 'folder_id' => $folder ], [ 'id' => $one ] );
+            }
+            $msg = 'moved';
+            break;
+        case 'folder_add':
+            $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+            if ( '' !== $name ) {
+                $wpdb->insert( $folders, [ 'name' => $name ] );
+                wp_safe_redirect( admin_url( 'admin.php?page=sp-qn&folder=' . (int) $wpdb->insert_id ) );
+                exit;
+            }
+            break;
+        case 'folder_rename':
+            $name = sanitize_text_field( wp_unslash( $_POST['name'] ?? '' ) );
+            if ( '' !== $name ) {
+                $wpdb->update( $folders, [ 'name' => $name ], [ 'id' => $folder ] );
+            }
+            wp_safe_redirect( admin_url( 'admin.php?page=sp-qn&folder=' . $folder ) );
+            exit;
+        case 'folder_delete':
+            // Emptying a folder never deletes what was in it — those simply
+            // go back to the main list.
+            $wpdb->update( $items, [ 'folder_id' => 0 ], [ 'folder_id' => $folder ] );
+            $wpdb->delete( $folders, [ 'id' => $folder ] );
+            $msg = 'folder_deleted';
+            break;
+    }
+    wp_safe_redirect( add_query_arg( 'sp_msg', $msg, wp_get_referer() ?: admin_url( 'admin.php?page=sp-qn' ) ) );
+    exit;
+}
+
+/**
+ * The Forms & Surveys home screen.
+ */
+function sp_qn_render_list_page(): void {
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms and surveys.', 'societypress' ) );
+    }
+    global $wpdb;
+    $folders = $wpdb->get_results( "SELECT f.id, f.name, COUNT(i.id) AS n FROM {$wpdb->prefix}sp_qn_folders f LEFT JOIN {$wpdb->prefix}sp_qn_items i ON i.folder_id = f.id GROUP BY f.id ORDER BY f.sort_order ASC, f.name ASC" );
+    $total   = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}sp_qn_items" );
+
+    $folder  = absint( $_GET['folder'] ?? 0 );
+    $search  = sanitize_text_field( wp_unslash( $_GET['s'] ?? '' ) );
+    $kind    = sanitize_key( $_GET['kind'] ?? '' );
+    $status  = sanitize_key( $_GET['status'] ?? '' );
+    $owner   = absint( $_GET['owner'] ?? 0 );
+    $sort    = sanitize_key( $_GET['sort'] ?? 'updated' );
+
+    $where = [ '1=1' ];
+    $args  = [];
+    if ( $folder ) {
+        $where[] = 'folder_id = %d';
+        $args[]  = $folder;
+    }
+    if ( '' !== $search ) {
+        $where[] = 'title LIKE %s';
+        $args[]  = '%' . $wpdb->esc_like( $search ) . '%';
+    }
+    if ( in_array( $kind, [ 'form', 'survey' ], true ) ) {
+        $where[] = 'kind = %s';
+        $args[]  = $kind;
+    }
+    if ( isset( sp_qn_statuses()[ $status ] ) ) {
+        $where[] = 'status = %s';
+        $args[]  = $status;
+    }
+    if ( $owner ) {
+        $where[] = 'created_by = %d';
+        $args[]  = $owner;
+    }
+    $order = [ 'updated' => 'updated_at DESC', 'title' => 'title ASC', 'created' => 'created_at DESC' ][ $sort ] ?? 'updated_at DESC';
+    $sql   = "SELECT * FROM {$wpdb->prefix}sp_qn_items WHERE " . implode( ' AND ', $where ) . " ORDER BY {$order}";
+    $rows  = $args ? $wpdb->get_results( $wpdb->prepare( $sql, $args ) ) : $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL -- built from fixed pieces above.
+    $owners = $wpdb->get_col( "SELECT DISTINCT created_by FROM {$wpdb->prefix}sp_qn_items WHERE created_by > 0" );
+
+    $statuses = sp_qn_statuses();
+    $base     = admin_url( 'admin.php?page=sp-qn' );
+    $current_folder = null;
+    foreach ( $folders as $f ) {
+        if ( (int) $f->id === $folder ) {
+            $current_folder = $f;
+        }
+    }
+    $notices = [
+        'deleted'        => __( 'Deleted.', 'societypress' ),
+        'moved'          => __( 'Moved.', 'societypress' ),
+        'folder_deleted' => __( 'Folder removed. Everything that was in it is back in the main list.', 'societypress' ),
+    ];
+    $msg = sanitize_key( $_GET['sp_msg'] ?? '' );
+
+    sp_qn_admin_styles();
+    ?>
+    <div class="wrap sp-qn">
+        <h1><?php esc_html_e( 'Forms & Surveys', 'societypress' ); ?></h1>
+        <?php if ( isset( $notices[ $msg ] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php echo esc_html( $notices[ $msg ] ); ?></p></div>
+        <?php endif; ?>
+
+        <div class="sp-qn-start">
+            <a class="button button-primary button-hero" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-settings' . ( $folder ? '&folder=' . $folder : '' ) ) ); ?>"><?php esc_html_e( 'Start new', 'societypress' ); ?></a>
+            <a class="button button-hero" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn-settings&then=paste' . ( $folder ? '&folder=' . $folder : '' ) ) ); ?>"><?php esc_html_e( 'Paste in questions', 'societypress' ); ?></a>
+        </div>
+
+        <div class="sp-qn-layout">
+            <nav class="sp-qn-folders" aria-label="<?php esc_attr_e( 'Folders', 'societypress' ); ?>">
+                <a class="<?php echo $folder ? '' : 'current'; ?>" href="<?php echo esc_url( $base ); ?>">
+                    <?php
+                    /* translators: %s: number of forms and surveys */
+                    printf( esc_html__( 'Everything (%s)', 'societypress' ), esc_html( number_format_i18n( $total ) ) );
+                    ?>
+                </a>
+                <h2><?php esc_html_e( 'Folders', 'societypress' ); ?></h2>
+                <?php foreach ( $folders as $f ) : ?>
+                    <a class="<?php echo (int) $f->id === $folder ? 'current' : ''; ?>" href="<?php echo esc_url( $base . '&folder=' . (int) $f->id ); ?>">
+                        <span class="dashicons dashicons-category" aria-hidden="true"></span>
+                        <?php echo esc_html( $f->name ); ?> (<?php echo esc_html( number_format_i18n( (int) $f->n ) ); ?>)
+                    </a>
+                <?php endforeach; ?>
+                <?php if ( ! $folders ) : ?>
+                    <p class="description"><?php esc_html_e( 'Folders are optional. Make one to keep things tidy, such as "Seminars" or "Board".', 'societypress' ); ?></p>
+                <?php endif; ?>
+                <form method="post" class="sp-qn-folder-add">
+                    <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                    <input type="hidden" name="sp_qn_action" value="folder_add">
+                    <label for="sp-qn-new-folder" class="screen-reader-text"><?php esc_html_e( 'New folder name', 'societypress' ); ?></label>
+                    <input type="text" id="sp-qn-new-folder" name="name" placeholder="<?php esc_attr_e( 'New folder name', 'societypress' ); ?>">
+                    <button type="submit" class="button"><?php esc_html_e( 'Add folder', 'societypress' ); ?></button>
+                </form>
+            </nav>
+
+            <div class="sp-qn-main">
+                <?php if ( $current_folder ) : ?>
+                    <div class="sp-qn-folder-tools">
+                        <form method="post">
+                            <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                            <input type="hidden" name="sp_qn_action" value="folder_rename">
+                            <input type="hidden" name="folder_id" value="<?php echo (int) $current_folder->id; ?>">
+                            <label for="sp-qn-folder-name"><?php esc_html_e( 'Folder name', 'societypress' ); ?></label>
+                            <input type="text" id="sp-qn-folder-name" name="name" value="<?php echo esc_attr( $current_folder->name ); ?>">
+                            <button type="submit" class="button"><?php esc_html_e( 'Rename', 'societypress' ); ?></button>
+                        </form>
+                        <form method="post" data-sp-confirm="<?php esc_attr_e( 'Remove this folder? Everything in it goes back to the main list — nothing is deleted.', 'societypress' ); ?>">
+                            <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                            <input type="hidden" name="sp_qn_action" value="folder_delete">
+                            <input type="hidden" name="folder_id" value="<?php echo (int) $current_folder->id; ?>">
+                            <button type="submit" class="button-link sp-qn-danger"><?php esc_html_e( 'Remove folder', 'societypress' ); ?></button>
+                        </form>
+                    </div>
+                <?php endif; ?>
+
+                <form method="get" class="sp-qn-filters">
+                    <input type="hidden" name="page" value="sp-qn">
+                    <?php if ( $folder ) : ?><input type="hidden" name="folder" value="<?php echo (int) $folder; ?>"><?php endif; ?>
+                    <label class="screen-reader-text" for="sp-qn-search"><?php esc_html_e( 'Search', 'societypress' ); ?></label>
+                    <input type="search" id="sp-qn-search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search by title', 'societypress' ); ?>">
+                    <select name="kind" aria-label="<?php esc_attr_e( 'Show', 'societypress' ); ?>">
+                        <option value=""><?php esc_html_e( 'Forms and surveys', 'societypress' ); ?></option>
+                        <option value="form" <?php selected( $kind, 'form' ); ?>><?php esc_html_e( 'Forms only', 'societypress' ); ?></option>
+                        <option value="survey" <?php selected( $kind, 'survey' ); ?>><?php esc_html_e( 'Surveys only', 'societypress' ); ?></option>
+                    </select>
+                    <select name="status" aria-label="<?php esc_attr_e( 'Status', 'societypress' ); ?>">
+                        <option value=""><?php esc_html_e( 'Any status', 'societypress' ); ?></option>
+                        <?php foreach ( $statuses as $k => $label ) : ?>
+                            <option value="<?php echo esc_attr( $k ); ?>" <?php selected( $status, $k ); ?>><?php echo esc_html( $label ); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if ( count( $owners ) > 1 ) : ?>
+                        <select name="owner" aria-label="<?php esc_attr_e( 'Made by', 'societypress' ); ?>">
+                            <option value=""><?php esc_html_e( 'Made by anyone', 'societypress' ); ?></option>
+                            <?php foreach ( $owners as $uid ) : $u = get_userdata( (int) $uid ); if ( ! $u ) { continue; } ?>
+                                <option value="<?php echo (int) $uid; ?>" <?php selected( $owner, (int) $uid ); ?>><?php echo esc_html( $u->display_name ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    <?php endif; ?>
+                    <select name="sort" aria-label="<?php esc_attr_e( 'Sort by', 'societypress' ); ?>">
+                        <option value="updated" <?php selected( $sort, 'updated' ); ?>><?php esc_html_e( 'Most recently changed', 'societypress' ); ?></option>
+                        <option value="created" <?php selected( $sort, 'created' ); ?>><?php esc_html_e( 'Newest first', 'societypress' ); ?></option>
+                        <option value="title" <?php selected( $sort, 'title' ); ?>><?php esc_html_e( 'Title, A to Z', 'societypress' ); ?></option>
+                    </select>
+                    <button type="submit" class="button"><?php esc_html_e( 'Show', 'societypress' ); ?></button>
+                </form>
+
+                <?php if ( ! $rows ) : ?>
+                    <div class="sp-qn-empty">
+                        <p><?php echo $total ? esc_html__( 'Nothing matches. Try a different search or filter.', 'societypress' ) : esc_html__( 'Nothing here yet. Press "Start new" to make your first form or survey.', 'societypress' ); ?></p>
+                    </div>
+                <?php else : ?>
+                <form method="post" id="sp-qn-bulk">
+                    <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                    <ul class="sp-qn-rows">
+                    <?php foreach ( $rows as $r ) :
+                        $edit = admin_url( 'admin.php?page=sp-qn-edit&id=' . (int) $r->id );
+                        $set  = admin_url( 'admin.php?page=sp-qn-settings&id=' . (int) $r->id );
+                        ?>
+                        <li class="sp-qn-row">
+                            <input type="checkbox" class="sp-qn-tick" name="ids[]" value="<?php echo (int) $r->id; ?>" aria-label="<?php echo esc_attr( sprintf( /* translators: %s: title */ __( 'Select %s', 'societypress' ), $r->title ) ); ?>">
+                            <span class="sp-qn-badge sp-qn-badge--<?php echo esc_attr( $r->status ); ?>"><?php echo esc_html( $statuses[ $r->status ] ?? $r->status ); ?></span>
+                            <div class="sp-qn-row-main">
+                                <a class="sp-qn-row-title" href="<?php echo esc_url( $edit ); ?>"><?php echo esc_html( $r->title ); ?></a>
+                                <div class="sp-qn-row-meta">
+                                    <span class="sp-qn-kind"><?php echo 'form' === $r->kind ? esc_html__( 'Form', 'societypress' ) : esc_html__( 'Survey', 'societypress' ); ?></span>
+                                    <span class="dashicons dashicons-calendar-alt" aria-hidden="true"></span>
+                                    <?php
+                                    /* translators: %s: date */
+                                    printf( esc_html__( 'Changed %s', 'societypress' ), esc_html( date_i18n( get_option( 'date_format' ), strtotime( $r->updated_at ) ) ) );
+                                    ?>
+                                </div>
+                            </div>
+                            <a class="button" href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                            <details class="sp-qn-menu">
+                                <summary aria-label="<?php esc_attr_e( 'More actions', 'societypress' ); ?>"><span class="dashicons dashicons-ellipsis" aria-hidden="true"></span></summary>
+                                <div class="sp-qn-menu-panel">
+                                    <strong><?php echo esc_html( $r->title ); ?></strong>
+                                    <a href="<?php echo esc_url( $edit ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a>
+                                    <a href="<?php echo esc_url( $edit . '&preview=1' ); ?>"><?php esc_html_e( 'Preview', 'societypress' ); ?></a>
+                                    <a href="<?php echo esc_url( $set . '#sp-qn-audience' ); ?>"><?php esc_html_e( 'Who can answer', 'societypress' ); ?></a>
+                                    <a href="<?php echo esc_url( $set . '#sp-qn-notify' ); ?>"><?php esc_html_e( 'Notifications', 'societypress' ); ?></a>
+                                    <div class="sp-qn-menu-move">
+                                        <label for="sp-qn-move-<?php echo (int) $r->id; ?>"><?php esc_html_e( 'Move to folder', 'societypress' ); ?></label>
+                                        <select id="sp-qn-move-<?php echo (int) $r->id; ?>" form="sp-qn-move-form-<?php echo (int) $r->id; ?>" name="folder_id">
+                                            <option value="0"><?php esc_html_e( '— No folder —', 'societypress' ); ?></option>
+                                            <?php foreach ( $folders as $f ) : ?>
+                                                <option value="<?php echo (int) $f->id; ?>" <?php selected( (int) $r->folder_id, (int) $f->id ); ?>><?php echo esc_html( $f->name ); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="submit" class="button button-small" form="sp-qn-move-form-<?php echo (int) $r->id; ?>"><?php esc_html_e( 'Move', 'societypress' ); ?></button>
+                                    </div>
+                                    <button type="submit" class="button-link" form="sp-qn-copy-form-<?php echo (int) $r->id; ?>"><?php esc_html_e( 'Make a copy', 'societypress' ); ?></button>
+                                    <button type="submit" class="button-link sp-qn-danger" form="sp-qn-delete-form-<?php echo (int) $r->id; ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                                </div>
+                            </details>
+                        </li>
+                    <?php endforeach; ?>
+                    </ul>
+
+                    <div class="sp-qn-bulkbar" id="sp-qn-bulkbar" hidden>
+                        <span id="sp-qn-bulk-count"></span>
+                        <button type="button" class="button-link" id="sp-qn-select-all"><?php esc_html_e( 'Select all', 'societypress' ); ?></button>
+                        <label for="sp-qn-bulk-folder" class="screen-reader-text"><?php esc_html_e( 'Folder', 'societypress' ); ?></label>
+                        <select id="sp-qn-bulk-folder" name="folder_id">
+                            <option value="0"><?php esc_html_e( '— No folder —', 'societypress' ); ?></option>
+                            <?php foreach ( $folders as $f ) : ?>
+                                <option value="<?php echo (int) $f->id; ?>"><?php echo esc_html( $f->name ); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="submit" class="button" name="sp_qn_action" value="bulk_move"><?php esc_html_e( 'Move to folder', 'societypress' ); ?></button>
+                        <button type="submit" class="button sp-qn-danger" name="sp_qn_action" value="bulk_delete" data-sp-confirm="<?php esc_attr_e( 'Delete everything you ticked, with all its questions and answers? This cannot be undone.', 'societypress' ); ?>"><?php esc_html_e( 'Delete', 'societypress' ); ?></button>
+                        <button type="button" class="button-link" id="sp-qn-cancel"><?php esc_html_e( 'Cancel', 'societypress' ); ?></button>
+                    </div>
+                </form>
+
+                <?php
+                // WHY separate forms outside the bulk form: HTML forbids forms
+                // inside forms, so each row's single actions live down here and
+                // the row's buttons reach them with the form="" attribute.
+                foreach ( $rows as $r ) :
+                    ?>
+                    <form method="post" id="sp-qn-move-form-<?php echo (int) $r->id; ?>" hidden>
+                        <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                        <input type="hidden" name="sp_qn_action" value="move">
+                        <input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
+                    </form>
+                    <form method="post" id="sp-qn-copy-form-<?php echo (int) $r->id; ?>" hidden>
+                        <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                        <input type="hidden" name="sp_qn_action" value="copy">
+                        <input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
+                    </form>
+                    <form method="post" id="sp-qn-delete-form-<?php echo (int) $r->id; ?>" hidden
+                          data-sp-confirm="<?php echo esc_attr( sprintf( /* translators: %s: title */ __( 'Delete "%s" for good, with all its questions and answers? This cannot be undone.', 'societypress' ), $r->title ) ); ?>">
+                        <?php wp_nonce_field( 'sp_qn_list' ); ?>
+                        <input type="hidden" name="sp_qn_action" value="delete">
+                        <input type="hidden" name="id" value="<?php echo (int) $r->id; ?>">
+                    </form>
+                <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+    <script>
+    ( function () {
+        var form = document.getElementById( 'sp-qn-bulk' );
+        if ( ! form ) { return; }
+        var bar   = document.getElementById( 'sp-qn-bulkbar' );
+        var count = document.getElementById( 'sp-qn-bulk-count' );
+        var ticks = form.querySelectorAll( '.sp-qn-tick' );
+        var label = <?php echo wp_json_encode( __( '%d selected', 'societypress' ) ); ?>;
+        function refresh() {
+            var n = form.querySelectorAll( '.sp-qn-tick:checked' ).length;
+            bar.hidden = n === 0;
+            count.textContent = label.replace( '%d', n );
+        }
+        form.addEventListener( 'change', refresh );
+        document.getElementById( 'sp-qn-select-all' ).addEventListener( 'click', function () {
+            ticks.forEach( function ( t ) { t.checked = true; } );
+            refresh();
+        } );
+        document.getElementById( 'sp-qn-cancel' ).addEventListener( 'click', function () {
+            ticks.forEach( function ( t ) { t.checked = false; } );
+            refresh();
+        } );
+        // Only one "more actions" menu open at a time.
+        document.addEventListener( 'click', function ( e ) {
+            document.querySelectorAll( '.sp-qn-menu[open]' ).forEach( function ( d ) {
+                if ( ! d.contains( e.target ) ) { d.removeAttribute( 'open' ); }
+            } );
+        } );
+    } )();
+    </script>
+    <?php
+}
+
+// ---- Settings: making a new one, or changing an existing one -----------------
+
+sp_handle_screen_load( 'sp-qn-settings', 'sp_qn_handle_settings_save' );
+
+/**
+ * Save the settings screen. A new form or survey gets its page and its first
+ * empty section, then goes straight to the editor.
+ */
+function sp_qn_handle_settings_save(): void {
+    if ( 'POST' !== ( $_SERVER['REQUEST_METHOD'] ?? '' ) || empty( $_POST['sp_qn_settings'] ) ) {
+        return;
+    }
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_qn_settings' );
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_qn_items';
+    $id    = absint( $_POST['id'] ?? 0 );
+    $item  = $id ? sp_qn_get( $id ) : null;
+
+    $title = sanitize_text_field( wp_unslash( $_POST['title'] ?? '' ) );
+    if ( '' === $title ) {
+        sp_screen_post_error( __( 'Please give it a title.', 'societypress' ) );
+        return;
+    }
+    $kind = $item ? $item->kind : ( 'form' === ( $_POST['kind'] ?? '' ) ? 'form' : 'survey' );
+
+    $closes_at = null;
+    if ( 'date' === ( $_POST['deadline'] ?? '' ) ) {
+        $day  = sanitize_text_field( wp_unslash( $_POST['close_day'] ?? '' ) );
+        $time = sanitize_text_field( wp_unslash( $_POST['close_time'] ?? '' ) ) ?: '23:59';
+        if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $day ) || ! preg_match( '/^\d{2}:\d{2}$/', $time ) ) {
+            sp_screen_post_error( __( 'Please pick the last day for answers, or choose "No deadline".', 'societypress' ) );
+            return;
+        }
+        $closes_at = $day . ' ' . $time . ':00';
+    }
+
+    $audience = sanitize_key( $_POST['audience'] ?? 'members' );
+    $audience = in_array( $audience, [ 'public', 'members', 'groups' ], true ) ? $audience : 'members';
+    $groups   = array_values( array_intersect(
+        array_map( 'sanitize_text_field', (array) wp_unslash( $_POST['audience_groups'] ?? [] ) ),
+        array_keys( sp_qn_group_choices() )
+    ) );
+    if ( 'groups' === $audience && ! $groups ) {
+        sp_screen_post_error( __( 'Tick at least one group, or choose a different "Who can answer".', 'societypress' ) );
+        return;
+    }
+
+    $data = [
+        'title'           => $title,
+        'description'     => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
+        'closes_at'       => $closes_at,
+        // A form's responses are messages from named people, so only a
+        // survey can be anonymous.
+        'anonymous'       => 'survey' === $kind && ! empty( $_POST['anonymous'] ) ? 1 : 0,
+        'audience'        => $audience,
+        'audience_groups' => wp_json_encode( 'groups' === $audience ? $groups : [] ),
+        'notify_emails'   => sp_email_list_string( (string) wp_unslash( $_POST['notify_emails'] ?? '' ) ),
+        'folder_id'       => absint( $_POST['folder_id'] ?? 0 ),
+        'updated_at'      => current_time( 'mysql' ),
+    ];
+
+    if ( $item ) {
+        $wpdb->update( $table, $data, [ 'id' => $id ] );
+    } else {
+        $data['kind']       = $kind;
+        $data['status']     = 'draft';
+        $data['created_by'] = get_current_user_id();
+        $data['created_at'] = current_time( 'mysql' );
+        $wpdb->insert( $table, $data );
+        $id = (int) $wpdb->insert_id;
+        // Every form or survey starts with one section, so the editor opens
+        // ready for the first question.
+        $wpdb->insert( $wpdb->prefix . 'sp_qn_sections', [ 'item_id' => $id, 'sort_order' => 0, 'title' => '' ] );
+    }
+    $item = sp_qn_get( $id );
+    sp_qn_sync_page( $item, sanitize_title( wp_unslash( $_POST['slug'] ?? '' ) ) );
+
+    if ( ! empty( $_POST['is_new'] ) ) {
+        $then = 'paste' === ( $_POST['then'] ?? '' ) ? '&paste=1' : '';
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-qn-edit&id=' . $id . $then ) );
+        exit;
+    }
+    wp_safe_redirect( admin_url( 'admin.php?page=sp-qn-settings&id=' . $id . '&saved=1' ) );
+    exit;
+}
+
+/**
+ * The top of the settings and design screens: title, status and the steps.
+ */
+function sp_qn_render_header( object $item, string $current ): void {
+    $statuses = sp_qn_statuses();
+    $steps    = [
+        'design'   => [ __( 'Design', 'societypress' ), admin_url( 'admin.php?page=sp-qn-edit&id=' . (int) $item->id ) ],
+        'settings' => [ __( 'Settings', 'societypress' ), admin_url( 'admin.php?page=sp-qn-settings&id=' . (int) $item->id ) ],
+    ];
+    ?>
+    <div class="sp-qn-header">
+        <a class="sp-qn-back" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn' ) ); ?>"><?php esc_html_e( 'Forms & Surveys', 'societypress' ); ?></a>
+        <span aria-hidden="true">›</span>
+        <strong><?php echo esc_html( $item->title ); ?></strong>
+        <span class="sp-qn-badge sp-qn-badge--<?php echo esc_attr( $item->status ); ?>"><?php echo esc_html( $statuses[ $item->status ] ?? '' ); ?></span>
+        <span class="sp-qn-kind"><?php echo 'form' === $item->kind ? esc_html__( 'Form', 'societypress' ) : esc_html__( 'Survey', 'societypress' ); ?></span>
+    </div>
+    <nav class="sp-qn-steps" aria-label="<?php esc_attr_e( 'Steps', 'societypress' ); ?>">
+        <?php $i = 0; foreach ( $steps as $key => $step ) : ?>
+            <?php if ( $i++ ) : ?><span class="sp-qn-step-arrow" aria-hidden="true">→</span><?php endif; ?>
+            <a href="<?php echo esc_url( $step[1] ); ?>" class="<?php echo $key === $current ? 'current' : ''; ?>" <?php echo $key === $current ? 'aria-current="page"' : ''; ?>><?php echo esc_html( $step[0] ); ?></a>
+        <?php endforeach; ?>
+    </nav>
+    <?php
+}
+
+/**
+ * Settings screen. With no id it is the "Start new" screen.
+ */
+function sp_qn_render_settings_page(): void {
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms and surveys.', 'societypress' ) );
+    }
+    global $wpdb;
+    $id     = absint( $_GET['id'] ?? 0 );
+    $item   = $id ? sp_qn_get( $id ) : null;
+    $is_new = ! $item;
+    $posted = 'POST' === ( $_SERVER['REQUEST_METHOD'] ?? '' );
+    $val    = static function ( string $key, $default = '' ) use ( $item, $posted ) {
+        if ( $posted && isset( $_POST[ $key ] ) ) {
+            return wp_unslash( $_POST[ $key ] );
+        }
+        return $item ? ( $item->$key ?? $default ) : $default;
+    };
+
+    $kind      = $item ? $item->kind : ( 'form' === $val( 'kind' ) ? 'form' : 'survey' );
+    $closes_at = $item ? (string) $item->closes_at : '';
+    $groups    = $item ? (array) json_decode( (string) $item->audience_groups, true ) : (array) $val( 'audience_groups', [] );
+    $folders   = $wpdb->get_results( "SELECT id, name FROM {$wpdb->prefix}sp_qn_folders ORDER BY sort_order ASC, name ASC" );
+    $folder    = (int) $val( 'folder_id', absint( $_GET['folder'] ?? 0 ) );
+    $audience  = (string) $val( 'audience', 'members' );
+    $error     = sp_screen_post_error();
+
+    sp_qn_admin_styles();
+    ?>
+    <div class="wrap sp-qn">
+        <?php if ( $item ) : ?>
+            <?php sp_qn_render_header( $item, 'settings' ); ?>
+        <?php else : ?>
+            <p class="sp-qn-header"><a class="sp-qn-back" href="<?php echo esc_url( admin_url( 'admin.php?page=sp-qn' ) ); ?>"><?php esc_html_e( 'Forms & Surveys', 'societypress' ); ?></a></p>
+            <h1><?php esc_html_e( 'Start something new', 'societypress' ); ?></h1>
+        <?php endif; ?>
+
+        <?php if ( '' !== $error ) : ?>
+            <div class="notice notice-error"><p><?php echo esc_html( $error ); ?></p></div>
+        <?php elseif ( isset( $_GET['saved'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Settings saved.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <form method="post" class="sp-qn-settings" id="sp-qn-settings-form">
+            <?php wp_nonce_field( 'sp_qn_settings' ); ?>
+            <input type="hidden" name="sp_qn_settings" value="1">
+            <input type="hidden" name="id" value="<?php echo (int) $id; ?>">
+            <?php if ( $is_new ) : ?>
+                <input type="hidden" name="is_new" value="1">
+                <input type="hidden" name="then" value="<?php echo esc_attr( sanitize_key( $_GET['then'] ?? $val( 'then' ) ) ); ?>">
+
+                <fieldset class="sp-qn-card">
+                    <legend><?php esc_html_e( 'What are you making?', 'societypress' ); ?></legend>
+                    <div class="sp-qn-kind-choice">
+                        <label>
+                            <input type="radio" name="kind" value="survey" <?php checked( $kind, 'survey' ); ?>>
+                            <span class="dashicons dashicons-chart-bar" aria-hidden="true"></span>
+                            <strong><?php esc_html_e( 'A survey', 'societypress' ); ?></strong>
+                            <span><?php esc_html_e( 'Ask lots of people the same questions and see the answers added up. Can be anonymous.', 'societypress' ); ?></span>
+                        </label>
+                        <label>
+                            <input type="radio" name="kind" value="form" <?php checked( $kind, 'form' ); ?>>
+                            <span class="dashicons dashicons-email-alt" aria-hidden="true"></span>
+                            <strong><?php esc_html_e( 'A form', 'societypress' ); ?></strong>
+                            <span><?php esc_html_e( 'Each answer is a message for someone to read and act on, such as a contact form or a sign-up.', 'societypress' ); ?></span>
+                        </label>
+                    </div>
+                </fieldset>
+            <?php endif; ?>
+
+            <div class="sp-qn-card">
+                <p>
+                    <label for="sp-qn-title"><strong><?php esc_html_e( 'Title', 'societypress' ); ?></strong></label><br>
+                    <input type="text" id="sp-qn-title" name="title" class="large-text" required value="<?php echo esc_attr( (string) $val( 'title' ) ); ?>" placeholder="<?php esc_attr_e( 'For example: 2027 Member Survey', 'societypress' ); ?>">
+                </p>
+                <p>
+                    <label for="sp-qn-description"><strong><?php esc_html_e( 'Description', 'societypress' ); ?></strong> <span class="description"><?php esc_html_e( '(optional)', 'societypress' ); ?></span></label><br>
+                    <textarea id="sp-qn-description" name="description" class="large-text" rows="3" placeholder="<?php esc_attr_e( 'A few words at the top: why you are asking, and how long it takes.', 'societypress' ); ?>"><?php echo esc_textarea( (string) $val( 'description' ) ); ?></textarea>
+                </p>
+                <p>
+                    <label for="sp-qn-slug"><strong><?php esc_html_e( 'Web address', 'societypress' ); ?></strong></label><br>
+                    <span class="sp-qn-slug"><span><?php echo esc_html( trailingslashit( home_url() ) ); ?></span><input type="text" id="sp-qn-slug" name="slug" value="<?php echo esc_attr( $item ? sp_qn_page_slug( $item ) : (string) $val( 'slug' ) ); ?>" <?php echo $item ? '' : 'data-auto="1"'; ?>></span>
+                    <span class="description"><?php esc_html_e( 'Where it lives on your website. Filled in from the title; change it if you like.', 'societypress' ); ?></span>
+                </p>
+            </div>
+
+            <fieldset class="sp-qn-card">
+                <legend><?php esc_html_e( 'Deadline', 'societypress' ); ?></legend>
+                <label class="sp-qn-line"><input type="radio" name="deadline" value="none" <?php checked( '' === $closes_at && 'date' !== $val( 'deadline' ) ); ?>> <?php esc_html_e( 'No deadline — it stays open until you close it', 'societypress' ); ?></label>
+                <label class="sp-qn-line"><input type="radio" name="deadline" value="date" <?php checked( '' !== $closes_at || 'date' === $val( 'deadline' ) ); ?>> <?php esc_html_e( 'Answers accepted until:', 'societypress' ); ?></label>
+                <span class="sp-qn-indent">
+                    <label class="screen-reader-text" for="sp-qn-close-day"><?php esc_html_e( 'Last day', 'societypress' ); ?></label>
+                    <input type="date" id="sp-qn-close-day" name="close_day" value="<?php echo esc_attr( $closes_at ? substr( $closes_at, 0, 10 ) : (string) $val( 'close_day' ) ); ?>">
+                    <label for="sp-qn-close-time"><?php esc_html_e( 'at', 'societypress' ); ?></label>
+                    <input type="time" id="sp-qn-close-time" name="close_time" value="<?php echo esc_attr( $closes_at ? substr( $closes_at, 11, 5 ) : ( (string) $val( 'close_time' ) ?: '23:59' ) ); ?>">
+                </span>
+            </fieldset>
+
+            <?php if ( 'survey' === $kind || $is_new ) : ?>
+            <fieldset class="sp-qn-card" id="sp-qn-anon" <?php echo 'form' === $kind ? 'hidden' : ''; ?>>
+                <legend><?php esc_html_e( 'Anonymous or named?', 'societypress' ); ?></legend>
+                <label class="sp-qn-line"><input type="radio" name="anonymous" value="0" <?php checked( ! (int) $val( 'anonymous', 0 ) ); ?>> <?php esc_html_e( 'Named — each set of answers shows who gave it', 'societypress' ); ?></label>
+                <label class="sp-qn-line"><input type="radio" name="anonymous" value="1" <?php checked( (int) $val( 'anonymous', 0 ) ); ?>> <?php esc_html_e( 'Anonymous — you can see who took part, but never who said what', 'societypress' ); ?></label>
+                <p class="description"><?php esc_html_e( 'People answering are told which it is, at the top of the survey.', 'societypress' ); ?></p>
+            </fieldset>
+            <?php endif; ?>
+
+            <fieldset class="sp-qn-card" id="sp-qn-audience">
+                <legend><?php esc_html_e( 'Who can answer?', 'societypress' ); ?></legend>
+                <label class="sp-qn-line"><input type="radio" name="audience" value="public" <?php checked( $audience, 'public' ); ?>> <?php esc_html_e( 'Anyone — no need to log in', 'societypress' ); ?></label>
+                <label class="sp-qn-line"><input type="radio" name="audience" value="members" <?php checked( $audience, 'members' ); ?>> <?php esc_html_e( 'Members only — they log in first', 'societypress' ); ?></label>
+                <label class="sp-qn-line"><input type="radio" name="audience" value="groups" <?php checked( $audience, 'groups' ); ?>> <?php esc_html_e( 'Only these groups:', 'societypress' ); ?></label>
+                <div class="sp-qn-indent sp-qn-groups">
+                    <?php $choices = sp_qn_group_choices(); ?>
+                    <?php if ( ! $choices ) : ?>
+                        <p class="description"><?php esc_html_e( 'Your society has no member groups or committees yet.', 'societypress' ); ?></p>
+                    <?php endif; ?>
+                    <?php foreach ( $choices as $key => $name ) : ?>
+                        <label class="sp-qn-line"><input type="checkbox" name="audience_groups[]" value="<?php echo esc_attr( $key ); ?>" <?php checked( in_array( $key, $groups, true ) ); ?>> <?php echo esc_html( $name ); ?></label>
+                    <?php endforeach; ?>
+                </div>
+                <p class="description"><?php esc_html_e( 'With "Anyone", a person could answer twice from different computers. Limit it to members when the count needs to be trusted.', 'societypress' ); ?></p>
+            </fieldset>
+
+            <div class="sp-qn-card" id="sp-qn-notify">
+                <label for="sp-qn-notify-emails"><strong><?php esc_html_e( 'Email me when someone answers', 'societypress' ); ?></strong> <span class="description"><?php esc_html_e( '(optional)', 'societypress' ); ?></span></label><br>
+                <input type="text" id="sp-qn-notify-emails" name="notify_emails" class="large-text" value="<?php echo esc_attr( (string) $val( 'notify_emails' ) ); ?>" placeholder="<?php esc_attr_e( 'secretary@example.org', 'societypress' ); ?>">
+                <p class="description"><?php esc_html_e( 'Leave empty for no emails. To tell several people, separate their addresses with commas.', 'societypress' ); ?></p>
+            </div>
+
+            <?php if ( $folders ) : ?>
+            <div class="sp-qn-card">
+                <label for="sp-qn-folder"><strong><?php esc_html_e( 'Folder', 'societypress' ); ?></strong></label><br>
+                <select id="sp-qn-folder" name="folder_id">
+                    <option value="0"><?php esc_html_e( '— No folder —', 'societypress' ); ?></option>
+                    <?php foreach ( $folders as $f ) : ?>
+                        <option value="<?php echo (int) $f->id; ?>" <?php selected( $folder, (int) $f->id ); ?>><?php echo esc_html( $f->name ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+
+            <p class="submit">
+                <button type="submit" class="button button-primary button-hero"><?php echo $is_new ? esc_html__( 'Create and add questions', 'societypress' ) : esc_html__( 'Save settings', 'societypress' ); ?></button>
+            </p>
+        </form>
+    </div>
+    <script>
+    ( function () {
+        var form  = document.getElementById( 'sp-qn-settings-form' );
+        var title = document.getElementById( 'sp-qn-title' );
+        var slug  = document.getElementById( 'sp-qn-slug' );
+        // Fill the address from the title until the volunteer types their own.
+        if ( slug.dataset.auto ) {
+            title.addEventListener( 'input', function () {
+                if ( ! slug.dataset.auto ) { return; }
+                slug.value = title.value.toLowerCase().normalize( 'NFD' ).replace( /[̀-ͯ]/g, '' )
+                    .replace( /[^a-z0-9]+/g, '-' ).replace( /^-+|-+$/g, '' ).slice( 0, 80 );
+            } );
+            slug.addEventListener( 'input', function () { delete slug.dataset.auto; } );
+        }
+        // Anonymous only means something for a survey.
+        var anon = document.getElementById( 'sp-qn-anon' );
+        form.addEventListener( 'change', function ( e ) {
+            if ( e.target.name === 'kind' && anon ) { anon.hidden = e.target.value !== 'survey'; }
+        } );
+        // Typing a date picks "Answers accepted until"; ticking a group picks "Only these groups".
+        [ 'sp-qn-close-day', 'sp-qn-close-time' ].forEach( function ( id ) {
+            document.getElementById( id ).addEventListener( 'input', function () {
+                form.querySelector( 'input[name="deadline"][value="date"]' ).checked = true;
+            } );
+        } );
+        form.querySelectorAll( 'input[name="audience_groups[]"]' ).forEach( function ( box ) {
+            box.addEventListener( 'change', function () {
+                if ( box.checked ) { form.querySelector( 'input[name="audience"][value="groups"]' ).checked = true; }
+            } );
+        } );
+    } )();
+    </script>
+    <?php
+}
+
+// ---- Design: sections and questions ------------------------------------------
+
+/**
+ * Save the whole design in one go.
+ *
+ * WHY the editor sends everything at once: sections and questions move
+ * around, get added and removed between saves. Sending the full picture and
+ * reconciling it here is simpler and safer than a dozen small calls that can
+ * arrive out of order on a slow connection.
+ */
+add_action( 'wp_ajax_sp_qn_save', function () {
+    check_ajax_referer( 'sp_qn_save' );
+    if ( ! sp_qn_can_manage() ) {
+        wp_send_json_error( __( 'You do not have permission to do that.', 'societypress' ), 403 );
+    }
+    global $wpdb;
+    $id   = absint( $_POST['id'] ?? 0 );
+    $item = sp_qn_get( $id );
+    $data = json_decode( wp_unslash( (string) ( $_POST['design'] ?? '' ) ), true );
+    if ( ! $item || ! is_array( $data ) || empty( $data['sections'] ) ) {
+        wp_send_json_error( __( 'That could not be saved. Please reload the page and try again.', 'societypress' ) );
+    }
+    $types = sp_qn_types();
+    $title = sanitize_text_field( (string) ( $data['title'] ?? '' ) );
+
+    $wpdb->update( $wpdb->prefix . 'sp_qn_items', [
+        'title'       => '' !== $title ? $title : $item->title,
+        'description' => sanitize_textarea_field( (string) ( $data['description'] ?? '' ) ),
+        'updated_at'  => current_time( 'mysql' ),
+    ], [ 'id' => $id ] );
+
+    $old_sections  = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}sp_qn_sections WHERE item_id = %d", $id ) ) );
+    $old_questions = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}sp_qn_questions WHERE item_id = %d", $id ) ) );
+    $keep_s = [];
+    $keep_q = [];
+
+    foreach ( array_values( (array) $data['sections'] ) as $si => $sec ) {
+        $row = [
+            'item_id'     => $id,
+            'sort_order'  => $si,
+            'title'       => sanitize_text_field( (string) ( $sec['title'] ?? '' ) ),
+            'description' => sanitize_textarea_field( (string) ( $sec['description'] ?? '' ) ),
+        ];
+        $sid = absint( $sec['id'] ?? 0 );
+        // Only rows that already belong to this form may be updated; any other
+        // id is treated as new, so a tampered request can't reach elsewhere.
+        if ( $sid && in_array( $sid, $old_sections, true ) ) {
+            $wpdb->update( $wpdb->prefix . 'sp_qn_sections', $row, [ 'id' => $sid ] );
+        } else {
+            $wpdb->insert( $wpdb->prefix . 'sp_qn_sections', $row );
+            $sid = (int) $wpdb->insert_id;
+        }
+        $keep_s[] = $sid;
+
+        foreach ( array_values( (array) ( $sec['questions'] ?? [] ) ) as $qi => $q ) {
+            $type = sanitize_key( (string) ( $q['type'] ?? '' ) );
+            if ( ! isset( $types[ $type ] ) ) {
+                continue;
+            }
+            $qrow = [
+                'item_id'    => $id,
+                'section_id' => $sid,
+                'sort_order' => $qi,
+                'type'       => $type,
+                'prompt'     => sanitize_textarea_field( (string) ( $q['prompt'] ?? '' ) ),
+                'required'   => 'text_block' !== $type && ! empty( $q['required'] ) ? 1 : 0,
+                'settings'   => wp_json_encode( sp_qn_clean_settings( $type, $q['settings'] ?? [] ) ),
+            ];
+            $qid = absint( $q['id'] ?? 0 );
+            if ( $qid && in_array( $qid, $old_questions, true ) ) {
+                $wpdb->update( $wpdb->prefix . 'sp_qn_questions', $qrow, [ 'id' => $qid ] );
+            } else {
+                $wpdb->insert( $wpdb->prefix . 'sp_qn_questions', $qrow );
+                $qid = (int) $wpdb->insert_id;
+            }
+            $keep_q[] = $qid;
+        }
+    }
+    foreach ( array_diff( $old_questions, $keep_q ) as $gone ) {
+        $wpdb->delete( $wpdb->prefix . 'sp_qn_questions', [ 'id' => $gone ] );
+    }
+    foreach ( array_diff( $old_sections, $keep_s ) as $gone ) {
+        $wpdb->delete( $wpdb->prefix . 'sp_qn_sections', [ 'id' => $gone ] );
+    }
+    $item = sp_qn_get( $id );
+    // Keep the page's title in step with a title changed in the editor.
+    if ( $item->page_id ) {
+        wp_update_post( [ 'ID' => (int) $item->page_id, 'post_title' => $item->title ] );
+    }
+    wp_send_json_success( [ 'sections' => sp_qn_structure( $id ) ] );
+} );
+
+/**
+ * The design screen: the form or survey drawn the way people will see it,
+ * with each question opening into a box to change it.
+ */
+function sp_qn_render_editor_page(): void {
+    if ( ! sp_qn_can_manage() ) {
+        wp_die( esc_html__( 'You do not have permission to manage forms and surveys.', 'societypress' ) );
+    }
+    $item = sp_qn_get( absint( $_GET['id'] ?? 0 ) );
+    if ( ! $item ) {
+        wp_die( esc_html__( 'That form or survey no longer exists.', 'societypress' ) );
+    }
+    wp_enqueue_media();
+    $types = [];
+    foreach ( sp_qn_types() as $key => $t ) {
+        $types[] = [ 'key' => $key, 'label' => $t['label'], 'icon' => $t['icon'], 'help' => $t['help'] ];
+    }
+    $boot = [
+        'id'          => (int) $item->id,
+        'kind'        => $item->kind,
+        'title'       => $item->title,
+        'description' => (string) $item->description,
+        'anonymous'   => (bool) $item->anonymous,
+        'sections'    => sp_qn_structure( (int) $item->id ),
+        'types'       => $types,
+        'preview'     => ! empty( $_GET['preview'] ),
+        'paste'       => ! empty( $_GET['paste'] ),
+        'ajax'        => admin_url( 'admin-ajax.php' ),
+        'nonce'       => wp_create_nonce( 'sp_qn_save' ),
+        'text'        => sp_qn_editor_strings(),
+    ];
+    sp_qn_admin_styles();
+    ?>
+    <div class="wrap sp-qn">
+        <?php sp_qn_render_header( $item, 'design' ); ?>
+        <div class="sp-qn-toolbar">
+            <span class="sp-qn-devices" id="sp-qn-devices" hidden>
+                <button type="button" class="button" data-device="desktop" aria-pressed="true"><span class="dashicons dashicons-desktop" aria-hidden="true"></span><span class="screen-reader-text"><?php esc_html_e( 'Computer', 'societypress' ); ?></span></button>
+                <button type="button" class="button" data-device="tablet" aria-pressed="false"><span class="dashicons dashicons-tablet" aria-hidden="true"></span><span class="screen-reader-text"><?php esc_html_e( 'Tablet', 'societypress' ); ?></span></button>
+                <button type="button" class="button" data-device="phone" aria-pressed="false"><span class="dashicons dashicons-smartphone" aria-hidden="true"></span><span class="screen-reader-text"><?php esc_html_e( 'Phone', 'societypress' ); ?></span></button>
+            </span>
+            <span id="sp-qn-status" class="sp-qn-save-status" role="status"></span>
+            <button type="button" class="button" id="sp-qn-preview-btn"></button>
+            <button type="button" class="button button-primary" id="sp-qn-save-btn"><?php esc_html_e( 'Save', 'societypress' ); ?></button>
+        </div>
+        <div class="sp-qn-canvas" id="sp-qn-canvas"></div>
+        <script type="application/json" id="sp-qn-boot"><?php echo wp_json_encode( $boot, JSON_HEX_TAG | JSON_HEX_AMP ); ?></script>
+    </div>
+    <?php
+    sp_qn_editor_script();
+}
+
+/**
+ * Every word the editor's script shows, translated here so the script has none.
+ *
+ * @return array<string,string>
+ */
+function sp_qn_editor_strings(): array {
+    return [
+        'untitled'      => __( 'Untitled', 'societypress' ),
+        'titleLabel'    => __( 'Title', 'societypress' ),
+        'descLabel'     => __( 'Description (optional)', 'societypress' ),
+        'descPh'        => __( 'A few words at the top: why you are asking, and how long it takes.', 'societypress' ),
+        'anonNote'      => __( 'Your answers are anonymous.', 'societypress' ),
+        'namedNote'     => __( 'Your name is recorded with your answers.', 'societypress' ),
+        'section'       => __( 'Section %1$d of %2$d', 'societypress' ),
+        'sectionTitle'  => __( 'Section title (optional)', 'societypress' ),
+        'sectionDesc'   => __( 'Section description (optional)', 'societypress' ),
+        'addSection'    => __( 'Add a section', 'societypress' ),
+        'delSection'    => __( 'Remove section', 'societypress' ),
+        'delSectionQ'   => __( 'Remove this section and every question in it?', 'societypress' ),
+        'addQuestion'   => __( 'Add a question', 'societypress' ),
+        'paste'         => __( 'Paste in questions', 'societypress' ),
+        'questionPh'    => __( 'Type your question', 'societypress' ),
+        'textPh'        => __( 'Type the text people should read', 'societypress' ),
+        'kindHelp'      => __( 'What kinds of answer are there?', 'societypress' ),
+        'required'      => __( 'Required — they must answer this', 'societypress' ),
+        'requiredMark'  => __( '(required)', 'societypress' ),
+        'done'          => __( 'Done', 'societypress' ),
+        'edit'          => __( 'Change', 'societypress' ),
+        'moveUp'        => __( 'Move up', 'societypress' ),
+        'moveDown'      => __( 'Move down', 'societypress' ),
+        'duplicate'     => __( 'Make a copy', 'societypress' ),
+        'delete'        => __( 'Delete question', 'societypress' ),
+        'deleteQ'       => __( 'Delete this question?', 'societypress' ),
+        'choices'       => __( 'Answer choices', 'societypress' ),
+        'choicePh'      => __( 'Choice %d', 'societypress' ),
+        'addChoice'     => __( 'Add a choice', 'societypress' ),
+        'removeChoice'  => __( 'Remove this choice', 'societypress' ),
+        'other'         => __( 'Add an "Other" answer with a box to type in', 'societypress' ),
+        'otherLabel'    => __( 'Other:', 'societypress' ),
+        'shuffle'       => __( 'Show the choices in a different order for each person', 'societypress' ),
+        'stars'         => __( 'Number of stars', 'societypress' ),
+        'from'          => __( 'From', 'societypress' ),
+        'to'            => __( 'to', 'societypress' ),
+        'lowLabel'      => __( 'Label for the low end (optional)', 'societypress' ),
+        'highLabel'     => __( 'Label for the high end (optional)', 'societypress' ),
+        'rows'          => __( 'Statements (one row each)', 'societypress' ),
+        'rowPh'         => __( 'Statement %d', 'societypress' ),
+        'addRow'        => __( 'Add a statement', 'societypress' ),
+        'columns'       => __( 'Answer choices across the top', 'societypress' ),
+        'gridMulti'     => __( 'Allow more than one answer per row', 'societypress' ),
+        'contactAsk'    => __( 'Ask for:', 'societypress' ),
+        'cName'         => __( 'Name', 'societypress' ),
+        'cEmail'        => __( 'Email', 'societypress' ),
+        'cPhone'        => __( 'Phone', 'societypress' ),
+        'cAddress'      => __( 'Address', 'societypress' ),
+        'pickPicture'   => __( 'Choose a picture', 'societypress' ),
+        'addPicture'    => __( 'Add a picture', 'societypress' ),
+        'pictureLabel'  => __( 'Caption (optional)', 'societypress' ),
+        'chooseFile'    => __( 'Choose a file', 'societypress' ),
+        'select'        => __( '— Choose one —', 'societypress' ),
+        'rankHint'      => __( 'People drag these into order.', 'societypress' ),
+        'preview'       => __( 'Preview', 'societypress' ),
+        'backToEdit'    => __( 'Back to editing', 'societypress' ),
+        'saving'        => __( 'Saving…', 'societypress' ),
+        'saved'         => __( 'Saved', 'societypress' ),
+        'unsaved'       => __( 'Not saved yet', 'societypress' ),
+        'saveFailed'    => __( 'Could not save. Check your connection and press Save again.', 'societypress' ),
+        'pasteTitle'    => __( 'Paste in questions', 'societypress' ),
+        'pasteHelp'     => __( 'Put each question on its own line, with its answer choices on the lines under it. Leave a blank line between questions. A question with no choices under it becomes a short answer.', 'societypress' ),
+        'pasteExample'  => __( "What is your favorite color?\nBlue\nOrange\nRed\n\nWhat is your favorite shape?\nCircle\nSquare", 'societypress' ),
+        'pastePreview'  => __( 'Start typing to see how your questions will look.', 'societypress' ),
+        'pasteAdd'      => __( 'Add these questions', 'societypress' ),
+        'cancel'        => __( 'Cancel', 'societypress' ),
+        'noQuestions'   => __( 'No questions in this section yet.', 'societypress' ),
+        'leave'         => __( 'You have changes that are not saved.', 'societypress' ),
+        'agree'         => __( "Strongly disagree\nDisagree\nNeutral\nAgree\nStrongly agree", 'societypress' ),
+    ];
+}
+
+/**
+ * The editor's script. Vanilla JS: the design lives in one object, the screen
+ * is redrawn from it after anything structural (add, move, remove, change of
+ * kind), and typing updates the object in place so the cursor never jumps.
+ */
+function sp_qn_editor_script(): void {
+    ?>
+    <script>
+    ( function () {
+        var boot = JSON.parse( document.getElementById( 'sp-qn-boot' ).textContent );
+        var T = boot.text, TYPES = {};
+        boot.types.forEach( function ( t ) { TYPES[ t.key ] = t; } );
+        var CHOICE_TYPES = [ 'multiple_choice', 'checkboxes', 'dropdown', 'ranking' ];
+        var state = { title: boot.title, description: boot.description, sections: boot.sections };
+        if ( ! state.sections.length ) { state.sections.push( { id: 0, title: '', description: '', questions: [] } ); }
+        var preview = !! boot.preview, dirty = false, device = 'desktop', pasteOpen = !! boot.paste, pendingFocus = null, openMenu = null;
+        var canvas = document.getElementById( 'sp-qn-canvas' );
+        var statusEl = document.getElementById( 'sp-qn-status' );
+        var previewBtn = document.getElementById( 'sp-qn-preview-btn' );
+        var devices = document.getElementById( 'sp-qn-devices' );
+        var uid = 0;
+
+        function fmt( s ) {
+            var args = Array.prototype.slice.call( arguments, 1 );
+            return s.replace( /%(\d)\$d/g, function ( m, n ) { return args[ n - 1 ]; } ).replace( '%d', args[ 0 ] );
+        }
+        function el( tag, attrs, kids ) {
+            var n = document.createElement( tag );
+            Object.keys( attrs || {} ).forEach( function ( k ) {
+                var v = attrs[ k ];
+                if ( v === null || v === undefined || v === false ) { return; }
+                if ( k === 'text' ) { n.textContent = v; }
+                else if ( k.indexOf( 'on' ) === 0 ) { n.addEventListener( k.slice( 2 ), v ); }
+                else if ( k === 'value' ) { n.value = v; }
+                else if ( k === 'checked' ) { n.checked = !! v; }
+                else { n.setAttribute( k, v === true ? '' : v ); }
+            } );
+            ( kids || [] ).forEach( function ( c ) { if ( c ) { n.appendChild( typeof c === 'string' ? document.createTextNode( c ) : c ); } } );
+            return n;
+        }
+        function icon( name ) { return el( 'span', { 'class': 'dashicons ' + name, 'aria-hidden': 'true' } ); }
+        function mark() { dirty = true; statusEl.textContent = T.unsaved; }
+        function confirmThen( msg, fn ) { if ( window.spConfirm ) { window.spConfirm( msg, fn ); } else { fn(); } }
+
+        function defaults( type, old ) {
+            old = old || {};
+            var keep = old.choices && old.choices.length && typeof old.choices[ 0 ] === 'string' ? old.choices : [ '', '' ];
+            switch ( type ) {
+                case 'multiple_choice': case 'checkboxes': return { choices: keep, other: !! old.other, shuffle: !! old.shuffle };
+                case 'dropdown': case 'ranking': return { choices: keep, shuffle: !! old.shuffle };
+                case 'star_rating': return { stars: 5 };
+                case 'scale': return { min: 1, max: 10, low: '', high: '' };
+                case 'grid': return { rows: [ '', '' ], columns: T.agree.split( '\n' ), multi: false };
+                case 'contact': return { fields: [ 'name', 'email' ] };
+                case 'picture_choice': return { choices: [] };
+                default: return {};
+            }
+        }
+        function newQuestion( type ) {
+            type = type || 'multiple_choice';
+            return { id: 0, type: type, prompt: '', required: false, settings: defaults( type ), open: true, key: ++uid };
+        }
+
+        // ---- Answers drawn the way people will see them --------------------
+        function answerPreview( q ) {
+            var s = q.settings || {}, wrap = el( 'div', { 'class': 'sp-qn-answers' } ), name = 'p' + ( q.key || q.id );
+            function choiceList( kind ) {
+                ( s.choices || [] ).forEach( function ( c, i ) {
+                    wrap.appendChild( el( 'label', { 'class': 'sp-qn-opt' }, [ el( 'input', { type: kind, name: name, disabled: true } ), ' ' + ( c || fmt( T.choicePh, i + 1 ) ) ] ) );
+                } );
+                if ( s.other ) {
+                    wrap.appendChild( el( 'label', { 'class': 'sp-qn-opt' }, [ el( 'input', { type: kind, name: name, disabled: true } ), ' ' + T.otherLabel + ' ', el( 'input', { type: 'text', disabled: true } ) ] ) );
+                }
+            }
+            switch ( q.type ) {
+                case 'multiple_choice': choiceList( 'radio' ); break;
+                case 'checkboxes': choiceList( 'checkbox' ); break;
+                case 'dropdown':
+                    var sel = el( 'select', { disabled: true }, [ el( 'option', { text: T.select } ) ] );
+                    ( s.choices || [] ).forEach( function ( c ) { sel.appendChild( el( 'option', { text: c } ) ); } );
+                    wrap.appendChild( sel ); break;
+                case 'ranking':
+                    var ol = el( 'ol', { 'class': 'sp-qn-rank' } );
+                    ( s.choices || [] ).forEach( function ( c, i ) { ol.appendChild( el( 'li', {}, [ icon( 'dashicons-menu' ), ' ' + ( c || fmt( T.choicePh, i + 1 ) ) ] ) ); } );
+                    wrap.appendChild( ol ); wrap.appendChild( el( 'p', { 'class': 'description', text: T.rankHint } ) ); break;
+                case 'short_answer': wrap.appendChild( el( 'input', { type: 'text', 'class': 'regular-text', disabled: true } ) ); break;
+                case 'long_answer': wrap.appendChild( el( 'textarea', { rows: 4, 'class': 'large-text', disabled: true } ) ); break;
+                case 'star_rating':
+                    var stars = el( 'div', { 'class': 'sp-qn-stars' } );
+                    for ( var i = 0; i < ( s.stars || 5 ); i++ ) { stars.appendChild( icon( 'dashicons-star-empty' ) ); }
+                    wrap.appendChild( stars ); break;
+                case 'scale':
+                    var row = el( 'div', { 'class': 'sp-qn-scale' } );
+                    if ( s.low ) { row.appendChild( el( 'span', { 'class': 'sp-qn-scale-label', text: s.low } ) ); }
+                    for ( var n = s.min; n <= s.max; n++ ) { row.appendChild( el( 'label', {}, [ el( 'input', { type: 'radio', name: name, disabled: true } ), el( 'span', { text: String( n ) } ) ] ) ); }
+                    if ( s.high ) { row.appendChild( el( 'span', { 'class': 'sp-qn-scale-label', text: s.high } ) ); }
+                    wrap.appendChild( row ); break;
+                case 'grid':
+                    var head = el( 'tr', {}, [ el( 'td' ) ] );
+                    ( s.columns || [] ).forEach( function ( c ) { head.appendChild( el( 'th', { scope: 'col', text: c } ) ); } );
+                    var table = el( 'table', { 'class': 'sp-qn-grid' }, [ el( 'thead', {}, [ head ] ) ] ), body = el( 'tbody' );
+                    ( s.rows || [] ).forEach( function ( r, ri ) {
+                        var tr = el( 'tr', {}, [ el( 'th', { scope: 'row', text: r || fmt( T.rowPh, ri + 1 ) } ) ] );
+                        ( s.columns || [] ).forEach( function () { tr.appendChild( el( 'td', {}, [ el( 'input', { type: s.multi ? 'checkbox' : 'radio', name: name + 'r' + ri, disabled: true } ) ] ) ); } );
+                        body.appendChild( tr );
+                    } );
+                    table.appendChild( body ); wrap.appendChild( table ); break;
+                case 'date': wrap.appendChild( el( 'input', { type: 'date', disabled: true } ) ); break;
+                case 'time': wrap.appendChild( el( 'input', { type: 'time', disabled: true } ) ); break;
+                case 'contact':
+                    var labels = { name: T.cName, email: T.cEmail, phone: T.cPhone, address: T.cAddress };
+                    ( s.fields || [] ).forEach( function ( f ) { wrap.appendChild( el( 'label', { 'class': 'sp-qn-contact' }, [ labels[ f ], el( 'input', { type: 'text', 'class': 'regular-text', disabled: true } ) ] ) ); } );
+                    break;
+                case 'picture_choice':
+                    var pics = el( 'div', { 'class': 'sp-qn-pics' } );
+                    ( s.choices || [] ).forEach( function ( c ) { pics.appendChild( el( 'label', { 'class': 'sp-qn-pic' }, [ c.url ? el( 'img', { src: c.url, alt: c.label || '' } ) : null, el( 'span', {}, [ el( 'input', { type: 'radio', name: name, disabled: true } ), ' ' + ( c.label || '' ) ] ) ] ) ); } );
+                    wrap.appendChild( pics ); break;
+                case 'file_upload': wrap.appendChild( el( 'button', { type: 'button', 'class': 'button', disabled: true, text: T.chooseFile } ) ); break;
+            }
+            return wrap;
+        }
+
+        // ---- Editing pieces --------------------------------------------------
+        function listEditor( q, key, ph, addLabel ) {
+            var list = q.settings[ key ] = q.settings[ key ] || [];
+            var box = el( 'div', { 'class': 'sp-qn-list' } );
+            list.forEach( function ( v, i ) {
+                box.appendChild( el( 'div', { 'class': 'sp-qn-list-row' }, [
+                    el( 'input', { type: 'text', 'class': 'regular-text', value: v, placeholder: fmt( ph, i + 1 ), 'aria-label': fmt( ph, i + 1 ), 'data-focus': q.key + key + i,
+                        oninput: function ( e ) { list[ i ] = e.target.value; mark(); },
+                        onkeydown: function ( e ) { if ( e.key === 'Enter' ) { e.preventDefault(); list.splice( i + 1, 0, '' ); pendingFocus = q.key + key + ( i + 1 ); mark(); render(); } } } ),
+                    el( 'button', { type: 'button', 'class': 'button-link', 'aria-label': T.removeChoice, title: T.removeChoice, onclick: function () { list.splice( i, 1 ); mark(); render(); } }, [ icon( 'dashicons-no-alt' ) ] )
+                ] ) );
+            } );
+            box.appendChild( el( 'button', { type: 'button', 'class': 'button', text: addLabel, onclick: function () { list.push( '' ); pendingFocus = q.key + key + ( list.length - 1 ); mark(); render(); } } ) );
+            return box;
+        }
+        function check( label, on, fn ) {
+            return el( 'label', { 'class': 'sp-qn-line' }, [ el( 'input', { type: 'checkbox', checked: on, onchange: function ( e ) { fn( e.target.checked ); mark(); render(); } } ), ' ' + label ] );
+        }
+        function settingsEditor( q ) {
+            var s = q.settings, box = el( 'div', { 'class': 'sp-qn-settings-box' } );
+            if ( CHOICE_TYPES.indexOf( q.type ) > -1 ) {
+                box.appendChild( el( 'p', { 'class': 'sp-qn-sub', text: T.choices } ) );
+                box.appendChild( listEditor( q, 'choices', T.choicePh, T.addChoice ) );
+                if ( q.type === 'multiple_choice' || q.type === 'checkboxes' ) { box.appendChild( check( T.other, s.other, function ( v ) { s.other = v; } ) ); }
+                box.appendChild( check( T.shuffle, s.shuffle, function ( v ) { s.shuffle = v; } ) );
+            } else if ( q.type === 'star_rating' ) {
+                var sel = el( 'select', { onchange: function ( e ) { s.stars = parseInt( e.target.value, 10 ); mark(); render(); } } );
+                for ( var i = 3; i <= 10; i++ ) { sel.appendChild( el( 'option', { value: String( i ), text: String( i ), selected: i === s.stars } ) ); }
+                box.appendChild( el( 'label', {}, [ T.stars + ' ', sel ] ) );
+            } else if ( q.type === 'scale' ) {
+                var from = el( 'select', { 'aria-label': T.from, onchange: function ( e ) { s.min = parseInt( e.target.value, 10 ); mark(); render(); } }, [ el( 'option', { value: '0', text: '0', selected: s.min === 0 } ), el( 'option', { value: '1', text: '1', selected: s.min === 1 } ) ] );
+                var to = el( 'select', { 'aria-label': T.to, onchange: function ( e ) { s.max = parseInt( e.target.value, 10 ); mark(); render(); } } );
+                for ( var m = 2; m <= 10; m++ ) { to.appendChild( el( 'option', { value: String( m ), text: String( m ), selected: m === s.max } ) ); }
+                box.appendChild( el( 'p', {}, [ T.from + ' ', from, ' ' + T.to + ' ', to ] ) );
+                box.appendChild( el( 'p', {}, [ el( 'input', { type: 'text', 'class': 'regular-text', value: s.low, placeholder: T.lowLabel, 'aria-label': T.lowLabel, oninput: function ( e ) { s.low = e.target.value; mark(); } } ) ] ) );
+                box.appendChild( el( 'p', {}, [ el( 'input', { type: 'text', 'class': 'regular-text', value: s.high, placeholder: T.highLabel, 'aria-label': T.highLabel, oninput: function ( e ) { s.high = e.target.value; mark(); } } ) ] ) );
+            } else if ( q.type === 'grid' ) {
+                box.appendChild( el( 'p', { 'class': 'sp-qn-sub', text: T.rows } ) );
+                box.appendChild( listEditor( q, 'rows', T.rowPh, T.addRow ) );
+                box.appendChild( el( 'p', { 'class': 'sp-qn-sub', text: T.columns } ) );
+                box.appendChild( listEditor( q, 'columns', T.choicePh, T.addChoice ) );
+                box.appendChild( check( T.gridMulti, s.multi, function ( v ) { s.multi = v; } ) );
+            } else if ( q.type === 'contact' ) {
+                box.appendChild( el( 'p', { 'class': 'sp-qn-sub', text: T.contactAsk } ) );
+                [ [ 'name', T.cName ], [ 'email', T.cEmail ], [ 'phone', T.cPhone ], [ 'address', T.cAddress ] ].forEach( function ( f ) {
+                    box.appendChild( check( f[ 1 ], s.fields.indexOf( f[ 0 ] ) > -1, function ( v ) {
+                        s.fields = s.fields.filter( function ( x ) { return x !== f[ 0 ]; } );
+                        if ( v ) { s.fields.push( f[ 0 ] ); }
+                    } ) );
+                } );
+            } else if ( q.type === 'picture_choice' ) {
+                var pics = el( 'div', { 'class': 'sp-qn-pics sp-qn-pics--edit' } );
+                s.choices.forEach( function ( c, i ) {
+                    pics.appendChild( el( 'div', { 'class': 'sp-qn-pic' }, [
+                        c.url ? el( 'img', { src: c.url, alt: '' } ) : null,
+                        el( 'button', { type: 'button', 'class': 'button', text: T.pickPicture, onclick: function () { pickImage( function ( img ) { c.image_id = img.id; c.url = img.url; mark(); render(); } ); } } ),
+                        el( 'input', { type: 'text', value: c.label || '', placeholder: T.pictureLabel, 'aria-label': T.pictureLabel, oninput: function ( e ) { c.label = e.target.value; mark(); } } ),
+                        el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger', text: T.removeChoice, onclick: function () { s.choices.splice( i, 1 ); mark(); render(); } } )
+                    ] ) );
+                } );
+                box.appendChild( pics );
+                box.appendChild( el( 'button', { type: 'button', 'class': 'button', text: T.addPicture, onclick: function () { pickImage( function ( img ) { s.choices.push( { image_id: img.id, url: img.url, label: '' } ); mark(); render(); } ); } } ) );
+            }
+            return box;
+        }
+        function pickImage( done ) {
+            if ( ! window.wp || ! wp.media ) { return; }
+            var frame = wp.media( { library: { type: 'image' }, multiple: false } );
+            frame.on( 'select', function () {
+                var a = frame.state().get( 'selection' ).first().toJSON();
+                done( { id: a.id, url: ( a.sizes && a.sizes.medium ? a.sizes.medium.url : a.url ) } );
+            } );
+            frame.open();
+        }
+        function typePicker( q ) {
+            var cur = TYPES[ q.type ];
+            var wrap = el( 'div', { 'class': 'sp-qn-typepick' } );
+            var listId = 'sp-qn-types-' + q.key;
+            var btn = el( 'button', { type: 'button', 'class': 'sp-qn-typebtn', 'aria-haspopup': 'listbox', 'aria-expanded': openMenu === q.key ? 'true' : 'false', 'aria-controls': listId, 'data-focus': 'type' + q.key,
+                onclick: function () { openMenu = openMenu === q.key ? null : q.key; pendingFocus = 'type' + q.key; render(); } },
+                [ icon( cur.icon ), el( 'span', { text: cur.label } ), icon( 'dashicons-arrow-down-alt2' ) ] );
+            wrap.appendChild( btn );
+            if ( openMenu === q.key ) {
+                var ul = el( 'ul', { 'class': 'sp-qn-typelist', role: 'listbox', id: listId } );
+                boot.types.forEach( function ( t ) {
+                    ul.appendChild( el( 'li', { role: 'option', 'aria-selected': t.key === q.type ? 'true' : 'false' }, [
+                        el( 'button', { type: 'button', onclick: function () {
+                            if ( t.key !== q.type ) { q.settings = defaults( t.key, q.settings ); q.type = t.key; if ( t.key === 'text_block' ) { q.required = false; } mark(); }
+                            openMenu = null; pendingFocus = 'type' + q.key; render();
+                        } }, [ icon( t.icon ), el( 'span', { text: t.label } ) ] )
+                    ] ) );
+                } );
+                wrap.appendChild( ul );
+            }
+            return wrap;
+        }
+
+        // ---- One question ----------------------------------------------------
+        function moveQuestion( si, qi, dir ) {
+            var list = state.sections[ si ].questions, q = list[ qi ], to = qi + dir;
+            if ( to >= 0 && to < list.length ) { list.splice( qi, 1 ); list.splice( to, 0, q ); }
+            else if ( dir < 0 && si > 0 ) { list.splice( qi, 1 ); state.sections[ si - 1 ].questions.push( q ); }
+            else if ( dir > 0 && si < state.sections.length - 1 ) { list.splice( qi, 1 ); state.sections[ si + 1 ].questions.unshift( q ); }
+            else { return; }
+            mark(); render();
+        }
+        function questionHead( q, num ) {
+            var h = el( 'div', { 'class': 'sp-qn-qhead' } );
+            if ( q.type !== 'text_block' ) { h.appendChild( el( 'span', { 'class': 'sp-qn-qnum', text: num + '.' } ) ); }
+            h.appendChild( el( 'span', { 'class': q.type === 'text_block' ? 'sp-qn-qtext' : 'sp-qn-qprompt', text: q.prompt || ( q.type === 'text_block' ? '' : T.questionPh ) } ) );
+            if ( q.required ) { h.appendChild( el( 'span', { 'class': 'sp-qn-req', text: ' ' + T.requiredMark } ) ); }
+            return h;
+        }
+        function questionView( q, num ) {
+            var kids = [ questionHead( q, num ), q.type === 'text_block' ? null : answerPreview( q ) ];
+            if ( preview ) { return el( 'div', { 'class': 'sp-qn-q' }, kids ); }
+            var open = function () { state.sections.forEach( function ( s ) { s.questions.forEach( function ( x ) { x.open = false; } ); } ); q.open = true; pendingFocus = 'prompt' + q.key; render(); };
+            return el( 'div', { 'class': 'sp-qn-q sp-qn-q--view', tabindex: '0', role: 'button', 'aria-label': T.edit + ': ' + ( q.prompt || T.questionPh ),
+                onclick: open, onkeydown: function ( e ) { if ( e.key === 'Enter' || e.key === ' ' ) { e.preventDefault(); open(); } } }, kids );
+        }
+        function questionEdit( q, num, si, qi ) {
+            var isText = q.type === 'text_block';
+            var prompt = el( isText ? 'textarea' : 'input', { type: isText ? null : 'text', rows: isText ? 3 : null, 'class': 'sp-qn-prompt', value: q.prompt, placeholder: isText ? T.textPh : T.questionPh, 'aria-label': isText ? T.textPh : T.questionPh, 'data-focus': 'prompt' + q.key,
+                oninput: function ( e ) { q.prompt = e.target.value; mark(); } } );
+            var helpId = 'sp-qn-help-' + q.key;
+            var help = el( 'div', { 'class': 'sp-qn-kindhelp', id: helpId, hidden: true }, boot.types.map( function ( t ) { return el( 'p', {}, [ icon( t.icon ), el( 'strong', { text: t.label + ' — ' } ), t.help ] ); } ) );
+            var top = el( 'div', { 'class': 'sp-qn-qtop' }, [
+                el( 'span', { 'class': 'sp-qn-qnum', text: isText ? '' : 'Q' + num } ),
+                prompt,
+                typePicker( q ),
+                el( 'button', { type: 'button', 'class': 'button-link sp-qn-helpbtn', 'aria-controls': helpId, 'aria-label': T.kindHelp, title: T.kindHelp,
+                    onclick: function () { help.hidden = ! help.hidden; } }, [ icon( 'dashicons-editor-help' ) ] )
+            ] );
+            var foot = el( 'div', { 'class': 'sp-qn-qfoot' }, [
+                isText ? el( 'span' ) : check( T.required, q.required, function ( v ) { q.required = v; } ),
+                el( 'span', { 'class': 'sp-qn-qtools' }, [
+                    el( 'button', { type: 'button', 'class': 'button-link', 'aria-label': T.moveUp, title: T.moveUp, onclick: function () { moveQuestion( si, qi, -1 ); } }, [ icon( 'dashicons-arrow-up-alt' ) ] ),
+                    el( 'button', { type: 'button', 'class': 'button-link', 'aria-label': T.moveDown, title: T.moveDown, onclick: function () { moveQuestion( si, qi, 1 ); } }, [ icon( 'dashicons-arrow-down-alt' ) ] ),
+                    el( 'button', { type: 'button', 'class': 'button-link', 'aria-label': T.duplicate, title: T.duplicate, onclick: function () {
+                        var copy = JSON.parse( JSON.stringify( q ) ); copy.id = 0; copy.key = ++uid; q.open = false;
+                        state.sections[ si ].questions.splice( qi + 1, 0, copy ); pendingFocus = 'prompt' + copy.key; mark(); render(); } }, [ icon( 'dashicons-admin-page' ) ] ),
+                    el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger', 'aria-label': T.delete, title: T.delete, onclick: function () {
+                        confirmThen( T.deleteQ, function () { state.sections[ si ].questions.splice( qi, 1 ); mark(); render(); } ); } }, [ icon( 'dashicons-trash' ) ] ),
+                    el( 'button', { type: 'button', 'class': 'button button-primary', text: T.done, onclick: function () { q.open = false; openMenu = null; render(); } } )
+                ] )
+            ] );
+            return el( 'div', { 'class': 'sp-qn-q sp-qn-q--edit' }, [ top, help, isText ? null : settingsEditor( q ), foot ] );
+        }
+
+        // ---- Paste in questions ---------------------------------------------
+        function parsePaste( text ) {
+            return text.split( /\n\s*\n/ ).map( function ( block ) {
+                var lines = block.split( '\n' ).map( function ( l ) { return l.trim(); } ).filter( Boolean );
+                if ( ! lines.length ) { return null; }
+                var q = newQuestion( lines.length > 1 ? 'multiple_choice' : 'short_answer' );
+                q.prompt = lines[ 0 ]; q.open = false;
+                if ( lines.length > 1 ) { q.settings.choices = lines.slice( 1 ); }
+                return q;
+            } ).filter( Boolean );
+        }
+        function pastePanel() {
+            var out = el( 'div', { 'class': 'sp-qn-paste-preview' }, [ el( 'p', { 'class': 'description', text: T.pastePreview } ) ] );
+            var ta = el( 'textarea', { rows: 14, 'class': 'large-text', placeholder: T.pasteExample, 'aria-label': T.pasteTitle, 'data-focus': 'paste',
+                oninput: function () {
+                    out.innerHTML = '';
+                    var qs = parsePaste( ta.value );
+                    if ( ! qs.length ) { out.appendChild( el( 'p', { 'class': 'description', text: T.pastePreview } ) ); }
+                    qs.forEach( function ( q, i ) { out.appendChild( el( 'div', { 'class': 'sp-qn-q' }, [ questionHead( q, i + 1 ), answerPreview( q ) ] ) ); } );
+                } } );
+            return el( 'div', { 'class': 'sp-qn-card sp-qn-paste', role: 'dialog', 'aria-label': T.pasteTitle }, [
+                el( 'h2', { text: T.pasteTitle } ),
+                el( 'p', { 'class': 'description', text: T.pasteHelp } ),
+                el( 'div', { 'class': 'sp-qn-paste-cols' }, [ ta, out ] ),
+                el( 'p', {}, [
+                    el( 'button', { type: 'button', 'class': 'button button-primary', text: T.pasteAdd, onclick: function () {
+                        var qs = parsePaste( ta.value );
+                        if ( qs.length ) {
+                            var last = state.sections[ state.sections.length - 1 ].questions;
+                            // A lone untouched starter question gives way to the pasted ones.
+                            if ( last.length === 1 && ! last[ 0 ].prompt && ! last[ 0 ].id ) { last.length = 0; }
+                            Array.prototype.push.apply( last, qs ); mark();
+                        }
+                        pasteOpen = false; render();
+                    } } ),
+                    ' ',
+                    el( 'button', { type: 'button', 'class': 'button', text: T.cancel, onclick: function () { pasteOpen = false; render(); } } )
+                ] )
+            ] );
+        }
+
+        // ---- The whole page ----------------------------------------------------
+        function render() {
+            canvas.innerHTML = '';
+            canvas.className = 'sp-qn-canvas sp-qn-canvas--' + ( preview ? device : 'edit' );
+            previewBtn.textContent = preview ? T.backToEdit : T.preview;
+            devices.hidden = ! preview;
+            var page = el( 'div', { 'class': 'sp-qn-page' } );
+            if ( preview ) {
+                page.appendChild( el( 'h1', { 'class': 'sp-qn-title', text: state.title || T.untitled } ) );
+                if ( state.description ) { page.appendChild( el( 'p', { 'class': 'sp-qn-desc', text: state.description } ) ); }
+            } else {
+                page.appendChild( el( 'input', { type: 'text', 'class': 'sp-qn-title-input', value: state.title, placeholder: T.untitled, 'aria-label': T.titleLabel, oninput: function ( e ) { state.title = e.target.value; mark(); } } ) );
+                page.appendChild( el( 'textarea', { 'class': 'sp-qn-desc-input', rows: 2, value: state.description, placeholder: T.descPh, 'aria-label': T.descLabel, oninput: function ( e ) { state.description = e.target.value; mark(); } } ) );
+            }
+            if ( boot.kind === 'survey' ) { page.appendChild( el( 'p', { 'class': 'sp-qn-anon-note', text: boot.anonymous ? T.anonNote : T.namedNote } ) ); }
+
+            var num = 0, total = state.sections.length;
+            state.sections.forEach( function ( sec, si ) {
+                var card = el( 'section', { 'class': 'sp-qn-section' } );
+                if ( total > 1 || ! preview ) { card.appendChild( el( 'p', { 'class': 'sp-qn-section-label', text: fmt( T.section, si + 1, total ) } ) ); }
+                if ( preview ) {
+                    if ( sec.title ) { card.appendChild( el( 'h2', { text: sec.title } ) ); }
+                    if ( sec.description ) { card.appendChild( el( 'p', { text: sec.description } ) ); }
+                } else {
+                    card.appendChild( el( 'input', { type: 'text', 'class': 'sp-qn-section-title', value: sec.title, placeholder: T.sectionTitle, 'aria-label': T.sectionTitle, oninput: function ( e ) { sec.title = e.target.value; mark(); } } ) );
+                    card.appendChild( el( 'textarea', { 'class': 'sp-qn-section-desc', rows: 1, value: sec.description, placeholder: T.sectionDesc, 'aria-label': T.sectionDesc, oninput: function ( e ) { sec.description = e.target.value; mark(); } } ) );
+                    if ( total > 1 ) {
+                        card.appendChild( el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger sp-qn-section-del', text: T.delSection, onclick: function () {
+                            confirmThen( T.delSectionQ, function () { state.sections.splice( si, 1 ); mark(); render(); } ); } } ) );
+                    }
+                }
+                if ( ! sec.questions.length && ! preview ) { card.appendChild( el( 'p', { 'class': 'description', text: T.noQuestions } ) ); }
+                sec.questions.forEach( function ( q, qi ) {
+                    if ( ! q.key ) { q.key = ++uid; }
+                    if ( q.type !== 'text_block' ) { num++; }
+                    card.appendChild( ! preview && q.open ? questionEdit( q, num, si, qi ) : questionView( q, num ) );
+                } );
+                if ( ! preview ) {
+                    card.appendChild( el( 'button', { type: 'button', 'class': 'button sp-qn-addq', onclick: function () {
+                        state.sections.forEach( function ( s ) { s.questions.forEach( function ( x ) { x.open = false; } ); } );
+                        var q = newQuestion(); sec.questions.push( q ); pendingFocus = 'prompt' + q.key; mark(); render();
+                    } }, [ icon( 'dashicons-plus-alt2' ), ' ' + T.addQuestion ] ) );
+                }
+                page.appendChild( card );
+            } );
+            if ( ! preview ) {
+                page.appendChild( el( 'p', { 'class': 'sp-qn-page-tools' }, [
+                    el( 'button', { type: 'button', 'class': 'button', onclick: function () { state.sections.push( { id: 0, title: '', description: '', questions: [] } ); mark(); render(); } }, [ icon( 'dashicons-plus-alt2' ), ' ' + T.addSection ] ),
+                    ' ',
+                    el( 'button', { type: 'button', 'class': 'button-link', text: T.paste, onclick: function () { pasteOpen = true; pendingFocus = 'paste'; render(); } } )
+                ] ) );
+                if ( pasteOpen ) { page.appendChild( pastePanel() ); }
+            }
+            canvas.appendChild( page );
+            if ( pendingFocus ) {
+                var f = canvas.querySelector( '[data-focus="' + pendingFocus + '"]' );
+                if ( f ) { f.focus(); }
+                pendingFocus = null;
+            }
+        }
+
+        // ---- Saving ------------------------------------------------------------
+        function save() {
+            statusEl.textContent = T.saving;
+            var design = { title: state.title, description: state.description, sections: state.sections.map( function ( s ) {
+                return { id: s.id, title: s.title, description: s.description, questions: s.questions.map( function ( q ) {
+                    return { id: q.id, type: q.type, prompt: q.prompt, required: q.required, settings: q.settings };
+                } ) };
+            } ) };
+            var body = new FormData();
+            body.append( 'action', 'sp_qn_save' );
+            body.append( '_ajax_nonce', boot.nonce );
+            body.append( 'id', boot.id );
+            body.append( 'design', JSON.stringify( design ) );
+            fetch( boot.ajax, { method: 'POST', body: body, credentials: 'same-origin' } )
+                .then( function ( r ) { return r.json(); } )
+                .then( function ( res ) {
+                    if ( ! res || ! res.success ) { throw new Error(); }
+                    // Saved rows now have ids; hand them back so the next save
+                    // updates them instead of adding them again.
+                    res.data.sections.forEach( function ( s, i ) {
+                        if ( ! state.sections[ i ] ) { return; }
+                        state.sections[ i ].id = s.id;
+                        s.questions.forEach( function ( q, j ) { if ( state.sections[ i ].questions[ j ] ) { state.sections[ i ].questions[ j ].id = q.id; } } );
+                    } );
+                    dirty = false; statusEl.textContent = T.saved;
+                } )
+                .catch( function () { statusEl.textContent = T.saveFailed; } );
+        }
+        document.getElementById( 'sp-qn-save-btn' ).addEventListener( 'click', save );
+        document.addEventListener( 'keydown', function ( e ) {
+            if ( ( e.metaKey || e.ctrlKey ) && e.key === 's' ) { e.preventDefault(); save(); }
+            if ( e.key === 'Escape' && openMenu ) { openMenu = null; render(); }
+        } );
+        window.addEventListener( 'beforeunload', function ( e ) { if ( dirty ) { e.preventDefault(); e.returnValue = T.leave; } } );
+        previewBtn.addEventListener( 'click', function () { preview = ! preview; openMenu = null; render(); } );
+        devices.addEventListener( 'click', function ( e ) {
+            var b = e.target.closest( '[data-device]' );
+            if ( ! b ) { return; }
+            device = b.dataset.device;
+            devices.querySelectorAll( '[data-device]' ).forEach( function ( x ) { x.setAttribute( 'aria-pressed', x === b ? 'true' : 'false' ); } );
+            render();
+        } );
+
+        // A brand-new form opens with its first question ready to type into.
+        var count = 0;
+        state.sections.forEach( function ( s ) { count += s.questions.length; } );
+        if ( ! count && ! preview && ! pasteOpen ) {
+            var first = newQuestion(); state.sections[ 0 ].questions.push( first ); pendingFocus = 'prompt' + first.key;
+        }
+        if ( pasteOpen ) { pendingFocus = 'paste'; }
+        render();
+    } )();
+    </script>
+    <?php
+}
+
+/**
+ * Styles for the Forms & Surveys screens.
+ */
+function sp_qn_admin_styles(): void {
+    ?>
+    <style id="sp-qn-css">
+    .sp-qn .sp-qn-start { display: flex; gap: 12px; margin: 16px 0 24px; flex-wrap: wrap; }
+    .sp-qn-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; }
+    .sp-qn-folders a { display: block; padding: 8px 10px; border-left: 3px solid transparent; text-decoration: none; color: #1d2327; }
+    .sp-qn-folders a.current { border-left-color: #2271b1; background: #f0f6fc; font-weight: 600; }
+    .sp-qn-folders h2 { font-size: 14px; margin: 18px 0 6px; }
+    .sp-qn-folder-add { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .sp-qn-folder-tools { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .sp-qn-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .sp-qn-rows { margin: 0; background: #fff; border: 1px solid #dcdcde; border-radius: 6px; }
+    .sp-qn-row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #f0f0f1; margin: 0; }
+    .sp-qn-row:last-child { border-bottom: 0; }
+    .sp-qn-row-main { flex: 1; min-width: 0; }
+    .sp-qn-row-title { font-size: 15px; font-weight: 600; text-decoration: none; }
+    .sp-qn-row-meta { color: #50575e; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+    .sp-qn-row-meta .dashicons { font-size: 16px; width: 16px; height: 16px; }
+    .sp-qn-kind { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: #f0f0f1; color: #1d2327; }
+    .sp-qn-badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 4px; border: 1px solid #c3c4c7; background: #f6f7f7; color: #1d2327; }
+    .sp-qn-badge--open { background: #edfaef; border-color: #68de7c; color: #00450c; }
+    .sp-qn-badge--closed { background: #fcf0f1; border-color: #f86368; color: #8a2424; }
+    .sp-qn-menu { position: relative; }
+    .sp-qn-menu summary { list-style: none; cursor: pointer; padding: 4px 6px; border-radius: 4px; }
+    .sp-qn-menu summary::-webkit-details-marker { display: none; }
+    .sp-qn-menu summary:focus-visible { outline: 2px solid #2271b1; }
+    .sp-qn-menu-panel { position: absolute; right: 0; top: 100%; z-index: 20; width: 260px; background: #fff; border: 1px solid #dcdcde; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 8px 0; }
+    .sp-qn-menu-panel > strong { display: block; padding: 6px 16px 10px; border-bottom: 1px solid #f0f0f1; }
+    .sp-qn-menu-panel > a, .sp-qn-menu-panel > .button-link { display: block; width: 100%; text-align: left; padding: 9px 16px; text-decoration: none; }
+    .sp-qn-menu-panel > a:hover, .sp-qn-menu-panel > .button-link:hover { background: #f0f6fc; }
+    .sp-qn-menu-move { padding: 8px 16px; border-top: 1px solid #f0f0f1; border-bottom: 1px solid #f0f0f1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .sp-qn-menu-move label { width: 100%; }
+    .sp-qn-danger, .sp-qn-danger:hover { color: #b32d2e !important; }
+    .sp-qn-bulkbar { position: sticky; bottom: 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #fff; border: 1px solid #dcdcde; border-radius: 6px; padding: 12px 16px; margin-top: 12px; box-shadow: 0 -4px 12px rgba(0,0,0,.06); }
+    .sp-qn-empty { background: #fff; border: 1px dashed #c3c4c7; border-radius: 6px; padding: 32px; text-align: center; font-size: 15px; }
+    .sp-qn-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; margin: 12px 0 4px; }
+    .sp-qn-steps { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #dcdcde; margin-bottom: 16px; }
+    .sp-qn-steps a { padding: 10px 2px; text-decoration: none; font-weight: 600; color: #50575e; border-bottom: 3px solid transparent; }
+    .sp-qn-steps a.current { color: #1d2327; border-bottom-color: #2271b1; }
+    .sp-qn-step-arrow { color: #8c8f94; }
+    .sp-qn-settings { max-width: 760px; }
+    .sp-qn-card { background: #fff; border: 1px solid #dcdcde; border-radius: 6px; padding: 16px 20px; margin: 0 0 16px; }
+    fieldset.sp-qn-card legend { font-weight: 600; font-size: 14px; padding: 0 6px; margin-left: -6px; }
+    .sp-qn-line { display: block; margin: 6px 0; }
+    .sp-qn-indent { display: block; margin: 4px 0 8px 26px; }
+    .sp-qn-kind-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sp-qn-kind-choice label { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 8px; align-items: center; border: 2px solid #dcdcde; border-radius: 8px; padding: 14px; cursor: pointer; }
+    .sp-qn-kind-choice label:has(input:checked) { border-color: #2271b1; background: #f0f6fc; }
+    .sp-qn-kind-choice label > span:last-child { grid-column: 1 / -1; color: #50575e; }
+    .sp-qn-slug { display: flex; align-items: center; max-width: 100%; }
+    .sp-qn-slug > span { color: #50575e; white-space: nowrap; }
+    .sp-qn-slug input { flex: 1; min-width: 120px; }
+    .sp-qn-toolbar { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-bottom: 12px; }
+    .sp-qn-devices { display: inline-flex; gap: 4px; margin-right: auto; }
+    .sp-qn-devices [aria-pressed="true"] { background: #f0f6fc; border-color: #2271b1; }
+    .sp-qn-save-status { color: #50575e; }
+    .sp-qn-canvas { background: #f6f7f7; border: 1px solid #dcdcde; border-radius: 8px; padding: 24px; }
+    .sp-qn-page { max-width: 820px; margin: 0 auto; background: #fff; border-radius: 8px; padding: 32px 40px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .sp-qn-canvas--tablet .sp-qn-page { max-width: 600px; }
+    .sp-qn-canvas--phone .sp-qn-page { max-width: 380px; padding: 20px; }
+    .sp-qn-title, .sp-qn-title-input { font-size: 26px; font-weight: 700; margin: 0 0 8px; }
+    .sp-qn-canvas .sp-qn-title-input, .sp-qn-canvas .sp-qn-desc-input, .sp-qn-canvas .sp-qn-section-title, .sp-qn-canvas .sp-qn-section-desc { width: 100%; border: 1px dashed transparent; border-radius: 4px; padding: 4px 6px; background: transparent; box-shadow: none; }
+    .sp-qn-canvas .sp-qn-title-input:hover, .sp-qn-canvas .sp-qn-desc-input:hover, .sp-qn-canvas .sp-qn-section-title:hover, .sp-qn-canvas .sp-qn-section-desc:hover,
+    .sp-qn-canvas .sp-qn-title-input:focus, .sp-qn-canvas .sp-qn-desc-input:focus, .sp-qn-canvas .sp-qn-section-title:focus, .sp-qn-canvas .sp-qn-section-desc:focus { border-color: #8c8f94; background: #fff; }
+    .sp-qn-desc-input { font-size: 15px; resize: vertical; }
+    .sp-qn-anon-note { color: #50575e; font-style: italic; }
+    .sp-qn-section { border-top: 2px solid #f0f0f1; margin-top: 24px; padding-top: 12px; position: relative; }
+    .sp-qn-section-label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #8c8f94; margin: 0 0 4px; }
+    .sp-qn-section-title { font-size: 18px; font-weight: 600; }
+    .sp-qn-section-del { position: absolute; right: 0; top: 12px; }
+    .sp-qn-q { margin: 14px 0; padding: 14px 16px; border-radius: 8px; border: 1px solid transparent; }
+    .sp-qn-q--view { cursor: pointer; }
+    .sp-qn-q--view:hover, .sp-qn-q--view:focus { border-color: #c3c4c7; background: #fbfbfc; outline: none; }
+    .sp-qn-q--view:focus-visible { box-shadow: 0 0 0 2px #2271b1; }
+    .sp-qn-q--edit { border: 2px solid #2271b1; background: #fff; box-shadow: 0 4px 16px rgba(34,113,177,.12); }
+    .sp-qn-qhead { font-size: 16px; font-weight: 600; margin-bottom: 10px; }
+    .sp-qn-qnum { margin-right: 6px; }
+    .sp-qn-qtext { font-weight: 400; white-space: pre-wrap; }
+    .sp-qn-req { color: #8c8f94; font-weight: 400; font-size: 13px; }
+    .sp-qn-qtop { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: start; }
+    .sp-qn-qtop .sp-qn-qnum { font-weight: 700; padding-top: 8px; }
+    .sp-qn-prompt { width: 100%; font-size: 15px; padding: 6px 10px; }
+    .sp-qn-typepick { position: relative; }
+    .sp-qn-typebtn { display: inline-flex; align-items: center; gap: 6px; min-width: 210px; padding: 6px 10px; background: #fff; border: 1px solid #8c8f94; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .sp-qn-typebtn span:nth-child(2) { flex: 1; text-align: left; }
+    .sp-qn-typelist { position: absolute; right: 0; top: 100%; z-index: 30; margin: 2px 0 0; width: 260px; max-height: 360px; overflow-y: auto; background: #fff; border: 1px solid #c3c4c7; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.15); }
+    .sp-qn-typelist li { margin: 0; }
+    .sp-qn-typelist button { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 14px; border: 0; background: none; cursor: pointer; text-align: left; font-size: 14px; }
+    .sp-qn-typelist button:hover, .sp-qn-typelist button:focus { background: #f0f6fc; }
+    .sp-qn-typelist [aria-selected="true"] button { font-weight: 600; }
+    .sp-qn-helpbtn { padding-top: 6px; }
+    .sp-qn-kindhelp { background: #f6f7f7; border-radius: 6px; padding: 8px 14px; margin-top: 10px; }
+    .sp-qn-kindhelp p { margin: 6px 0; display: flex; gap: 6px; align-items: baseline; }
+    .sp-qn-settings-box { margin: 14px 0 0 34px; }
+    .sp-qn-sub { font-weight: 600; margin: 10px 0 6px; }
+    .sp-qn-list-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .sp-qn-qfoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 10px; border-top: 1px solid #f0f0f1; }
+    .sp-qn-qtools { display: inline-flex; gap: 10px; align-items: center; }
+    .sp-qn-answers { margin-left: 22px; }
+    .sp-qn-opt { display: block; margin: 6px 0; }
+    .sp-qn-stars .dashicons { font-size: 28px; width: 28px; height: 28px; color: #dba617; }
+    .sp-qn-scale { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .sp-qn-scale label { display: flex; flex-direction: column; align-items: center; }
+    .sp-qn-scale-label { color: #50575e; font-size: 13px; }
+    .sp-qn-grid { border-collapse: collapse; }
+    .sp-qn-grid th, .sp-qn-grid td { padding: 6px 10px; text-align: center; font-weight: 400; }
+    .sp-qn-grid tbody th { text-align: left; }
+    .sp-qn-grid tbody tr:nth-child(odd) { background: #f6f7f7; }
+    .sp-qn-rank li { padding: 8px 10px; border: 1px solid #dcdcde; border-radius: 4px; margin: 6px 0; list-style-position: inside; }
+    .sp-qn-contact { display: block; margin: 6px 0; }
+    .sp-qn-contact input { display: block; margin-top: 2px; }
+    .sp-qn-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 10px; }
+    .sp-qn-pic { display: flex; flex-direction: column; gap: 6px; border: 1px solid #dcdcde; border-radius: 6px; padding: 8px; }
+    .sp-qn-pic img { width: 100%; height: 110px; object-fit: cover; border-radius: 4px; }
+    .sp-qn-addq { margin-top: 8px; }
+    .sp-qn-page-tools { margin-top: 28px; display: flex; gap: 14px; align-items: center; }
+    .sp-qn-paste-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .sp-qn-paste-preview { border-left: 1px solid #dcdcde; padding-left: 16px; max-height: 360px; overflow-y: auto; }
+    .sp-qn-not-open { font-style: italic; }
+    @media (max-width: 960px) {
+        .sp-qn-layout, .sp-qn-kind-choice, .sp-qn-paste-cols { grid-template-columns: 1fr; }
+        .sp-qn-qtop { grid-template-columns: 1fr; }
+        .sp-qn-page { padding: 20px; }
+    }
+    </style>
     <?php
 }

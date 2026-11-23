@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.159] — 2026-11-23
+
+- **New Forms & Surveys builder (first part).** A rebuilt tool for making forms
+  and surveys, under Surveys → Forms & Surveys. This release covers building:
+  - One list of everything you've made, with search, filters, optional folders,
+    a ⋯ menu on each item (Edit, Preview, Who can answer, Notifications, Move to
+    folder, Make a copy, Delete), and tick boxes to move or delete several at once.
+  - Starting something new: choose a form or a survey, give it a title,
+    description and web address, set a deadline or leave it open, choose
+    anonymous or named answers, and choose who can answer (anyone, members, or
+    chosen groups and committees).
+  - A design screen that looks like the finished page: sections, and questions
+    you click to change. There are 15 kinds of question, including multiple
+    choice, comment box, star rating, grid, ranking, number scale, picture
+    choice and contact details. You can also paste in a list of questions as
+    plain text, and preview the page at computer, tablet and phone size.
+  Sending, answering and results come in the next releases. The older Surveys
+  and Forms screens keep working until then.
+
 ## [1.5.158] — 2026-11-23
 
 - **Preview changes to a live page before visitors see them.** When editing a

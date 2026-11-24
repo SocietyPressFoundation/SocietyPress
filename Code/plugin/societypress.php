@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.170
+ * Version:     1.5.171
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.170' );
+define( 'SOCIETYPRESS_VERSION', '1.5.171' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43170,7 +43170,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.170',
+            'version'     => '1.5.171',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43178,7 +43178,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.170',
+            'version'     => '1.5.171',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43186,7 +43186,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.170',
+            'version'     => '1.5.171',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43194,7 +43194,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.170',
+            'version'     => '1.5.171',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43202,7 +43202,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.170',
+            'version'     => '1.5.171',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -110583,6 +110583,25 @@ function sp_build_cart_response(): array {
 // ============================================================================
 
 /**
+ * Small line icons for the checkout, drawn in the text color.
+ *
+ * WHY drawn here rather than an icon font: an icon font is another download
+ * from another company's server on every checkout, and these few shapes are
+ * all the page needs.
+ */
+function sp_checkout_icon( string $name ): string {
+    $paths = [
+        'back'    => '<path d="M19 12H5M11 18l-6-6 6-6"/>',
+        'shield'  => '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
+        'receipt' => '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z"/><path d="M9 8h6M9 12h6"/>',
+        'mail'    => '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+        'lock'    => '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+        'check'   => '<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',
+    ];
+    return '<svg class="sp-co-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . ( $paths[ $name ] ?? '' ) . '</svg>';
+}
+
+/**
  * Tell Stripe this website may show Apple Pay and Google Pay.
  *
  * WHY done here, once per Stripe key: Stripe hides those wallets on any web
@@ -110681,8 +110700,12 @@ function sp_render_cart_page(): void {
         /* One row however many methods there are; a long name wraps inside its
            own button instead of pushing the last one onto a second line. */
         .sp-pay-methods { display:flex; gap:6px; margin:0 0 16px 0; }
-        .sp-pay-method { flex:1 1 0; min-width:0; min-height:52px; padding:8px 6px; line-height:1.2; border:2px solid var(--sp-border-color,#d0d5dd); border-radius:8px; background:#fff; color:#1a1a1a; font-size:14px; font-weight:600; cursor:pointer; text-align:center; }
+        .sp-pay-method { flex:1 1 0; min-width:0; min-height:72px; padding:8px 6px; line-height:1.2; border:2px solid var(--sp-border-color,#d0d5dd); border-radius:8px; background:#fff; color:#1a1a1a; font-size:14px; font-weight:600; cursor:pointer; text-align:center; }
+        .sp-pay-method { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; }
+        .sp-pay-method-icon { display:block; line-height:0; }
         .sp-pay-method:hover { border-color:var(--sp-color-primary,#0D1F3C); }
+        .sp-pay-wallet-note { margin:4px 0 0; padding:12px 14px; background:#f6f7f7; border-radius:6px; font-size:15px; }
+        .sp-pay-wallet-note[hidden] { display:none; }
         .sp-pay-method[aria-pressed="true"] { border-color:var(--sp-color-primary,#0D1F3C); background:var(--sp-color-primary,#0D1F3C); color:#fff; }
         .sp-pay-method:focus-visible { outline:3px solid var(--sp-color-accent,#C9973A); outline-offset:2px; }
         .sp-pay-section[hidden] { display:none; }
@@ -110716,6 +110739,94 @@ function sp_render_cart_page(): void {
         }
         .sp-cart-loading-p { text-align: center; color: #6d7175; padding: 40px 0; }
         .sp-stripe-pay-btn-full { margin-top: 14px; width: 100%; }
+
+        /* ---- Checkout step ----
+           Colors come from the theme (primary color, text color) with
+           fallbacks, so each society's checkout looks like its own site. */
+        .sp-co { --co-primary: var(--sp-color-primary, #5A1A1A); --co-line: rgba(0,0,0,.14); --co-soft: rgba(0,0,0,.035); --co-muted: rgba(0,0,0,.62);
+                 border:0; padding:0; background:none; margin-top:8px; }
+        .sp-co-top { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+        .sp-co-back { display:inline-flex; align-items:center; gap:6px; background:none; border:0; padding:0; cursor:pointer; color:var(--co-primary); font:inherit; font-weight:700; }
+        .sp-co-back:hover span { text-decoration:underline; }
+        .sp-co-secure { display:inline-flex; align-items:center; gap:6px; color:var(--co-muted); font-size:14px; }
+        .sp-co-secure .sp-co-icon { color:#1B5E20; }
+        .sp-co-grid { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:32px; align-items:start; }
+        .sp-co-main { display:flex; flex-direction:column; gap:24px; grid-column:1; grid-row:1; }
+        .sp-co-side { grid-column:2; grid-row:1; position:sticky; top:24px; }
+        .sp-co-card { background:#fff; border:1px solid var(--co-line); border-radius:12px; padding:24px; box-shadow:0 1px 2px rgba(0,0,0,.05); }
+        .sp-co-card-head { padding-bottom:10px; margin-bottom:16px; border-bottom:1px solid var(--co-line); }
+        .sp-co .sp-co-h2 { display:block; margin:0; font-family:var(--sp-font-heading, inherit); font-size:24px; line-height:1.3; font-weight:400; color:inherit; }
+        .sp-co-sub { margin:2px 0 0; font-size:14px; color:var(--co-muted); }
+        .sp-co-fields { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .sp-co-wide { grid-column:1 / -1; }
+        .sp-co-field { display:flex; flex-direction:column; gap:4px; margin:0; }
+        .sp-co-field > span:first-child { font-size:14px; font-weight:700; }
+        .sp-co input[type=text], .sp-co input[type=email], .sp-co input[type=tel] { width:100%; box-sizing:border-box; padding:10px 14px; border:1px solid var(--co-line); border-radius:8px; background:#fff; font:inherit; font-size:16px; }
+        .sp-co input:focus { outline:none; border-color:var(--co-primary); box-shadow:0 0 0 3px color-mix(in srgb, var(--co-primary) 20%, transparent); }
+        .sp-co-iconinput { position:relative; display:block; }
+        .sp-co-iconinput .sp-co-icon { position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--co-muted); pointer-events:none; }
+        .sp-co .sp-co-iconinput input { padding-left:42px; }
+        .sp-co-cityrow { display:grid; grid-template-columns:3fr 1fr 2fr; gap:16px; }
+        /* Four across when there's room, two by two when the label would wrap. */
+        .sp-co .sp-pay-methods { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:8px; margin:0 0 16px; }
+        .sp-co .sp-pay-method { flex-direction:row; min-height:48px; gap:6px; padding:10px 8px; border:1px solid var(--co-line); border-radius:8px; font-size:14px; font-weight:700; background:#fff; color:inherit; }
+        .sp-co .sp-pay-method[aria-pressed="true"] { background:var(--co-primary); border-color:var(--co-primary); color:#fff; }
+        .sp-co .sp-pay-method-icon svg { width:20px; height:20px; }
+        .sp-co-panel { background:var(--co-soft); border:1px solid var(--co-line); border-radius:8px; padding:24px; margin:0; display:flex; flex-direction:column; gap:16px; }
+        .sp-co-panel[hidden] { display:none; }
+        .sp-co-panel-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; }
+        .sp-co-title { display:block; font-weight:700; font-size:16px; }
+        .sp-co-brands { display:flex; flex-wrap:wrap; gap:4px; }
+        .sp-co-brands span { padding:2px 8px; border:1px solid var(--co-line); border-radius:4px; background:#fff; font-size:12px; font-weight:700; letter-spacing:.25px; }
+        .sp-co-panel-intro { display:flex; gap:10px; align-items:flex-start; }
+        .sp-co-panel-intro > .sp-co-icon { color:var(--co-primary); flex-shrink:0; margin-top:2px; }
+        .sp-co-payto { background:#fff; border:1px solid var(--co-line); border-radius:8px; padding:16px; }
+        .sp-co-payto p { margin:0 0 6px; }
+        .sp-co-label { display:block; font-size:14px; font-weight:700; }
+        .sp-co-muted { color:var(--co-muted); }
+        .sp-co-pay { width:100%; display:inline-flex; justify-content:center; align-items:center; gap:8px; padding:14px 24px; border:0; border-radius:8px; background:var(--co-primary); color:#fff; font:inherit; font-weight:700; font-size:15px; cursor:pointer; }
+        .sp-co-pay:hover { filter:brightness(.9); }
+        .sp-co-pay:disabled { opacity:.7; cursor:wait; }
+        .sp-co-pay:focus-visible, .sp-co .sp-pay-method:focus-visible, .sp-co-back:focus-visible { outline:3px solid var(--co-primary); outline-offset:2px; }
+        .sp-co-pay[hidden] { display:none; }
+        .sp-co .sp-pay-wallet-note { background:#fff; border:1px solid var(--co-line); }
+        .sp-co .sp-pay-error:empty { display:none; }
+        .sp-co-summary { padding:0; }
+        .sp-co-summary > summary { list-style:none; display:flex; justify-content:space-between; align-items:center; gap:12px; padding:24px 24px 12px; cursor:default; }
+        .sp-co-summary > summary::-webkit-details-marker { display:none; }
+        .sp-co-summary-head { display:flex; align-items:center; gap:10px; }
+        .sp-co-summary-head > .sp-co-icon { display:none; color:var(--co-primary); }
+        .sp-co-count { display:block; font-size:12px; font-weight:700; color:var(--co-muted); }
+        .sp-co-summary-total { display:none; font-weight:700; color:var(--co-primary); font-size:18px; }
+        .sp-co-items { list-style:none; margin:0 24px; padding:12px 0 0; border-top:1px solid var(--co-line); }
+        .sp-co-items li { display:flex; justify-content:space-between; gap:16px; padding:10px 0; border-bottom:1px solid rgba(0,0,0,.07); }
+        .sp-co-items li:last-child { border-bottom:0; }
+        .sp-co-item-name { display:block; font-weight:700; }
+        .sp-co-item-meta { display:block; font-size:14px; color:var(--co-muted); }
+        .sp-co-amt { font-variant-numeric:tabular-nums; white-space:nowrap; }
+        .sp-co-totals { margin:0 24px; padding:16px 0 24px; border-top:1px solid var(--co-line); }
+        .sp-co-totals div { display:flex; justify-content:space-between; padding:3px 0; font-size:14px; }
+        .sp-co-totals div span:first-child { color:var(--co-muted); }
+        .sp-co-totals .sp-co-grand { margin-top:8px; padding-top:10px; border-top:1px solid var(--co-line); font-size:20px; font-weight:700; }
+        .sp-co-totals .sp-co-grand span:first-child { color:inherit; }
+        .sp-co-totals .sp-co-grand span:last-child { color:var(--co-primary); font-size:24px; }
+        .sp-co-free { color:#1B5E20; font-weight:700; }
+        /* Phone: one column, the summary first and folded shut to a single
+           line with the total, opened with a tap. */
+        @media (max-width:900px) {
+            .sp-co-grid { grid-template-columns:1fr; gap:20px; }
+            .sp-co-main, .sp-co-side { grid-column:1; }
+            .sp-co-side { grid-row:1; position:static; }
+            .sp-co-main { grid-row:2; }
+            .sp-co-card { padding:18px; }
+            .sp-co-summary > summary { cursor:pointer; padding:16px 18px; }
+            .sp-co-summary-head > .sp-co-icon, .sp-co-summary-total { display:block; }
+            .sp-co-items, .sp-co-totals { margin:0 18px; }
+            .sp-co-fields { grid-template-columns:1fr; }
+            .sp-co-cityrow { grid-template-columns:2fr 1fr 1.4fr; gap:10px; }
+            .sp-co .sp-pay-methods { grid-template-columns:1fr 1fr; }
+            .sp-co-panel { padding:16px; }
+        }
     </style>
 
     <div class="sp-cart-wrap">
@@ -110751,97 +110862,142 @@ function sp_render_cart_page(): void {
                 <p class="sp-cart-loading-p"><?php esc_html_e( 'Loading cart…', 'societypress' ); ?></p>
             </div>
 
-            <div id="sp-pay-panel" class="sp-pay-panel" style="display:none;">
-                <h3><?php esc_html_e( 'Payment', 'societypress' ); ?></h3>
-                <p class="sp-pay-sub" id="sp-pay-total-line"></p>
+            <?php
+            // WHY the order summary sits beside the forms (above them on a
+            // phone): a buyer filling in an address can see what they're paying
+            // for without scrolling back up, which is when people abandon.
+            $sp_cu  = wp_get_current_user();
+            $sp_mem = $sp_cu->ID ? sp_get_member_by_user_id( $sp_cu->ID ) : null;
+            $sp_nm  = $sp_mem
+                ? trim( ( $sp_mem->first_name ?? '' ) . ' ' . ( $sp_mem->last_name ?? '' ) )
+                : (string) $sp_cu->display_name;
+            $sp_org_name = trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' );
+            $sp_org_addr = trim( (string) ( $settings['organization_address'] ?? '' ) );
+            ?>
+            <div id="sp-pay-panel" class="sp-pay-panel sp-co" style="display:none;">
+                <div class="sp-co-top">
+                    <button type="button" class="sp-co-back" id="sp-pay-cancel-btn"><?php echo sp_checkout_icon( 'back' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?><span><?php esc_html_e( 'Back to cart', 'societypress' ); ?></span></button>
+                    <span class="sp-co-secure"><?php echo sp_checkout_icon( 'shield' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?><?php esc_html_e( 'Secure checkout', 'societypress' ); ?></span>
+                </div>
 
-                <?php
-                // WHY these are asked of everyone and not just guests: the
-                // shipping columns have been on sp_orders since it was written
-                // and nothing ever filled them, so no society has ever been
-                // told where to post the book somebody bought. A signed-in
-                // member's details are pre-filled; they can still change them,
-                // because the order may not be going to their own address.
-                $sp_cu  = wp_get_current_user();
-                $sp_mem = $sp_cu->ID ? sp_get_member_by_user_id( $sp_cu->ID ) : null;
-                $sp_nm  = $sp_mem
-                    ? trim( ( $sp_mem->first_name ?? '' ) . ' ' . ( $sp_mem->last_name ?? '' ) )
-                    : (string) $sp_cu->display_name;
-                ?>
-                <div class="sp-buyer-fields">
-                    <p class="sp-buyer-legend"><?php esc_html_e( 'Where should this go?', 'societypress' ); ?></p>
-                    <label for="sp-buyer-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label>
-                    <input type="text" id="sp-buyer-name" autocomplete="name" required
-                           value="<?php echo esc_attr( $sp_nm ); ?>">
+                <div class="sp-co-grid">
+                    <aside class="sp-co-side">
+                        <details class="sp-co-card sp-co-summary" open>
+                            <summary>
+                                <span class="sp-co-summary-head">
+                                    <?php echo sp_checkout_icon( 'receipt' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?>
+                                    <span>
+                                        <span class="sp-co-h2"><?php esc_html_e( 'Order Summary', 'societypress' ); ?></span>
+                                        <span class="sp-co-count" id="sp-co-count"></span>
+                                    </span>
+                                </span>
+                                <span class="sp-co-summary-total" id="sp-pay-total-line"></span>
+                            </summary>
+                            <ul class="sp-co-items" id="sp-co-items"></ul>
+                            <div class="sp-co-totals" id="sp-co-totals"></div>
+                        </details>
+                    </aside>
 
-                    <label for="sp-buyer-email"><?php esc_html_e( 'Email (for your receipt)', 'societypress' ); ?></label>
-                    <input type="email" id="sp-buyer-email" autocomplete="email" required
-                           value="<?php echo esc_attr( (string) $sp_cu->user_email ); ?>">
+                    <div class="sp-co-main">
+                        <section class="sp-co-card">
+                            <header class="sp-co-card-head">
+                                <h2 class="sp-co-h2"><?php esc_html_e( 'Contact & Mailing Details', 'societypress' ); ?></h2>
+                                <p class="sp-co-sub"><?php esc_html_e( 'Where we should send your receipt and any shipped items', 'societypress' ); ?></p>
+                            </header>
+                            <div class="sp-co-fields">
+                                <label class="sp-co-field sp-co-wide">
+                                    <span><?php esc_html_e( 'Full name', 'societypress' ); ?></span>
+                                    <input type="text" id="sp-buyer-name" autocomplete="name" required value="<?php echo esc_attr( $sp_nm ); ?>">
+                                </label>
+                                <label class="sp-co-field">
+                                    <span><?php esc_html_e( 'Email for receipt', 'societypress' ); ?></span>
+                                    <span class="sp-co-iconinput"><?php echo sp_checkout_icon( 'mail' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?><input type="email" id="sp-buyer-email" autocomplete="email" inputmode="email" required value="<?php echo esc_attr( (string) $sp_cu->user_email ); ?>"></span>
+                                </label>
+                                <label class="sp-co-field">
+                                    <span><?php esc_html_e( 'Phone (optional)', 'societypress' ); ?></span>
+                                    <input type="tel" id="sp-buyer-phone" autocomplete="tel" inputmode="tel" value="<?php echo esc_attr( (string) ( $sp_mem->phone ?? '' ) ); ?>">
+                                </label>
+                                <div id="sp-buyer-shipping" class="sp-co-wide sp-co-fields">
+                                    <label class="sp-co-field sp-co-wide">
+                                        <span><?php esc_html_e( 'Street address', 'societypress' ); ?></span>
+                                        <input type="text" id="sp-buyer-address-1" autocomplete="address-line1">
+                                    </label>
+                                    <label class="sp-co-field sp-co-wide">
+                                        <span><?php esc_html_e( 'Apartment, suite, etc. (optional)', 'societypress' ); ?></span>
+                                        <input type="text" id="sp-buyer-address-2" autocomplete="address-line2">
+                                    </label>
+                                    <div class="sp-co-wide sp-co-cityrow">
+                                        <label class="sp-co-field sp-co-city">
+                                            <span><?php esc_html_e( 'City', 'societypress' ); ?></span>
+                                            <input type="text" id="sp-buyer-city" autocomplete="address-level2">
+                                        </label>
+                                        <label class="sp-co-field sp-co-state">
+                                            <span><?php esc_html_e( 'State', 'societypress' ); ?></span>
+                                            <input type="text" id="sp-buyer-state" autocomplete="address-level1">
+                                        </label>
+                                        <label class="sp-co-field sp-co-zip">
+                                            <span><?php esc_html_e( 'ZIP code', 'societypress' ); ?></span>
+                                            <input type="text" id="sp-buyer-postal" autocomplete="postal-code" inputmode="numeric">
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="sp-pay-error" id="sp-buyer-error" role="alert" aria-live="assertive"></div>
+                        </section>
 
-                    <label for="sp-buyer-phone"><?php esc_html_e( 'Phone (optional)', 'societypress' ); ?></label>
-                    <input type="tel" id="sp-buyer-phone" autocomplete="tel"
-                           value="<?php echo esc_attr( (string) ( $sp_mem->phone ?? '' ) ); ?>">
+                        <section class="sp-co-card">
+                            <header class="sp-co-card-head">
+                                <h2 class="sp-co-h2" id="sp-pay-methods-label"><?php esc_html_e( 'Payment method', 'societypress' ); ?></h2>
+                                <p class="sp-co-sub"><?php esc_html_e( 'Choose how you would like to pay', 'societypress' ); ?></p>
+                            </header>
+                            <?php // Filled in when checkout opens: every way to pay, side by side. ?>
+                            <div class="sp-pay-methods" id="sp-pay-methods" role="group" aria-labelledby="sp-pay-methods-label"></div>
 
-                    <div id="sp-buyer-shipping">
-                        <label for="sp-buyer-address-1"><?php esc_html_e( 'Address', 'societypress' ); ?></label>
-                        <input type="text" id="sp-buyer-address-1" autocomplete="address-line1">
-                        <input type="text" id="sp-buyer-address-2" autocomplete="address-line2"
-                               placeholder="<?php esc_attr_e( 'Apartment, suite, etc. (optional)', 'societypress' ); ?>">
+                            <?php if ( $stripe_configured ) : ?>
+                            <div class="sp-pay-section sp-co-panel" id="sp-pay-sec-stripe" hidden>
+                                <div class="sp-co-panel-head">
+                                    <span class="sp-co-title" id="sp-stripe-label"><?php esc_html_e( 'Card details', 'societypress' ); ?></span>
+                                    <span class="sp-co-brands" id="sp-co-brands" aria-label="<?php esc_attr_e( 'Accepted cards: Visa, Mastercard, American Express, Discover', 'societypress' ); ?>">
+                                        <span>VISA</span><span>Mastercard</span><span>AMEX</span><span>Discover</span>
+                                    </span>
+                                </div>
+                                <?php echo sp_stripe_test_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
+                                <div id="sp-stripe-element"></div>
+                                <button type="button" id="sp-stripe-pay-btn" class="sp-co-pay"><?php echo sp_checkout_icon( 'lock' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?><span class="sp-co-pay-text"><?php esc_html_e( 'Pay', 'societypress' ); ?></span></button>
+                                <div class="sp-pay-error" id="sp-stripe-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
+                            </div>
+                            <?php endif; ?>
 
-                        <div class="sp-buyer-row">
-                            <span>
-                                <label for="sp-buyer-city"><?php esc_html_e( 'City', 'societypress' ); ?></label>
-                                <input type="text" id="sp-buyer-city" autocomplete="address-level2">
-                            </span>
-                            <span>
-                                <label for="sp-buyer-state"><?php esc_html_e( 'State', 'societypress' ); ?></label>
-                                <input type="text" id="sp-buyer-state" autocomplete="address-level1">
-                            </span>
-                            <span>
-                                <label for="sp-buyer-postal"><?php esc_html_e( 'ZIP', 'societypress' ); ?></label>
-                                <input type="text" id="sp-buyer-postal" autocomplete="postal-code">
-                            </span>
-                        </div>
+                            <?php if ( $paypal_configured ) : ?>
+                            <div class="sp-pay-section sp-co-panel" id="sp-pay-sec-paypal" hidden>
+                                <span class="sp-co-title"><?php esc_html_e( 'Pay with PayPal or Venmo', 'societypress' ); ?></span>
+                                <div id="sp-paypal-buttons"></div>
+                                <div class="sp-pay-error" id="sp-paypal-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
+                            </div>
+                            <?php endif; ?>
+
+                            <?php if ( $check_configured ) : ?>
+                            <div class="sp-pay-section sp-co-panel" id="sp-pay-sec-check" hidden>
+                                <div class="sp-co-panel-intro">
+                                    <?php echo sp_checkout_icon( 'mail' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?>
+                                    <div>
+                                        <span class="sp-co-title"><?php esc_html_e( 'Pay by mailed check', 'societypress' ); ?></span>
+                                        <p class="sp-co-sub"><?php esc_html_e( 'We\'ll reserve your order now and send it as soon as your check arrives.', 'societypress' ); ?></p>
+                                    </div>
+                                </div>
+                                <div class="sp-co-payto">
+                                    <span class="sp-co-label"><?php esc_html_e( 'Payable to', 'societypress' ); ?></span>
+                                    <p><?php echo esc_html( $sp_org_name ); ?></p>
+                                    <span class="sp-co-label"><?php esc_html_e( 'Mailing address', 'societypress' ); ?></span>
+                                    <p class="sp-co-muted"><?php echo esc_html( preg_replace( '/\s*\R\s*/', ', ', $sp_org_addr ) ); ?></p>
+                                </div>
+                                <button type="button" id="sp-check-pay-btn" class="sp-co-pay"><?php echo sp_checkout_icon( 'check' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?><span class="sp-co-pay-text"><?php esc_html_e( 'Reserve by Check', 'societypress' ); ?></span></button>
+                                <div class="sp-pay-error" id="sp-check-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
+                            </div>
+                            <?php endif; ?>
+                        </section>
                     </div>
-                    <div class="sp-pay-error" id="sp-buyer-error" role="alert" aria-live="assertive"></div>
                 </div>
-
-                <h3 class="sp-pay-heading" id="sp-pay-methods-label"><?php esc_html_e( 'Choose your payment method', 'societypress' ); ?></h3>
-                <?php // Filled in when checkout opens: every way to pay, side by side. ?>
-                <div class="sp-pay-methods" id="sp-pay-methods" role="group" aria-labelledby="sp-pay-methods-label"></div>
-
-                <?php if ( $stripe_configured ) : ?>
-                <div class="sp-pay-section" id="sp-pay-sec-stripe" hidden>
-                    <span class="sp-pay-section-label" id="sp-stripe-label"><?php esc_html_e( 'Pay with card', 'societypress' ); ?></span>
-                    <?php echo sp_stripe_test_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
-                    <div id="sp-stripe-element"></div>
-                    <button type="button" id="sp-stripe-pay-btn" class="sp-cart-checkout-btn sp-stripe-pay-btn-full">
-                        <?php esc_html_e( 'Pay', 'societypress' ); ?>
-                    </button>
-                    <div class="sp-pay-error" id="sp-stripe-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
-                </div>
-                <?php endif; ?>
-
-                <?php if ( $paypal_configured ) : ?>
-                <div class="sp-pay-section" id="sp-pay-sec-paypal" hidden>
-                    <span class="sp-pay-section-label"><?php esc_html_e( 'Pay with PayPal or Venmo', 'societypress' ); ?></span>
-                    <div id="sp-paypal-buttons"></div>
-                    <div class="sp-pay-error" id="sp-paypal-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
-                </div>
-                <?php endif; ?>
-
-                <?php if ( $check_configured ) : ?>
-                <div class="sp-pay-section" id="sp-pay-sec-check" hidden>
-                    <span class="sp-pay-section-label"><?php esc_html_e( 'Pay by mailed check', 'societypress' ); ?></span>
-                    <p class="sp-pay-check-note"><?php esc_html_e( 'We\'ll hold your order and send it when your check arrives.', 'societypress' ); ?></p>
-                    <button type="button" id="sp-check-pay-btn" class="sp-cart-checkout-btn sp-stripe-pay-btn-full">
-                        <?php esc_html_e( 'Place order — I\'ll mail a check', 'societypress' ); ?>
-                    </button>
-                    <div class="sp-pay-error" id="sp-check-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
-                </div>
-                <?php endif; ?>
-
-                <button type="button" class="sp-pay-cancel" id="sp-pay-cancel-btn">&larr; <?php esc_html_e( 'Back to cart', 'societypress' ); ?></button>
             </div>
     </div>
 
@@ -110870,13 +111026,32 @@ function sp_render_cart_page(): void {
         var PAY_T = <?php echo wp_json_encode( [
             /* translators: %s: a way to pay, such as Card or Cash App Pay */
             'payWith'  => __( 'Pay with %s', 'societypress' ),
-            'card'     => __( 'Amex / Mastercard / Visa', 'societypress' ),
-            'byCard'   => __( 'Pay by card', 'societypress' ),
+            'card'     => __( 'Credit Card', 'societypress' ),
+            'cardHead' => __( 'Card details', 'societypress' ),
+            /* translators: %s: amount, such as $42.00 */
+            'payAmt'   => __( 'Pay %s', 'societypress' ),
+            /* translators: %s: amount, such as $42.00 */
+            'checkAmt' => __( 'Reserve by Check · %s', 'societypress' ),
+            'appleAbout'  => __( 'Use your saved card and Face ID or Touch ID in Safari on an iPhone, iPad or Mac.', 'societypress' ),
+            'googleAbout' => __( 'Pay quickly with a card saved to your Google account.', 'societypress' ),
+            /* translators: %d: number of items */
+            'itemsOne' => __( '%d item', 'societypress' ),
+            /* translators: %d: number of items */
+            'itemsMany'=> __( '%d items', 'societypress' ),
+            /* translators: %d: quantity */
+            'qty'      => __( 'Qty %d', 'societypress' ),
+            'subtotal' => __( 'Subtotal', 'societypress' ),
+            'shipping' => __( 'Shipping', 'societypress' ),
+            'free'     => __( 'Free', 'societypress' ),
+            'totalDue' => __( 'Total due', 'societypress' ),
             'applePay' => __( 'Apple Pay', 'societypress' ),
             'googlePay'=> __( 'Google Pay', 'societypress' ),
             'needBuyer'=> __( 'Please fill in your name and email above first.', 'societypress' ),
+            'checking' => __( 'Checking whether this device can use it…', 'societypress' ),
+            'noApple'  => __( 'Apple Pay isn\'t available here. It works in Safari on an iPhone, iPad or Mac that has Apple Pay set up. Please choose another way to pay.', 'societypress' ),
+            'noGoogle' => __( 'Google Pay isn\'t available here. It works in Chrome, or on an Android phone, once a card is saved with Google. Please choose another way to pay.', 'societypress' ),
             'paypal'   => __( 'PayPal or Venmo', 'societypress' ),
-            'check'    => __( 'By Mailed Check', 'societypress' ),
+            'check'    => __( 'Mailed Check', 'societypress' ),
             'pay'      => __( 'Pay', 'societypress' ),
             'working'  => __( 'Processing…', 'societypress' ),
             'failed'   => __( 'Payment failed. Please try again.', 'societypress' ),
@@ -110891,6 +111066,7 @@ function sp_render_cart_page(): void {
         var totalLine   = document.getElementById('sp-pay-total-line');
         var successBanner = document.getElementById('sp-cart-success-banner');
         var cartTotal   = 0;
+        var lastCart    = {};
 
         // Payment flow state — reset each time the buyer enters checkout
         var stripeObj   = null;
@@ -110978,6 +111154,7 @@ function sp_render_cart_page(): void {
 
         function renderCart(data) {
             cartTotal = (data && typeof data.total === 'number') ? data.total : 0;
+            lastCart  = data || {};
             if (!data.items || data.items.length === 0) {
                 container.innerHTML =
                     '<div class="sp-cart-empty">' +
@@ -111088,10 +111265,21 @@ function sp_render_cart_page(): void {
             }
         }
 
+        // WHY the page heading changes with the step: the page is the cart
+        // first and the checkout second, and one fixed title read wrong for
+        // one of them. The page's own title is kept for the checkout step.
+        var pageHeading = document.querySelector('h1.entry-title') || document.querySelector('main h1');
+        var checkoutTitle = pageHeading ? pageHeading.textContent : '';
+        function setHeading(text) { if (pageHeading && text) { pageHeading.textContent = text; } }
+        setHeading(<?php echo wp_json_encode( __( 'Your Cart', 'societypress' ) ); ?>);
+
         function enterCheckout() {
+            setHeading(checkoutTitle);
             container.style.display = 'none';
             panel.style.display = 'block';
-            totalLine.textContent = <?php echo wp_json_encode( __( 'Total due:', 'societypress' ) ); ?> + ' ' + fmtCurrency(cartTotal);
+            totalLine.textContent = fmtCurrency(cartTotal);
+            drawSummary();
+            setPayText();
 
             // The cart may have changed since the last visit, so its old
             // payment can't be reused.
@@ -111108,10 +111296,26 @@ function sp_render_cart_page(): void {
         var stripeLabel = document.getElementById('sp-stripe-label');
         var methodList  = [];
         var WALLETS     = { applePay: PAY_T.applePay, googlePay: PAY_T.googlePay };
+        var walletOk    = {};   // true / false once Stripe says; missing while checking
+        var SVG = function (inner) { return '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>'; };
+        var PAY_ICONS = {
+            card:      SVG('<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/>'),
+            applePay:  SVG('<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/>'),
+            googlePay: SVG('<path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3"/><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M16 13.5h.01"/>'),
+            paypal:    SVG('<path d="M7 20l1.5-9h4.5a4 4 0 0 0 0-8H7.5L5 18h3"/><path d="M9.5 15h3a4 4 0 0 0 4-3.4"/>'),
+            check:     SVG('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>')
+        };
         function sectionFor(type) { return type === 'paypal' || type === 'check' ? type : 'stripe'; }
         function buildMethods() {
             methodList = [];
-            if (stripeConfigured) { methodList.push({ type: 'card', label: PAY_T.card }); }
+            if (stripeConfigured) {
+                methodList.push({ type: 'card', label: PAY_T.card });
+                // WHY always listed, even where the device can't use them: a
+                // buyer looking for Apple Pay or Google Pay should find it, and
+                // learn why it won't work here, rather than wonder where it went.
+                methodList.push({ type: 'applePay', label: PAY_T.applePay });
+                methodList.push({ type: 'googlePay', label: PAY_T.googlePay });
+            }
             if (paypalConfigured) { methodList.push({ type: 'paypal', label: PAY_T.paypal }); }
             if (checkConfigured)  { methodList.push({ type: 'check',  label: PAY_T.check }); }
             drawMethods(methodList);
@@ -111123,7 +111327,14 @@ function sp_render_cart_page(): void {
                 var b = document.createElement('button');
                 b.type = 'button';
                 b.className = 'sp-pay-method';
-                b.textContent = m.label;
+                var ic = document.createElement('span');
+                ic.className = 'sp-pay-method-icon';
+                ic.setAttribute('aria-hidden', 'true');
+                ic.innerHTML = PAY_ICONS[m.type] || PAY_ICONS.card;
+                var tx = document.createElement('span');
+                tx.textContent = m.label;
+                b.appendChild(ic);
+                b.appendChild(tx);
                 b.dataset.type = m.type;
                 b.setAttribute('aria-pressed', 'false');
                 b.addEventListener('click', function() { pickMethod(m); });
@@ -111148,15 +111359,63 @@ function sp_render_cart_page(): void {
                 if (box) { box.hidden = w !== m.type; }
             });
             if (m.type === 'paypal') { mountPaypal(); }
-            else if (m.type === 'card') {
-                stripeLabel.textContent = PAY_T.byCard;
+            var brands = document.getElementById('sp-co-brands');
+            if (brands) { brands.hidden = m.type !== 'card'; }
+            if (m.type === 'card') {
+                stripeLabel.textContent = PAY_T.cardHead;
                 mountStripe();
             } else if (isWallet) {
-                stripeLabel.textContent = PAY_T.payWith.replace('%s', m.label);
+                stripeLabel.textContent = m.label;
+                showWalletNote(m.type);
             }
         }
 
+        // The order summary beside the forms, from the cart as last loaded.
+        function drawSummary() {
+            var items = lastCart.items || [], count = 0, sub = 0;
+            var list = document.getElementById('sp-co-items');
+            list.innerHTML = '';
+            items.forEach(function(it) {
+                count += parseInt(it.qty, 10) || 0;
+                sub += parseFloat(it.line_total) || 0;
+                var li = document.createElement('li');
+                var left = document.createElement('span');
+                var name = document.createElement('span'); name.className = 'sp-co-item-name'; name.textContent = it.title;
+                var meta = document.createElement('span'); meta.className = 'sp-co-item-meta';
+                meta.textContent = (it.author ? it.author + ' · ' : '') + PAY_T.qty.replace('%d', it.qty);
+                left.appendChild(name); left.appendChild(meta);
+                var amt = document.createElement('span'); amt.className = 'sp-co-amt'; amt.textContent = fmtCurrency(it.line_total);
+                li.appendChild(left); li.appendChild(amt);
+                list.appendChild(li);
+            });
+            document.getElementById('sp-co-count').textContent = (count === 1 ? PAY_T.itemsOne : PAY_T.itemsMany).replace('%d', count);
+            var ship = typeof lastCart.shipping_total === 'number' ? lastCart.shipping_total : 0;
+            var tax  = typeof lastCart.tax === 'number' ? lastCart.tax : 0;
+            var rows = [[PAY_T.subtotal, fmtCurrency(typeof lastCart.subtotal === 'number' ? lastCart.subtotal : sub)]];
+            if (lastCart.needs_shipping || ship > 0) { rows.push([PAY_T.shipping, ship > 0 ? fmtCurrency(ship) : null]); }
+            if (tax > 0) { rows.push([lastCart.tax_label || '', fmtCurrency(tax)]); }
+            var box = document.getElementById('sp-co-totals');
+            box.innerHTML = '';
+            rows.concat([[PAY_T.totalDue, fmtCurrency(cartTotal), 'grand']]).forEach(function(r) {
+                var row = document.createElement('div');
+                if (r[2]) { row.className = 'sp-co-grand'; }
+                var a = document.createElement('span'); a.textContent = r[0];
+                var b = document.createElement('span'); b.className = 'sp-co-amt';
+                if (r[1] === null) { b.className += ' sp-co-free'; b.textContent = PAY_T.free; } else { b.textContent = r[1]; }
+                row.appendChild(a); row.appendChild(b); box.appendChild(row);
+            });
+        }
+        // The amount goes on the button, so nobody wonders what Pay will charge.
+        function setPayText() {
+            var amt = fmtCurrency(cartTotal);
+            var p = document.querySelector('#sp-stripe-pay-btn .sp-co-pay-text');
+            if (p) { p.textContent = PAY_T.payAmt.replace('%s', amt); }
+            var c = document.querySelector('#sp-check-pay-btn .sp-co-pay-text');
+            if (c) { c.textContent = PAY_T.checkAmt.replace('%s', amt); }
+        }
+
         function exitCheckout() {
+            setHeading(<?php echo wp_json_encode( __( 'Your Cart', 'societypress' ) ); ?>);
             panel.style.display = 'none';
             container.style.display = '';
         }
@@ -111182,6 +111441,13 @@ function sp_render_cart_page(): void {
         // WHY each form is built before any payment exists: it is drawn at once
         // for the way picked on the banner. The order and its payment are made
         // when the buyer pays, once the name and address are there to go with it.
+        // Stripe draws the card boxes itself; hand it the page's own color,
+        // font and rounding so they don't look pasted in from elsewhere.
+        function stripeLook() {
+            var cs = getComputedStyle(panel);
+            var primary = cs.getPropertyValue('--co-primary').trim() || '#5A1A1A';
+            return { theme: 'stripe', variables: { colorPrimary: primary, borderRadius: '8px', fontFamily: cs.fontFamily, fontSizeBase: '16px', colorText: cs.color } };
+        }
         function stripeElements() {
             if (!stripeObj) { stripeObj = Stripe(stripePubKey); }
             return stripeObj.elements({
@@ -111189,7 +111455,7 @@ function sp_render_cart_page(): void {
                 amount: Math.round(cartTotal * 100),
                 currency: stripeCurrency,
                 paymentMethodTypes: ['card'],
-                appearance: { theme: 'stripe' }
+                appearance: stripeLook()
             });
         }
 
@@ -111221,7 +111487,9 @@ function sp_render_cart_page(): void {
         }
 
         // The card form. Apple Pay and Google Pay are left out of it because
-        // they have buttons of their own on the banner.
+        // they have buttons of their own on the banner, and so is Stripe's
+        // Link, which otherwise adds a second row of choices (its own Bank and
+        // Klarna tabs) inside the card form.
         function mountStripe() {
             var errEl = document.getElementById('sp-stripe-error');
             errEl.textContent = '';
@@ -111231,7 +111499,7 @@ function sp_render_cart_page(): void {
                 elementsObj = stripeElements();
                 var target = document.getElementById('sp-stripe-element');
                 target.innerHTML = '';
-                elementsObj.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }).mount(target);
+                elementsObj.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never', link: 'never' } }).mount(target);
             } catch (e) {
                 elementsObj = null;
                 errEl.textContent = PAY_T.noForm;
@@ -111246,10 +111514,10 @@ function sp_render_cart_page(): void {
                 var stop = function(msg) {
                     errEl.textContent = msg || PAY_T.failed;
                     payBtn.disabled = false;
-                    payBtn.textContent = PAY_T.pay;
+                    setPayText();
                 };
                 payBtn.disabled = true;
-                payBtn.textContent = PAY_T.working;
+                payBtn.querySelector('.sp-co-pay-text').textContent = PAY_T.working;
                 elementsObj.submit().then(function(checked) {
                     if (checked.error) { stop(checked.error.message); return; }
                     payWithStripe(elementsObj, stop);
@@ -111261,8 +111529,17 @@ function sp_render_cart_page(): void {
         // needs a device and browser that carry it (Apple Pay: Safari on an
         // Apple device; Google Pay: a saved card in Chrome). Stripe says which
         // are ready on this device, and only those join the banner.
+        function showWalletNote(w) {
+            var note = document.getElementById('sp-wallet-note-' + w);
+            if (!note) { return; }
+            note.hidden = walletOk[w] === true;
+            note.textContent = walletOk[w] === false
+                ? (w === 'applePay' ? PAY_T.noApple : PAY_T.noGoogle)
+                : PAY_T.checking;
+        }
         function findWallets() {
             var section = document.getElementById('sp-pay-sec-stripe');
+            walletOk = {};
             Object.keys(WALLETS).forEach(function(w) {
                 // Built afresh each visit: the wallet sheet shows the total,
                 // and the cart may have changed since.
@@ -111271,23 +111548,35 @@ function sp_render_cart_page(): void {
                 var box = document.createElement('div');
                 box.id = 'sp-wallet-' + w;
                 box.className = 'sp-pay-wallet';
-                box.hidden = true;
+                box.hidden = curMethod !== w;
+                var about = document.createElement('p');
+                about.className = 'sp-co-sub';
+                about.textContent = w === 'applePay' ? PAY_T.appleAbout : PAY_T.googleAbout;
+                box.appendChild(about);
+                var note = document.createElement('p');
+                note.id = 'sp-wallet-note-' + w;
+                note.className = 'sp-pay-wallet-note';
+                var slot = document.createElement('div');
+                box.appendChild(note);
+                box.appendChild(slot);
                 section.insertBefore(box, document.getElementById('sp-stripe-error'));
+                var settle = function(ok) {
+                    if (walletOk[w] !== undefined) { return; }
+                    walletOk[w] = ok;
+                    if (curMethod === w) { showWalletNote(w); }
+                };
+                // If Stripe never answers (blocked, offline), say so rather
+                // than leave "checking" on the screen.
+                setTimeout(function() { settle(false); }, 10000);
                 var only = { applePay: 'never', googlePay: 'never', link: 'never', amazonPay: 'never', paypal: 'never' };
                 only[w] = 'always';
                 var elements, ece;
                 try {
                     elements = stripeElements();
                     ece = elements.create('expressCheckout', { paymentMethods: only });
-                } catch (e) { return; }
+                } catch (e) { settle(false); return; }
                 ece.on('ready', function(ev) {
-                    if (!ev.availablePaymentMethods || !ev.availablePaymentMethods[w]) { return; }
-                    // Wallets sit right after the card, ahead of PayPal and check.
-                    methodList.splice(1, 0, { type: w, label: WALLETS[w] });
-                    var current = curMethod;
-                    drawMethods(methodList);
-                    var keep = methodList.filter(function(m) { return m.type === current; })[0];
-                    if (keep) { pickMethod(keep); }
+                    settle(!!(ev.availablePaymentMethods && ev.availablePaymentMethods[w]));
                 });
                 ece.on('click', function(ev) {
                     var errEl = document.getElementById('sp-stripe-error');
@@ -111299,7 +111588,7 @@ function sp_render_cart_page(): void {
                     var errEl = document.getElementById('sp-stripe-error');
                     payWithStripe(elements, function(msg) { errEl.textContent = msg || PAY_T.failed; });
                 });
-                ece.mount(box);
+                ece.mount(slot);
             });
         }
 

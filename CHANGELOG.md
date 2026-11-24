@@ -20,6 +20,24 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.171] — 2026-11-23
+
+- The checkout step is redesigned: a "Contact & Mailing Details" card and a
+  "Payment method" card with tabs (Credit Card, Apple Pay, Google Pay,
+  Mailed Check), beside an Order Summary listing each item, shipping, tax and
+  the total. On a phone the summary sits on top and folds open with a tap.
+  The Pay button shows the amount, the card tab shows the cards accepted, and
+  the check tab shows who to make the check payable to and where to mail it.
+  Colors and fonts come from the site's theme.
+- Each way to pay at checkout has an icon above its name.
+- The card form no longer shows a second row of choices (Stripe's Link,
+  with its own Bank and Klarna tabs) under the payment buttons.
+- The cart step reads "Your Cart"; the page's own title ("Check Out")
+  shows once the buyer moves on to pay.
+- Apple Pay and Google Pay are always listed. Where the device or browser
+  can't use one, choosing it says so in plain words and suggests another way
+  to pay, instead of the button being missing.
+
 ## [1.5.170] — 2026-11-23
 
 - Fixed: email from the site could arrive marked "via" the web host's server

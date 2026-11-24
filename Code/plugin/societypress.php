@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.172
+ * Version:     1.5.173
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.172' );
+define( 'SOCIETYPRESS_VERSION', '1.5.173' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43170,7 +43170,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.172',
+            'version'     => '1.5.173',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43178,7 +43178,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.172',
+            'version'     => '1.5.173',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43186,7 +43186,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.172',
+            'version'     => '1.5.173',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43194,7 +43194,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.172',
+            'version'     => '1.5.173',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43202,7 +43202,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.172',
+            'version'     => '1.5.173',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -110777,7 +110777,15 @@ function sp_render_cart_page(): void {
         .sp-co-panel-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; }
         .sp-co-title { display:block; font-weight:700; font-size:16px; }
         .sp-co-brands { display:flex; flex-wrap:wrap; gap:4px; }
-        .sp-co-brands span { padding:2px 8px; border:1px solid var(--co-line); border-radius:4px; background:#fff; font-size:12px; font-weight:700; letter-spacing:.25px; }
+        .sp-co-brands span { padding:2px 8px; border:1px solid var(--co-line); border-radius:4px; background:#fff; font-size:12px; font-weight:700; letter-spacing:.25px; transition:background-color .12s, color .12s, border-color .12s; }
+        .sp-co-brands span.is-match { background:var(--co-primary); border-color:var(--co-primary); color:#fff; }
+        .sp-co-brands[hidden] { display:none; }
+        .sp-co-cardfields { display:flex; flex-direction:column; gap:16px; }
+        .sp-co-cardfields[hidden] { display:none; }
+        .sp-co-cardrow { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .sp-co-stripebox { padding:12px 14px; border:1px solid var(--co-line); border-radius:8px; background:#fff; }
+        .sp-co-stripebox.StripeElement--focus { border-color:var(--co-primary); box-shadow:0 0 0 3px color-mix(in srgb, var(--co-primary) 20%, transparent); }
+        .sp-co-stripebox.StripeElement--invalid { border-color:#BA1A1A; }
         .sp-co-panel-intro { display:flex; gap:10px; align-items:flex-start; }
         .sp-co-panel-intro > .sp-co-icon { color:var(--co-primary); flex-shrink:0; margin-top:2px; }
         .sp-co-payto { background:#fff; border:1px solid var(--co-line); border-radius:8px; padding:16px; }
@@ -110958,11 +110966,26 @@ function sp_render_cart_page(): void {
                                 <div class="sp-co-panel-head">
                                     <span class="sp-co-title" id="sp-stripe-label"><?php esc_html_e( 'Card details', 'societypress' ); ?></span>
                                     <span class="sp-co-brands" id="sp-co-brands" aria-label="<?php esc_attr_e( 'Accepted cards: Visa, Mastercard, American Express, Discover', 'societypress' ); ?>">
-                                        <span>VISA</span><span>Mastercard</span><span>AMEX</span><span>Discover</span>
+                                        <span data-brand="visa">VISA</span><span data-brand="mastercard">Mastercard</span><span data-brand="amex">AMEX</span><span data-brand="discover">Discover</span>
                                     </span>
                                 </div>
                                 <?php echo sp_stripe_test_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
-                                <div id="sp-stripe-element"></div>
+                                <div id="sp-stripe-element" class="sp-co-cardfields">
+                                    <div class="sp-co-field">
+                                        <span id="sp-card-number-l"><?php esc_html_e( 'Card number', 'societypress' ); ?></span>
+                                        <div class="sp-co-stripebox" id="sp-card-number" aria-labelledby="sp-card-number-l"></div>
+                                    </div>
+                                    <div class="sp-co-cardrow">
+                                        <div class="sp-co-field">
+                                            <span id="sp-card-expiry-l"><?php esc_html_e( 'Expiration date', 'societypress' ); ?></span>
+                                            <div class="sp-co-stripebox" id="sp-card-expiry" aria-labelledby="sp-card-expiry-l"></div>
+                                        </div>
+                                        <div class="sp-co-field">
+                                            <span id="sp-card-cvc-l"><?php esc_html_e( 'Security code (CVC)', 'societypress' ); ?></span>
+                                            <div class="sp-co-stripebox" id="sp-card-cvc" aria-labelledby="sp-card-cvc-l"></div>
+                                        </div>
+                                    </div>
+                                </div>
                                 <button type="button" id="sp-stripe-pay-btn" class="sp-co-pay"><?php echo sp_checkout_icon( 'lock' ); // phpcs:ignore WordPress.Security.EscapeOutput -- fixed SVG. ?><span class="sp-co-pay-text"><?php esc_html_e( 'Pay', 'societypress' ); ?></span></button>
                                 <div class="sp-pay-error" id="sp-stripe-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
                             </div>
@@ -111284,7 +111307,6 @@ function sp_render_cart_page(): void {
             // The cart may have changed since the last visit, so its old
             // payment can't be reused.
             stripeSecret = null;
-            elementsObj = null;
             buildMethods();
         }
 
@@ -111459,14 +111481,10 @@ function sp_render_cart_page(): void {
         }
 
         // Place the order, then take the payment the form collected.
-        function payWithStripe(elements, done) {
+        // confirmWith(secret) asks Stripe to charge and returns its promise.
+        function payWithStripe(confirmWith, done) {
             var confirm = function(secret) {
-                stripeObj.confirmPayment({
-                    elements: elements,
-                    clientSecret: secret,
-                    confirmParams: { return_url: window.location.href },
-                    redirect: 'if_required'
-                }).then(function(result) {
+                confirmWith(secret).then(function(result) {
                     if (result.error) { done(result.error.message || PAY_T.failed); return; }
                     // Inline success — confirm with server and show receipt
                     var pi = (result.paymentIntent && result.paymentIntent.id) ? result.paymentIntent.id : '';
@@ -111485,21 +111503,44 @@ function sp_render_cart_page(): void {
             }, function(msg) { done(msg || PAY_T.noStart); });
         }
 
-        // The card form. Apple Pay and Google Pay are left out of it because
-        // they have buttons of their own on the banner, and so is Stripe's
-        // Link, which otherwise adds a second row of choices (its own Bank and
-        // Klarna tabs) inside the card form.
+        // The card form: number, expiry and security code as three boxes.
+        // WHY Stripe's separate card fields rather than its all-in-one form:
+        // these say which brand of card is being typed, so the matching badge
+        // can light up, and they lay out like the rest of the page. The ZIP
+        // code comes from the address above instead of being asked twice.
+        var cardNumberEl = null;
+        function cardStyle() {
+            var cs = getComputedStyle(panel);
+            return {
+                base: { fontSize: '16px', color: cs.color, fontFamily: cs.fontFamily, '::placeholder': { color: '#8a8a8a' } },
+                invalid: { color: '#BA1A1A' }
+            };
+        }
+        function highlightBrand(brand) {
+            document.querySelectorAll('#sp-co-brands [data-brand]').forEach(function(b) {
+                b.classList.toggle('is-match', b.getAttribute('data-brand') === brand);
+            });
+        }
         function mountStripe() {
             var errEl = document.getElementById('sp-stripe-error');
             errEl.textContent = '';
             bindStripePay(errEl);
-            if (elementsObj) { return; }
+            if (cardNumberEl) { return; }
             try {
-                elementsObj = stripeElements();
-                var target = document.getElementById('sp-stripe-element');
-                target.innerHTML = '';
-                elementsObj.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never', link: 'never' } }).mount(target);
+                if (!stripeObj) { stripeObj = Stripe(stripePubKey); }
+                var els = stripeObj.elements();
+                var style = cardStyle();
+                cardNumberEl = els.create('cardNumber', { style: style, showIcon: true, disableLink: true });
+                cardNumberEl.mount('#sp-card-number');
+                els.create('cardExpiry', { style: style }).mount('#sp-card-expiry');
+                els.create('cardCvc', { style: style }).mount('#sp-card-cvc');
+                cardNumberEl.on('change', function(ev) {
+                    highlightBrand(ev.brand);
+                    errEl.textContent = ev.error ? ev.error.message : '';
+                });
+                elementsObj = els;
             } catch (e) {
+                cardNumberEl = null;
                 elementsObj = null;
                 errEl.textContent = PAY_T.noForm;
             }
@@ -111509,7 +111550,7 @@ function sp_render_cart_page(): void {
             var payBtn = document.getElementById('sp-stripe-pay-btn');
             payBtn.onclick = function() {
                 errEl.textContent = '';
-                if (!stripeObj || !elementsObj || !buyerReady()) { return; }
+                if (!stripeObj || !cardNumberEl || !buyerReady()) { return; }
                 var stop = function(msg) {
                     errEl.textContent = msg || PAY_T.failed;
                     payBtn.disabled = false;
@@ -111517,10 +111558,19 @@ function sp_render_cart_page(): void {
                 };
                 payBtn.disabled = true;
                 payBtn.querySelector('.sp-co-pay-text').textContent = PAY_T.working;
-                elementsObj.submit().then(function(checked) {
-                    if (checked.error) { stop(checked.error.message); return; }
-                    payWithStripe(elementsObj, stop);
-                });
+                var b = buyerFields();
+                payWithStripe(function(secret) {
+                    return stripeObj.confirmCardPayment(secret, {
+                        payment_method: {
+                            card: cardNumberEl,
+                            billing_details: {
+                                name: b.buyer_name || undefined,
+                                email: b.buyer_email || undefined,
+                                address: { postal_code: (document.getElementById('sp-buyer-postal') || {}).value || undefined }
+                            }
+                        }
+                    });
+                }, stop);
             };
         }
 
@@ -111593,7 +111643,14 @@ function sp_render_cart_page(): void {
                 });
                 ece.on('confirm', function() {
                     var errEl = document.getElementById('sp-stripe-error');
-                    payWithStripe(elements, function(msg) { errEl.textContent = msg || PAY_T.failed; });
+                    payWithStripe(function(secret) {
+                        return stripeObj.confirmPayment({
+                            elements: elements,
+                            clientSecret: secret,
+                            confirmParams: { return_url: window.location.href },
+                            redirect: 'if_required'
+                        });
+                    }, function(msg) { errEl.textContent = msg || PAY_T.failed; });
                 });
                 ece.mount(slot);
             });

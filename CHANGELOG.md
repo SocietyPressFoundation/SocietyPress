@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.173] — 2026-11-23
+
+- At checkout the card form is three labeled boxes (card number, expiration
+  date, security code), and the badge for the card being typed (Visa,
+  Mastercard, AMEX or Discover) lights up as the number is entered. The ZIP
+  code is taken from the address above rather than asked for twice.
+  Stripe's "Link" button no longer appears inside the card number box.
+
 ## [1.5.172] — 2026-11-23
 
 - Google Pay is offered at checkout only in a browser that can use it.

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.168
+ * Version:     1.5.169
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.168' );
+define( 'SOCIETYPRESS_VERSION', '1.5.169' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43108,7 +43108,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.168',
+            'version'     => '1.5.169',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43116,7 +43116,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.168',
+            'version'     => '1.5.169',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43124,7 +43124,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.168',
+            'version'     => '1.5.169',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43132,7 +43132,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.168',
+            'version'     => '1.5.169',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43140,7 +43140,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.168',
+            'version'     => '1.5.169',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -109859,6 +109859,14 @@ $sp_h_sp_store_create_payment_intent = function () {
     $currency   = $settings['stripe_currency'] ?? 'usd';
     $user       = wp_get_current_user();
 
+    // WHY card only when checkout asks for it: the checkout offers cards and
+    //      the Apple Pay and Google Pay wallets (which pay by card), and the
+    //      form it built is for those alone. Stripe checks the payment against
+    //      the form, so the two must agree.
+    $method_args = 'card' === sanitize_key( wp_unslash( $_POST['method'] ?? '' ) )
+        ? [ 'payment_method_types[0]' => 'card' ]
+        : [ 'automatic_payment_methods[enabled]' => 'true' ];
+
     $response = wp_remote_post( 'https://api.stripe.com/v1/payment_intents', [
         'timeout' => 30,
         'headers' => [
@@ -109868,11 +109876,13 @@ $sp_h_sp_store_create_payment_intent = function () {
         'body' => [
             'amount'                        => (int) round( $total * 100 ),
             'currency'                      => $currency,
-            'automatic_payment_methods[enabled]' => 'true',
-            'receipt_email'                 => $user->user_email,
+            // WHY the email typed at checkout first: a visitor buying without
+            // an account has no account email, and Stripe refused the payment
+            // outright over the empty address it was sent instead.
+            'receipt_email'                 => sanitize_email( (string) ( sp_store_posted_buyer()['email'] ?? '' ) ) ?: (string) $user->user_email,
             'metadata[order_id]'            => (string) $order_id,
             'metadata[site_url]'            => home_url(),
-        ],
+        ] + $method_args,
     ] );
 
     if ( is_wp_error( $response ) ) {
@@ -109909,6 +109919,7 @@ $sp_h_sp_store_create_payment_intent = function () {
 };
 add_action( 'wp_ajax_sp_store_create_payment_intent',        $sp_h_sp_store_create_payment_intent );
 add_action( 'wp_ajax_nopriv_sp_store_create_payment_intent', $sp_h_sp_store_create_payment_intent );
+
 
 
 /**
@@ -110504,11 +110515,43 @@ function sp_build_cart_response(): array {
 // ============================================================================
 
 /**
+ * Tell Stripe this website may show Apple Pay and Google Pay.
+ *
+ * WHY done here, once per Stripe key: Stripe hides those wallets on any web
+ *      address not registered with the account, and registering means a trip
+ *      into the Stripe dashboard a volunteer wouldn't know to make. Doing it
+ *      the first time checkout is shown covers new keys too, such as moving
+ *      from test to live.
+ */
+function sp_stripe_register_wallet_domain( array $settings ): void {
+    $secret = sp_stripe_get_secret_key( $settings );
+    $host   = (string) wp_parse_url( home_url(), PHP_URL_HOST );
+    $flag   = 'sp_stripe_domain_' . md5( $secret . '|' . $host );
+    if ( '' === $secret || '' === $host || get_option( $flag ) ) {
+        return;
+    }
+    $response = wp_remote_post( 'https://api.stripe.com/v1/payment_method_domains', [
+        'timeout' => 15,
+        'headers' => [ 'Authorization' => 'Bearer ' . $secret ],
+        'body'    => [ 'domain_name' => $host ],
+    ] );
+    $code = is_wp_error( $response ) ? 0 : (int) wp_remote_retrieve_response_code( $response );
+    $body = is_wp_error( $response ) ? [] : (array) json_decode( wp_remote_retrieve_body( $response ), true );
+    // Already registered comes back as an error too; either way it is done.
+    if ( 200 === $code || false !== stripos( (string) ( $body['error']['message'] ?? '' ), 'already' ) ) {
+        update_option( $flag, 1, false );
+    }
+}
+
+/**
  * Render the shopping cart page.
  */
 function sp_render_cart_page(): void {
     $settings          = sp_settings();
     $stripe_configured = sp_stripe_is_configured( $settings );
+    if ( $stripe_configured ) {
+        sp_stripe_register_wallet_domain( $settings );
+    }
     $paypal_configured = sp_paypal_is_configured( $settings );
     $check_configured  = sp_donation_check_giving_enabled( $settings );
     $stripe_test_mode  = ! empty( $settings['stripe_test_mode'] );
@@ -110567,6 +110610,17 @@ function sp_render_cart_page(): void {
            card form went unnoticed. */
         .sp-pay-section-label { display:block; font-size:18px; font-weight:700; color:var(--sp-color-primary,#0D1F3C); margin-bottom:10px; }
         .sp-pay-panel h3.sp-pay-heading { font-size:20px; margin:4px 0 14px 0; }
+        /* One row however many methods there are; a long name wraps inside its
+           own button instead of pushing the last one onto a second line. */
+        .sp-pay-methods { display:flex; gap:6px; margin:0 0 16px 0; }
+        .sp-pay-method { flex:1 1 0; min-width:0; min-height:52px; padding:8px 6px; line-height:1.2; border:2px solid var(--sp-border-color,#d0d5dd); border-radius:8px; background:#fff; color:#1a1a1a; font-size:14px; font-weight:600; cursor:pointer; text-align:center; }
+        .sp-pay-method:hover { border-color:var(--sp-color-primary,#0D1F3C); }
+        .sp-pay-method[aria-pressed="true"] { border-color:var(--sp-color-primary,#0D1F3C); background:var(--sp-color-primary,#0D1F3C); color:#fff; }
+        .sp-pay-method:focus-visible { outline:3px solid var(--sp-color-accent,#C9973A); outline-offset:2px; }
+        .sp-pay-section[hidden] { display:none; }
+        .sp-pay-wallet { margin-top:6px; }
+        .sp-pay-wallet[hidden], #sp-stripe-element[hidden], #sp-stripe-pay-btn[hidden] { display:none; }
+        @media (max-width:600px) { .sp-pay-methods { flex-wrap:wrap; } .sp-pay-method { flex:1 1 30%; } }
         .sp-pay-divider { text-align:center; color:#6d7175; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:8px 0; position:relative; }
         .sp-pay-divider:before,.sp-pay-divider:after { content:""; position:absolute; top:50%; width:calc(50% - 30px); height:1px; background:#e5e7eb; }
         .sp-pay-divider:before { left:0; }
@@ -110684,11 +110738,13 @@ function sp_render_cart_page(): void {
                     <div class="sp-pay-error" id="sp-buyer-error" role="alert" aria-live="assertive"></div>
                 </div>
 
-                <h3 class="sp-pay-heading"><?php esc_html_e( 'Choose your payment method', 'societypress' ); ?></h3>
+                <h3 class="sp-pay-heading" id="sp-pay-methods-label"><?php esc_html_e( 'Choose your payment method', 'societypress' ); ?></h3>
+                <?php // Filled in when checkout opens: every way to pay, side by side. ?>
+                <div class="sp-pay-methods" id="sp-pay-methods" role="group" aria-labelledby="sp-pay-methods-label"></div>
 
                 <?php if ( $stripe_configured ) : ?>
-                <div class="sp-pay-section">
-                    <span class="sp-pay-section-label"><?php esc_html_e( 'Pay with card', 'societypress' ); ?></span>
+                <div class="sp-pay-section" id="sp-pay-sec-stripe" hidden>
+                    <span class="sp-pay-section-label" id="sp-stripe-label"><?php esc_html_e( 'Pay with card', 'societypress' ); ?></span>
                     <?php echo sp_stripe_test_notice_html(); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in helper. ?>
                     <div id="sp-stripe-element"></div>
                     <button type="button" id="sp-stripe-pay-btn" class="sp-cart-checkout-btn sp-stripe-pay-btn-full">
@@ -110698,12 +110754,8 @@ function sp_render_cart_page(): void {
                 </div>
                 <?php endif; ?>
 
-                <?php if ( $stripe_configured && $paypal_configured ) : ?>
-                <div class="sp-pay-divider"><?php esc_html_e( 'or', 'societypress' ); ?></div>
-                <?php endif; ?>
-
                 <?php if ( $paypal_configured ) : ?>
-                <div class="sp-pay-section">
+                <div class="sp-pay-section" id="sp-pay-sec-paypal" hidden>
                     <span class="sp-pay-section-label"><?php esc_html_e( 'Pay with PayPal or Venmo', 'societypress' ); ?></span>
                     <div id="sp-paypal-buttons"></div>
                     <div class="sp-pay-error" id="sp-paypal-error" role="alert" aria-live="assertive" aria-atomic="true"></div>
@@ -110711,10 +110763,7 @@ function sp_render_cart_page(): void {
                 <?php endif; ?>
 
                 <?php if ( $check_configured ) : ?>
-                    <?php if ( $stripe_configured || $paypal_configured ) : ?>
-                    <div class="sp-pay-divider"><?php esc_html_e( 'or', 'societypress' ); ?></div>
-                    <?php endif; ?>
-                <div class="sp-pay-section">
+                <div class="sp-pay-section" id="sp-pay-sec-check" hidden>
                     <span class="sp-pay-section-label"><?php esc_html_e( 'Pay by mailed check', 'societypress' ); ?></span>
                     <p class="sp-pay-check-note"><?php esc_html_e( 'We\'ll hold your order and send it when your check arrives.', 'societypress' ); ?></p>
                     <button type="button" id="sp-check-pay-btn" class="sp-cart-checkout-btn sp-stripe-pay-btn-full">
@@ -110749,6 +110798,23 @@ function sp_render_cart_page(): void {
         var paypalConfigured = <?php echo $paypal_configured ? 'true' : 'false'; ?>;
         var checkConfigured  = <?php echo $check_configured ? 'true' : 'false'; ?>;
         var stripePubKey     = <?php echo wp_json_encode( $stripe_pub_key ); ?>;
+        var stripeCurrency   = <?php echo wp_json_encode( strtolower( (string) ( $settings['stripe_currency'] ?? 'usd' ) ) ); ?>;
+        var PAY_T = <?php echo wp_json_encode( [
+            /* translators: %s: a way to pay, such as Card or Cash App Pay */
+            'payWith'  => __( 'Pay with %s', 'societypress' ),
+            'card'     => __( 'Amex / Mastercard / Visa', 'societypress' ),
+            'byCard'   => __( 'Pay by card', 'societypress' ),
+            'applePay' => __( 'Apple Pay', 'societypress' ),
+            'googlePay'=> __( 'Google Pay', 'societypress' ),
+            'needBuyer'=> __( 'Please fill in your name and email above first.', 'societypress' ),
+            'paypal'   => __( 'PayPal or Venmo', 'societypress' ),
+            'check'    => __( 'By Mailed Check', 'societypress' ),
+            'pay'      => __( 'Pay', 'societypress' ),
+            'working'  => __( 'Processing…', 'societypress' ),
+            'failed'   => __( 'Payment failed. Please try again.', 'societypress' ),
+            'noStart'  => __( 'Could not start checkout. Please try again.', 'societypress' ),
+            'noForm'   => __( 'Could not load the payment form. Please refresh and try again.', 'societypress' ),
+        ] ); ?>;
         var spCurrencySym    = <?php echo wp_json_encode( sp_get_currency_symbol() ); ?>;
         var spCurrencyPos    = <?php echo wp_json_encode( sp_get_currency_position() ); ?>;
 
@@ -110763,6 +110829,10 @@ function sp_render_cart_page(): void {
         var elementsObj = null;
         var stripeOrderId = null;
         var stripeMounting = false;
+        var curMethod   = '';
+        // The payment set up on the last press of Pay, kept so pressing Pay
+        // again after a declined card doesn't place a second order.
+        var stripeSecret = null;
         var paypalRendered = false;
 
         function fmtCurrency(amount) {
@@ -110955,24 +111025,73 @@ function sp_render_cart_page(): void {
             panel.style.display = 'block';
             totalLine.textContent = <?php echo wp_json_encode( __( 'Total due:', 'societypress' ) ); ?> + ' ' + fmtCurrency(cartTotal);
 
-            if (stripeConfigured) mountStripe();
-            if (paypalConfigured) mountPaypal();
+            // The cart may have changed since the last visit, so its old
+            // payment can't be reused.
+            stripeSecret = null;
+            elementsObj = null;
+            buildMethods();
+        }
+
+        // ---- The banner: every way to pay, side by side ----
+        // WHY our own row rather than Stripe's tabs: Stripe's tabs can't hold
+        // paying by check or PayPal, and tuck what doesn't fit behind "More".
+        // Picking a button shows that one way's form below it.
+        var methodsBox  = document.getElementById('sp-pay-methods');
+        var stripeLabel = document.getElementById('sp-stripe-label');
+        var methodList  = [];
+        var WALLETS     = { applePay: PAY_T.applePay, googlePay: PAY_T.googlePay };
+        function sectionFor(type) { return type === 'paypal' || type === 'check' ? type : 'stripe'; }
+        function buildMethods() {
+            methodList = [];
+            if (stripeConfigured) { methodList.push({ type: 'card', label: PAY_T.card }); }
+            if (paypalConfigured) { methodList.push({ type: 'paypal', label: PAY_T.paypal }); }
+            if (checkConfigured)  { methodList.push({ type: 'check',  label: PAY_T.check }); }
+            drawMethods(methodList);
+            if (stripeConfigured) { findWallets(); }
+        }
+        function drawMethods(list) {
+            methodsBox.innerHTML = '';
+            list.forEach(function(m) {
+                var b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'sp-pay-method';
+                b.textContent = m.label;
+                b.dataset.type = m.type;
+                b.setAttribute('aria-pressed', 'false');
+                b.addEventListener('click', function() { pickMethod(m); });
+                methodsBox.appendChild(b);
+            });
+            if (list.length) { pickMethod(list[0]); }
+        }
+        function pickMethod(m) {
+            curMethod = m.type;
+            methodsBox.querySelectorAll('.sp-pay-method').forEach(function(b) {
+                b.setAttribute('aria-pressed', b.dataset.type === m.type ? 'true' : 'false');
+            });
+            ['stripe', 'paypal', 'check'].forEach(function(s) {
+                var sec = document.getElementById('sp-pay-sec-' + s);
+                if (sec) { sec.hidden = sectionFor(m.type) !== s; }
+            });
+            var isWallet = !!WALLETS[m.type];
+            document.getElementById('sp-stripe-element').hidden = isWallet;
+            document.getElementById('sp-stripe-pay-btn').hidden = isWallet;
+            Object.keys(WALLETS).forEach(function(w) {
+                var box = document.getElementById('sp-wallet-' + w);
+                if (box) { box.hidden = w !== m.type; }
+            });
+            if (m.type === 'paypal') { mountPaypal(); }
+            else if (m.type === 'card') {
+                stripeLabel.textContent = PAY_T.byCard;
+                mountStripe();
+            } else if (isWallet) {
+                stripeLabel.textContent = PAY_T.payWith.replace('%s', m.label);
+            }
         }
 
         function exitCheckout() {
             panel.style.display = 'none';
             container.style.display = '';
         }
-
-        // Load the card form as soon as the buyer has given a name and email.
-        ['sp-buyer-name', 'sp-buyer-email'].forEach(function(id) {
-            var el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('change', function() {
-                    if (stripeConfigured && panel.style.display !== 'none') { mountStripe(); }
-                });
-            }
-        });
 
         // Mailed check: place the order now; the slip replaces the payment panel.
         var checkPayBtn = document.getElementById('sp-check-pay-btn');
@@ -110991,75 +111110,129 @@ function sp_render_cart_page(): void {
             });
         }
 
-        // ---- Stripe Payment Element ----
-        // WHY quiet and retried: checkout opens with the buyer fields empty, and
-        // a card form can't load until there's an order to attach it to. The old
-        // code checked on open, showed "Please enter your name" to someone who
-        // hadn't had the chance yet, and gave up — so the card form never
-        // appeared and Pay did nothing however the form was then filled in.
-        // Now it loads as soon as name and email are there (see the listeners
-        // below), and Pay works whenever the card form is ready.
+        // ---- Stripe ----
+        // WHY each form is built before any payment exists: it is drawn at once
+        // for the way picked on the banner. The order and its payment are made
+        // when the buyer pays, once the name and address are there to go with it.
+        function stripeElements() {
+            if (!stripeObj) { stripeObj = Stripe(stripePubKey); }
+            return stripeObj.elements({
+                mode: 'payment',
+                amount: Math.round(cartTotal * 100),
+                currency: stripeCurrency,
+                paymentMethodTypes: ['card'],
+                appearance: { theme: 'stripe' }
+            });
+        }
+
+        // Place the order, then take the payment the form collected.
+        function payWithStripe(elements, done) {
+            var confirm = function(secret) {
+                stripeObj.confirmPayment({
+                    elements: elements,
+                    clientSecret: secret,
+                    confirmParams: { return_url: window.location.href },
+                    redirect: 'if_required'
+                }).then(function(result) {
+                    if (result.error) { done(result.error.message || PAY_T.failed); return; }
+                    // Inline success — confirm with server and show receipt
+                    var pi = (result.paymentIntent && result.paymentIntent.id) ? result.paymentIntent.id : '';
+                    cartAjax('sp_store_finalize_stripe', { payment_intent: pi }, showSuccess, function(msg) {
+                        done(msg || <?php echo wp_json_encode( __( 'Payment succeeded but finalizing failed. Please contact the administrator.', 'societypress' ) ); ?>);
+                    });
+                });
+            };
+            if (stripeSecret) { confirm(stripeSecret); return; }
+            var fields = buyerFields();
+            fields.method = 'card';
+            cartAjax('sp_store_create_payment_intent', fields, function(data) {
+                stripeOrderId = data.order_id;
+                stripeSecret = data.client_secret;
+                confirm(stripeSecret);
+            }, function(msg) { done(msg || PAY_T.noStart); });
+        }
+
+        // The card form. Apple Pay and Google Pay are left out of it because
+        // they have buttons of their own on the banner.
         function mountStripe() {
             var errEl = document.getElementById('sp-stripe-error');
             errEl.textContent = '';
             bindStripePay(errEl);
-
-            if (stripeObj || stripeMounting || !buyerReady(true)) { return; }
-            stripeMounting = true;
-            cartAjax('sp_store_create_payment_intent', buyerFields(), function(data) {
-                stripeMounting = false;
-                stripeOrderId = data.order_id;
-                try {
-                    stripeObj = Stripe(stripePubKey);
-                    elementsObj = stripeObj.elements({
-                        clientSecret: data.client_secret,
-                        appearance: { theme: 'stripe' }
-                    });
-                    var el = elementsObj.create('payment', { layout: 'tabs' });
-                    var target = document.getElementById('sp-stripe-element');
-                    target.innerHTML = '';
-                    el.mount(target);
-                } catch (e) {
-                    errEl.textContent = <?php echo wp_json_encode( __( 'Could not load the card form. Please refresh and try again.', 'societypress' ) ); ?>;
-                }
-            }, function(msg) {
-                stripeMounting = false;
-                errEl.textContent = msg || <?php echo wp_json_encode( __( 'Could not start checkout. Please try again.', 'societypress' ) ); ?>;
-            });
+            if (elementsObj) { return; }
+            try {
+                elementsObj = stripeElements();
+                var target = document.getElementById('sp-stripe-element');
+                target.innerHTML = '';
+                elementsObj.create('payment', { layout: 'tabs', wallets: { applePay: 'never', googlePay: 'never' } }).mount(target);
+            } catch (e) {
+                elementsObj = null;
+                errEl.textContent = PAY_T.noForm;
+            }
         }
 
         function bindStripePay(errEl) {
             var payBtn = document.getElementById('sp-stripe-pay-btn');
             payBtn.onclick = function() {
                 errEl.textContent = '';
-                if (!stripeObj || !elementsObj) {
-                    // Not loaded yet: now is the moment to say what's missing.
-                    if (buyerReady()) {
-                        mountStripe();
-                        errEl.textContent = <?php echo wp_json_encode( __( 'Loading the card form — enter your card details above, then press Pay.', 'societypress' ) ); ?>;
-                    }
-                    return;
-                }
+                if (!stripeObj || !elementsObj || !buyerReady()) { return; }
+                var stop = function(msg) {
+                    errEl.textContent = msg || PAY_T.failed;
+                    payBtn.disabled = false;
+                    payBtn.textContent = PAY_T.pay;
+                };
                 payBtn.disabled = true;
-                payBtn.textContent = <?php echo wp_json_encode( __( 'Processing…', 'societypress' ) ); ?>;
-                stripeObj.confirmPayment({
-                    elements: elementsObj,
-                    confirmParams: { return_url: window.location.href },
-                    redirect: 'if_required'
-                }).then(function(result) {
-                    if (result.error) {
-                        errEl.textContent = result.error.message || <?php echo wp_json_encode( __( 'Payment failed. Please try again.', 'societypress' ) ); ?>;
-                        payBtn.disabled = false;
-                        payBtn.textContent = <?php echo wp_json_encode( __( 'Pay', 'societypress' ) ); ?>;
-                        return;
-                    }
-                    // Inline success — confirm with server and show receipt
-                    var pi = (result.paymentIntent && result.paymentIntent.id) ? result.paymentIntent.id : '';
-                    cartAjax('sp_store_finalize_stripe', { payment_intent: pi }, showSuccess, function(msg) {
-                        errEl.textContent = msg || <?php echo wp_json_encode( __( 'Payment succeeded but finalizing failed. Please contact the administrator.', 'societypress' ) ); ?>;
-                    });
+                payBtn.textContent = PAY_T.working;
+                elementsObj.submit().then(function(checked) {
+                    if (checked.error) { stop(checked.error.message); return; }
+                    payWithStripe(elementsObj, stop);
                 });
             };
+        }
+
+        // Apple Pay and Google Pay. WHY a button only where it works: each
+        // needs a device and browser that carry it (Apple Pay: Safari on an
+        // Apple device; Google Pay: a saved card in Chrome). Stripe says which
+        // are ready on this device, and only those join the banner.
+        function findWallets() {
+            var section = document.getElementById('sp-pay-sec-stripe');
+            Object.keys(WALLETS).forEach(function(w) {
+                // Built afresh each visit: the wallet sheet shows the total,
+                // and the cart may have changed since.
+                var old = document.getElementById('sp-wallet-' + w);
+                if (old) { old.parentNode.removeChild(old); }
+                var box = document.createElement('div');
+                box.id = 'sp-wallet-' + w;
+                box.className = 'sp-pay-wallet';
+                box.hidden = true;
+                section.insertBefore(box, document.getElementById('sp-stripe-error'));
+                var only = { applePay: 'never', googlePay: 'never', link: 'never', amazonPay: 'never', paypal: 'never' };
+                only[w] = 'always';
+                var elements, ece;
+                try {
+                    elements = stripeElements();
+                    ece = elements.create('expressCheckout', { paymentMethods: only });
+                } catch (e) { return; }
+                ece.on('ready', function(ev) {
+                    if (!ev.availablePaymentMethods || !ev.availablePaymentMethods[w]) { return; }
+                    // Wallets sit right after the card, ahead of PayPal and check.
+                    methodList.splice(1, 0, { type: w, label: WALLETS[w] });
+                    var current = curMethod;
+                    drawMethods(methodList);
+                    var keep = methodList.filter(function(m) { return m.type === current; })[0];
+                    if (keep) { pickMethod(keep); }
+                });
+                ece.on('click', function(ev) {
+                    var errEl = document.getElementById('sp-stripe-error');
+                    errEl.textContent = '';
+                    if (!buyerReady()) { errEl.textContent = PAY_T.needBuyer; return; }
+                    ev.resolve();
+                });
+                ece.on('confirm', function() {
+                    var errEl = document.getElementById('sp-stripe-error');
+                    payWithStripe(elements, function(msg) { errEl.textContent = msg || PAY_T.failed; });
+                });
+                ece.mount(box);
+            });
         }
 
         // ---- PayPal Smart Buttons ----

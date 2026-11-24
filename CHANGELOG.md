@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.169] — 2026-11-23
+
+- Checkout shows every way to pay side by side in one row: Amex / Mastercard /
+  Visa, Apple Pay, Google Pay, PayPal and By Mailed Check. Apple Pay and Google
+  Pay appear only on a device that can use them. Picking one shows just that
+  way's form.
+- The website registers itself with the society's Stripe account the first
+  time checkout is shown, so Apple Pay and Google Pay work without a trip to
+  the Stripe dashboard. This also happens after switching to new Stripe keys.
+- Fixed: card checkout by a visitor who wasn't logged in was refused by
+  Stripe ("Invalid email address"). The receipt now goes to the email typed
+  at checkout.
+
 ## [1.5.168] — 2026-11-23
 
 - The store's checkout now asks "Choose your payment method", with each way

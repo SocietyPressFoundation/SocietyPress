@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.167] — 2026-11-23
+
+- Blast Email's last check before sending is now a plain question naming who
+  gets it: "Send this email now to Board of Directors (9), Committee Chairs
+  (6)? Once it is sent, it cannot be called back."
+
 ## [1.5.166] — 2026-11-23
 
 - **Ask a question only after a certain answer.** In Forms & Surveys, a

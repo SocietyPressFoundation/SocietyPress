@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.166
+ * Version:     1.5.167
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.166' );
+define( 'SOCIETYPRESS_VERSION', '1.5.167' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43108,7 +43108,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.166',
+            'version'     => '1.5.167',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43116,7 +43116,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.166',
+            'version'     => '1.5.167',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43124,7 +43124,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.166',
+            'version'     => '1.5.167',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43132,7 +43132,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.166',
+            'version'     => '1.5.167',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43140,7 +43140,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.166',
+            'version'     => '1.5.167',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -93585,7 +93585,7 @@ function sp_render_blast_email_compose_page(): void {
             <p class="submit sp-blast-submit-row">
                 <button type="submit" class="button button-primary" onclick="document.getElementById('sp-blast-action').value='save_draft';"><?php esc_html_e( 'Save Draft', 'societypress' ); ?></button>
                 <button type="submit" class="button button-primary sp-blast-send-btn"
-                        data-sp-confirm="<?php echo esc_attr( __( 'Send this email to all selected recipients? This cannot be undone.', 'societypress' ) ); ?>"
+                        data-sp-confirm="<?php echo esc_attr( __( 'Send this email now to everyone you chose? Once it is sent, it cannot be called back.', 'societypress' ) ); ?>"
                         onclick="document.getElementById('sp-blast-action').value='send_now';">
                     <?php esc_html_e( 'Send Now', 'societypress' ); ?>
                 </button>
@@ -93678,8 +93678,11 @@ function sp_render_blast_email_compose_page(): void {
             var groupBoxes= document.querySelectorAll('input[name="group_ids[]"]');
             var tierBoxes = document.querySelectorAll('input[name="tier_ids[]"]');
 
-            var LEAD          = <?php echo wp_json_encode( __( 'Send this email to', 'societypress' ) ); ?>;
-            var TAIL          = <?php echo wp_json_encode( __( 'This cannot be undone.', 'societypress' ) ); ?>;
+            // WHY phrased as a question naming who gets it: the volunteer is
+            // about to email real people, and the last look should say so.
+            /* translators: %s: who will receive the email, e.g. "Board of Directors (9), Committee Chairs (6)" */
+            var LEAD          = <?php echo wp_json_encode( __( 'Send this email now to %s?', 'societypress' ) ); ?>;
+            var TAIL          = <?php echo wp_json_encode( __( 'Once it is sent, it cannot be called back.', 'societypress' ) ); ?>;
             var NONE_GROUP    = <?php echo wp_json_encode( __( 'the groups you select (none chosen yet)', 'societypress' ) ); ?>;
             var NONE_TIER     = <?php echo wp_json_encode( __( 'the tiers you select (none chosen yet)', 'societypress' ) ); ?>;
             var NONE_MEMBER   = <?php echo wp_json_encode( __( 'the members you pick (none chosen yet)', 'societypress' ) ); ?>;
@@ -93749,7 +93752,7 @@ function sp_render_blast_email_compose_page(): void {
                 } else {
                     summary = labelText(sel);
                 }
-                var msg = LEAD + ': ' + summary + '. ' + TAIL;
+                var msg = LEAD.replace('%s', summary) + ' ' + TAIL;
                 if (overrideCb && overrideCb.checked) { msg += ' ' + OVERRIDE_NOTE; }
                 sendBtn.setAttribute('data-sp-confirm', msg);
             }

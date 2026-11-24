@@ -20,6 +20,11 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.172] — 2026-11-23
+
+- Google Pay is offered at checkout only in a browser that can use it.
+  Apple Pay is still always listed, with a note where it can't be used.
+
 ## [1.5.171] — 2026-11-23
 
 - The checkout step is redesigned: a "Contact & Mailing Details" card and a

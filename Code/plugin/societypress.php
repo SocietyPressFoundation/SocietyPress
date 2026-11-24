@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.167
+ * Version:     1.5.168
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.167' );
+define( 'SOCIETYPRESS_VERSION', '1.5.168' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -597,7 +597,7 @@ function sp_maybe_create_default_pages(): void {
         // can put on its site that brings money back in, and until these pages
         // existed the storefront had no address a visitor could be sent to.
         [ 'title' => __( 'Store', 'societypress' ),               'slug' => 'store',       'template' => 'sp-store' ],
-        [ 'title' => __( 'Cart', 'societypress' ),                'slug' => 'cart',        'template' => 'sp-cart' ],
+        [ 'title' => __( 'Check Out', 'societypress' ),           'slug' => 'cart',        'template' => 'sp-cart' ],
     ];
 
     // Track page IDs for the nav menu
@@ -43108,7 +43108,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.167',
+            'version'     => '1.5.168',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43116,7 +43116,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.167',
+            'version'     => '1.5.168',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43124,7 +43124,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.167',
+            'version'     => '1.5.168',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43132,7 +43132,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.167',
+            'version'     => '1.5.168',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43140,7 +43140,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.167',
+            'version'     => '1.5.168',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -108821,7 +108821,7 @@ function sp_maybe_create_store_pages(): void {
 
     $wanted = [
         [ 'title' => __( 'Store', 'societypress' ), 'slug' => 'store', 'template' => 'sp-store' ],
-        [ 'title' => __( 'Cart',  'societypress' ), 'slug' => 'cart',  'template' => 'sp-cart'  ],
+        [ 'title' => __( 'Check Out', 'societypress' ), 'slug' => 'cart',  'template' => 'sp-cart'  ],
     ];
 
     foreach ( $wanted as $page ) {
@@ -108871,7 +108871,7 @@ function sp_nav_cart_page(): ?WP_Post {
  * @return array<string, mixed> The arguments, with the class added or not.
  */
 function sp_nav_cart_menu_class( array $args ): array {
-    if ( 'primary' !== ( $args['theme_location'] ?? '' ) ) {
+    if ( ! sp_nav_cart_is_header_menu( $args ) ) {
         return $args;
     }
 
@@ -108884,6 +108884,20 @@ function sp_nav_cart_menu_class( array $args ): array {
     return $args;
 }
 add_filter( 'wp_nav_menu_args', 'sp_nav_cart_menu_class' );
+
+/**
+ * Is this the menu across the top of the site, where the cart belongs?
+ *
+ * WHY the footer is ruled out by its container and not only by location:
+ *      when a society has no footer menu, the footer's Quick Links draws the
+ *      primary menu again, and the cart icon followed it down there.
+ *
+ * @param array<string, mixed> $args Menu arguments.
+ */
+function sp_nav_cart_is_header_menu( array $args ): bool {
+    return 'primary' === ( $args['theme_location'] ?? '' )
+        && false === strpos( (string) ( $args['container_class'] ?? '' ), 'footer' );
+}
 
 /**
  * Append a Cart link, with a live item count, to the primary navigation.
@@ -108904,7 +108918,7 @@ add_filter( 'wp_nav_menu_args', 'sp_nav_cart_menu_class' );
  */
 function sp_nav_cart_item( string $items, $args ): string {
     // Primary navigation only — the cart has no business in a footer menu.
-    if ( ! isset( $args->theme_location ) || 'primary' !== $args->theme_location ) {
+    if ( ! sp_nav_cart_is_header_menu( (array) $args ) ) {
         return $items;
     }
     $cart_page = sp_nav_cart_page();
@@ -110548,7 +110562,11 @@ function sp_render_cart_page(): void {
         .sp-cart-member-hint p { margin:0; }
         .sp-pay-panel .sp-pay-sub { color:#666; font-size:13px; margin:0 0 18px 0; }
         .sp-pay-section { background:#fff; border:1px solid var(--sp-border-color,#e5e7eb); border-radius:6px; padding:16px; margin-bottom:14px; }
-        .sp-pay-section-label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#666; margin-bottom:10px; }
+        /* Each way to pay is titled like a choice, not a caption: the small grey
+           capitals it had were easy to read past, and the check option below the
+           card form went unnoticed. */
+        .sp-pay-section-label { display:block; font-size:18px; font-weight:700; color:var(--sp-color-primary,#0D1F3C); margin-bottom:10px; }
+        .sp-pay-panel h3.sp-pay-heading { font-size:20px; margin:4px 0 14px 0; }
         .sp-pay-divider { text-align:center; color:#6d7175; font-size:12px; text-transform:uppercase; letter-spacing:1px; margin:8px 0; position:relative; }
         .sp-pay-divider:before,.sp-pay-divider:after { content:""; position:absolute; top:50%; width:calc(50% - 30px); height:1px; background:#e5e7eb; }
         .sp-pay-divider:before { left:0; }
@@ -110665,6 +110683,8 @@ function sp_render_cart_page(): void {
                     </div>
                     <div class="sp-pay-error" id="sp-buyer-error" role="alert" aria-live="assertive"></div>
                 </div>
+
+                <h3 class="sp-pay-heading"><?php esc_html_e( 'Choose your payment method', 'societypress' ); ?></h3>
 
                 <?php if ( $stripe_configured ) : ?>
                 <div class="sp-pay-section">

@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.168] — 2026-11-23
+
+- The store's checkout now asks "Choose your payment method", with each way
+  to pay (card, PayPal or Venmo, mailed check) under a bold title instead of
+  small grey capitals that were easy to read past.
+- New sites name the cart page "Check Out". Its address stays /cart/.
+- The cart icon no longer appears in the footer's Quick Links when the footer
+  repeats the main menu.
+
 ## [1.5.167] — 2026-11-23
 
 - Blast Email's last check before sending is now a plain question naming who

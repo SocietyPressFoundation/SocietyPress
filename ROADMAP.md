@@ -16,6 +16,13 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Ask a question only after a certain answer — 1.5.166
+
+A question can be asked only when someone picks certain answers to an earlier
+multiple-choice, checkbox, drop down menu or picture question. It appears the
+moment that answer is given; otherwise it is skipped, never required, and left
+out of that person's answers.
+
 ### Forms & Surveys, rebuilt from scratch — 1.5.159 to 1.5.165
 
 One builder for forms and surveys replaces the two old tools. You design it as
@@ -186,16 +193,6 @@ before the session ends.
 
 ### High
 
-#### Show a question only when an earlier answer matches
-
-**Motivation:** The old Surveys tool could ask "How well did the online
-connection work?" only of people who said they attended online. The rebuilt
-Forms & Surveys builder can't yet, so everyone sees such a question.
-**Scope:** In the question box, an "Ask this question" choice: always, or only
-when a chosen earlier question got a chosen answer. Hidden questions are skipped
-on the page, never required, and left out of that person's results.
-**Blockers:** None.
-
 #### Send backups off the server automatically
 
 **Motivation:** Backups are saved on the same server as the site, and the
@@ -217,6 +214,18 @@ mailbox exists as of 2026-11-19), then a Google Cloud project for the
 SocietyPress app. Build after that, so it is tested against the real Google.
 
 ### Medium
+
+#### Add a list of names to a group at once
+
+**Motivation:** Filling a member group or committee means adding people one
+at a time. A secretary who already has the names (from a sign-up sheet, an
+email, last year's roster) should be able to put them all in at once.
+**Scope:** On a group's screen, a box to paste or type a list of names, one
+per line. Each name is matched to a member, with a check screen before
+anything is saved: who was found, any name that matched more than one member
+(pick which), and any name that matched nobody. Then add the confirmed members
+in one step.
+**Blockers:** None.
 
 #### AI assistant and problem reports
 

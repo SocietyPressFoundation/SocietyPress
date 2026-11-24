@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.165
+ * Version:     1.5.166
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.165' );
+define( 'SOCIETYPRESS_VERSION', '1.5.166' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43108,7 +43108,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.165',
+            'version'     => '1.5.166',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43116,7 +43116,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.165',
+            'version'     => '1.5.166',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43124,7 +43124,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.165',
+            'version'     => '1.5.166',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43132,7 +43132,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.165',
+            'version'     => '1.5.166',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43140,7 +43140,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.165',
+            'version'     => '1.5.166',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -140165,19 +140165,35 @@ function sp_qn_copy( int $id ): int {
     if ( ! $new_id ) {
         return 0;
     }
+    // WHY rules are written after every question exists: they point at
+    // question ids, and the copy's questions get new ones.
+    $new_ids = [];
+    $rules   = [];
+    $by_id   = [];
     foreach ( sp_qn_structure( $id ) as $i => $sec ) {
         $wpdb->insert( $wpdb->prefix . 'sp_qn_sections', [
             'item_id' => $new_id, 'sort_order' => $i, 'title' => $sec['title'], 'description' => $sec['description'],
         ] );
         $sec_id = (int) $wpdb->insert_id;
         foreach ( $sec['questions'] as $j => $q ) {
+            $settings = sp_qn_clean_settings( $q['type'], $q['settings'] );
             $wpdb->insert( $wpdb->prefix . 'sp_qn_questions', [
                 'item_id' => $new_id, 'section_id' => $sec_id, 'sort_order' => $j, 'type' => $q['type'],
                 'prompt' => $q['prompt'], 'required' => $q['required'] ? 1 : 0,
-                'settings' => wp_json_encode( sp_qn_clean_settings( $q['type'], $q['settings'] ) ),
+                'settings' => wp_json_encode( $settings ),
             ] );
+            $qid                   = (int) $wpdb->insert_id;
+            $new_ids[ $q['id'] ]   = $qid;
+            $by_id[ $qid ]         = [ 'type' => $q['type'], 'settings' => $settings ];
+            if ( ! empty( $q['settings']['show_if'] ) ) {
+                $rules[ $qid ] = $q['settings']['show_if'];
+            }
         }
     }
+    foreach ( $rules as $qid => $rule ) {
+        $rules[ $qid ]['q'] = $new_ids[ (int) ( $rule['q'] ?? 0 ) ] ?? 0;
+    }
+    sp_qn_store_rules( $rules, $by_id );
     $copy = sp_qn_get( $new_id );
     sp_qn_sync_page( $copy, $copy->title );
     return $new_id;
@@ -140236,6 +140252,163 @@ function sp_qn_clean_settings( string $type, $raw ): array {
         default:
             return [];
     }
+}
+
+// ---- Asking a question only after a certain answer -------------------------
+//
+// A question's settings may carry show_if = [ 'q' => earlier question id,
+// 'any' => answers ]. It is asked only when the person gave one of those
+// answers to that question; otherwise it is skipped, never required, and left
+// out of what they sent.
+
+/**
+ * Kinds of question another question can depend on.
+ *
+ * WHY only pick-from-a-list kinds: the rule reads "when Q3 is Online", which a
+ * volunteer sets up by ticking answers, with nothing to type or compare.
+ */
+function sp_qn_trigger_types(): array {
+    return [ 'multiple_choice', 'checkboxes', 'dropdown', 'picture_choice' ];
+}
+
+/**
+ * The answers a rule can point at, the way a rule stores them: the choice's
+ * wording, or for a picture its attachment id, since captions are optional
+ * and can repeat.
+ *
+ * @return string[]
+ */
+function sp_qn_rule_options( string $type, array $settings ): array {
+    if ( 'picture_choice' === $type ) {
+        return array_map( static fn( $c ) => (string) (int) ( $c['image_id'] ?? 0 ), (array) ( $settings['choices'] ?? [] ) );
+    }
+    return array_map( 'strval', (array) ( $settings['choices'] ?? [] ) );
+}
+
+/**
+ * A rule's answers as the answer page sends them: the same wording for
+ * lists, the picture's position for picture choice.
+ *
+ * @return string[]
+ */
+function sp_qn_rule_posted( array $trigger, array $any ): array {
+    $opts = sp_qn_rule_options( $trigger['type'], $trigger['settings'] );
+    if ( 'picture_choice' !== $trigger['type'] ) {
+        return array_values( array_intersect( $opts, $any ) );
+    }
+    $out = [];
+    foreach ( $opts as $i => $img ) {
+        if ( in_array( $img, $any, true ) ) {
+            $out[] = (string) $i;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Keep a rule only if it still points at a pick-from-a-list question in the
+ * same form and at least one of that question's answers.
+ *
+ * WHY quietly dropped rather than refused: the editor already warned the
+ * volunteer before they removed what the rule needed. A rule left pointing
+ * at nothing would hide the question from everyone, so it falls back to
+ * being asked of everyone.
+ *
+ * @param mixed $rule    [ 'q' => id, 'any' => [...] ]
+ * @param array $by_id   question id => [ 'type' => …, 'settings' => … ]
+ * @return array|null
+ */
+function sp_qn_clean_rule( $rule, int $qid, array $by_id ): ?array {
+    if ( ! is_array( $rule ) ) {
+        return null;
+    }
+    $tid = absint( $rule['q'] ?? 0 );
+    if ( ! $tid || $tid === $qid || ! isset( $by_id[ $tid ] ) || ! in_array( $by_id[ $tid ]['type'], sp_qn_trigger_types(), true ) ) {
+        return null;
+    }
+    $any = array_values( array_intersect(
+        sp_qn_rule_options( $by_id[ $tid ]['type'], $by_id[ $tid ]['settings'] ),
+        array_map( static fn( $v ) => is_scalar( $v ) ? (string) $v : '', (array) ( $rule['any'] ?? [] ) )
+    ) );
+    return $any ? [ 'q' => $tid, 'any' => array_values( array_unique( $any ) ) ] : null;
+}
+
+/**
+ * Write each question's rule into its stored settings, after every question
+ * in the form has an id to point at.
+ *
+ * @param array $rules question id => [ 'q' => trigger id, 'any' => [...] ] (uncleaned)
+ * @param array $by_id question id => [ 'type' => …, 'settings' => … ] (settings without rules)
+ */
+function sp_qn_store_rules( array $rules, array $by_id ): void {
+    global $wpdb;
+    foreach ( $by_id as $qid => $q ) {
+        $rule = sp_qn_clean_rule( $rules[ $qid ] ?? null, (int) $qid, $by_id );
+        if ( $rule ) {
+            $wpdb->update( $wpdb->prefix . 'sp_qn_questions', [ 'settings' => wp_json_encode( $q['settings'] + [ 'show_if' => $rule ] ) ], [ 'id' => (int) $qid ] );
+        }
+    }
+}
+
+/**
+ * Which questions this person was asked, given what they sent.
+ *
+ * WHY worked out over the whole form rather than top to bottom: a question
+ * can be moved above the one it depends on. A question whose own deciding
+ * question was skipped is skipped too.
+ *
+ * @param array $sections From sp_qn_structure().
+ * @param array $post     The submitted answers, unslashed.
+ * @return array<int,bool> question id => asked
+ */
+function sp_qn_asked( array $sections, array $post ): array {
+    $qs = [];
+    foreach ( $sections as $sec ) {
+        foreach ( $sec['questions'] as $q ) {
+            $qs[ (int) $q['id'] ] = $q;
+        }
+    }
+    $memo  = [];
+    $asked = static function ( int $id, array $seen ) use ( &$asked, &$memo, $qs, $post ): bool {
+        if ( isset( $memo[ $id ] ) ) {
+            return $memo[ $id ];
+        }
+        $rule = $qs[ $id ]['settings']['show_if'] ?? null;
+        $tid  = (int) ( $rule['q'] ?? 0 );
+        if ( ! $rule || ! isset( $qs[ $tid ] ) ) {
+            return $memo[ $id ] = true;
+        }
+        // Two questions that each wait on the other can never be reached.
+        if ( isset( $seen[ $tid ] ) ) {
+            return $memo[ $id ] = false;
+        }
+        $seen[ $id ] = true;
+        if ( ! $asked( $tid, $seen ) ) {
+            return $memo[ $id ] = false;
+        }
+        $raw    = $post[ $tid ] ?? null;
+        $picked = is_array( $raw ) ? (array) ( $raw['choice'] ?? [] ) : [ $raw ];
+        $picked = array_map( static fn( $v ) => is_scalar( $v ) ? (string) $v : '', $picked );
+        return $memo[ $id ] = (bool) array_intersect( $picked, sp_qn_rule_posted( $qs[ $tid ], (array) $rule['any'] ) );
+    };
+    $out = [];
+    foreach ( array_keys( $qs ) as $id ) {
+        $out[ $id ] = $asked( $id, [] );
+    }
+    return $out;
+}
+
+/**
+ * The attributes that let the answer page show or hide a question as people
+ * answer the one it depends on.
+ */
+function sp_qn_rule_attrs( array $q, array $by_id ): string {
+    $rule = $q['settings']['show_if'] ?? null;
+    $tid  = (int) ( $rule['q'] ?? 0 );
+    if ( ! $rule || ! isset( $by_id[ $tid ] ) ) {
+        return '';
+    }
+    return ' data-show-q="' . $tid . '" data-show-any="' . esc_attr( (string) wp_json_encode( sp_qn_rule_posted( $by_id[ $tid ], (array) $rule['any'] ) ) ) . '"';
 }
 
 
@@ -140968,6 +141141,11 @@ add_action( 'wp_ajax_sp_qn_save', function () {
     $old_questions = array_map( 'intval', $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}sp_qn_questions WHERE item_id = %d", $id ) ) );
     $keep_s = [];
     $keep_q = [];
+    // A new question has no id until it is saved, so the editor names the
+    // question a rule depends on by its own key; ids are filled in at the end.
+    $key_to_id = [];
+    $rules     = [];
+    $by_id     = [];
 
     foreach ( array_values( (array) $data['sections'] ) as $si => $sec ) {
         $row = [
@@ -140992,14 +141170,15 @@ add_action( 'wp_ajax_sp_qn_save', function () {
             if ( ! isset( $types[ $type ] ) ) {
                 continue;
             }
-            $qrow = [
+            $settings = sp_qn_clean_settings( $type, $q['settings'] ?? [] );
+            $qrow     = [
                 'item_id'    => $id,
                 'section_id' => $sid,
                 'sort_order' => $qi,
                 'type'       => $type,
                 'prompt'     => sanitize_textarea_field( (string) ( $q['prompt'] ?? '' ) ),
                 'required'   => 'text_block' !== $type && ! empty( $q['required'] ) ? 1 : 0,
-                'settings'   => wp_json_encode( sp_qn_clean_settings( $type, $q['settings'] ?? [] ) ),
+                'settings'   => wp_json_encode( $settings ),
             ];
             $qid = absint( $q['id'] ?? 0 );
             if ( $qid && in_array( $qid, $old_questions, true ) ) {
@@ -141008,9 +141187,19 @@ add_action( 'wp_ajax_sp_qn_save', function () {
                 $wpdb->insert( $wpdb->prefix . 'sp_qn_questions', $qrow );
                 $qid = (int) $wpdb->insert_id;
             }
-            $keep_q[] = $qid;
+            $keep_q[]      = $qid;
+            $by_id[ $qid ] = [ 'type' => $type, 'settings' => $settings ];
+            $key_to_id[ (string) ( $q['key'] ?? '' ) ] = $qid;
+            if ( ! empty( $q['show_if'] ) && is_array( $q['show_if'] ) ) {
+                $rules[ $qid ] = $q['show_if'];
+            }
         }
     }
+    unset( $key_to_id[''] );
+    foreach ( $rules as $qid => $rule ) {
+        $rules[ $qid ] = [ 'q' => $key_to_id[ (string) ( $rule['key'] ?? '' ) ] ?? 0, 'any' => $rule['any'] ?? [] ];
+    }
+    sp_qn_store_rules( $rules, $by_id );
     foreach ( array_diff( $old_questions, $keep_q ) as $gone ) {
         $wpdb->delete( $wpdb->prefix . 'sp_qn_questions', [ 'id' => $gone ] );
     }
@@ -141154,6 +141343,20 @@ function sp_qn_editor_strings(): array {
         'noQuestions'   => __( 'No questions in this section yet.', 'societypress' ),
         'leave'         => __( 'You have changes that are not saved.', 'societypress' ),
         'agree'         => __( "Strongly disagree\nDisagree\nNeutral\nAgree\nStrongly agree", 'societypress' ),
+        'askWhen'       => __( 'Ask this question', 'societypress' ),
+        'askAlways'     => __( 'Always — everyone sees it', 'societypress' ),
+        'askOnly'       => __( 'Only when someone gives a certain answer to an earlier question', 'societypress' ),
+        'askWhich'      => __( 'The earlier question:', 'societypress' ),
+        'askAnswers'    => __( 'Ask this one when they answer (tick one or more):', 'societypress' ),
+        /* translators: 1: an earlier question, 2: the answers that make this one appear */
+        'ruleSummary'   => __( 'Asked only when %1$s is %2$s', 'societypress' ),
+        'ruleOr'        => __( ' or ', 'societypress' ),
+        'ruleEmpty'     => __( 'Asked of everyone until you tick at least one answer under "Ask this question".', 'societypress' ),
+        'ruleLater'     => __( 'That question now comes after this one, so this one stays hidden until it is answered. Move this question below it.', 'societypress' ),
+        'ruleDropped'   => __( 'This question is now asked of everyone, because the answer it depended on was removed.', 'societypress' ),
+        /* translators: %1$s: list of questions, such as "Q4: Which sessions?" */
+        'depWarn'       => __( 'These questions are only asked depending on what you are removing: %1$s. If you go ahead, they will be asked of everyone. Go ahead?', 'societypress' ),
+        'pictureN'      => __( 'Picture %d', 'societypress' ),
     ];
 }
 
@@ -141181,10 +141384,70 @@ function sp_qn_editor_script(): void {
         var previewBtn = document.getElementById( 'sp-qn-preview-btn' );
         var devices = document.getElementById( 'sp-qn-devices' );
         var uid = 0;
+        // Kinds a later question can depend on ("Ask only when…").
+        var TRIGGERS = [ 'multiple_choice', 'checkboxes', 'dropdown', 'picture_choice' ];
+
+        // Rules are stored against question ids, but a question added in this
+        // visit has none yet, so the editor works with its own keys and the
+        // server swaps them for ids on save.
+        ( function () {
+            var idToKey = {};
+            state.sections.forEach( function ( s ) { s.questions.forEach( function ( q ) { q.key = ++uid; idToKey[ q.id ] = q.key; } ); } );
+            state.sections.forEach( function ( s ) { s.questions.forEach( function ( q ) {
+                var r = q.settings && q.settings.show_if;
+                q.rule = r && idToKey[ r.q ] ? { key: idToKey[ r.q ], any: ( r.any || [] ).map( String ) } : null;
+                if ( q.settings ) { delete q.settings.show_if; }
+            } ); } );
+        } )();
 
         function fmt( s ) {
             var args = Array.prototype.slice.call( arguments, 1 );
-            return s.replace( /%(\d)\$d/g, function ( m, n ) { return args[ n - 1 ]; } ).replace( '%d', args[ 0 ] );
+            return s.replace( /%(\d)\$[ds]/g, function ( m, n ) { return args[ n - 1 ]; } ).replace( '%d', args[ 0 ] );
+        }
+        function allQs() {
+            var out = [];
+            state.sections.forEach( function ( s ) { s.questions.forEach( function ( q ) { out.push( q ); } ); } );
+            return out;
+        }
+        function byKey( k ) { return allQs().filter( function ( q ) { return q.key === k; } )[ 0 ] || null; }
+        // [ stored value, what the volunteer sees ] for each answer a rule can point at.
+        function ruleOptions( q ) {
+            var s = q.settings || {};
+            if ( q.type === 'picture_choice' ) { return ( s.choices || [] ).map( function ( c, i ) { return [ String( c.image_id ), c.label || fmt( T.pictureN, i + 1 ) ]; } ); }
+            return ( s.choices || [] ).filter( Boolean ).map( function ( c ) { return [ c, c ]; } );
+        }
+        function qLabel( q ) {
+            var n = 0, found = 0;
+            allQs().forEach( function ( x ) { if ( x.type !== 'text_block' ) { n++; } if ( x === q ) { found = n; } } );
+            return 'Q' + found + ( q.prompt ? ': ' + q.prompt : '' );
+        }
+        // Before removing questions (by key) that others depend on, say which
+        // ones will start being asked of everyone.
+        function guardRemove( keys, plainMsg, go ) {
+            var deps = allQs().filter( function ( x ) { return x.rule && keys.indexOf( x.rule.key ) > -1 && keys.indexOf( x.key ) < 0; } );
+            if ( ! deps.length ) { if ( plainMsg ) { confirmThen( plainMsg, go ); } else { go(); } return; }
+            confirmThen( fmt( T.depWarn, deps.map( qLabel ).join( ', ' ) ), function () {
+                deps.forEach( function ( x ) { x.rule = null; x.ruleNote = true; } );
+                go();
+            } );
+        }
+        // The same, for one answer of a question being removed.
+        function guardChoice( q, value, go ) {
+            var deps = allQs().filter( function ( x ) { return x.rule && x.rule.key === q.key && x.rule.any.indexOf( value ) > -1; } );
+            if ( ! deps.length ) { go(); return; }
+            confirmThen( fmt( T.depWarn, deps.map( qLabel ).join( ', ' ) ), function () {
+                deps.forEach( function ( x ) {
+                    x.rule.any = x.rule.any.filter( function ( v ) { return v !== value; } );
+                    if ( ! x.rule.any.length ) { x.rule = null; x.ruleNote = true; }
+                } );
+                go();
+            } );
+        }
+        // Rewording an answer carries the rules that point at it along.
+        function renameChoice( q, from, to ) {
+            allQs().forEach( function ( x ) {
+                if ( x.rule && x.rule.key === q.key ) { x.rule.any = x.rule.any.map( function ( v ) { return v === from ? to : v; } ); }
+            } );
         }
         function el( tag, attrs, kids ) {
             var n = document.createElement( tag );
@@ -141289,9 +141552,12 @@ function sp_qn_editor_script(): void {
             list.forEach( function ( v, i ) {
                 box.appendChild( el( 'div', { 'class': 'sp-qn-list-row' }, [
                     el( 'input', { type: 'text', 'class': 'regular-text', value: v, placeholder: fmt( ph, i + 1 ), 'aria-label': fmt( ph, i + 1 ), 'data-focus': q.key + key + i,
-                        oninput: function ( e ) { list[ i ] = e.target.value; mark(); },
+                        oninput: function ( e ) { var was = list[ i ]; list[ i ] = e.target.value; if ( key === 'choices' ) { renameChoice( q, was, list[ i ] ); } mark(); },
                         onkeydown: function ( e ) { if ( e.key === 'Enter' ) { e.preventDefault(); list.splice( i + 1, 0, '' ); pendingFocus = q.key + key + ( i + 1 ); mark(); render(); } } } ),
-                    el( 'button', { type: 'button', 'class': 'button-link', 'aria-label': T.removeChoice, title: T.removeChoice, onclick: function () { list.splice( i, 1 ); mark(); render(); } }, [ icon( 'dashicons-no-alt' ) ] )
+                    el( 'button', { type: 'button', 'class': 'button-link', 'aria-label': T.removeChoice, title: T.removeChoice, onclick: function () {
+                        var go = function () { list.splice( i, 1 ); mark(); render(); };
+                        if ( key === 'choices' ) { guardChoice( q, list[ i ], go ); } else { go(); }
+                    } }, [ icon( 'dashicons-no-alt' ) ] )
                 ] ) );
             } );
             box.appendChild( el( 'button', { type: 'button', 'class': 'button', text: addLabel, onclick: function () { list.push( '' ); pendingFocus = q.key + key + ( list.length - 1 ); mark(); render(); } } ) );
@@ -141339,7 +141605,7 @@ function sp_qn_editor_script(): void {
                         c.url ? el( 'img', { src: c.url, alt: '' } ) : null,
                         el( 'button', { type: 'button', 'class': 'button', text: T.pickPicture, onclick: function () { pickImage( function ( img ) { c.image_id = img.id; c.url = img.url; mark(); render(); } ); } } ),
                         el( 'input', { type: 'text', value: c.label || '', placeholder: T.pictureLabel, 'aria-label': T.pictureLabel, oninput: function ( e ) { c.label = e.target.value; mark(); } } ),
-                        el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger', text: T.removeChoice, onclick: function () { s.choices.splice( i, 1 ); mark(); render(); } } )
+                        el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger', text: T.removeChoice, onclick: function () { guardChoice( q, String( c.image_id ), function () { s.choices.splice( i, 1 ); mark(); render(); } ); } } )
                     ] ) );
                 } );
                 box.appendChild( pics );
@@ -141371,8 +141637,14 @@ function sp_qn_editor_script(): void {
                 ( showAll ? boot.types : boot.types.slice( 0, SHORT_LIST ) ).forEach( function ( t ) {
                     ul.appendChild( el( 'li', { role: 'option', 'aria-selected': t.key === q.type ? 'true' : 'false' }, [
                         el( 'button', { type: 'button', onclick: function () {
-                            if ( t.key !== q.type ) { q.settings = defaults( t.key, q.settings ); q.type = t.key; if ( t.key === 'text_block' ) { q.required = false; } mark(); }
-                            openMenu = null; pendingFocus = 'type' + q.key; render();
+                            var change = function () {
+                                if ( t.key !== q.type ) { q.settings = defaults( t.key, q.settings ); q.type = t.key; if ( t.key === 'text_block' ) { q.required = false; } mark(); }
+                                openMenu = null; pendingFocus = 'type' + q.key; render();
+                            };
+                            // Lists keep their answers when the kind changes between
+                            // them; anything else loses the answers rules point at.
+                            var keeps = t.key === q.type || ( TRIGGERS.indexOf( t.key ) > -1 && ( t.key === 'picture_choice' ) === ( q.type === 'picture_choice' ) );
+                            if ( keeps ) { change(); } else { guardRemove( [ q.key ], null, change ); }
                         } }, [ icon( t.icon ), el( 'span', { text: t.label } ) ] )
                     ] ) );
                 } );
@@ -141401,8 +141673,59 @@ function sp_qn_editor_script(): void {
             if ( q.required ) { h.appendChild( el( 'span', { 'class': 'sp-qn-req', text: ' ' + T.requiredMark } ) ); }
             return h;
         }
+        // One line under a closed question saying when it is asked.
+        function ruleLine( q ) {
+            if ( q.rule ) {
+                var trig = byKey( q.rule.key );
+                if ( ! trig ) { return null; }
+                if ( ! q.rule.any.length ) { return el( 'p', { 'class': 'sp-qn-rule-line', text: T.ruleEmpty } ); }
+                var names = ruleOptions( trig ).filter( function ( o ) { return q.rule.any.indexOf( o[ 0 ] ) > -1; } ).map( function ( o ) { return '“' + o[ 1 ] + '”'; } );
+                return el( 'p', { 'class': 'sp-qn-rule-line' }, [ icon( 'dashicons-randomize' ), ' ' + fmt( T.ruleSummary, qLabel( trig ).split( ':' )[ 0 ], names.join( T.ruleOr ) ) ] );
+            }
+            return q.ruleNote ? el( 'p', { 'class': 'sp-qn-rule-line sp-qn-rule-warn', text: T.ruleDropped } ) : null;
+        }
+        // "Ask this question: always / only when …" inside an open question.
+        function ruleEditor( q ) {
+            var earlier = [], reached = false;
+            allQs().forEach( function ( x ) {
+                if ( x === q ) { reached = true; } else if ( ! reached && TRIGGERS.indexOf( x.type ) > -1 && ruleOptions( x ).length ) { earlier.push( x ); }
+            } );
+            var trig = q.rule ? byKey( q.rule.key ) : null;
+            if ( q.rule && ! trig ) { q.rule = null; }
+            if ( ! earlier.length && ! q.rule ) { return ruleLine( q ); }
+            var name = 'sp-qn-ask-' + q.key;
+            var box = el( 'fieldset', { 'class': 'sp-qn-rule' }, [
+                el( 'legend', { text: T.askWhen } ),
+                el( 'label', { 'class': 'sp-qn-line' }, [ el( 'input', { type: 'radio', name: name, checked: ! q.rule, onchange: function () { q.rule = null; mark(); render(); } } ), ' ' + T.askAlways ] ),
+                el( 'label', { 'class': 'sp-qn-line' }, [ el( 'input', { type: 'radio', name: name, checked: !! q.rule, 'data-focus': 'rule' + q.key, onchange: function () {
+                    q.rule = { key: earlier[ earlier.length - 1 ].key, any: [] }; q.ruleNote = false; pendingFocus = 'rule' + q.key; mark(); render();
+                } } ), ' ' + T.askOnly ] )
+            ] );
+            if ( q.rule ) {
+                var list = earlier.slice();
+                if ( list.indexOf( trig ) < 0 ) { list.push( trig ); }
+                var sel = el( 'select', { 'aria-label': T.askWhich, 'data-focus': 'rulesel' + q.key, onchange: function ( e ) {
+                    q.rule = { key: parseInt( e.target.value, 10 ), any: [] }; pendingFocus = 'rulesel' + q.key; mark(); render();
+                } }, list.map( function ( x ) { return el( 'option', { value: String( x.key ), text: qLabel( x ), selected: x === trig } ); } ) );
+                var picks = el( 'div', { 'class': 'sp-qn-rule-picks' } );
+                ruleOptions( trig ).forEach( function ( o ) {
+                    picks.appendChild( el( 'label', { 'class': 'sp-qn-line' }, [ el( 'input', { type: 'checkbox', checked: q.rule.any.indexOf( o[ 0 ] ) > -1, onchange: function ( e ) {
+                        q.rule.any = q.rule.any.filter( function ( v ) { return v !== o[ 0 ]; } );
+                        if ( e.target.checked ) { q.rule.any.push( o[ 0 ] ); }
+                        mark();
+                    } } ), ' ' + o[ 1 ] ] ) );
+                } );
+                box.appendChild( el( 'div', { 'class': 'sp-qn-indent' }, [
+                    el( 'p', {}, [ el( 'label', { text: T.askWhich + ' ' } ), sel ] ),
+                    el( 'p', { text: T.askAnswers } ),
+                    picks,
+                    earlier.indexOf( trig ) < 0 ? el( 'p', { 'class': 'sp-qn-rule-warn', text: T.ruleLater } ) : null
+                ] ) );
+            }
+            return box;
+        }
         function questionView( q, num ) {
-            var kids = [ questionHead( q, num ), q.type === 'text_block' ? null : answerPreview( q ) ];
+            var kids = [ questionHead( q, num ), q.type === 'text_block' ? null : answerPreview( q ), preview ? null : ruleLine( q ) ];
             if ( preview ) { return el( 'div', { 'class': 'sp-qn-q' }, kids ); }
             var open = function () { state.sections.forEach( function ( s ) { s.questions.forEach( function ( x ) { x.open = false; } ); } ); q.open = true; pendingFocus = 'prompt' + q.key; render(); };
             return el( 'div', { 'class': 'sp-qn-q sp-qn-q--view', tabindex: '0', role: 'button', 'aria-label': T.edit + ': ' + ( q.prompt || T.questionPh ),
@@ -141430,11 +141753,11 @@ function sp_qn_editor_script(): void {
                         var copy = JSON.parse( JSON.stringify( q ) ); copy.id = 0; copy.key = ++uid; q.open = false;
                         state.sections[ si ].questions.splice( qi + 1, 0, copy ); pendingFocus = 'prompt' + copy.key; mark(); render(); } }, [ icon( 'dashicons-admin-page' ) ] ),
                     el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger', 'aria-label': T.delete, title: T.delete, onclick: function () {
-                        confirmThen( T.deleteQ, function () { state.sections[ si ].questions.splice( qi, 1 ); mark(); render(); } ); } }, [ icon( 'dashicons-trash' ) ] ),
+                        guardRemove( [ q.key ], T.deleteQ, function () { state.sections[ si ].questions.splice( qi, 1 ); mark(); render(); } ); } }, [ icon( 'dashicons-trash' ) ] ),
                     el( 'button', { type: 'button', 'class': 'button button-primary', text: T.done, onclick: function () { q.open = false; openMenu = null; render(); } } )
                 ] )
             ] );
-            return el( 'div', { 'class': 'sp-qn-q sp-qn-q--edit' }, [ top, help, isText ? null : settingsEditor( q ), foot ] );
+            return el( 'div', { 'class': 'sp-qn-q sp-qn-q--edit' }, [ top, help, isText ? null : settingsEditor( q ), ruleEditor( q ), foot ] );
         }
 
         // ---- Paste in questions ---------------------------------------------
@@ -141510,7 +141833,7 @@ function sp_qn_editor_script(): void {
                     card.appendChild( el( 'textarea', { 'class': 'sp-qn-section-desc', rows: 1, value: sec.description, placeholder: T.sectionDesc, 'aria-label': T.sectionDesc, oninput: function ( e ) { sec.description = e.target.value; mark(); } } ) );
                     if ( total > 1 ) {
                         card.appendChild( el( 'button', { type: 'button', 'class': 'button-link sp-qn-danger sp-qn-section-del', text: T.delSection, onclick: function () {
-                            confirmThen( T.delSectionQ, function () { state.sections.splice( si, 1 ); mark(); render(); } ); } } ) );
+                            guardRemove( sec.questions.map( function ( x ) { return x.key; } ), T.delSectionQ, function () { state.sections.splice( si, 1 ); mark(); render(); } ); } } ) );
                     }
                 }
                 if ( ! sec.questions.length && ! preview ) { card.appendChild( el( 'p', { 'class': 'description', text: T.noQuestions } ) ); }
@@ -141548,7 +141871,8 @@ function sp_qn_editor_script(): void {
             statusEl.textContent = T.saving;
             var design = { title: state.title, description: state.description, sections: state.sections.map( function ( s ) {
                 return { id: s.id, title: s.title, description: s.description, questions: s.questions.map( function ( q ) {
-                    return { id: q.id, type: q.type, prompt: q.prompt, required: q.required, settings: q.settings };
+                    return { id: q.id, key: q.key, type: q.type, prompt: q.prompt, required: q.required, settings: q.settings,
+                        show_if: q.rule && q.rule.any.length ? { key: q.rule.key, any: q.rule.any } : null };
                 } ) };
             } ) };
             var body = new FormData();
@@ -141699,6 +142023,12 @@ function sp_qn_admin_styles(): void {
     .sp-qn-settings-box { margin: 14px 0 0 34px; }
     .sp-qn-sub { font-weight: 600; margin: 10px 0 6px; }
     .sp-qn-list-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .sp-qn-rule { margin: 14px 0 0; padding: 10px 12px; border: 1px solid #dcdcde; border-radius: 4px; background: #f6f7f7; }
+    .sp-qn-rule legend { font-weight: 600; padding: 0 4px; }
+    .sp-qn-rule-picks { display: flex; flex-direction: column; gap: 2px; }
+    .sp-qn-rule-line { margin: 8px 0 0; color: #50575e; font-style: italic; }
+    .sp-qn-rule-line .dashicons { font-size: 16px; width: 16px; height: 16px; vertical-align: text-bottom; }
+    .sp-qn-rule-warn { color: #996800; font-style: normal; }
     .sp-qn-qfoot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 10px; border-top: 1px solid #f0f0f1; }
     .sp-qn-qtools { display: inline-flex; gap: 10px; align-items: center; }
     .sp-qn-answers { margin-left: 22px; }
@@ -141870,7 +142200,7 @@ function sp_qn_read_answer( array $q, array $post ): array {
     $raw   = $post[ $q['id'] ] ?? null;
     $value = null;
     $error = '';
-    $text  = static function ( $v ): string { return is_scalar( $v ) ? trim( sanitize_textarea_field( wp_unslash( (string) $v ) ) ) : ''; };
+    $text  = static function ( $v ): string { return is_scalar( $v ) ? trim( sanitize_textarea_field( (string) $v ) ) : ''; };
 
     switch ( $q['type'] ) {
         case 'multiple_choice':
@@ -142055,13 +142385,19 @@ add_action( 'template_redirect', function () {
         return;
     }
 
-    $post    = (array) ( $_POST['q'] ?? [] );
-    $answers = [];
-    $values  = [];
-    $errors  = [];
-    foreach ( sp_qn_structure( (int) $item->id ) as $sec ) {
+    // WHY unslashed here, once: WordPress adds slashes to everything posted,
+    // and a choice like "Don't know" must match its stored wording exactly.
+    $post     = wp_unslash( (array) ( $_POST['q'] ?? [] ) );
+    $answers  = [];
+    $values   = [];
+    $errors   = [];
+    $sections = sp_qn_structure( (int) $item->id );
+    $asked    = sp_qn_asked( $sections, $post );
+    foreach ( $sections as $sec ) {
         foreach ( $sec['questions'] as $q ) {
-            if ( 'text_block' === $q['type'] ) {
+            // A question skipped because of an earlier answer is never
+            // required and isn't kept, whatever a browser may have sent.
+            if ( 'text_block' === $q['type'] || empty( $asked[ (int) $q['id'] ] ) ) {
                 continue;
             }
             if ( 'file_upload' === $q['type'] ) {
@@ -142384,7 +142720,13 @@ add_shortcode( 'societypress_questionnaire', function ( $atts ) {
     if ( $total > 1 ) {
         $html .= '<div class="sp-qn-f-progress" aria-hidden="true"><div class="sp-qn-f-bar"></div></div><p class="sp-qn-f-step" aria-live="polite"></p>';
     }
-    $num = 0;
+    $num   = 0;
+    $by_id = [];
+    foreach ( $sections as $sec ) {
+        foreach ( $sec['questions'] as $q ) {
+            $by_id[ (int) $q['id'] ] = $q;
+        }
+    }
     foreach ( $sections as $si => $sec ) {
         $html .= '<fieldset class="sp-qn-f-sec" data-index="' . (int) $si . '">';
         if ( '' !== $sec['title'] ) {
@@ -142395,12 +142737,12 @@ add_shortcode( 'societypress_questionnaire', function ( $atts ) {
         }
         foreach ( $sec['questions'] as $q ) {
             if ( 'text_block' === $q['type'] ) {
-                $html .= '<div class="sp-qn-f-text">' . wpautop( esc_html( $q['prompt'] ) ) . '</div>';
+                $html .= '<div class="sp-qn-f-text" id="sp-qn-wrap' . (int) $q['id'] . '"' . sp_qn_rule_attrs( $q, $by_id ) . '>' . wpautop( esc_html( $q['prompt'] ) ) . '</div>';
                 continue;
             }
             $num++;
             $err   = $state['errors'][ $q['id'] ] ?? '';
-            $html .= '<div class="sp-qn-f-q' . ( $err ? ' has-error' : '' ) . '" id="sp-qn-wrap' . (int) $q['id'] . '">';
+            $html .= '<div class="sp-qn-f-q' . ( $err ? ' has-error' : '' ) . '" id="sp-qn-wrap' . (int) $q['id'] . '"' . sp_qn_rule_attrs( $q, $by_id ) . '>';
             $html .= '<p class="sp-qn-f-label" id="sp-qn-q' . (int) $q['id'] . '"><span class="sp-qn-f-num">' . $num . '.</span> ' . esc_html( $q['prompt'] );
             if ( ! empty( $q['required'] ) ) {
                 $html .= ' <span class="sp-qn-f-req">' . esc_html__( '(required)', 'societypress' ) . '</span>';
@@ -142476,7 +142818,7 @@ function sp_qn_front_styles(): string {
 .sp-qn-f-btn { display: inline-block; font-size: 1.1em; padding: .65em 1.6em; border-radius: 6px; border: 2px solid var(--sp-color-primary, #2271b1); background: var(--sp-color-primary, #2271b1); color: #fff; cursor: pointer; text-decoration: none; }
 .sp-qn-f-back { background: transparent; color: var(--sp-color-primary, #2271b1); }
 .sp-qn-f-hp { position: absolute; left: -9999px; height: 1px; overflow: hidden; }
-.sp-qn-f.js .sp-qn-f-sec[hidden], .sp-qn-f-nav [hidden] { display: none; }
+.sp-qn-f.js .sp-qn-f-sec[hidden], .sp-qn-f-nav [hidden], .sp-qn-f-q[hidden], .sp-qn-f-text[hidden] { display: none; }
 </style>';
 }
 
@@ -142501,13 +142843,53 @@ function sp_qn_front_script(): string {
             var bar = form.querySelector( ".sp-qn-f-bar" ), step = form.querySelector( ".sp-qn-f-step" );
             var cur = 0, firstErr = form.querySelector( ".sp-qn-f-q.has-error" );
             if ( firstErr ) { cur = secs.indexOf( firstErr.closest( ".sp-qn-f-sec" ) ); }
+            // Questions asked only after a certain earlier answer. Each knows
+            // the question it waits on and the answers that bring it out.
+            var conds = Array.prototype.slice.call( form.querySelectorAll( "[data-show-q]" ) );
+            function picked( id ) {
+                var out = [];
+                form.querySelectorAll( "[name=\"q[" + id + "]\"], [name=\"q[" + id + "][choice][]\"]" ).forEach( function ( f ) {
+                    if ( f.type === "radio" || f.type === "checkbox" ? f.checked : f.value !== "" ) { out.push( f.value ); }
+                } );
+                return out;
+            }
+            function shown( box, depth ) {
+                var id = box.dataset.showQ, trig = document.getElementById( "sp-qn-wrap" + id ), any = JSON.parse( box.dataset.showAny || "[]" );
+                if ( depth > 20 || ( trig && trig.dataset.showQ && ! shown( trig, depth + 1 ) ) ) { return false; }
+                return picked( id ).some( function ( v ) { return any.indexOf( v ) > -1; } );
+            }
+            function applyRules() {
+                conds.forEach( function ( box ) {
+                    var on = shown( box, 0 );
+                    box.hidden = ! on;
+                    // A skipped question sends nothing, so an answer typed
+                    // before changing an earlier answer is not kept.
+                    box.querySelectorAll( "input, select, textarea" ).forEach( function ( f ) { f.disabled = ! on; } );
+                } );
+                var n = 0;
+                form.querySelectorAll( ".sp-qn-f-q" ).forEach( function ( q ) { var s = q.querySelector( ".sp-qn-f-num" ); if ( ! q.hidden ) { n++; if ( s ) { s.textContent = n + "."; } } } );
+            }
+            // A section whose every question is skipped is passed over.
+            function live( sec ) {
+                var items = sec.querySelectorAll( ".sp-qn-f-q, .sp-qn-f-text" );
+                return ! items.length || Array.prototype.some.call( items, function ( x ) { return ! x.hidden; } );
+            }
+            function stepTo( dir ) {
+                var list = secs.filter( live ), pos = list.indexOf( secs[ cur ] );
+                return secs.indexOf( list[ Math.max( 0, Math.min( list.length - 1, pos + dir ) ) ] );
+            }
             function show( i, focus ) {
                 cur = i;
+                var list = secs.filter( live ), pos = list.indexOf( secs[ i ] );
                 secs.forEach( function ( s, j ) { s.hidden = j !== i; } );
-                back.hidden = i === 0; next.hidden = i === secs.length - 1; send.hidden = i !== secs.length - 1;
-                if ( bar ) { bar.style.width = ( ( i + 1 ) / secs.length * 100 ) + "%"; }
-                if ( step ) { step.textContent = T.step.replace( "%1$d", i + 1 ).replace( "%2$d", secs.length ); }
+                back.hidden = pos <= 0; next.hidden = pos >= list.length - 1; send.hidden = pos < list.length - 1;
+                if ( bar ) { bar.style.width = ( ( pos + 1 ) / list.length * 100 ) + "%"; }
+                if ( step ) { step.textContent = T.step.replace( "%1$d", pos + 1 ).replace( "%2$d", list.length ); }
                 if ( focus ) { form.scrollIntoView( { behavior: "smooth", block: "start" } ); }
+            }
+            if ( conds.length ) {
+                applyRules();
+                form.addEventListener( "change", function () { applyRules(); show( cur, false ); } );
             }
             function answered( box ) {
                 if ( box.querySelector( "input[type=radio]:checked, input[type=checkbox]:checked" ) ) { return true; }
@@ -142518,15 +142900,15 @@ function sp_qn_front_script(): string {
             function check( sec ) {
                 var bad = null;
                 sec.querySelectorAll( ".sp-qn-f-input[data-required]" ).forEach( function ( box ) {
-                    var q = box.closest( ".sp-qn-f-q" ), err = q.querySelector( ".sp-qn-f-err" ), ok = answered( box );
+                    var q = box.closest( ".sp-qn-f-q" ), err = q.querySelector( ".sp-qn-f-err" ), ok = q.hidden || answered( box );
                     q.classList.toggle( "has-error", ! ok );
                     if ( ! ok ) { err.textContent = T.required; bad = bad || q; } else if ( err.textContent === T.required ) { err.textContent = ""; }
                 } );
                 if ( bad ) { bad.scrollIntoView( { behavior: "smooth", block: "center" } ); var f = bad.querySelector( "input, select, textarea" ); if ( f ) { f.focus( { preventScroll: true } ); } }
                 return ! bad;
             }
-            next.addEventListener( "click", function () { if ( check( secs[ cur ] ) ) { show( cur + 1, true ); } } );
-            back.addEventListener( "click", function () { show( cur - 1, true ); } );
+            next.addEventListener( "click", function () { if ( check( secs[ cur ] ) ) { show( stepTo( 1 ), true ); } } );
+            back.addEventListener( "click", function () { show( stepTo( -1 ), true ); } );
             form.addEventListener( "submit", function ( e ) {
                 for ( var i = 0; i < secs.length; i++ ) { if ( ! check( secs[ i ] ) ) { e.preventDefault(); show( i, false ); check( secs[ i ] ); return; } }
                 send.disabled = true;
@@ -143032,14 +143414,22 @@ function sp_qn_bar_row( string $label, int $n, int $of ): string {
  */
 function sp_qn_summary_html( array $q, array $responses ): string {
     $given = [];
+    // WHY counted against those asked: a question skipped because of an
+    // earlier answer isn't in that person's answers at all, and they
+    // shouldn't read as having left it blank.
+    $asked = 0;
     foreach ( $responses as $r ) {
+        if ( ! array_key_exists( $q['id'], $r['answers'] ) ) {
+            continue;
+        }
+        $asked++;
         $a = $r['answers'][ $q['id'] ]['answer'] ?? null;
         if ( null !== $a && '' !== $a && [] !== $a ) {
             $given[] = $a;
         }
     }
     $n    = count( $given );
-    $html = '<p class="sp-qn-r-answered">' . esc_html( sprintf( /* translators: 1: answered, 2: total */ __( 'Answered by %1$s of %2$s', 'societypress' ), number_format_i18n( $n ), number_format_i18n( count( $responses ) ) ) ) . '</p>';
+    $html = '<p class="sp-qn-r-answered">' . esc_html( sprintf( /* translators: 1: answered, 2: total */ __( 'Answered by %1$s of %2$s', 'societypress' ), number_format_i18n( $n ), number_format_i18n( $asked ) ) ) . '</p>';
     $s    = $q['settings'];
 
     switch ( $q['type'] ) {
@@ -143501,7 +143891,7 @@ function sp_qn_render_results_page(): void {
                         </form>
                     </div>
                     <dl>
-                        <?php foreach ( $questions as $q ) : $a = $r['answers'][ $q['id'] ]['answer'] ?? null; ?>
+                        <?php foreach ( $questions as $q ) : if ( ! array_key_exists( $q['id'], $r['answers'] ) ) { continue; /* Not asked of this person. */ } $a = $r['answers'][ $q['id'] ]['answer'] ?? null; ?>
                             <dt><?php echo esc_html( $q['prompt'] ); ?></dt>
                             <dd><?php if ( 'file_upload' === $q['type'] && $a ) : ?><a href="<?php echo esc_url( (string) $a ); ?>" target="_blank" rel="noopener"><?php echo esc_html( wp_basename( (string) $a ) ); ?></a><?php else : echo esc_html( sp_qn_answer_text( $q['type'], $a ) ); endif; ?></dd>
                         <?php endforeach; ?>

@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.166] — 2026-11-23
+
+- **Ask a question only after a certain answer.** In Forms & Surveys, a
+  question's box now has "Ask this question": always, or only when someone
+  gives one of the answers you tick to an earlier multiple-choice, checkbox,
+  drop down menu or picture question. The question appears on the page the
+  moment that answer is given. Until then it is skipped, never required, and
+  left out of that person's answers. A section whose questions are all
+  skipped is passed over.
+- Results count each question against the people who were asked it, and a
+  person's answers no longer list questions they were never asked.
+- Deleting a question, a section or an answer choice that other questions
+  depend on now says which ones, and those questions go back to being asked
+  of everyone. Rewording an answer keeps the questions that depend on it.
+- Fixed: an answer choice containing an apostrophe, such as "Don't know",
+  was dropped when someone picked it.
+
 ## [1.5.165] — 2026-11-23
 
 - **The new Forms & Surveys replaces the old Forms and Surveys tools.** One

@@ -20,6 +20,18 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.170] — 2026-11-23
+
+- Fixed: email from the site could arrive marked "via" the web host's server
+  name (such as dal205.arandomserver.com), or in spam. Its hidden sender was
+  the hosting account's own server address, and when no "from" address was
+  set it claimed to be from the WordPress admin's (often a personal Gmail).
+  The hidden sender now matches the From address, and email always goes out
+  from an address at the website's own domain:
+  the one in Settings → Email if it is at that domain, otherwise
+  noreply@ the domain. Replies go to the reply-to address in Settings, so
+  they still reach a person. Blast Email's own sender works the same way.
+
 ## [1.5.169] — 2026-11-23
 
 - Checkout shows every way to pay side by side in one row: Amex / Mastercard /

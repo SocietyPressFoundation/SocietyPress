@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.169
+ * Version:     1.5.170
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.169' );
+define( 'SOCIETYPRESS_VERSION', '1.5.170' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -13399,8 +13399,56 @@ add_filter( 'wp_mail_from_name', function ( $name ) {
     return $configured !== '' ? $configured : ( get_option( 'blogname' ) ?: 'SocietyPress' );
 });
 
-// FROM email: "wordpress@domain" → the configured sending address, or the
-// WordPress admin address where none is set.
+/**
+ * The website's own mail domain: txsaghs.com for www.txsaghs.com.
+ */
+function sp_mail_site_domain(): string {
+    $host = strtolower( (string) wp_parse_url( home_url(), PHP_URL_HOST ) );
+    return preg_replace( '/^www\./', '', $host );
+}
+
+/**
+ * The address mail actually goes out from.
+ *
+ * WHY never an outside address: mail services check that a message claiming
+ *      to be from gmail.com (or any other domain) really came from that
+ *      domain's servers. Sent from the society's web host it fails the check,
+ *      so it is marked "via" the host's server name or lands in spam. A
+ *      society that gave a Gmail address, or none (the WordPress admin
+ *      address was used then), had every email arrive like that. An address
+ *      at the website's own domain passes; the real one goes in Reply-To.
+ *
+ * @param string $wanted An address somebody asked to send from, if any.
+ */
+function sp_mail_sendable_from( string $wanted = '' ): string {
+    $domain = sp_mail_site_domain();
+    $wanted = sanitize_email( $wanted );
+    if ( $wanted && is_email( $wanted ) ) {
+        $at = strtolower( substr( strrchr( $wanted, '@' ), 1 ) );
+        if ( $at === $domain || str_ends_with( $at, '.' . $domain ) ) {
+            return $wanted;
+        }
+    }
+    return 'noreply@' . $domain;
+}
+
+/**
+ * Where replies go when nobody chose otherwise: the reply-to address in
+ * Settings → Email, else the "from" address there, else the site admin.
+ */
+function sp_mail_reply_default(): string {
+    $s = sp_settings();
+    foreach ( [ $s['email_reply_to'] ?? '', $s['email_from_email'] ?? '', get_option( 'admin_email' ) ] as $candidate ) {
+        $candidate = sp_email_list_string( str_replace( [ "\r", "\n" ], '', (string) $candidate ) );
+        if ( '' !== $candidate ) {
+            return $candidate;
+        }
+    }
+    return '';
+}
+
+// FROM email: "wordpress@domain" → the configured sending address when it is
+// at the website's own domain, otherwise noreply@ that domain.
 add_filter( 'wp_mail_from', function ( $email ) {
     // The WordPress default is "wordpress@{domain}"; anything else was chosen
     // deliberately and stays.
@@ -13408,13 +13456,27 @@ add_filter( 'wp_mail_from', function ( $email ) {
     if ( $local_part !== 'wordpress' ) {
         return $email;
     }
-    $configured = sanitize_email( (string) ( sp_settings()['email_from_email'] ?? '' ) );
-    if ( $configured !== '' && is_email( $configured ) ) {
-        return $configured;
-    }
-
-    return get_option( 'admin_email' ) ?: $email;
+    return sp_mail_sendable_from( (string) ( sp_settings()['email_from_email'] ?? '' ) );
 });
+
+// Mail from noreply@ always carries a Reply-To, so an answer reaches a person.
+// The envelope sender matches the From address, so the host's mail server
+// signs and vouches for it as the society's own domain.
+add_action( 'phpmailer_init', function ( $phpmailer ) {
+    $domain = sp_mail_site_domain();
+    $from   = strtolower( (string) $phpmailer->From );
+    if ( '' === $domain || ! str_ends_with( $from, '@' . $domain ) ) {
+        return;
+    }
+    $phpmailer->Sender = $phpmailer->From;
+    if ( 'noreply@' . $domain === $from && ! $phpmailer->getReplyToAddresses() ) {
+        foreach ( array_map( 'trim', explode( ',', sp_mail_reply_default() ) ) as $addr ) {
+            if ( is_email( $addr ) ) {
+                $phpmailer->addReplyTo( $addr );
+            }
+        }
+    }
+} );
 
 
 // ============================================================================
@@ -43108,7 +43170,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.169',
+            'version'     => '1.5.170',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43116,7 +43178,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.169',
+            'version'     => '1.5.170',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43124,7 +43186,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.169',
+            'version'     => '1.5.170',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43132,7 +43194,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.169',
+            'version'     => '1.5.170',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43140,7 +43202,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.169',
+            'version'     => '1.5.170',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -91390,10 +91452,10 @@ function sp_safe_stripe_checkout_url( $url ): ?string {
 function sp_get_email_headers(): array {
     $settings   = sp_settings();
     $from_name  = $settings['email_from_name']  ?? get_bloginfo( 'name' );
-    $from_email = $settings['email_from_email'] ?? get_option( 'admin_email' );
+    $from_email = sp_mail_sendable_from( (string) ( $settings['email_from_email'] ?? '' ) );
     // WHY the fallback on empty, not only on missing: the setting exists with a
     // blank default, and a blank Reply-To header is worse than none.
-    $reply_to   = trim( (string) ( $settings['email_reply_to'] ?? '' ) ) ?: $from_email;
+    $reply_to   = sp_mail_reply_default() ?: $from_email;
 
     // Header injection guard: strip CR/LF from any value that lands in an
     // SMTP header, even if it was admin-supplied via settings — bare newlines
@@ -93576,7 +93638,10 @@ function sp_render_blast_email_compose_page(): void {
                         </p>
                         <p class="description sp-blast-dmarc-warning">
                             <strong><?php esc_html_e( 'Deliverability note:', 'societypress' ); ?></strong>
-                            <?php esc_html_e( 'A From address on a different domain than your website (for example a personal Gmail or Yahoo address) often fails modern spam checks (DMARC) and can be rejected or sorted into junk. For reliable delivery, use an address at your own website\'s domain. When you set a From address, replies route back to it automatically.', 'societypress' ); ?>
+                            <?php
+                            /* translators: %s: noreply address at the website's domain */
+                            printf( esc_html__( 'Email can only be sent from an address at your website\'s own domain; anything else (a personal Gmail or Yahoo address, say) gets flagged as suspicious or sorted into junk. If you enter another address, the email is sent from %s and replies go to the address you entered.', 'societypress' ), '<code>' . esc_html( 'noreply@' . sp_mail_site_domain() ) . '</code>' );
+                            ?>
                         </p>
                     </td>
                 </tr>
@@ -93927,7 +93992,10 @@ function sp_blast_sender_headers( array $headers, string $name, string $email ):
         $headers = array_values( array_filter( $headers, static function ( $h ) {
             return stripos( $h, 'From:' ) !== 0 && stripos( $h, 'Reply-To:' ) !== 0;
         } ) );
-        $from_line = $ov_name !== '' ? $ov_name . ' <' . $ov_email . '>' : $ov_email;
+        // An outside address (a personal Gmail, say) can't be sent from without
+        // being flagged, so it becomes where replies go instead.
+        $send_as   = sp_mail_sendable_from( $ov_email );
+        $from_line = $ov_name !== '' ? $ov_name . ' <' . $send_as . '>' : $send_as;
         $headers[] = 'From: ' . $from_line;
         $headers[] = 'Reply-To: ' . $ov_email;
     } elseif ( $ov_name !== '' ) {

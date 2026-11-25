@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.183] — 2026-11-25
+
+### Fixed
+- Saving a committee now takes you to that committee's own page, so
+  reloading the page no longer saves it a second time or creates a copy.
+
 ## [1.5.182] — 2026-11-25
 
 ### Fixed

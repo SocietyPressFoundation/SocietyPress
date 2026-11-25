@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.182
+ * Version:     1.5.183
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.182' );
+define( 'SOCIETYPRESS_VERSION', '1.5.183' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43961,7 +43961,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.182',
+            'version'     => '1.5.183',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43969,7 +43969,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.182',
+            'version'     => '1.5.183',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43977,7 +43977,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.182',
+            'version'     => '1.5.183',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43985,7 +43985,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.182',
+            'version'     => '1.5.183',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43993,7 +43993,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.182',
+            'version'     => '1.5.183',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -88975,14 +88975,18 @@ function sp_render_committees_page(): void {
 }
 
 /**
- * Render the Committee add/edit page.
+ * Create or update a committee.
+ *
+ * Runs before the screen is drawn; see sp_handle_screen_post(). Redirecting
+ * to the committee's own address afterwards means a new committee's id is in
+ * the URL, so the forms on the page that follows post to the right committee
+ * and a reload does not save twice.
  */
-function sp_render_committee_edit_page(): void {
+function sp_handle_committee_edit_post(): void {
     global $wpdb;
     $prefix = $wpdb->prefix . 'sp_';
 
-    $cid       = (int) ( $_GET['committee_id'] ?? 0 );
-    $committee = null;
+    $cid = (int) ( $_GET['committee_id'] ?? 0 );
 
     if ( isset( $_POST['sp_save_committee'] ) && check_admin_referer( 'sp_committee_save' ) ) {
         $data = [
@@ -88995,17 +88999,41 @@ function sp_render_committee_edit_page(): void {
         ];
 
         if ( $data['name'] === '' ) {
-            echo '<div class="notice notice-error"><p>' . esc_html__( 'Name is required.', 'societypress' ) . '</p></div>';
-        } else {
-            if ( $cid ) {
-                $wpdb->update( $prefix . 'committees', $data, [ 'id' => $cid ] );
-                echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee updated.', 'societypress' ) . '</p></div>';
-            } else {
-                $wpdb->insert( $prefix . 'committees', $data );
-                $cid = (int) $wpdb->insert_id;
-                echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee created.', 'societypress' ) . '</p></div>';
-            }
+            sp_screen_post_error( __( 'Name is required.', 'societypress' ) );
+            return;
         }
+
+        if ( $cid ) {
+            $wpdb->update( $prefix . 'committees', $data, [ 'id' => $cid ] );
+            $saved = 'updated';
+        } else {
+            $wpdb->insert( $prefix . 'committees', $data );
+            $cid   = (int) $wpdb->insert_id;
+            $saved = 'created';
+        }
+
+        wp_safe_redirect( admin_url( 'admin.php?page=sp-committee-edit&committee_id=' . $cid . '&sp_saved=' . $saved ) );
+        exit;
+    }
+}
+sp_handle_screen_post( 'sp-committee-edit', 'sp_handle_committee_edit_post' );
+
+/**
+ * Render the Committee add/edit page.
+ */
+function sp_render_committee_edit_page(): void {
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+
+    $cid       = (int) ( $_GET['committee_id'] ?? 0 );
+    $committee = null;
+
+    if ( sp_screen_post_error() !== '' ) {
+        echo '<div class="notice notice-error"><p>' . esc_html( sp_screen_post_error() ) . '</p></div>';
+    } elseif ( 'created' === ( $_GET['sp_saved'] ?? '' ) ) {
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee created.', 'societypress' ) . '</p></div>';
+    } elseif ( 'updated' === ( $_GET['sp_saved'] ?? '' ) ) {
+        echo '<div class="notice notice-success"><p>' . esc_html__( 'Committee updated.', 'societypress' ) . '</p></div>';
     }
 
     if ( $cid ) {
@@ -89014,10 +89042,8 @@ function sp_render_committee_edit_page(): void {
         ) );
     }
 
-    // A committee created on this request has its id only in $cid, not in
-    // the URL. Forms without an action would post back to the id-less URL,
-    // so a second save would create a duplicate and the name-list box would
-    // find no committee and drop the list. Pin every form to the real id.
+    // Pinned to the committee's id so no form on this page can post to the
+    // id-less "Add Committee" address and make a duplicate.
     $form_action = admin_url( 'admin.php?page=sp-committee-edit' . ( $cid ? '&committee_id=' . $cid : '' ) );
 
     // "Add a list of names" — committee membership lives in volunteer_roles,

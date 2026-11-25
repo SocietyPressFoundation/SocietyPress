@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.181] — 2026-11-25
+
+### Fixed
+- Hourly limits (AI Assistant questions, the join, renewal and contact forms)
+  now reset an hour after they start on ordinary web hosting. Before, steady
+  use kept pushing the reset back, so people could be locked out long after
+  the hour was up.
+- **Tools → Export Personal Data** now includes the Help Desk tickets a person
+  filed and the replies they wrote. **Erase Personal Data** now removes the
+  person from those tickets and keeps the tickets as a record of the fault.
+
 ## [1.5.180] — 2026-11-25
 
 ### Changed

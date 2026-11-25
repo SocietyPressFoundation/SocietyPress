@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.180
+ * Version:     1.5.181
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.180' );
+define( 'SOCIETYPRESS_VERSION', '1.5.181' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -37720,11 +37720,20 @@ function sp_rate_limit_hit( string $key, int $limit, int $window ): bool {
         wp_cache_incr( $key, 1, $group );
         return false;
     }
-    $current = (int) get_transient( $key );
-    if ( $current >= $limit ) {
+    // The window's end is stored with the count. Re-saving a transient
+    // restarts its timer, so a plain counter re-saved on every hit never
+    // expired while hits kept coming, and "5 an hour" became "5, ever".
+    // A bare int is a counter saved before this change; start it a window.
+    $now   = time();
+    $state = get_transient( $key );
+    if ( ! is_array( $state ) || (int) ( $state['until'] ?? 0 ) <= $now ) {
+        $state = [ 'n' => is_array( $state ) ? 0 : (int) $state, 'until' => $now + $window ];
+    }
+    if ( (int) $state['n'] >= $limit ) {
         return true;
     }
-    set_transient( $key, $current + 1, $window );
+    $state['n'] = (int) $state['n'] + 1;
+    set_transient( $key, $state, max( 1, $state['until'] - $now ) );
     return false;
 }
 
@@ -43952,7 +43961,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.180',
+            'version'     => '1.5.181',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43960,7 +43969,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.180',
+            'version'     => '1.5.181',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43968,7 +43977,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.180',
+            'version'     => '1.5.181',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43976,7 +43985,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.180',
+            'version'     => '1.5.181',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43984,7 +43993,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.180',
+            'version'     => '1.5.181',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -145721,7 +145730,9 @@ function sp_ai_admin_enabled(): bool {
         return false;
     }
 
-    return sp_user_has_any_sp_access();
+    // sp_access_admin is the umbrella the user_has_cap filter grants to
+    // anyone who works on this site; Report a Problem uses the same check.
+    return current_user_can( 'sp_access_admin' );
 }
 
 /**
@@ -145736,29 +145747,6 @@ add_action( 'admin_menu', function () {
         remove_submenu_page( 'societypress', 'sp-ai-assistant' );
     }
 }, 999 );
-
-/**
- * Does this user hold any SocietyPress admin capability at all?
- *
- * WHY this helper exists: several features here ("can you see the admin
- * assistant", "can you file a problem report") want to say "anyone who works
- * on this site" without enumerating ten capabilities at each call site, and
- * without settling for manage_options, which would exclude exactly the
- * delegated volunteers who most need the help.
- */
-function sp_user_has_any_sp_access(): bool {
-    if ( current_user_can( 'manage_options' ) ) {
-        return true;
-    }
-
-    foreach ( sp_get_access_areas() as $area ) {
-        if ( ! empty( $area['capability'] ) && current_user_can( $area['capability'] ) ) {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 
 // ----------------------------------------------------------------------------
@@ -147586,7 +147574,7 @@ add_shortcode( 'societypress_ai_assistant', 'sp_ai_shortcode' );
  * Render SocietyPress → Help → Ask SocietyPress.
  */
 function sp_render_ai_assistant_page(): void {
-    if ( ! sp_user_has_any_sp_access() ) {
+    if ( ! current_user_can( 'sp_access_admin' ) ) {
         wp_die( esc_html__( 'You do not have permission to use the assistant.', 'societypress' ) );
     }
 
@@ -148188,8 +148176,8 @@ function sp_ai_render_recent_questions(): void {
 // ----------------------------------------------------------------------------
 //
 // WHY both features need covering: a member's questions to the assistant are
-//      their words, and a problem report carries the reporter's name and
-//      email. Both are personal data under the same rules as everything else
+//      their words, and a Help Desk ticket is tied to the account that filed
+//      or answered it, which leads to a name and email. Both are personal data under the same rules as everything else
 //      the plugin stores, so both answer to the same Tools → Export/Erase
 //      Personal Data machinery as members, registrations and donations.
 //
@@ -148214,8 +148202,109 @@ add_filter( 'wp_privacy_personal_data_erasers', function ( $erasers ) {
         'eraser_friendly_name' => 'SocietyPress AI Assistant Conversations',
         'callback'             => 'sp_privacy_erase_ai_data',
     ];
+    $erasers['societypress-tickets'] = [
+        'eraser_friendly_name' => 'SocietyPress Help Desk Tickets',
+        'callback'             => 'sp_privacy_erase_ticket_data',
+    ];
     return $erasers;
 } );
+
+add_filter( 'wp_privacy_personal_data_exporters', function ( $exporters ) {
+    $exporters['societypress-tickets'] = [
+        'exporter_friendly_name' => 'SocietyPress Help Desk Tickets',
+        'callback'               => 'sp_privacy_export_ticket_data',
+    ];
+    return $exporters;
+} );
+
+/**
+ * Export the Help Desk tickets this person filed and the replies they wrote.
+ *
+ * @param string $email_address
+ * @param int    $page
+ * @return array
+ */
+function sp_privacy_export_ticket_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+
+    $user = get_user_by( 'email', $email_address );
+    if ( ! $user ) {
+        return [ 'data' => [], 'done' => true ];
+    }
+
+    $items   = [];
+    $tickets = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, title, where_seen, body, expected, created_at FROM {$wpdb->prefix}sp_tickets WHERE reporter_id = %d ORDER BY id",
+        $user->ID
+    ) );
+    foreach ( $tickets as $t ) {
+        $items[] = [
+            'group_id'    => 'societypress-tickets',
+            'group_label' => __( 'Help Desk Tickets', 'societypress' ),
+            'item_id'     => 'sp-ticket-' . (int) $t->id,
+            'data'        => [
+                [ 'name' => __( 'Date', 'societypress' ),                'value' => $t->created_at ],
+                [ 'name' => __( 'Title', 'societypress' ),               'value' => $t->title ],
+                [ 'name' => __( 'Where you saw it', 'societypress' ),    'value' => (string) $t->where_seen ],
+                [ 'name' => __( 'What happened', 'societypress' ),       'value' => (string) $t->body ],
+                [ 'name' => __( 'What you expected', 'societypress' ),   'value' => (string) $t->expected ],
+            ],
+        ];
+    }
+
+    $replies = $wpdb->get_results( $wpdb->prepare(
+        "SELECT id, ticket_id, body, created_at FROM {$wpdb->prefix}sp_ticket_replies WHERE user_id = %d ORDER BY id",
+        $user->ID
+    ) );
+    foreach ( $replies as $r ) {
+        $items[] = [
+            'group_id'    => 'societypress-ticket-replies',
+            'group_label' => __( 'Help Desk Replies', 'societypress' ),
+            'item_id'     => 'sp-ticket-reply-' . (int) $r->id,
+            'data'        => [
+                [ 'name' => __( 'Date', 'societypress' ),   'value' => $r->created_at ],
+                [ 'name' => __( 'Ticket', 'societypress' ), 'value' => '#' . (int) $r->ticket_id ],
+                [ 'name' => __( 'Reply', 'societypress' ),  'value' => $r->body ],
+            ],
+        ];
+    }
+
+    return [ 'data' => $items, 'done' => true ];
+}
+
+/**
+ * Cut this person's account off their tickets, replies and attachments.
+ *
+ * WHY unlink rather than delete: see the section note above. A ticket only
+ *      points at the person by account id, so setting that to 0 leaves the
+ *      fault on record with no way back to who reported it. Anything they
+ *      typed about themselves inside the text stays, and the message says so.
+ *
+ * @param string $email_address
+ * @param int    $page
+ * @return array
+ */
+function sp_privacy_erase_ticket_data( string $email_address, int $page = 1 ): array {
+    global $wpdb;
+
+    $user = get_user_by( 'email', $email_address );
+    if ( ! $user ) {
+        return [ 'items_removed' => false, 'items_retained' => false, 'messages' => [], 'done' => true ];
+    }
+
+    $changed  = (int) $wpdb->update( $wpdb->prefix . 'sp_tickets', [ 'reporter_id' => 0 ], [ 'reporter_id' => $user->ID ] );
+    $changed += (int) $wpdb->update( $wpdb->prefix . 'sp_ticket_replies', [ 'user_id' => 0 ], [ 'user_id' => $user->ID ] );
+    $changed += (int) $wpdb->update( $wpdb->prefix . 'sp_ticket_files', [ 'user_id' => 0 ], [ 'user_id' => $user->ID ] );
+
+    return [
+        'items_removed'  => $changed > 0,
+        'items_retained' => $changed > 0,
+        'messages'       => $changed > 0
+            ? [ __( 'Help Desk tickets were kept as a record of the fault, with this person removed from them. Anything they wrote about themselves inside a ticket was not changed.', 'societypress' ) ]
+            : [],
+        'done'           => true,
+    ];
+}
 
 /**
  * Export the questions this person put to the assistant.

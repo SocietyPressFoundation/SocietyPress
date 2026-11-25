@@ -20,6 +20,27 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.176] — 2026-11-24
+
+- **AI Assistant** (new module). Two helpers, both answering only from what is
+  on your own site:
+  - **Ask the Society**, a chat button on the public site. It answers the
+    questions people email officers about (the next meeting, what membership
+    costs, whether the library has a book) from your calendar, membership
+    levels, library catalog, newsletters and pages. When it does not know, it
+    says so and gives your contact details instead of guessing. It never sees
+    the member directory or anything members-only that the visitor could not
+    see themselves.
+  - **Ask SocietyPress**, for volunteers: step-by-step answers to "how do I…"
+    questions, based on which features are switched on and which screens that
+    person can open.
+- Your society supplies its own Anthropic API key under Settings → AI
+  Assistant, or puts it in `wp-config.php`. Nothing appears until a key is
+  added. Claude Haiku 5.5 is the default model, at roughly a fiftieth of a cent
+  per question. Each visitor and the whole site have a daily limit, and the
+  settings screen shows the last month's cost and the questions people asked.
+  Questions are covered by the privacy export and erase tools.
+
 ## [1.5.175] — 2026-11-24
 
 - **Report a Problem** is now always within reach for the people who look

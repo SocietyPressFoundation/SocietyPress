@@ -16,6 +16,15 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### AI Assistant — 1.5.176
+
+"Ask the Society" answers visitors from the site's own calendar, membership
+levels, library and pages, and says "contact the society" rather than guess;
+"Ask SocietyPress" walks volunteers through how-to questions for the features
+and screens they actually have. Each society brings its own Anthropic key;
+Claude Haiku 5.5 by default, with per-visitor and per-day caps and a cost
+summary on the settings screen.
+
 ### Report a Problem, and Send to SocietyPress — 1.5.175
 
 Whoever looks after a site can file a Help Desk ticket from any page: a
@@ -231,27 +240,6 @@ mailbox exists as of 2026-11-19), then a Google Cloud project for the
 SocietyPress app. Build after that, so it is tested against the real Google.
 
 ### Medium
-
-#### AI assistant
-
-**Motivation:** Officers answer the same questions by email — when the next
-meeting is, whether the library has anything on a county, what membership
-costs — and volunteers ask the same how-do-I questions of whoever set the
-site up.
-**Scope:** An optional module, built once on a pre-1.5 branch in PR #7 and
-never merged; rebuild it on current code from that design:
-- A public assistant that answers from the site's own search results, never
-  from memory, and says "contact the society" rather than guess. The member
-  directory is excluded entirely; retrieval goes through
-  `sp_do_unified_search()` so a visitor can never surface members-only content.
-- "Ask SocietyPress" for volunteers: how-to answers based on the modules
-  that are on and the screens that person can actually open.
-- The society supplies its own Anthropic key, stored encrypted or set in
-  `wp-config.php`; per-person and per-day caps; every exchange logged with
-  its cost; both features covered by the privacy export and erase tools.
-**Blockers:** None. The Anthropic round trip, the GitHub push and the upgrade
-path were never run against a live site on the old branch; they are part of
-the rebuild.
 
 #### iPad kiosk
 

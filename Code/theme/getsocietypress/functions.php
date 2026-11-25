@@ -1843,6 +1843,232 @@ function gsp_add_installs_page(): void {
 add_action( 'admin_menu', 'gsp_add_installs_page' );
 
 /*
+ * Problem reports — Help Desk tickets a society chose to send to the
+ * SocietyPress team with the "Send to SocietyPress" button.
+ *
+ * WHY here rather than GitHub issues: GitHub is public, and a society's
+ *      description of its own fault can name its own pages and people. A
+ *      private queue lets the maintainer decide what becomes a public issue.
+ * WHY only from sites that have checked in: the endpoint has to be open (no
+ *      secret survives being shipped in every copy of the plugin), so the
+ *      register of known installs is what keeps strangers from filling it.
+ */
+function gsp_reports_table(): string {
+    global $wpdb;
+
+    return $wpdb->prefix . 'gsp_problem_reports';
+}
+
+function gsp_create_reports_table(): void {
+    global $wpdb;
+
+    require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+    $table   = gsp_reports_table();
+    $collate = $wpdb->get_charset_collate();
+    dbDelta(
+        "CREATE TABLE {$table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            site_url VARCHAR(255) NOT NULL,
+            society VARCHAR(255) NOT NULL DEFAULT '',
+            ticket_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            type VARCHAR(20) NOT NULL DEFAULT '',
+            title VARCHAR(255) NOT NULL DEFAULT '',
+            where_seen VARCHAR(255) NOT NULL DEFAULT '',
+            body TEXT NULL,
+            expected TEXT NULL,
+            impact VARCHAR(20) NOT NULL DEFAULT '',
+            screen VARCHAR(255) NOT NULL DEFAULT '',
+            environment TEXT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'new',
+            received_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY site_ticket (site_url, ticket_id),
+            KEY status (status)
+        ) {$collate};"
+    );
+}
+
+function gsp_maybe_create_reports_table(): void {
+    if ( '1' !== get_option( 'gsp_reports_schema' ) ) {
+        gsp_create_reports_table();
+        update_option( 'gsp_reports_schema', '1', false );
+    }
+}
+add_action( 'admin_init', 'gsp_maybe_create_reports_table' );
+add_action( 'rest_api_init', 'gsp_maybe_create_reports_table' );
+
+function gsp_register_reports_route(): void {
+    register_rest_route(
+        'societypress/v1',
+        '/reports',
+        [
+            'methods'             => 'POST',
+            'callback'            => 'gsp_receive_problem_report',
+            'permission_callback' => '__return_true',
+        ]
+    );
+}
+add_action( 'rest_api_init', 'gsp_register_reports_route' );
+
+/**
+ * Store one problem report.
+ */
+function gsp_receive_problem_report( WP_REST_Request $request ) {
+    global $wpdb;
+
+    $url   = untrailingslashit( esc_url_raw( trim( (string) $request->get_param( 'url' ) ) ) );
+    $known = $url ? (int) $wpdb->get_var( $wpdb->prepare(
+        'SELECT COUNT(*) FROM ' . gsp_installs_table() . ' WHERE TRIM(TRAILING "/" FROM site_url) = %s',
+        $url
+    ) ) : 0;
+    if ( ! $known ) {
+        return new WP_REST_Response( [ 'ok' => false, 'reason' => 'unknown_site' ], 403 );
+    }
+
+    // Twenty a day per site is far beyond any real society and well short of
+    // a loop filling the table.
+    $count_key = 'gsp_reports_' . md5( $url );
+    $count     = (int) get_transient( $count_key );
+    if ( $count >= 20 ) {
+        return new WP_REST_Response( [ 'ok' => false, 'reason' => 'too_many' ], 429 );
+    }
+    set_transient( $count_key, $count + 1, DAY_IN_SECONDS );
+
+    $text = static fn( string $k, int $len ) => mb_substr( sanitize_text_field( (string) $request->get_param( $k ) ), 0, $len );
+    $long = static fn( string $k ) => mb_substr( sanitize_textarea_field( (string) $request->get_param( $k ) ), 0, 20000 );
+
+    $env = [];
+    foreach ( (array) $request->get_param( 'environment' ) as $k => $v ) {
+        if ( is_scalar( $v ) && count( $env ) < 20 ) {
+            $env[ sanitize_key( (string) $k ) ] = mb_substr( sanitize_text_field( (string) $v ), 0, 1000 );
+        }
+    }
+
+    $title = $text( 'title', 255 );
+    // REPLACE keyed on site + ticket: a society that sends the same ticket
+    // twice updates the report instead of making a second one.
+    $wpdb->replace(
+        gsp_reports_table(),
+        [
+            'site_url'    => mb_substr( $url, 0, 255 ),
+            'society'     => $text( 'society', 255 ),
+            'ticket_id'   => absint( $request->get_param( 'ticket' ) ),
+            'type'        => sanitize_key( (string) $request->get_param( 'type' ) ),
+            'title'       => $title,
+            'where_seen'  => $text( 'where_seen', 255 ),
+            'body'        => $long( 'body' ),
+            'expected'    => $long( 'expected' ),
+            'impact'      => sanitize_key( (string) $request->get_param( 'impact' ) ),
+            'screen'      => $text( 'screen', 255 ),
+            'environment' => wp_json_encode( $env ),
+            'status'      => 'new',
+            'received_at' => current_time( 'mysql' ),
+        ]
+    );
+
+    wp_mail(
+        get_option( 'admin_email' ),
+        'New SocietyPress problem report: ' . $title,
+        $text( 'society', 255 ) . ' (' . $url . ")\n\n" . $title . "\n\n" . admin_url( 'admin.php?page=gsp-problem-reports' )
+    );
+
+    return new WP_REST_Response( [ 'ok' => true ], 200 );
+}
+
+function gsp_add_reports_page(): void {
+    add_submenu_page(
+        'gsp-installs',
+        'Problem Reports',
+        'Problem Reports',
+        'manage_options',
+        'gsp-problem-reports',
+        'gsp_render_reports_page'
+    );
+}
+add_action( 'admin_menu', 'gsp_add_reports_page', 20 );
+
+/**
+ * Mark a report done, or open it again.
+ */
+function gsp_handle_report_status(): void {
+    if ( ( $_GET['page'] ?? '' ) !== 'gsp-problem-reports' || empty( $_POST['gsp_report_id'] ) ) {
+        return;
+    }
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'Not allowed.' );
+    }
+    $id = absint( $_POST['gsp_report_id'] );
+    check_admin_referer( 'gsp_report_status_' . $id );
+
+    global $wpdb;
+    $status = 'done' === ( $_POST['gsp_report_status'] ?? '' ) ? 'done' : 'new';
+    $wpdb->update( gsp_reports_table(), [ 'status' => $status ], [ 'id' => $id ] );
+
+    wp_safe_redirect( admin_url( 'admin.php?page=gsp-problem-reports' ) );
+    exit;
+}
+add_action( 'admin_init', 'gsp_handle_report_status' );
+
+function gsp_render_reports_page(): void {
+    global $wpdb;
+
+    $rows = (array) $wpdb->get_results(
+        'SELECT * FROM ' . gsp_reports_table() . " ORDER BY status = 'done', received_at DESC LIMIT 200"
+    );
+    ?>
+    <style>
+        .gsp-report { background: #fff; border: 1px solid #dcdcde; border-radius: 4px; margin: 0 0 10px; padding: 0; max-width: 960px; }
+        .gsp-report summary { cursor: pointer; padding: 12px 16px; font-weight: 600; }
+        .gsp-report[data-done] summary { color: #6b7280; font-weight: 400; }
+        .gsp-report-meta { color: #6b7280; font-weight: 400; margin-left: 8px; }
+        .gsp-report-body { padding: 0 16px 16px; }
+        .gsp-report-body pre { white-space: pre-wrap; background: #f6f7f7; padding: 10px; }
+        .gsp-report-env td { padding: 2px 12px 2px 0; vertical-align: top; }
+    </style>
+    <div class="wrap">
+        <h1>Problem Reports</h1>
+        <p>Help Desk tickets that a society sent with "Send to SocietyPress". They never include the reporter's name or email.</p>
+        <?php if ( ! $rows ) : ?>
+            <p><em>No reports yet.</em></p>
+        <?php endif; ?>
+        <?php foreach ( $rows as $r ) :
+            $env  = json_decode( (string) $r->environment, true );
+            $done = 'done' === $r->status; ?>
+            <details class="gsp-report" <?php echo $done ? 'data-done' : ''; ?>>
+                <summary>
+                    <?php echo esc_html( $r->title ?: '(no title)' ); ?>
+                    <span class="gsp-report-meta"><?php echo esc_html( $r->society . ' · ' . mysql2date( 'M j, Y g:i a', $r->received_at ) . ( $done ? ' · done' : '' ) ); ?></span>
+                </summary>
+                <div class="gsp-report-body">
+                    <p><strong>Site:</strong> <a href="<?php echo esc_url( $r->site_url ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $r->site_url ); ?></a>
+                        · <strong>Kind:</strong> <?php echo esc_html( $r->type ); ?>
+                        <?php if ( $r->impact ) : ?>· <strong>Impact:</strong> <?php echo esc_html( $r->impact ); ?><?php endif; ?>
+                        · <strong>Their ticket:</strong> #<?php echo (int) $r->ticket_id; ?></p>
+                    <?php if ( $r->where_seen ) : ?><p><strong>Where:</strong> <?php echo esc_html( $r->where_seen ); ?></p><?php endif; ?>
+                    <?php if ( $r->body ) : ?><p><strong>What happened</strong></p><pre><?php echo esc_html( $r->body ); ?></pre><?php endif; ?>
+                    <?php if ( $r->expected ) : ?><p><strong>What they expected</strong></p><pre><?php echo esc_html( $r->expected ); ?></pre><?php endif; ?>
+                    <?php if ( is_array( $env ) && $env ) : ?>
+                        <table class="gsp-report-env">
+                            <?php foreach ( $env as $k => $v ) : if ( '' === $v ) { continue; } ?>
+                                <tr><td><?php echo esc_html( $k ); ?></td><td><?php echo esc_html( $v ); ?></td></tr>
+                            <?php endforeach; ?>
+                        </table>
+                    <?php endif; ?>
+                    <form method="post">
+                        <?php wp_nonce_field( 'gsp_report_status_' . (int) $r->id ); ?>
+                        <input type="hidden" name="gsp_report_id" value="<?php echo (int) $r->id; ?>">
+                        <input type="hidden" name="gsp_report_status" value="<?php echo $done ? 'new' : 'done'; ?>">
+                        <p><button type="submit" class="button"><?php echo $done ? 'Open again' : 'Mark done'; ?></button></p>
+                    </form>
+                </div>
+            </details>
+        <?php endforeach; ?>
+    </div>
+    <?php
+}
+
+/*
  * Site tools — the admin home for this site.
  *
  * WHY: The SocietyPress plugin hides WordPress's own menus and takes over the

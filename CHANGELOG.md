@@ -20,6 +20,20 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.175] — 2026-11-24
+
+- **Report a Problem** is now always within reach for the people who look
+  after the site. It sits in the admin sidebar beside View Site and Log Out,
+  and as a small button in the bottom-left corner of the public site (seen
+  only by them, and only when the toolbar is hidden). It opens Ask for Help
+  with the page you were on already filled in. The ticket also records the
+  page address, the browser window and screen size, and which modules are
+  switched on, so nobody has to describe them.
+- **Send to SocietyPress**: on a Help Desk ticket, whoever looks after the
+  site can send a fault to the SocietyPress team in one click. It sends the
+  title, the description, the page address and the technical details, never
+  the name or email of the person who reported it, and no attachments.
+
 ## [1.5.174] — 2026-11-24
 
 - Groups and committees can take a whole list of names at once. On a group's

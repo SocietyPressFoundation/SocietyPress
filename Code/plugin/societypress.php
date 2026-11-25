@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.174
+ * Version:     1.5.175
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.174' );
+define( 'SOCIETYPRESS_VERSION', '1.5.175' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -22111,7 +22111,24 @@ function sp_ticket_answerers(): array {
 function sp_ticket_environment( string $screen = '' ): array {
     $theme = wp_get_theme();
 
+    // The public page and window size come from the "Report a Problem" link,
+    // which picks them up in the browser at the moment of the click. A page
+    // that only breaks on a phone-width window is the problem nobody thinks
+    // to mention, and the reporter cannot be expected to know their size.
+    $page   = esc_url_raw( wp_unslash( $_POST['sp_page'] ?? '' ) );
+    $size   = static fn( $k ) => preg_match( '/^\d{2,5}x\d{2,5}$/', (string) ( $_POST[ $k ] ?? '' ) ) ? (string) $_POST[ $k ] : '';
+    $active = [];
+    foreach ( sp_get_modules() as $slug => $module ) {
+        if ( sp_module_enabled( $slug ) ) {
+            $active[] = $module['name'];
+        }
+    }
+
     return [
+        'page'         => $page && wp_parse_url( $page, PHP_URL_HOST ) === wp_parse_url( home_url(), PHP_URL_HOST ) ? $page : '',
+        'window'       => $size( 'sp_window' ),
+        'display'      => $size( 'sp_display' ),
+        'modules'      => implode( ', ', $active ),
         'screen'       => $screen,
         'societypress' => SOCIETYPRESS_VERSION,
         'theme'        => $theme->get( 'Name' ) . ' ' . $theme->get( 'Version' ),
@@ -22488,29 +22505,227 @@ add_action( 'admin_menu', function () {
 }, 20 );
 
 /**
- * "Ask for help" in the toolbar, carrying the screen you were on.
+ * Whether the person looking at this page can file a Help Desk ticket.
+ */
+function sp_can_report_problem(): bool {
+    return is_user_logged_in() && sp_module_enabled( 'help_desk' ) && current_user_can( 'sp_access_admin' );
+}
+
+/**
+ * The Ask for Help address, carrying the admin screen the person is on.
+ *
+ * The public page address and the window size are added in the browser at the
+ * moment of the click (see sp_report_problem_script()), because only the
+ * browser knows them.
+ */
+function sp_report_problem_url(): string {
+    $from = is_admin() && isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+    return add_query_arg(
+        array_filter( [ 'page' => 'sp-ticket-new', 'sp_from' => $from ] ),
+        admin_url( 'admin.php' )
+    );
+}
+
+/**
+ * "Report a problem" in the toolbar, for societies that turn the toolbar on.
  *
  * WHY it lives here rather than only in the menu: the moment somebody wants to
  * report a problem is the moment they are looking at it. Making them navigate
- * away first is how the screen they were on gets forgotten.
+ * away first is how the screen they were on gets forgotten. It shows on the
+ * public site too, because that is where most problems are seen.
  */
 add_action( 'admin_bar_menu', function ( $bar ) {
-    if ( ! sp_module_enabled( 'help_desk' ) || ! current_user_can( 'sp_access_admin' ) || ! is_admin() ) {
+    if ( ! sp_can_report_problem() ) {
         return;
     }
 
-    $from = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
-
     $bar->add_node( [
         'id'    => 'sp-ask-for-help',
-        'title' => '<span class="ab-icon dashicons dashicons-tickets-alt" style="top:2px;"></span>' . esc_html__( 'Ask for help', 'societypress' ),
-        'href'  => add_query_arg(
-            array_filter( [ 'page' => 'sp-ticket-new', 'sp_from' => $from ] ),
-            admin_url( 'admin.php' )
-        ),
-        'meta'  => [ 'title' => __( 'Report something broken, or ask a question', 'societypress' ) ],
+        'title' => '<span class="ab-icon dashicons dashicons-tickets-alt"></span>' . esc_html__( 'Report a problem', 'societypress' ),
+        'href'  => sp_report_problem_url(),
+        'meta'  => [
+            'title' => __( 'Report something broken, or ask a question', 'societypress' ),
+            'class' => 'sp-report-problem-node',
+        ],
     ] );
 }, 90 );
+
+/**
+ * "Report a Problem" in the sidebar, beside View Site and Log Out.
+ *
+ * WHY: the toolbar is off by default, and with it hidden the toolbar link was
+ *      the only way to file a ticket that remembered the screen it came from.
+ *      On a default install nobody ever saw it.
+ */
+add_action( 'admin_menu', function () {
+    global $menu;
+    if ( ! sp_can_report_problem() ) {
+        return;
+    }
+    $menu[9997] = [
+        __( 'Report a Problem', 'societypress' ),
+        'sp_access_admin',
+        sp_report_problem_url(),
+        '',
+        'menu-top sp-menu-report-problem',
+        'sp-menu-report-problem',
+        'dashicons-tickets-alt',
+    ];
+}, 1000 );
+
+/**
+ * A small "Report a problem" button in the corner of the public site, for
+ * volunteers who can file tickets, when the toolbar is hidden.
+ *
+ * WHY the corner, and only for them: a volunteer who spots a broken page is
+ *      looking at the public site, not the back office. Visitors and ordinary
+ *      members never see it. Bottom left, so it stays clear of the
+ *      bottom-right corner that chat buttons and "back to top" arrows use.
+ */
+add_action( 'wp_footer', function () {
+    if ( ! sp_can_report_problem() || is_admin_bar_showing() ) {
+        return;
+    }
+    ?>
+    <style id="sp-report-problem-css">
+        .sp-report-problem-btn { position: fixed; left: 16px; bottom: 16px; z-index: 99990;
+            display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+            border-radius: 999px; background: #1f2937; color: #fff !important;
+            font: 600 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-decoration: none !important; box-shadow: 0 2px 8px rgba(0,0,0,0.25); opacity: 0.85; }
+        .sp-report-problem-btn:hover, .sp-report-problem-btn:focus { opacity: 1; outline: 2px solid #fff; outline-offset: 2px; }
+        @media print { .sp-report-problem-btn { display: none; } }
+    </style>
+    <a class="sp-report-problem-btn sp-report-problem" href="<?php echo esc_url( sp_report_problem_url() ); ?>"
+       title="<?php esc_attr_e( 'Only people who look after the website see this button.', 'societypress' ); ?>">
+        <?php esc_html_e( 'Report a problem', 'societypress' ); ?>
+    </a>
+    <?php
+} );
+
+/**
+ * Add the page address and window size to every "Report a problem" link as it
+ * is clicked.
+ *
+ * WHY at the click rather than when the page is built: the window can be
+ *      resized after the page loads, and the address is only reliable in the
+ *      browser (caches and redirects can change what the server thinks it
+ *      served).
+ */
+function sp_report_problem_script(): void {
+    if ( ! sp_can_report_problem() ) {
+        return;
+    }
+    ?>
+    <script id="sp-report-problem-js">
+    (function () {
+        'use strict';
+        document.addEventListener('click', function (e) {
+            var a = e.target.closest('.sp-report-problem, #wp-admin-bar-sp-ask-for-help a, #sp-menu-report-problem a, a#sp-menu-report-problem');
+            if (!a) { return; }
+            var url = new URL(a.href, window.location.href);
+            if (!document.body.classList.contains('wp-admin')) {
+                url.searchParams.set('sp_page', window.location.href);
+            }
+            url.searchParams.set('sp_window', window.innerWidth + 'x' + window.innerHeight);
+            url.searchParams.set('sp_display', screen.width + 'x' + screen.height);
+            a.href = url.toString();
+        }, true);
+    })();
+    </script>
+    <?php
+}
+add_action( 'wp_footer', 'sp_report_problem_script' );
+add_action( 'admin_footer', 'sp_report_problem_script' );
+
+// ---- Sending a ticket to the SocietyPress team ------------------------------
+
+/**
+ * Where "Send to SocietyPress" posts.
+ */
+const SP_PROBLEM_REPORT_ENDPOINT = 'https://societypress.net/wp-json/societypress/v1/reports';
+
+/**
+ * When a ticket was sent to the SocietyPress team, or 0 if it never was.
+ *
+ * WHY an option rather than a column: only a handful of tickets on any site
+ * will ever be sent, and a column would mean a table change on every install
+ * for a value that is almost always empty.
+ */
+function sp_ticket_sent_upstream( int $ticket_id ): int {
+    $sent = (array) get_option( 'sp_tickets_sent_upstream', [] );
+    return (int) ( $sent[ $ticket_id ] ?? 0 );
+}
+
+/**
+ * Everything "Send to SocietyPress" sends, and nothing else.
+ *
+ * WHY no reporter: societypress.net is run by people outside the society, and
+ *      who noticed a fault is no part of fixing it. The site address is sent
+ *      so the team can see which site and version it came from, and so
+ *      societypress.net can turn away reports from sites it has never heard
+ *      of.
+ *
+ * @return array<string,mixed>
+ */
+function sp_ticket_upstream_payload( object $ticket ): array {
+    $env = json_decode( (string) $ticket->environment, true );
+
+    return [
+        'url'         => (string) home_url(),
+        'society'     => trim( (string) ( sp_settings()['organization_name'] ?? '' ) ) ?: (string) get_bloginfo( 'name' ),
+        'type'        => (string) $ticket->type,
+        'title'       => (string) $ticket->title,
+        'where_seen'  => (string) $ticket->where_seen,
+        'body'        => (string) $ticket->body,
+        'expected'    => (string) $ticket->expected,
+        'impact'      => (string) $ticket->impact,
+        'screen'      => (string) $ticket->screen,
+        'environment' => is_array( $env ) ? $env : [],
+        'ticket'      => (int) $ticket->id,
+    ];
+}
+
+add_action( 'admin_post_sp_send_ticket_upstream', function () {
+    global $wpdb;
+
+    $ticket_id = absint( $_POST['ticket'] ?? 0 );
+    if ( ! sp_can_answer_tickets() ) {
+        wp_die( esc_html__( 'You do not have permission to do that.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_send_ticket_upstream_' . $ticket_id );
+
+    $ticket = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_tickets WHERE id = %d", $ticket_id
+    ) );
+    if ( ! $ticket ) {
+        wp_die( esc_html__( 'That ticket could not be found.', 'societypress' ) );
+    }
+
+    $result = 'failed';
+    if ( ! sp_ticket_sent_upstream( $ticket_id ) ) {
+        $response = wp_remote_post( SP_PROBLEM_REPORT_ENDPOINT, [
+            'timeout' => 15,
+            'headers' => [ 'Content-Type' => 'application/json' ],
+            'body'    => wp_json_encode( sp_ticket_upstream_payload( $ticket ) ),
+        ] );
+        if ( ! is_wp_error( $response ) && (int) wp_remote_retrieve_response_code( $response ) < 300 ) {
+            $sent               = (array) get_option( 'sp_tickets_sent_upstream', [] );
+            $sent[ $ticket_id ] = time();
+            update_option( 'sp_tickets_sent_upstream', $sent, false );
+            sp_audit( 'ticket_sent_upstream', sprintf( 'Help Desk ticket #%d sent to the SocietyPress team', $ticket_id ), 'ticket', $ticket_id );
+            $result = 'ok';
+        }
+    } else {
+        $result = 'ok';
+    }
+
+    wp_safe_redirect( add_query_arg(
+        [ 'page' => 'sp-ticket', 'ticket' => $ticket_id, 'sp_upstream' => $result ],
+        admin_url( 'admin.php' )
+    ) );
+    exit;
+} );
 
 // ---- Filing ----------------------------------------------------------------
 
@@ -23099,6 +23314,11 @@ function sp_render_ticket_new_page(): void {
     $questions = sp_ticket_questions();
     $from      = isset( $_GET['sp_from'] ) ? sanitize_key( wp_unslash( $_GET['sp_from'] ) ) : '';
     $error     = isset( $_GET['sp_error'] ) ? sanitize_key( wp_unslash( $_GET['sp_error'] ) ) : '';
+    // Carried from the "Report a Problem" link and passed through untouched;
+    // sp_ticket_environment() checks them when the ticket is filed.
+    $page      = isset( $_GET['sp_page'] ) ? esc_url_raw( wp_unslash( $_GET['sp_page'] ) ) : '';
+    $window    = isset( $_GET['sp_window'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_window'] ) ) : '';
+    $display   = isset( $_GET['sp_display'] ) ? sanitize_text_field( wp_unslash( $_GET['sp_display'] ) ) : '';
     ?>
     <div class="wrap">
         <h1><?php esc_html_e( 'Ask for Help', 'societypress' ); ?></h1>
@@ -23109,7 +23329,15 @@ function sp_render_ticket_new_page(): void {
 
         <p class="sp-ticket-note">
             <?php esc_html_e( 'This goes to whoever looks after your society\'s website. You do not need to know what version you are running or what browser you use — that is recorded for you.', 'societypress' ); ?>
-            <?php if ( $from !== '' ) : ?>
+            <?php if ( $page !== '' ) : ?>
+                <br><strong><?php
+                    printf(
+                        /* translators: %s: address of the page the person came from */
+                        esc_html__( 'Filed from: %s', 'societypress' ),
+                        esc_html( $page )
+                    );
+                ?></strong>
+            <?php elseif ( $from !== '' ) : ?>
                 <br><strong><?php
                     printf(
                         /* translators: %s: the admin screen the person came from */
@@ -23123,6 +23351,9 @@ function sp_render_ticket_new_page(): void {
         <form class="sp-ticket-form" method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="sp_file_ticket">
             <input type="hidden" name="sp_from" value="<?php echo esc_attr( $from ); ?>">
+            <input type="hidden" name="sp_page" value="<?php echo esc_attr( $page ); ?>">
+            <input type="hidden" name="sp_window" value="<?php echo esc_attr( $window ); ?>">
+            <input type="hidden" name="sp_display" value="<?php echo esc_attr( $display ); ?>">
             <?php wp_nonce_field( 'sp_file_ticket' ); ?>
 
             <div class="sp-q">
@@ -23148,7 +23379,7 @@ function sp_render_ticket_new_page(): void {
 
                 <div class="sp-q">
                     <label class="sp-q-label" for="sp-where-<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $q['where'] ); ?></label>
-                    <input type="text" id="sp-where-<?php echo esc_attr( $key ); ?>" name="where_seen" maxlength="255" disabled>
+                    <input type="text" id="sp-where-<?php echo esc_attr( $key ); ?>" name="where_seen" maxlength="255" value="<?php echo esc_attr( $page ); ?>" disabled>
                     <span class="sp-q-hint"><?php echo esc_html( $q['where_hint'] ); ?></span>
                 </div>
 
@@ -23348,7 +23579,11 @@ function sp_render_ticket_page(): void {
                 <table class="sp-ticket-env">
                     <?php
                     $labels = [
+                        'page'         => __( 'Page they were on', 'societypress' ),
                         'screen'       => __( 'Screen they were on', 'societypress' ),
+                        'window'       => __( 'Browser window size', 'societypress' ),
+                        'display'      => __( 'Screen size', 'societypress' ),
+                        'modules'      => __( 'Modules switched on', 'societypress' ),
                         'societypress' => __( 'SocietyPress', 'societypress' ),
                         'theme'        => __( 'Theme', 'societypress' ),
                         'wordpress'    => __( 'WordPress', 'societypress' ),
@@ -23367,6 +23602,33 @@ function sp_render_ticket_page(): void {
                         <tr><td><?php echo esc_html( $label ); ?></td><td><?php echo esc_html( $value ); ?></td></tr>
                     <?php endforeach; ?>
                 </table>
+            <?php endif; ?>
+
+            <?php if ( $answerer ) :
+                $sent_up = sp_ticket_sent_upstream( (int) $ticket->id ); ?>
+                <h2><?php esc_html_e( 'Tell the SocietyPress team', 'societypress' ); ?></h2>
+                <?php if ( ! empty( $_GET['sp_upstream'] ) ) : ?>
+                    <div class="notice <?php echo 'ok' === $_GET['sp_upstream'] ? 'notice-success' : 'notice-error'; ?> inline"><p><?php
+                        echo 'ok' === $_GET['sp_upstream']
+                            ? esc_html__( 'Sent. Thank you — the SocietyPress team will look into it.', 'societypress' )
+                            : esc_html__( 'It could not be sent just now. Nothing was lost; try again later.', 'societypress' );
+                    ?></p></div>
+                <?php endif; ?>
+                <p class="sp-ticket-note"><?php esc_html_e( 'If this looks like a fault in SocietyPress itself rather than something on your own site, you can send it to the people who make SocietyPress. They get the title, the description, the page address and the details above. They never get the name or email of the person who reported it, and attachments are not sent.', 'societypress' ); ?></p>
+                <?php if ( $sent_up ) : ?>
+                    <p><strong><?php
+                        /* translators: %s: date and time */
+                        echo esc_html( sprintf( __( 'Sent to SocietyPress on %s.', 'societypress' ), wp_date( $stamp, $sent_up ) ) );
+                    ?></strong></p>
+                <?php else : ?>
+                    <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>"
+                          data-sp-confirm="<?php echo esc_attr__( 'Send this to the SocietyPress team? Check first that the description does not include anyone\'s private details.', 'societypress' ); ?>">
+                        <input type="hidden" name="action" value="sp_send_ticket_upstream">
+                        <input type="hidden" name="ticket" value="<?php echo (int) $ticket->id; ?>">
+                        <?php wp_nonce_field( 'sp_send_ticket_upstream_' . (int) $ticket->id ); ?>
+                        <button type="submit" class="button"><?php esc_html_e( 'Send to SocietyPress', 'societypress' ); ?></button>
+                    </form>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
     </div>
@@ -43546,7 +43808,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.174',
+            'version'     => '1.5.175',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43554,7 +43816,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.174',
+            'version'     => '1.5.175',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43562,7 +43824,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.174',
+            'version'     => '1.5.175',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43570,7 +43832,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.174',
+            'version'     => '1.5.175',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43578,7 +43840,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.174',
+            'version'     => '1.5.175',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

@@ -16,6 +16,15 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Report a Problem, and Send to SocietyPress — 1.5.175
+
+Whoever looks after a site can file a Help Desk ticket from any page: a
+"Report a Problem" link in the admin sidebar, and a small corner button on the
+public site that only they see. The page address, window size and modules are
+recorded with it. A ticket that looks like a SocietyPress fault can be sent to
+the SocietyPress team in one click, without the reporter's name or email,
+into a private queue on societypress.net rather than public GitHub issues.
+
 ### Add a list of names to a group or committee — 1.5.174
 
 A group's or committee's screen takes a whole list of names at once — typed
@@ -223,7 +232,7 @@ SocietyPress app. Build after that, so it is tested against the real Google.
 
 ### Medium
 
-#### AI assistant and problem reports
+#### AI assistant
 
 **Motivation:** Officers answer the same questions by email — when the next
 meeting is, whether the library has anything on a county, what membership
@@ -237,10 +246,6 @@ never merged; rebuild it on current code from that design:
   `sp_do_unified_search()` so a visitor can never surface members-only content.
 - "Ask SocietyPress" for volunteers: how-to answers based on the modules
   that are on and the screens that person can actually open.
-- "Report a Problem": files a fault from the page it happened on with the
-  technical details captured automatically and no IP address, into a queue
-  under Settings, with an optional button to send it to GitHub that never
-  includes the reporter's name or email.
 - The society supplies its own Anthropic key, stored encrypted or set in
   `wp-config.php`; per-person and per-day caps; every exchange logged with
   its cost; both features covered by the privacy export and erase tools.

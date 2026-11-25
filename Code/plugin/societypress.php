@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.179
+ * Version:     1.5.180
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.179' );
+define( 'SOCIETYPRESS_VERSION', '1.5.180' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -22713,6 +22713,39 @@ add_action( 'admin_footer', 'sp_report_problem_script' );
 const SP_PROBLEM_REPORT_ENDPOINT = 'https://societypress.net/wp-json/societypress/v1/reports';
 
 /**
+ * This site's own key for "Send to SocietyPress", made the first time it is
+ * needed.
+ *
+ * WHY a key the site makes for itself: societypress.net cannot tell a real
+ *      install from somebody typing a made-up address. So each site keeps a
+ *      random key, sends it with every report, and societypress.net calls the
+ *      site's address back to ask for the key's fingerprint. Only the site
+ *      that really lives at an address can answer for it, and once a key is
+ *      on file nobody else can send reports in that site's name.
+ */
+function sp_upstream_key(): string {
+    $key = (string) get_option( 'sp_upstream_key', '' );
+    if ( strlen( $key ) < 32 ) {
+        $key = wp_generate_password( 48, false );
+        update_option( 'sp_upstream_key', $key, false );
+    }
+    return $key;
+}
+
+/**
+ * The call-back societypress.net makes to check a report really came from
+ * here. It answers with the key's SHA-256 fingerprint, never the key, so
+ * reading it tells nobody what to send.
+ */
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'societypress/v1', '/upstream-key', [
+        'methods'             => 'GET',
+        'callback'            => static fn() => new WP_REST_Response( [ 'fingerprint' => hash( 'sha256', sp_upstream_key() ) ], 200 ),
+        'permission_callback' => '__return_true',
+    ] );
+} );
+
+/**
  * When a ticket was sent to the SocietyPress team, or 0 if it never was.
  *
  * WHY an option rather than a column: only a handful of tickets on any site
@@ -22750,6 +22783,7 @@ function sp_ticket_upstream_payload( object $ticket ): array {
         'screen'      => (string) $ticket->screen,
         'environment' => is_array( $env ) ? $env : [],
         'ticket'      => (int) $ticket->id,
+        'key'         => sp_upstream_key(),
     ];
 }
 
@@ -43918,7 +43952,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.179',
+            'version'     => '1.5.180',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43926,7 +43960,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.179',
+            'version'     => '1.5.180',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43934,7 +43968,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.179',
+            'version'     => '1.5.180',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43942,7 +43976,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.179',
+            'version'     => '1.5.180',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43950,7 +43984,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.179',
+            'version'     => '1.5.180',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',

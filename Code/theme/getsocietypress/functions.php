@@ -1849,9 +1849,11 @@ add_action( 'admin_menu', 'gsp_add_installs_page' );
  * WHY here rather than GitHub issues: GitHub is public, and a society's
  *      description of its own fault can name its own pages and people. A
  *      private queue lets the maintainer decide what becomes a public issue.
- * WHY only from sites that have checked in: the endpoint has to be open (no
- *      secret survives being shipped in every copy of the plugin), so the
- *      register of known installs is what keeps strangers from filling it.
+ * WHY a per-site key and a call-back: the endpoint has to be open (no
+ *      secret survives being shipped in every copy of the plugin), and the
+ *      install register is open too, so being listed proves nothing. Each
+ *      site makes its own key, and gsp_report_key_ok() checks it with the
+ *      site at its own address.
  */
 function gsp_reports_table(): string {
     global $wpdb;
@@ -1912,6 +1914,49 @@ function gsp_register_reports_route(): void {
 add_action( 'rest_api_init', 'gsp_register_reports_route' );
 
 /**
+ * Does this key prove the report came from the site at $url?
+ *
+ * WHY a call-back: the install register is open, so being listed in it proves
+ *      nothing. Anyone can add a made-up address. Each SocietyPress site keeps
+ *      its own random key and answers /upstream-key at its own address with
+ *      the key's fingerprint. A key matching what is on file is accepted
+ *      straight away. Otherwise we ask the site itself, which only the real
+ *      site can answer, and file the new fingerprint. That also covers a site
+ *      reinstalled with a fresh key. A made-up address cannot answer, and
+ *      nobody can send in a real site's name without that site's key.
+ * WHY wp_safe_remote_get: the address comes from the sender, so the request
+ *      must not be steerable at this server's own network.
+ */
+function gsp_report_key_ok( string $url, string $key ): bool {
+    if ( strlen( $key ) < 32 ) {
+        return false;
+    }
+
+    $fingerprint = hash( 'sha256', $key );
+    $keys        = (array) get_option( 'gsp_report_keys', [] );
+    if ( isset( $keys[ $url ] ) && hash_equals( (string) $keys[ $url ], $fingerprint ) ) {
+        return true;
+    }
+
+    // rest_route works on plain permalinks too, where /wp-json/ does not.
+    $response = wp_safe_remote_get(
+        $url . '/?rest_route=/societypress/v1/upstream-key',
+        [ 'timeout' => 8, 'redirection' => 2 ]
+    );
+    if ( is_wp_error( $response ) || 200 !== (int) wp_remote_retrieve_response_code( $response ) ) {
+        return false;
+    }
+    $answer = json_decode( (string) wp_remote_retrieve_body( $response ), true );
+    if ( ! is_array( $answer ) || ! hash_equals( $fingerprint, (string) ( $answer['fingerprint'] ?? '' ) ) ) {
+        return false;
+    }
+
+    $keys[ $url ] = $fingerprint;
+    update_option( 'gsp_report_keys', $keys, false );
+    return true;
+}
+
+/**
  * Store one problem report.
  */
 function gsp_receive_problem_report( WP_REST_Request $request ) {
@@ -1927,13 +1972,18 @@ function gsp_receive_problem_report( WP_REST_Request $request ) {
     }
 
     // Twenty a day per site is far beyond any real society and well short of
-    // a loop filling the table.
+    // a loop filling the table. Counted before the key check so a stranger
+    // cannot make us call a site back without limit.
     $count_key = 'gsp_reports_' . md5( $url );
     $count     = (int) get_transient( $count_key );
     if ( $count >= 20 ) {
         return new WP_REST_Response( [ 'ok' => false, 'reason' => 'too_many' ], 429 );
     }
     set_transient( $count_key, $count + 1, DAY_IN_SECONDS );
+
+    if ( ! gsp_report_key_ok( $url, (string) $request->get_param( 'key' ) ) ) {
+        return new WP_REST_Response( [ 'ok' => false, 'reason' => 'unverified_site' ], 403 );
+    }
 
     $text = static fn( string $k, int $len ) => mb_substr( sanitize_text_field( (string) $request->get_param( $k ) ), 0, $len );
     $long = static fn( string $k ) => mb_substr( sanitize_textarea_field( (string) $request->get_param( $k ) ), 0, 20000 );

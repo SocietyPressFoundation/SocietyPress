@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.180] — 2026-11-25
+
+### Changed
+- **Send to SocietyPress** now proves a report really comes from your site.
+  Each site keeps its own private key, and societypress.net checks it with
+  your site before accepting a report, so nobody else can send reports in
+  your society's name. Your site must be reachable from the internet for the
+  button to work.
+
 ## [1.5.179] — 2026-11-25
 
 ### Fixed

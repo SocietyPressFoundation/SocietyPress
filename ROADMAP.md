@@ -249,11 +249,14 @@ with poor Wi-Fi.
 **Scope:** A native iPadOS app for event registration and check-in, library
 visitor sign-in, and join or renew with card-present payment through a Stripe
 reader; offline for everything except the payment itself. The design spec is
-in draft PR #12 (`docs/KIOSK-SPEC.md`), including the open questions it
-deliberately leaves to be decided.
-**Blockers:** The spec's open questions — attended or unattended use, idle
-timeout, receipts and printing, App Store distribution, identity check on
-renewal.
+in draft PR #12 (`docs/KIOSK-SPEC.md`). Its open questions were settled
+2026-11-25. Attended or unattended, the idle timeout, and which jobs it does
+are each set per iPad. Receipts go on screen, by email, and optionally by
+text through the society's own texting account. The app is on the public App
+Store. Renewal is confirmed with a one-time code sent by email.
+**Blockers:** None for the WordPress side and the app in the simulator.
+Testing with a real Stripe card reader needs the hardware, and an App Store
+listing needs an Apple Developer account.
 
 ---
 

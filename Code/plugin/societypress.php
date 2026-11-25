@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.178
+ * Version:     1.5.179
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.178' );
+define( 'SOCIETYPRESS_VERSION', '1.5.179' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -22897,7 +22897,11 @@ add_action( 'admin_post_sp_file_ticket', function () {
         'reporter_id' => get_current_user_id(),
         'type'        => $type,
         'title'       => $title,
-        'where_seen'  => sanitize_text_field( wp_unslash( $_POST['where_seen'] ?? '' ) ),
+        // The form prefills this with the page's full address, and links from
+        // email or social posts carry long tracking strings. maxlength does
+        // not trim a prefilled value, and wpdb refuses the whole insert when
+        // a value overruns the VARCHAR(255) column, so trim it here.
+        'where_seen'  => mb_substr( sanitize_text_field( wp_unslash( $_POST['where_seen'] ?? '' ) ), 0, 255 ),
         'body'        => sanitize_textarea_field( wp_unslash( $_POST['body'] ?? '' ) ),
         'expected'    => sanitize_textarea_field( wp_unslash( $_POST['expected'] ?? '' ) ),
         'impact'      => sanitize_key( wp_unslash( $_POST['impact'] ?? '' ) ),
@@ -39325,12 +39329,12 @@ function sp_bulk_names_styles(): void {
  * @param string      $prefill      Text to put back after "Change the list".
  * @param string|null $role         Committee role for everyone added; null hides the field.
  */
-function sp_render_bulk_names_box( string $nonce_action, string $heading, string $prefill = '', ?string $role = null ): void {
+function sp_render_bulk_names_box( string $nonce_action, string $heading, string $prefill = '', ?string $role = null, string $action = '' ): void {
     sp_bulk_names_styles();
     ?>
     <div class="sp-bulk-names" id="sp-bulk-names">
         <h2><?php echo esc_html( $heading ); ?></h2>
-        <form method="post">
+        <form method="post"<?php if ( $action !== '' ) : ?> action="<?php echo esc_url( $action ); ?>"<?php endif; ?>>
             <?php wp_nonce_field( $nonce_action, 'sp_bulk_nonce' ); ?>
             <p><label for="sp-bulk-text"><?php esc_html_e( 'Type or paste names, one per line. You can write "Mary Smith", "Smith, Mary", or an email address. You will see who was found before anyone is added.', 'societypress' ); ?></label></p>
             <textarea name="sp_bulk_text" id="sp-bulk-text" rows="8" required><?php echo esc_textarea( $prefill ); ?></textarea>
@@ -43914,7 +43918,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.178',
+            'version'     => '1.5.179',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43922,7 +43926,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.178',
+            'version'     => '1.5.179',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43930,7 +43934,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.178',
+            'version'     => '1.5.179',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43938,7 +43942,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.178',
+            'version'     => '1.5.179',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43946,7 +43950,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.178',
+            'version'     => '1.5.179',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -88967,6 +88971,12 @@ function sp_render_committee_edit_page(): void {
         ) );
     }
 
+    // A committee created on this request has its id only in $cid, not in
+    // the URL. Forms without an action would post back to the id-less URL,
+    // so a second save would create a duplicate and the name-list box would
+    // find no committee and drop the list. Pin every form to the real id.
+    $form_action = admin_url( 'admin.php?page=sp-committee-edit' . ( $cid ? '&committee_id=' . $cid : '' ) );
+
     // "Add a list of names" — committee membership lives in volunteer_roles,
     // matched to the committee by its name, exactly as a one-at-a-time
     // assignment on the Governance screen saves it.
@@ -89047,7 +89057,7 @@ function sp_render_committee_edit_page(): void {
         <h1><?php echo $committee ? esc_html__( 'Edit Committee', 'societypress' ) : esc_html__( 'Add Committee', 'societypress' ); ?></h1>
         <p><a href="<?php echo esc_url( $back_url ); ?>"><?php esc_html_e( '&larr; Back to Committees', 'societypress' ); ?></a></p>
 
-        <form method="post" class="sp-max-w-700">
+        <form method="post" class="sp-max-w-700" action="<?php echo esc_url( $form_action ); ?>">
             <?php wp_nonce_field( 'sp_committee_save' ); ?>
 
             <table class="form-table">
@@ -89108,7 +89118,7 @@ function sp_render_committee_edit_page(): void {
         // Its own form, after the main one closes: forms cannot nest, and this
         // one must not resubmit the committee's details.
         if ( $committee ) {
-            sp_render_bulk_names_box( 'sp_committee_bulk_' . $cid, __( 'Add a List of Names', 'societypress' ), $bulk_prefill, $bulk_role );
+            sp_render_bulk_names_box( 'sp_committee_bulk_' . $cid, __( 'Add a List of Names', 'societypress' ), $bulk_prefill, $bulk_role, $form_action );
         }
         ?>
     </div>
@@ -146188,12 +146198,14 @@ function sp_ai_format_search_results( array $results ): string {
                     break;
 
                 case 'pages':
-                    // The pages group carries WP_Post objects, so the link is
-                    // exact rather than a pointer at a listing screen.
+                    // sp_do_unified_search() hands pages back as plain objects
+                    // that already carry their title and URL. Passing them to
+                    // get_the_title()/get_permalink() yields a blank title and
+                    // the home URL, so read the fields directly.
                     $lines[] = sprintf(
                         '- %s — %s',
-                        get_the_title( $item ),
-                        get_permalink( $item )
+                        (string) $item->title,
+                        (string) $item->url
                     );
                     break;
             }
@@ -146237,7 +146249,7 @@ function sp_ai_society_facts(): string {
     $settings = sp_settings();
     $facts    = [];
 
-    $facts[] = sprintf( 'Society name: %s', $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    $facts[] = sprintf( 'Society name: %s', trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
     $facts[] = sprintf( 'Website: %s', home_url( '/' ) );
 
     if ( ! empty( get_bloginfo( 'description' ) ) ) {
@@ -146462,7 +146474,8 @@ function sp_ai_search_terms( string $question ): array {
  */
 function sp_ai_public_system_prompt( string $context ): string {
     $settings = sp_settings();
-    $society  = (string) ( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    // Activation seeds organization_name as '', so ?? alone never falls back.
+    $society  = trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' );
 
     $prompt = sprintf(
         "You are the website assistant for %s, a genealogical and historical society. You help visitors and members find what they need on this site.\n\n",
@@ -146510,7 +146523,7 @@ function sp_ai_build_admin_context( string $current_page = '' ): string {
 
     $blocks[] = sprintf(
         "THIS INSTALLATION\nSociety: %s\nSite address: %s\nSocietyPress version: %s\nWordPress version: %s\nActive theme: %s",
-        $settings['organization_name'] ?? get_bloginfo( 'name' ),
+        trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ),
         home_url( '/' ),
         SOCIETYPRESS_VERSION,
         get_bloginfo( 'version' ),
@@ -146519,15 +146532,17 @@ function sp_ai_build_admin_context( string $current_page = '' ): string {
 
     // Which features exist here at all. A volunteer asking how to add an event
     // on a site with Events switched off needs to be told that first.
+    // sp_module_enabled() rather than the raw saved list: a module added
+    // after the site last saved Features is on (never offered, never turned
+    // off) but absent from that list, and the menus follow this same check.
     $all      = sp_get_modules();
-    $enabled  = sp_get_enabled_modules();
     $on       = [];
     $off      = [];
 
     foreach ( $all as $slug => $module ) {
         $line = sprintf( '- %s: %s', $module['name'], $module['description'] );
 
-        if ( in_array( $slug, $enabled, true ) ) {
+        if ( sp_module_enabled( $slug ) ) {
             $on[] = $line;
         } else {
             $off[] = sprintf( '- %s', $module['name'] );
@@ -146914,6 +146929,16 @@ add_action( 'wp_ajax_sp_ai_admin_chat', 'sp_ai_ajax_admin_chat' );
  */
 function sp_ai_answer_to_html( string $text ): string {
     $escaped = esc_html( $text );
+
+    // Markdown links first — the prompts ask for links and the model writes
+    // them as [text](url). Without this make_clickable() links only the URL
+    // and leaves the brackets on screen. The text is already escaped, so the
+    // href cannot break out of its quotes; wp_kses below vets the protocol.
+    $escaped = preg_replace(
+        '/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/',
+        '<a href="$2">$1</a>',
+        $escaped
+    );
 
     // Autolink bare URLs before the inline markers run, so a link inside a
     // bold run still becomes a link. make_clickable() is core's own and is

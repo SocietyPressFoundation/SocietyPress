@@ -20,6 +20,23 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.179] — 2026-11-25
+
+### Fixed
+- The AI Assistant now names the right page and links to it when the answer is
+  on one of the site's regular pages. Before, it gave a blank name and the home
+  page link.
+- Links in AI Assistant answers now show as clickable words instead of raw
+  `[text](link)` code.
+- The AI Assistant uses the site name when the society's name was never filled
+  in, and no longer says it is switched off on sites that saved Features before
+  it arrived.
+- Pasting a list of names into a committee you just created no longer loses
+  the list, and saving that new committee a second time no longer makes a
+  duplicate.
+- A problem report filed from a page with a very long address is no longer
+  thrown away.
+
 ## [1.5.178] — 2026-11-25
 
 ### Fixed

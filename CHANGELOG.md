@@ -20,6 +20,13 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.178] — 2026-11-25
+
+### Fixed
+- The AI Assistant no longer offers a meeting that has already happened, or a
+  postponed one, as the next meeting. Events found by its site search are now
+  marked as past or postponed.
+
 ## [1.5.177] — 2026-11-25
 
 ### Fixed

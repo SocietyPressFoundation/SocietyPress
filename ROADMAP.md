@@ -16,6 +16,14 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Add a list of names to a group or committee — 1.5.174
+
+A group's or committee's screen takes a whole list of names at once — typed
+or pasted one per line as "Mary Smith", "Smith, Mary" or an email address.
+A check screen shows who was found, which names belong to more than one
+member (pick the right one or skip it), and which matched nobody, before
+anyone is added. Only active members are matched.
+
 ### Ask a question only after a certain answer — 1.5.166
 
 A question can be asked only when someone picks certain answers to an earlier
@@ -214,18 +222,6 @@ mailbox exists as of 2026-11-19), then a Google Cloud project for the
 SocietyPress app. Build after that, so it is tested against the real Google.
 
 ### Medium
-
-#### Add a list of names to a group at once
-
-**Motivation:** Filling a member group or committee means adding people one
-at a time. A secretary who already has the names (from a sign-up sheet, an
-email, last year's roster) should be able to put them all in at once.
-**Scope:** On a group's screen, a box to paste or type a list of names, one
-per line. Each name is matched to a member, with a check screen before
-anything is saved: who was found, any name that matched more than one member
-(pick which), and any name that matched nobody. Then add the confirmed members
-in one step.
-**Blockers:** None.
 
 #### AI assistant and problem reports
 

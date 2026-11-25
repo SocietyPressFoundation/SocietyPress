@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.173
+ * Version:     1.5.174
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.173' );
+define( 'SOCIETYPRESS_VERSION', '1.5.174' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -38800,6 +38800,342 @@ function sp_render_member_autocomplete( string $field_name, array $args = [] ): 
 }
 
 /**
+ * Match a pasted list of names against the active membership.
+ *
+ * WHY one line per person, and only three shapes ("Mary Smith", "Smith, Mary",
+ *      or an email address): those are the shapes a secretary actually has on
+ *      hand — a sign-up sheet, a roster export, an email thread. Anything
+ *      cleverer (last name alone, initials) matches half the society and turns
+ *      the check screen into a quiz.
+ * WHY active members only: Charles decided a lapsed member should read as "no
+ *      member found", so a list from years back cannot quietly fill a group
+ *      with people who have left.
+ * WHY the whole active roster is loaded once: a society has hundreds of
+ *      members, not millions, and one query beats one query per pasted line.
+ *
+ * @param string $text        The pasted list.
+ * @param int[]  $already_ids Members already in the group or committee.
+ * @return array{lines: array<int, array{line: string, ids: int[]}>, people: array<int, object>, already: int[]}
+ */
+function sp_bulk_names_match( string $text, array $already_ids = [] ): array {
+    global $wpdb;
+
+    $rows = $wpdb->get_results(
+        "SELECT m.user_id, m.first_name, m.preferred_name, m.middle_name, m.last_name, m.alt_email, u.user_email
+         FROM {$wpdb->prefix}sp_members m
+         JOIN {$wpdb->users} u ON u.ID = m.user_id
+         WHERE m.status = 'active'"
+    );
+
+    $norm     = static fn( $s ) => strtolower( trim( (string) preg_replace( '/\s+/u', ' ', (string) $s ) ) );
+    $by_name  = [];
+    $by_email = [];
+    $people   = [];
+
+    foreach ( (array) $rows as $r ) {
+        $uid            = (int) $r->user_id;
+        $people[ $uid ] = $r;
+        // Preferred name and middle name both count, because "Bob Smith" on a
+        // sign-up sheet is the Robert Smith in the roster, and some rosters
+        // carry "Mary Ann" as first plus middle.
+        foreach ( array_unique( array_filter( [ $r->first_name, $r->preferred_name ] ) ) as $first ) {
+            $by_name[ $norm( $first . ' ' . $r->last_name ) ][ $uid ] = $uid;
+            if ( ! empty( $r->middle_name ) ) {
+                $by_name[ $norm( $first . ' ' . $r->middle_name . ' ' . $r->last_name ) ][ $uid ] = $uid;
+            }
+        }
+        foreach ( [ $r->user_email, $r->alt_email ] as $email ) {
+            if ( $email ) {
+                $by_email[ $norm( $email ) ][ $uid ] = $uid;
+            }
+        }
+    }
+
+    $lines = [];
+    foreach ( preg_split( '/\r\n|\r|\n/', $text ) as $raw ) {
+        // Strip list bullets and numbering so a list copied out of an email
+        // or a word processor still matches.
+        $line = trim( (string) preg_replace( '/^\s*(?:[-*\x{2022}]|\d+[.)])\s+/u', '', $raw ) );
+        if ( '' === $line ) {
+            continue;
+        }
+        if ( preg_match( '/[^\s<>,;]+@[^\s<>,;]+\.[^\s<>,;]+/', $line, $m ) ) {
+            // "Mary Smith <mary@example.com>" matches on the address alone.
+            $ids = $by_email[ $norm( $m[0] ) ] ?? [];
+        } elseif ( str_contains( $line, ',' ) ) {
+            [ $last, $first ] = array_map( 'trim', explode( ',', $line, 2 ) );
+            $ids              = $by_name[ $norm( $first . ' ' . $last ) ] ?? [];
+        } else {
+            $ids = $by_name[ $norm( $line ) ] ?? [];
+        }
+        $lines[] = [ 'line' => $line, 'ids' => array_values( array_map( 'intval', $ids ) ) ];
+    }
+
+    return [
+        'lines'   => $lines,
+        'people'  => $people,
+        'already' => array_map( 'intval', $already_ids ),
+    ];
+}
+
+/**
+ * The pasted list, as the secretary typed it.
+ *
+ * WHY not sanitize_textarea_field: it strips anything shaped like an HTML
+ *      tag, and "Mary Smith <mary@example.com>" is exactly how a name copied
+ *      out of an email arrives. The address vanished and the line matched
+ *      nobody. The text is only ever compared, and escaped on every output,
+ *      so it is kept whole apart from invalid UTF-8.
+ */
+function sp_bulk_names_posted_text(): string {
+    return (string) wp_check_invalid_utf8( (string) wp_unslash( $_POST['sp_bulk_text'] ?? '' ), true );
+}
+
+/**
+ * The member IDs a secretary confirmed on the check screen.
+ *
+ * WHY re-check against the active roster here: the check screen is a form the
+ *      browser hands back, so the IDs in it are only a request. Someone could
+ *      have lapsed between the check and the click, or the form could have
+ *      been edited.
+ *
+ * @return int[]
+ */
+function sp_bulk_names_chosen_ids(): array {
+    global $wpdb;
+
+    $ids = array_map( 'absint', (array) ( $_POST['sp_bulk_add_ids'] ?? [] ) );
+    foreach ( (array) ( $_POST['sp_bulk_pick'] ?? [] ) as $pick ) {
+        $ids[] = absint( $pick );
+    }
+    $ids = array_values( array_unique( array_filter( $ids ) ) );
+    if ( ! $ids ) {
+        return [];
+    }
+
+    $placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+    return array_map( 'intval', $wpdb->get_col( $wpdb->prepare(
+        "SELECT user_id FROM {$wpdb->prefix}sp_members WHERE status = 'active' AND user_id IN ($placeholders)",
+        $ids
+    ) ) );
+}
+
+/**
+ * Shared styles for the paste box and the check screen, printed once.
+ */
+function sp_bulk_names_styles(): void {
+    static $done = false;
+    if ( $done ) {
+        return;
+    }
+    $done = true;
+    ?>
+    <style id="sp-bulk-names-css">
+        .sp-bulk-names { margin-top: 32px; max-width: 700px; }
+        .sp-bulk-names textarea { width: 100%; font-family: inherit; }
+        .sp-bulk-names-role { margin: 12px 0; }
+        .sp-bulk-names-role input { width: 260px; }
+        .sp-bulk-check { max-width: 800px; }
+        .sp-bulk-check h2 { margin-top: 28px; }
+        .sp-bulk-check-list { list-style: none; margin: 0; padding: 0; }
+        .sp-bulk-check-list li { padding: 8px 0; border-bottom: 1px solid #e5e7eb; }
+        .sp-bulk-check-typed { color: #6b7280; font-size: 13px; margin-left: 6px; }
+        .sp-bulk-check-already { color: #6b7280; font-style: italic; margin-left: 6px; }
+        .sp-bulk-check-choices { margin: 6px 0 0 20px; }
+        .sp-bulk-check-choices label { display: block; padding: 3px 0; }
+        .sp-bulk-check-none li { color: #b32d2e; }
+        .sp-bulk-check-actions { margin-top: 24px; display: flex; gap: 8px; }
+    </style>
+    <?php
+}
+
+/**
+ * The "Add a list of names" box.
+ *
+ * @param string      $nonce_action Nonce action for this group or committee.
+ * @param string      $heading      Section heading.
+ * @param string      $prefill      Text to put back after "Change the list".
+ * @param string|null $role         Committee role for everyone added; null hides the field.
+ */
+function sp_render_bulk_names_box( string $nonce_action, string $heading, string $prefill = '', ?string $role = null ): void {
+    sp_bulk_names_styles();
+    ?>
+    <div class="sp-bulk-names" id="sp-bulk-names">
+        <h2><?php echo esc_html( $heading ); ?></h2>
+        <form method="post">
+            <?php wp_nonce_field( $nonce_action, 'sp_bulk_nonce' ); ?>
+            <p><label for="sp-bulk-text"><?php esc_html_e( 'Type or paste names, one per line. You can write "Mary Smith", "Smith, Mary", or an email address. You will see who was found before anyone is added.', 'societypress' ); ?></label></p>
+            <textarea name="sp_bulk_text" id="sp-bulk-text" rows="8" required><?php echo esc_textarea( $prefill ); ?></textarea>
+            <?php if ( null !== $role ) : ?>
+                <p class="sp-bulk-names-role">
+                    <label for="sp-bulk-role"><?php esc_html_e( 'Role in committee for everyone on the list', 'societypress' ); ?></label><br>
+                    <input type="text" name="sp_bulk_role" id="sp-bulk-role" value="<?php echo esc_attr( $role ); ?>" required>
+                </p>
+            <?php endif; ?>
+            <p><button type="submit" name="sp_bulk_check" value="1" class="button"><?php esc_html_e( 'Check These Names', 'societypress' ); ?></button></p>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * The check screen: who was found, who needs a choice, who matched nobody.
+ *
+ * WHY nothing is pre-chosen when a name matches several members: guessing
+ *      wrong puts the wrong Mary Smith on a committee, and nobody notices for
+ *      months. "Skip this name" is the default, so the secretary has to pick.
+ *
+ * @param array       $match        Result of sp_bulk_names_match().
+ * @param string      $nonce_action Nonce action for this group or committee.
+ * @param string      $title        Page title, e.g. "Add names to Programs".
+ * @param string      $already_text Note shown next to someone already in it.
+ * @param string      $text         The original pasted text, carried for "Change the list".
+ * @param string|null $role         Committee role, carried through; null for groups.
+ */
+function sp_render_bulk_names_check( array $match, string $nonce_action, string $title, string $already_text, string $text, ?string $role = null ): void {
+    sp_bulk_names_styles();
+
+    $people  = $match['people'];
+    $already = array_flip( $match['already'] );
+    $label   = static function ( $p ): string {
+        return trim( $p->first_name . ' ' . $p->last_name ) . ( $p->user_email ? ' (' . $p->user_email . ')' : '' );
+    };
+
+    $found   = [];
+    $several = [];
+    $none    = [];
+    foreach ( $match['lines'] as $i => $l ) {
+        $count = count( $l['ids'] );
+        if ( 1 === $count ) {
+            // The same person pasted twice (name and email) shows once.
+            $found[ $l['ids'][0] ] = $found[ $l['ids'][0] ] ?? $l;
+        } elseif ( $count > 1 ) {
+            $several[ $i ] = $l;
+        } else {
+            $none[] = $l;
+        }
+    }
+    $addable = count( array_diff_key( $found, $already ) );
+    ?>
+    <div class="wrap sp-admin-wrap sp-bulk-check">
+        <h1><?php echo esc_html( $title ); ?></h1>
+        <p><?php esc_html_e( 'Check the list below. Nobody has been added yet.', 'societypress' ); ?></p>
+        <?php if ( null !== $role ) : ?>
+            <p><?php
+                /* translators: %s: committee role, e.g. Member */
+                echo esc_html( sprintf( __( 'Everyone ticked will be added with the role "%s".', 'societypress' ), $role ) );
+            ?></p>
+        <?php endif; ?>
+
+        <form method="post">
+            <?php wp_nonce_field( $nonce_action, 'sp_bulk_nonce' ); ?>
+            <input type="hidden" name="sp_bulk_text" value="<?php echo esc_attr( $text ); ?>">
+            <?php if ( null !== $role ) : ?>
+                <input type="hidden" name="sp_bulk_role" value="<?php echo esc_attr( $role ); ?>">
+            <?php endif; ?>
+
+            <?php if ( $found ) : ?>
+                <h2><?php /* translators: %d: number of names found */ echo esc_html( sprintf( _n( 'Found (%d)', 'Found (%d)', count( $found ), 'societypress' ), count( $found ) ) ); ?></h2>
+                <p class="description"><?php esc_html_e( 'Untick anyone you do not want to add.', 'societypress' ); ?></p>
+                <ul class="sp-bulk-check-list">
+                    <?php foreach ( $found as $uid => $l ) : ?>
+                        <li>
+                            <?php if ( isset( $already[ $uid ] ) ) : ?>
+                                <?php echo esc_html( $label( $people[ $uid ] ) ); ?>
+                                <span class="sp-bulk-check-already"><?php echo esc_html( $already_text ); ?></span>
+                            <?php else : ?>
+                                <label><input type="checkbox" name="sp_bulk_add_ids[]" value="<?php echo (int) $uid; ?>" checked> <?php echo esc_html( $label( $people[ $uid ] ) ); ?></label>
+                            <?php endif; ?>
+                            <span class="sp-bulk-check-typed"><?php /* translators: %s: the line as typed */ echo esc_html( sprintf( __( 'you typed: %s', 'societypress' ), $l['line'] ) ); ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <?php if ( $several ) : ?>
+                <h2><?php /* translators: %d: number of names */ echo esc_html( sprintf( __( 'More than one member has this name (%d)', 'societypress' ), count( $several ) ) ); ?></h2>
+                <p class="description"><?php esc_html_e( 'Pick the right person for each, or leave it on "Skip this name".', 'societypress' ); ?></p>
+                <ul class="sp-bulk-check-list">
+                    <?php foreach ( $several as $i => $l ) : ?>
+                        <li>
+                            <strong><?php echo esc_html( $l['line'] ); ?></strong>
+                            <div class="sp-bulk-check-choices">
+                                <?php foreach ( $l['ids'] as $uid ) : ?>
+                                    <?php if ( isset( $already[ $uid ] ) ) : ?>
+                                        <label><?php echo esc_html( $label( $people[ $uid ] ) ); ?> <span class="sp-bulk-check-already"><?php echo esc_html( $already_text ); ?></span></label>
+                                    <?php else : ?>
+                                        <label><input type="radio" name="sp_bulk_pick[<?php echo (int) $i; ?>]" value="<?php echo (int) $uid; ?>"> <?php echo esc_html( $label( $people[ $uid ] ) ); ?></label>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                                <label><input type="radio" name="sp_bulk_pick[<?php echo (int) $i; ?>]" value="0" checked> <?php esc_html_e( 'Skip this name', 'societypress' ); ?></label>
+                            </div>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <?php if ( $none ) : ?>
+                <h2><?php /* translators: %d: number of names */ echo esc_html( sprintf( __( 'No member found (%d)', 'societypress' ), count( $none ) ) ); ?></h2>
+                <p class="description"><?php esc_html_e( 'These will be left out. Only current, active members can be matched. Check the spelling, or choose "Change the List" to fix them.', 'societypress' ); ?></p>
+                <ul class="sp-bulk-check-list sp-bulk-check-none">
+                    <?php foreach ( $none as $l ) : ?>
+                        <li><?php echo esc_html( $l['line'] ); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <div class="sp-bulk-check-actions">
+                <?php if ( $addable || $several ) : ?>
+                    <button type="submit" name="sp_bulk_confirm" value="1" class="button button-primary"><?php esc_html_e( 'Add the Chosen Members', 'societypress' ); ?></button>
+                <?php endif; ?>
+                <button type="submit" name="sp_bulk_edit" value="1" class="button" formnovalidate><?php esc_html_e( 'Change the List', 'societypress' ); ?></button>
+            </div>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Add the confirmed members to an interest group.
+ *
+ * WHY admin_init, like the single-member save next to it: the redirect back to
+ *      the group has to go out before the admin header prints.
+ */
+function sp_handle_group_bulk_add(): void {
+    if ( ( $_GET['page'] ?? '' ) !== 'sp-group-edit' || empty( $_POST['sp_bulk_confirm'] ) ) {
+        return;
+    }
+    $group_id = (int) ( $_GET['group_id'] ?? 0 );
+    if ( ! current_user_can( 'sp_manage_groups' ) ) {
+        wp_die( esc_html__( 'You do not have permission to manage groups.', 'societypress' ) );
+    }
+    check_admin_referer( 'sp_group_bulk_' . $group_id, 'sp_bulk_nonce' );
+
+    global $wpdb;
+    $prefix = $wpdb->prefix . 'sp_';
+    $added  = 0;
+    foreach ( sp_bulk_names_chosen_ids() as $uid ) {
+        // INSERT IGNORE leans on the group_user unique key, so someone added
+        // in another tab since the check screen is skipped, not doubled.
+        $added += (int) $wpdb->query( $wpdb->prepare(
+            "INSERT IGNORE INTO {$prefix}group_members (group_id, user_id, joined_at) VALUES (%d, %d, %s)",
+            $group_id, $uid, current_time( 'mysql' )
+        ) );
+    }
+    if ( $added ) {
+        sp_audit( 'group_members_bulk_added', sprintf( '%d members added to group #%d from a pasted list', $added, $group_id ), 'group', $group_id );
+    }
+
+    wp_safe_redirect( add_query_arg( [
+        'page'          => 'sp-group-edit',
+        'group_id'      => $group_id,
+        'sp_bulk_added' => $added,
+    ], admin_url( 'admin.php' ) ) );
+    exit;
+}
+add_action( 'admin_init', 'sp_handle_group_bulk_add' );
+
+/**
  * Save the Edit Group screen.
  *
  * WHY admin_init: this fires before wp-admin/admin-header.php emits anything, so
@@ -38926,6 +39262,26 @@ function sp_render_group_edit_page(): void {
         ) );
     }
 
+    // "Add a list of names" — the check step renders in place of the page, and
+    // "Change the List" comes back here with the pasted text kept.
+    $bulk_prefill = '';
+    if ( $group_id && ( ! empty( $_POST['sp_bulk_check'] ) || ! empty( $_POST['sp_bulk_edit'] ) ) ) {
+        check_admin_referer( 'sp_group_bulk_' . $group_id, 'sp_bulk_nonce' );
+        $bulk_text = sp_bulk_names_posted_text();
+        if ( ! empty( $_POST['sp_bulk_check'] ) ) {
+            sp_render_bulk_names_check(
+                sp_bulk_names_match( $bulk_text, wp_list_pluck( $members, 'user_id' ) ),
+                'sp_group_bulk_' . $group_id,
+                /* translators: %s: group name */
+                sprintf( __( 'Add names to %s', 'societypress' ), $group->name ),
+                __( 'already in this group', 'societypress' ),
+                $bulk_text
+            );
+            return;
+        }
+        $bulk_prefill = $bulk_text;
+    }
+
     // Label for the currently-assigned leader so the autocomplete can show the
     // existing pick in edit mode without loading the whole membership.
     $leader_label = '';
@@ -38967,6 +39323,18 @@ function sp_render_group_edit_page(): void {
                     sanitize_text_field( wp_unslash( $_GET['sp_dupe'] ) )
                 ) );
             ?></p></div>
+        <?php endif; ?>
+        <?php if ( isset( $_GET['sp_bulk_added'] ) ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php
+                $bulk_added = (int) $_GET['sp_bulk_added'];
+                echo esc_html( $bulk_added
+                    ? sprintf(
+                        /* translators: %d: number of members added */
+                        _n( '%d member was added to this group.', '%d members were added to this group.', $bulk_added, 'societypress' ),
+                        $bulk_added
+                    )
+                    : __( 'Nobody new was added to this group.', 'societypress' )
+                ); ?></p></div>
         <?php endif; ?>
         <?php if ( ! empty( $_GET['sp_removed'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php
@@ -39075,6 +39443,14 @@ function sp_render_group_edit_page(): void {
                 <a href="<?php echo esc_url( admin_url( 'admin.php?page=sp-groups' ) ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
+
+        <?php
+        // Its own form, after the main one closes: forms cannot nest, and this
+        // one must not submit the group's other fields.
+        if ( $group_id ) {
+            sp_render_bulk_names_box( 'sp_group_bulk_' . $group_id, __( 'Add a List of Names', 'societypress' ), $bulk_prefill );
+        }
+        ?>
     </div>
     <?php
 }
@@ -43170,7 +43546,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.173',
+            'version'     => '1.5.174',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43178,7 +43554,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.173',
+            'version'     => '1.5.174',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43186,7 +43562,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.173',
+            'version'     => '1.5.174',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43194,7 +43570,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.173',
+            'version'     => '1.5.174',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43202,7 +43578,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.173',
+            'version'     => '1.5.174',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -88223,6 +88599,75 @@ function sp_render_committee_edit_page(): void {
         ) );
     }
 
+    // "Add a list of names" — committee membership lives in volunteer_roles,
+    // matched to the committee by its name, exactly as a one-at-a-time
+    // assignment on the Governance screen saves it.
+    $bulk_prefill = '';
+    $bulk_role    = __( 'Member', 'societypress' );
+    if ( $committee && ( ! empty( $_POST['sp_bulk_check'] ) || ! empty( $_POST['sp_bulk_edit'] ) || ! empty( $_POST['sp_bulk_confirm'] ) ) ) {
+        check_admin_referer( 'sp_committee_bulk_' . $cid, 'sp_bulk_nonce' );
+        if ( ! current_user_can( 'sp_manage_governance' ) ) {
+            wp_die( esc_html__( 'You do not have permission to manage committees.', 'societypress' ) );
+        }
+        $bulk_text = sp_bulk_names_posted_text();
+        $bulk_role = sanitize_text_field( wp_unslash( $_POST['sp_bulk_role'] ?? '' ) ) ?: $bulk_role;
+
+        $on_committee = array_map( 'intval', $wpdb->get_col( $wpdb->prepare(
+            "SELECT DISTINCT user_id FROM {$prefix}volunteer_roles
+             WHERE role_type = 'committee' AND status = 'active' AND committee = %s",
+            $committee->name
+        ) ) );
+
+        if ( ! empty( $_POST['sp_bulk_check'] ) ) {
+            sp_render_bulk_names_check(
+                sp_bulk_names_match( $bulk_text, $on_committee ),
+                'sp_committee_bulk_' . $cid,
+                /* translators: %s: committee name */
+                sprintf( __( 'Add names to %s', 'societypress' ), $committee->name ),
+                __( 'already on this committee', 'societypress' ),
+                $bulk_text,
+                $bulk_role
+            );
+            return;
+        }
+
+        if ( ! empty( $_POST['sp_bulk_confirm'] ) ) {
+            $added_names = [];
+            foreach ( sp_bulk_names_chosen_ids() as $uid ) {
+                // Re-checked against the committee here, not just on the check
+                // screen, so a reload of this POST cannot add anyone twice.
+                if ( in_array( $uid, $on_committee, true ) ) {
+                    continue;
+                }
+                $wpdb->insert( $prefix . 'volunteer_roles', [
+                    'user_id'    => $uid,
+                    'role_title' => $bulk_role,
+                    'committee'  => $committee->name,
+                    'role_type'  => 'committee',
+                    'status'     => 'active',
+                ] );
+                $on_committee[] = $uid;
+                $u              = get_userdata( $uid );
+                $added_names[]  = $u ? $u->display_name : '#' . $uid;
+            }
+            if ( $added_names ) {
+                sp_audit( 'committee_members_bulk_added', sprintf( '%d members added to committee "%s" from a pasted list', count( $added_names ), $committee->name ), 'committee', $cid );
+                // Names, not just a count, so the secretary can see at a glance
+                // that the right people went on.
+                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( sprintf(
+                    /* translators: 1: number of members, 2: list of names */
+                    _n( '%1$d member was added to this committee: %2$s', '%1$d members were added to this committee: %2$s', count( $added_names ), 'societypress' ),
+                    count( $added_names ),
+                    implode( ', ', $added_names )
+                ) ) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__( 'Nobody new was added to this committee.', 'societypress' ) . '</p></div>';
+            }
+        } else {
+            $bulk_prefill = $bulk_text;
+        }
+    }
+
     // Pull active members (with names) for the chair dropdown
     $member_rows = $wpdb->get_results(
         "SELECT user_id, first_name, last_name FROM {$prefix}members WHERE status = 'active' ORDER BY last_name, first_name"
@@ -88290,6 +88735,14 @@ function sp_render_committee_edit_page(): void {
                 <a href="<?php echo esc_url( $back_url ); ?>" class="button"><?php esc_html_e( 'Cancel', 'societypress' ); ?></a>
             </p>
         </form>
+
+        <?php
+        // Its own form, after the main one closes: forms cannot nest, and this
+        // one must not resubmit the committee's details.
+        if ( $committee ) {
+            sp_render_bulk_names_box( 'sp_committee_bulk_' . $cid, __( 'Add a List of Names', 'societypress' ), $bulk_prefill, $bulk_role );
+        }
+        ?>
     </div>
     <?php
 }

@@ -20,6 +20,16 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.174] — 2026-11-24
+
+- Groups and committees can take a whole list of names at once. On a group's
+  or committee's screen, **Add a List of Names** takes names typed or pasted
+  one per line — "Mary Smith", "Smith, Mary", or an email address. A check
+  screen then shows who was found, any name shared by more than one member
+  (pick the right one, or skip it), and any name that matched nobody, before
+  anyone is added. Only active members are matched. On a committee, everyone
+  on the list gets the same role, "Member" unless you change it.
+
 ## [1.5.173] — 2026-11-23
 
 - At checkout the card form is three labeled boxes (card number, expiration

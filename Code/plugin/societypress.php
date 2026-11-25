@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.181
+ * Version:     1.5.182
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.181' );
+define( 'SOCIETYPRESS_VERSION', '1.5.182' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -16681,7 +16681,7 @@ add_action( 'login_enqueue_scripts', function () {
             // by some CSS parsers and could break out of the string
             // context — then escape for CSS string context (backslash,
             // quote, newline) — not for HTML or JS.
-            $sp_login_title = $settings['organization_name'] ?? get_bloginfo( 'name' );
+            $sp_login_title = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
             $sp_login_title = html_entity_decode( $sp_login_title, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
             $sp_login_title = preg_replace( '/[\x{0B}\x{0C}\x{2028}\x{2029}\x{FEFF}]/u', '', $sp_login_title );
             $sp_login_title = addcslashes( $sp_login_title, "\\'\"\n\r" );
@@ -17013,7 +17013,7 @@ add_filter( 'login_headerurl', function () {
 
 add_filter( 'login_headertext', function () {
     $settings = sp_settings();
-    $name     = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $name     = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
 
     // WHY: WP core echoes login_headertext without escaping it (by design —
     // the filter is allowed to return HTML). If the stored value ever got
@@ -43961,7 +43961,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.181',
+            'version'     => '1.5.182',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43969,7 +43969,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.181',
+            'version'     => '1.5.182',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43977,7 +43977,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.181',
+            'version'     => '1.5.182',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43985,7 +43985,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.181',
+            'version'     => '1.5.182',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43993,7 +43993,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.181',
+            'version'     => '1.5.182',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -55052,7 +55052,7 @@ function sp_render_builder_widget_contact_card( array $s ): void {
     $show_email   = $s['show_email'] ?? true;
     $show_hours   = $s['show_hours'] ?? true;
 
-    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $org_name = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
     $address  = $settings['organization_address'] ?? '';
     $phone    = $settings['organization_phone'] ?? '';
     $email    = $settings['organization_email'] ?? get_option( 'admin_email' );
@@ -69737,7 +69737,7 @@ function sp_render_join_form(): string {
     }
 
     $settings = sp_settings();
-    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $org_name = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
     ?>
 
     <style>
@@ -74007,7 +74007,7 @@ function sp_paypal_create_order( float $amount, string $currency, string $descri
         return $token;
     }
 
-    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $org_name = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
 
     $order_data = [
         'intent'         => 'CAPTURE',
@@ -74889,7 +74889,7 @@ function sp_notify_backup_ready( int $backup_id ): void {
         return;
     }
 
-    $org  = wp_strip_all_tags( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    $org  = wp_strip_all_tags( ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) ) );
     $url  = admin_url( 'admin.php?page=sp-settings-export' );
     $size = size_format( (int) $backup->file_size );
     $when = sp_format_wall_clock( $backup->completed_at, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
@@ -92151,7 +92151,7 @@ function sp_replace_merge_tags( string $content, object $member, array $extra = 
         '{{expiration_date}}'       => ! empty( $member->expiration_date ) ? sp_format_wall_clock( $member->expiration_date, 'F j, Y' ) : '',
         '{{days_until_expiration}}' => $extra['days_until_expiration'] ?? $days_until,
         '{{days}}'                  => $extra['days_until_expiration'] ?? $days_until,
-        '{{organization_name}}'     => $settings['organization_name'] ?? get_bloginfo( 'name' ),
+        '{{organization_name}}'     => ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) ),
         '{{site_url}}'              => home_url(),
         '{{admin_email}}'           => $settings['organization_email'] ?? get_option( 'admin_email' ),
         // WHY {{primary_color}}: default email templates and admin-authored
@@ -95305,7 +95305,7 @@ function sp_blast_get_recipients( string $recipient_type, ?string $recipient_fil
 function sp_blast_process_merge_tags( string $body, object $recipient ): string {
     global $wpdb;
     $settings = sp_settings();
-    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $org_name = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
 
     // Members get the full tag set the automatic emails use, so a blast started
     // from a built-in template (renewal reminder, welcome…) fills in
@@ -97006,7 +97006,7 @@ function sp_render_donation_edit_page(): void {
  */
 function sp_replace_donation_merge_tags( string $content, object $donation ): string {
     $settings = sp_settings();
-    $org_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $org_name = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
 
     // Format the amount — skip for in-kind donations where amount may be 0
     $amount_display = ( $donation->type !== 'in_kind' && $donation->amount )
@@ -97452,7 +97452,7 @@ add_filter( 'template_include', function ( $template ) {
 function sp_render_privacy_policy_content(): void {
 
     $settings    = sp_settings();
-    $org_name    = esc_html( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    $org_name    = esc_html( ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) ) );
     $org_email   = esc_html( $settings['organization_email'] ?? get_option( 'admin_email' ) );
     $site_url    = esc_url( home_url( '/' ) );
     $ga_enabled  = ! empty( $settings['analytics_google_id'] );
@@ -106940,7 +106940,7 @@ function sp_ajax_export_genrecord(): void {
 
     // Build society info from SocietyPress settings
     $settings     = sp_settings();
-    $society_name = $settings['organization_name'] ?? get_bloginfo( 'name' );
+    $society_name = ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
     $society_url  = home_url();
     $contact      = $settings['organization_email'] ?? get_bloginfo( 'admin_email' );
 
@@ -109115,7 +109115,7 @@ function sp_render_store_frontend(): void {
     <?php
     // Store intro — uses custom text if configured, otherwise a sensible default
     $store_intro = trim( $settings['store_intro_text'] ?? '' );
-    $org_name    = trim( $settings['organization_name'] ?? get_bloginfo( 'name' ) );
+    $org_name    = trim( ( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) ) );
     if ( $store_intro === '' ) {
         // WHY this no longer tries to say what is in the store: it used to look
         // at which table a thing came from — library catalog meant publications,

@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.182] — 2026-11-25
+
+### Fixed
+- When the society's name has never been filled in under Settings, the site
+  now uses the site title instead of leaving a blank. This covers the login
+  page, the home page headline, emails and their `{{organization_name}}` tag,
+  and printed pages that show the society's name.
+
 ## [1.5.181] — 2026-11-25
 
 ### Fixed

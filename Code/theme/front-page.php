@@ -36,7 +36,7 @@ $hero_height   = $sp['homepage_hero_height']   ?? 'fullscreen';
 
 // Use organization name as default headline if none set
 if ( empty( $hero_headline ) ) {
-    $hero_headline = $sp['organization_name'] ?? get_bloginfo( 'name' );
+    $hero_headline = ( trim( (string) ( $sp['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
 }
 
 // Show the hero section if the type isn't 'none'

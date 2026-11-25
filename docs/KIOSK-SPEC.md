@@ -190,16 +190,34 @@ Purpose list ships with sensible defaults (Research / Volunteering / Meeting / O
 
 ---
 
-## Open questions
+## Decisions
 
-These are genuinely undecided — flagging rather than quietly picking an answer:
+The open questions in the first draft, settled with Charles on 2026-11-25:
 
-1. **Attended vs. unattended assumption.** Is a volunteer always standing at this iPad, or is it sometimes truly self-service with nobody nearby? This changes how much confirmation/guardrail UI each flow needs (an "are you sure" screen matters a lot more unsupervised).
-2. **Idle-timeout duration** and whether it's admin-configurable per kiosk or a fixed value.
-3. **One app, three modes, or does an admin configure a kiosk to run just one workflow** (e.g., a library-only kiosk that never shows the events flow) via the existing per-device module scope? The module-scope design above already supports either — this is about whether the app shows a mode picker or just goes straight into its one configured mode.
-4. **Receipt/confirmation delivery** — email only, SMS, on-screen only, or a receipt printer as an optional accessory? Printer support is a real hardware/cost decision, not just a UI toggle.
-5. **App Store listing.** Public app anyone can download and pair (like a lot of POS companion apps), or distributed privately per society via Apple Business Manager? Affects App Store review requirements (an app whose entire purpose is unusable without a paired backend has its own review considerations) and how a new society gets it onto their iPad.
-6. **Identity confirmation on renewal.** What counts as "confirmed enough" for an unattended device to show someone else's dues status and take a payment against their account — last name + email, last name + zip, something else?
+1. **Attended or unattended is set per iPad.** Each paired kiosk has an
+   *attended* or *unattended* setting. Unattended adds the guardrails, such
+   as "are you sure" screens. Attended can skip them, because a volunteer is
+   standing there.
+2. **The idle timeout is set per iPad,** defaulting to 2 minutes. When it runs
+   out, the kiosk goes back to its start screen and clears the last person's
+   details.
+3. **A kiosk does one job or several, set per iPad.** With one job (event
+   check-in, library sign-in, or join/renew) it goes straight into it with no
+   menu. With more than one, it opens on a menu of those jobs. This uses the
+   per-device module scope described above.
+4. **Receipts appear on screen, by email, and optionally by text message.**
+   The email goes out when the person gave an address. Texts are optional for
+   each society: a society that wants them creates its own texting account
+   (e.g. Twilio, about a cent per message) and enters its key in Settings.
+   Without one, receipts go by screen and email only. No receipt printer.
+5. **The app goes on the public App Store,** free to download. A society pairs
+   it with its own site. App Review needs a demo pairing (for example against
+   demo.societypress.net) so the reviewer can use the app.
+6. **Renewal identity uses a one-time code.** The member enters their email,
+   gets a 6-digit code by email, and types it in before the kiosk shows their
+   dues or takes a payment against their account. Renewal needs a connection
+   for the payment anyway, so the code adds no new offline problem. Codes
+   expire after 10 minutes and allow only a few tries.
 
 ---
 

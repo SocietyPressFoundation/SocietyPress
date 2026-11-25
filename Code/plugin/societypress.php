@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.176
+ * Version:     1.5.177
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.176' );
+define( 'SOCIETYPRESS_VERSION', '1.5.177' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43914,7 +43914,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.176',
+            'version'     => '1.5.177',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43922,7 +43922,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.176',
+            'version'     => '1.5.177',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43930,7 +43930,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.176',
+            'version'     => '1.5.177',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43938,7 +43938,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.176',
+            'version'     => '1.5.177',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43946,7 +43946,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.176',
+            'version'     => '1.5.177',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -145542,8 +145542,9 @@ add_action( 'admin_init', function () {
  *
  * WHY these three and not the whole catalogue: a society picking a model is
  * choosing a point on a cost/quality line, and three points is enough to choose
- * between. Opus is the default because it is the one that reliably declines to
- * guess when the context does not contain the answer.
+ * between. The cheapest is the default: answering from the site's own pages is
+ * a lookup job it does well, and a society on a tight budget should not find a
+ * large bill before it has decided the assistant is worth paying for.
  *
  * Prices are US dollars per million tokens and are used only for the cost
  * estimate on the usage screen — they are a guide for the board, not billing.
@@ -145631,10 +145632,14 @@ function sp_ai_is_configured(): bool {
  *
  * WHY the members-only branch: some societies want the assistant behind the
  * login so the API bill is bounded by the membership roll rather than by
- * whoever finds the site. 'off' hides it from the public site entirely, which
- * is how a society runs the admin assistant alone.
+ * whoever finds the site. 'off' hides the bubble only: a society that wants
+ * the assistant on one "Ask us" page, or only in the admin, picks "nobody" and
+ * the shortcode (and the endpoint it talks to) keeps working.
+ *
+ * @param bool $bubble True when asking about the floating bubble; false for
+ *                     the shortcode and the chat endpoint.
  */
-function sp_ai_public_enabled(): bool {
+function sp_ai_public_enabled( bool $bubble = true ): bool {
     if ( ! sp_ai_is_configured() ) {
         return false;
     }
@@ -145643,7 +145648,7 @@ function sp_ai_public_enabled(): bool {
     $audience = (string) ( $settings['ai_public_audience'] ?? 'everyone' );
 
     if ( $audience === 'off' ) {
-        return false;
+        return ! $bubble;
     }
 
     if ( $audience === 'members' ) {
@@ -146050,7 +146055,8 @@ function sp_ai_prune_log(): void {
         $days = 7;
     }
 
-    $cutoff = gmdate( 'Y-m-d H:i:s', strtotime( "-{$days} days", (int) current_time( 'timestamp', true ) ) );
+    // Site-local, because created_at is written with current_time( 'mysql' ).
+    $cutoff = wp_date( 'Y-m-d H:i:s', strtotime( "-{$days} days" ) );
 
     $wpdb->query( $wpdb->prepare(
         "DELETE FROM {$wpdb->prefix}sp_ai_log WHERE created_at < %s",
@@ -146297,7 +146303,9 @@ function sp_ai_upcoming_events( int $limit = 6 ): string {
 
     // The same visibility rule the public events page uses, so the assistant
     // can never mention a members-only event to a logged-out visitor.
-    $where = "WHERE status != 'cancelled' AND event_date >= %s AND " . sp_event_visibility_sql( '' );
+    // WHY 'scheduled' only: a postponed event keeps its old date, and the
+    // assistant would announce it as happening. Somebody drives over for it.
+    $where = "WHERE status = 'scheduled' AND event_date >= %s AND " . sp_event_visibility_sql( '' );
 
     $events = $wpdb->get_results( $wpdb->prepare(
         "SELECT title, slug, event_date, start_time, location_name
@@ -146361,13 +146369,18 @@ function sp_ai_build_public_context( string $question ): string {
     // Retrieval. sp_do_unified_search() already applies this visitor's
     // visibility rules, so members-only material stays invisible to a
     // logged-out asker without any extra filtering here.
+    // WHY keep the largest real total: the model is shown at most eight
+    // records per group, and needs to know when there are more so it does not
+    // tell a visitor that eight is all the library has.
     $results = [];
+    $totals  = [];
     foreach ( sp_ai_search_terms( $question ) as $term ) {
         foreach ( sp_do_unified_search( $term, 5 ) as $group => $data ) {
             if ( ! isset( $results[ $group ] ) ) {
                 $results[ $group ] = $data;
                 $results[ $group ]['items'] = [];
             }
+            $totals[ $group ] = max( $totals[ $group ] ?? 0, (int) ( $data['total'] ?? 0 ) );
             // The same record can match two words of the question; key by
             // its id (or the post itself, for pages) so it is listed once.
             foreach ( (array) ( $data['items'] ?? [] ) as $item ) {
@@ -146378,7 +146391,7 @@ function sp_ai_build_public_context( string $question ): string {
     }
     foreach ( $results as $group => $data ) {
         $results[ $group ]['items'] = array_slice( array_values( $data['items'] ), 0, 8 );
-        $results[ $group ]['total'] = count( $results[ $group ]['items'] );
+        $results[ $group ]['total'] = max( $totals[ $group ] ?? 0, count( $data['items'] ) );
     }
 
     $found = $results ? sp_ai_format_search_results( $results ) : '';
@@ -146409,10 +146422,18 @@ function sp_ai_search_terms( string $question ): array {
         'than', 'that', 'their', 'them', 'there', 'these', 'they', 'this', 'what', 'when', 'where',
         'which', 'who', 'will', 'with', 'would', 'your', 'yours', 'society', 'records', 'research',
         'want', 'there', 'here', 'next', 'much', 'many', 'how', 'any', 'has', 'had', 'the', 'and',
+        'you', 'for', 'our', 'was', 'not', 'but', 'all', 'get', 'see', 'did', 'out', 'its', 'one',
+        'may', 'yes', 'why', 'now', 'new', 'old', 'way', 'got', 'use', 'too', 'very', 'just', 'family',
     ];
+    // WHY three letters: Lee, Cox, Ray and Poe are surnames, and in a genealogy
+    // question the surname is usually the only word worth searching.
     $words = preg_split( '/[^\p{L}\p{N}\'-]+/u', mb_strtolower( wp_strip_all_tags( $question ) ) ) ?: [];
-    $words = array_unique( array_filter( $words, static fn( $w ) => mb_strlen( $w ) >= 4 && ! in_array( $w, $common, true ) ) );
-    usort( $words, static fn( $a, $b ) => mb_strlen( $b ) <=> mb_strlen( $a ) );
+    $words = array_unique( array_filter( $words, static fn( $w ) => mb_strlen( $w ) >= 3 && ! in_array( $w, $common, true ) ) );
+    // Names come first: a capitalised word in the question is far more likely
+    // to be a surname or a place than the longest word is.
+    preg_match_all( '/(?<![\p{L}])\p{Lu}[\p{L}\'-]+/u', wp_strip_all_tags( $question ), $caps );
+    $names = array_map( 'mb_strtolower', $caps[0] ?? [] );
+    usort( $words, static fn( $a, $b ) => [ in_array( $b, $names, true ), mb_strlen( $b ) ] <=> [ in_array( $a, $names, true ), mb_strlen( $a ) ] );
     return array_slice( array_values( $words ), 0, 4 );
 }
 
@@ -146633,7 +146654,9 @@ function sp_ai_admin_screen_map( bool $refresh = false ): string {
     // caching one copy for everybody would offer a librarian the treasurer's
     // screens. A day is long enough to be worth having and short enough that a
     // module or permission change is picked up without anyone thinking about it.
-    if ( $user_id > 0 ) {
+    // Written only when it changed, so an ordinary admin click does not cost a
+    // database write on hosts without an object cache.
+    if ( $user_id > 0 && get_transient( $cache_key ) !== $map ) {
         set_transient( $cache_key, $map, DAY_IN_SECONDS );
     }
 
@@ -146756,7 +146779,7 @@ function sp_ai_ajax_chat(): void {
         wp_send_json_error( [ 'message' => __( 'This page has been open a while and the security check expired. Please reload and try again.', 'societypress' ) ], 403 );
     }
 
-    if ( ! sp_ai_public_enabled() ) {
+    if ( ! sp_ai_public_enabled( false ) ) {
         wp_send_json_error( [ 'message' => __( 'The assistant is not available right now.', 'societypress' ) ], 403 );
     }
 
@@ -146832,13 +146855,14 @@ function sp_ai_ajax_admin_chat(): void {
     $history   = sp_ai_sanitize_history( wp_unslash( $_POST['history'] ?? '' ) );
     $history[] = [ 'role' => 'user', 'content' => $question ];
 
-    $settings = sp_settings();
     $from_page = sanitize_key( (string) wp_unslash( $_POST['context_page'] ?? '' ) );
 
     $result = sp_ai_request( $history, sp_ai_admin_system_prompt( sp_ai_build_admin_context( $from_page ) ), [
         // The admin assistant is asked harder questions by fewer people, so it
         // is worth a level more thinking than the public one.
-        'effort'     => (string) ( $settings['ai_admin_effort'] ?? 'medium' ),
+        // Volunteers' questions are about how to do things in the admin, which
+        // needs more care than a lookup; there is no setting for this on purpose.
+        'effort'     => 'medium',
         'max_tokens' => 16000,
     ] );
 
@@ -147390,19 +147414,42 @@ function sp_ai_render_assets( string $scope = 'public' ): void {
  */
 add_action( 'wp_footer', function (): void {
     if ( ! sp_ai_public_enabled() ) {
+        // The bubble is off, but a shortcode panel on this page still needs
+        // its styles and script.
+        if ( sp_ai_panel_needs_assets() ) {
+            sp_ai_render_assets( 'public' );
+        }
         return;
     }
 
     // A page that already embeds the assistant via the shortcode does not also
     // need the bubble — two of them on one screen is a mess and doubles the
     // chance of somebody asking the same question twice.
+    sp_ai_render_assets( 'public' );
+
     if ( sp_ai_shortcode_used_on_page() ) {
         return;
     }
 
-    sp_ai_render_assets( 'public' );
     sp_ai_render_chat( [ 'scope' => 'public', 'variant' => 'floating' ] );
 }, 20 );
+
+/**
+ * Did anything on this page render a shortcode panel?
+ *
+ * WHY separate from sp_ai_shortcode_used_on_page(): the styles and script are
+ * printed from wp_footer, never inline. A panel rendered early and thrown away
+ * then costs nothing, and the panel that does appear always gets them.
+ */
+function sp_ai_panel_needs_assets( ?bool $set = null ): bool {
+    static $needed = false;
+
+    if ( $set !== null ) {
+        $needed = $set;
+    }
+
+    return $needed;
+}
 
 /**
  * Did this page render the assistant inline already?
@@ -147425,13 +147472,14 @@ function sp_ai_shortcode_used_on_page( ?bool $set = null ): bool {
  *
  * WHY a shortcode as well as the bubble: a society that wants the assistant on
  * one "Ask us" page rather than following visitors around the whole site needs
- * somewhere to put it. Set the public audience to "off" and use this instead.
+ * somewhere to put it. Set the public audience to "nobody" and use this
+ * instead: that hides the bubble but leaves this working for every visitor.
  *
  * @param array $atts Optional: title, greeting.
  * @return string
  */
 function sp_ai_shortcode( $atts = [] ): string {
-    if ( ! sp_ai_public_enabled() ) {
+    if ( ! sp_ai_public_enabled( false ) ) {
         return '';
     }
 
@@ -147440,10 +147488,15 @@ function sp_ai_shortcode( $atts = [] ): string {
         'greeting' => sp_ai_greeting(),
     ], is_array( $atts ) ? $atts : [], 'societypress_ai_assistant' );
 
-    sp_ai_shortcode_used_on_page( true );
+    // WHY only inside the main loop: SEO plugins and widgets run shortcodes to
+    // build descriptions and excerpts, then throw the output away. Counting
+    // those would hide the bubble on a page where no panel ever appears.
+    if ( in_the_loop() && is_main_query() ) {
+        sp_ai_shortcode_used_on_page( true );
+    }
+    sp_ai_panel_needs_assets( true );
 
     ob_start();
-    sp_ai_render_assets( 'public' );
     sp_ai_render_chat( [
         'scope'    => 'public',
         'variant'  => 'inline',
@@ -147882,7 +147935,7 @@ add_action( 'admin_init', function (): void {
                 printf( '<option value="%s" %s>%s</option>', esc_attr( $value ), selected( $current, $value, false ), esc_html( $label ) );
             }
             echo '</select>';
-            echo '<p class="description">' . esc_html__( 'Applies to the public assistant. "Quick" is right for looking things up on your site; raise it if answers feel shallow. Has no effect on the cheapest model, which does not offer the setting.', 'societypress' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Applies to the public assistant. "Quick" is right for looking things up on your site; raise it if answers feel shallow.', 'societypress' ) . '</p>';
         },
         'sp-settings-ai',
         'sp_ai_limits_section'
@@ -147954,7 +148007,7 @@ function sp_ai_render_usage_summary(): void {
     global $wpdb;
 
     $table = $wpdb->prefix . 'sp_ai_log';
-    $since = gmdate( 'Y-m-d H:i:s', strtotime( '-30 days', (int) current_time( 'timestamp', true ) ) );
+    $since = wp_date( 'Y-m-d H:i:s', strtotime( '-30 days' ) );
 
     $stats = $wpdb->get_row( $wpdb->prepare(
         "SELECT COUNT(*) AS questions,
@@ -147983,7 +148036,7 @@ function sp_ai_render_usage_summary(): void {
     <div class="sp-ai-usage">
         <h2><?php esc_html_e( 'The last 30 days', 'societypress' ); ?></h2>
         <ul class="sp-ai-usage__figures">
-            <li><strong><?php echo esc_html( number_format_i18n( (int) $stats->questions ) ); ?></strong> <?php esc_html_e( 'questions answered', 'societypress' ); ?></li>
+            <li><strong><?php echo esc_html( number_format_i18n( (int) $stats->questions ) ); ?></strong> <?php esc_html_e( 'questions asked', 'societypress' ); ?></li>
             <li><strong><?php echo esc_html( number_format_i18n( (int) $stats->input_tokens + (int) $stats->output_tokens ) ); ?></strong> <?php esc_html_e( 'tokens used', 'societypress' ); ?></li>
             <li><strong><?php echo esc_html( '$' . number_format( $cost, 2 ) ); ?></strong> <?php esc_html_e( 'estimated cost', 'societypress' ); ?></li>
             <?php if ( (int) $stats->failures > 0 ) : ?>

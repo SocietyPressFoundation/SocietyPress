@@ -20,6 +20,25 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.177] — 2026-11-25
+
+### Fixed
+- The AI Assistant no longer announces a postponed meeting as if it were still
+  on. Only scheduled events are given to it.
+- Questions about short surnames such as Lee, Cox or Poe now search the
+  catalog. Names in a question are searched first.
+- When more records match than the assistant is shown, it is now told so, and
+  no longer says that the few it saw are all the society has.
+- Setting "Show the assistant to" to nobody hides the bubble but keeps the
+  `[societypress_ai_assistant]` shortcode working, as the settings screen says.
+- The assistant on an "Ask us" page now always has its styling and buttons,
+  even when another plugin reads the page content first.
+- Old conversations are cleared on the right day for the society's time zone.
+- The usage summary says "questions asked", since it counts failures too.
+- Admin pages no longer write to the database on every click to remember the
+  assistant's list of screens.
+- Corrected the "How hard it thinks" help text.
+
 ## [1.5.176] — 2026-11-24
 
 - **AI Assistant** (new module). Two helpers, both answering only from what is
@@ -37,7 +56,7 @@ The 1.0 and 1.1 development line is archived in
 - Your society supplies its own Anthropic API key under Settings → AI
   Assistant, or puts it in `wp-config.php`. Nothing appears until a key is
   added. Claude Haiku 5.5 is the default model, at roughly a fiftieth of a cent
-  per question. Each visitor and the whole site have a daily limit, and the
+  per question. Each visitor has an hourly limit and the whole site a daily one, and the
   settings screen shows the last month's cost and the questions people asked.
   Questions are covered by the privacy export and erase tools.
 

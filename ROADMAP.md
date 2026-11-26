@@ -16,6 +16,14 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### GitHub Sponsors — approved 2026-11-26
+
+The SocietyPressFoundation sponsor profile is live at
+github.com/sponsors/SocietyPressFoundation, and the repository's Sponsor
+button now offers it beside the donate page. The payee is Charles as an
+individual until the Foundation exists, so the profile must not call
+sponsorships tax-deductible.
+
 ### Backups copied to Google Drive — 1.5.185 and 1.5.186
 
 Each backup is also copied into the society's own Google Drive, keeping as
@@ -260,27 +268,7 @@ Dormant so that "not moving" is not mistaken for "not started" — both of
 these were mistaken for unstarted work on 2026-08-29, which is why the
 section exists.
 
-### GitHub Sponsors / Open Collective
-
-**Motivation:** Recurring sponsorship smooths income volatility and
-gives sponsors a visible recognition channel.
-**Scope:** Enable GitHub Sponsors on the `SocietyPressFoundation`
-org, then add a `github:` line to `.github/FUNDING.yml` so the Sponsor
-button appears on the repository. Alternative: Open Collective.
-**Status:** Enrolled 2026-08-29, pending GitHub's review. The org is the
-sponsored account; the Stripe payee is registered as an **individual**,
-because the Foundation does not legally exist and has no EIN. Eligibility
-was checked against GitHub's documentation on 2026-08-27: an organization
-qualifies by contributing to open source and operating in a supported
-region — 501(c)(3) status is not required, and the payout account may be a
-personal one. What the 501(c)(3) does gate is the claim that a sponsorship
-is tax-deductible, which the profile must not make until the Foundation
-exists.
-Still pending on 2026-10-15 with every dashboard step complete; asked
-GitHub Support why in ticket **#4864889**.
-**On approval:** add `github: SocietyPressFoundation` to
-`.github/FUNDING.yml` beside the existing `custom:` line. Adding it before
-approval means the Sponsor button silently fails to render.
+Nothing waiting right now.
 
 ---
 

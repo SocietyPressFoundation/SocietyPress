@@ -1,6 +1,10 @@
 <?php
 /**
- * Privacy Policy Page Template (page-privacy.php)
+ * Privacy Policy Page Template (page-privacy-policy.php)
+ *
+ * WHY this file name: the page's address is /privacy-policy/, the one the
+ * footer and Google's sign-in screen link to. Named page-privacy.php it
+ * never matched, and the policy page showed up empty.
  *
  * Marketing site's own privacy policy — what societypress.net itself
  * collects from visitors. Distinct from the privacy policy that
@@ -100,6 +104,29 @@ get_header();
             addresses, no member records, no donations or payments. There is
             no setting to turn it off. The setup wizard mentions it, and each
             site's Settings &rarr; Privacy screen shows exactly what it sends.
+        </p>
+
+        <h2>Google Drive backups</h2>
+        <p>
+            A society can choose to copy its backups to its own Google Drive.
+            When a volunteer connects Google Drive, they sign in to Google
+            through this site, because Google requires the SocietyPress app's
+            secret key and that key cannot be shipped inside the plugin.
+        </p>
+        <p>
+            This site passes the sign-in along and keeps nothing: no Google
+            account details, no passes, no files. The backup files go straight
+            from the society's website to its Google Drive and never pass
+            through us. SocietyPress asks Google only for access to the files
+            it creates itself, so it cannot see anything else in that Drive.
+            The society can disconnect at any time from its Export &amp;
+            Backup page, or from its Google account.
+        </p>
+        <p>
+            SocietyPress's use of information received from Google APIs
+            follows the
+            <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API Services User Data Policy</a>,
+            including the Limited Use requirements.
         </p>
 
         <h2>What we never do</h2>

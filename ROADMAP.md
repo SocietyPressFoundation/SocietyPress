@@ -255,8 +255,9 @@ are each set per iPad. Receipts go on screen, by email, and optionally by
 text through the society's own texting account. The app is on the public App
 Store. Renewal is confirmed with a one-time code sent by email.
 **Blockers:** None for the WordPress side and the app in the simulator.
-Testing with a real Stripe card reader needs the hardware, and an App Store
-listing needs an Apple Developer account.
+Testing with a real Stripe card reader needs the hardware. Charles has an
+Apple Developer account (confirmed 2026-11-26), so the App Store listing is
+not blocked.
 
 ---
 

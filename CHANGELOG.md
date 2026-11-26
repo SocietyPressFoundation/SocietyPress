@@ -20,6 +20,12 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.186] — 2026-11-26
+
+### Fixed
+- Copying the same backup to Google Drive twice now replaces the earlier copy
+  instead of keeping both, so a repeat never uses up one of the kept slots.
+
 ## [1.5.185] — 2026-11-26
 
 ### Added

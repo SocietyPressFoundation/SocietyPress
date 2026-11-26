@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.185] — 2026-11-26
+
+### Added
+- Copy backups to Google Drive. On the Export & Backup page, a volunteer
+  connects the society's Google account once; after that every backup is also
+  copied into a "SocietyPress backups" folder in that Drive, keeping as many
+  copies as "Keep this many". SocietyPress can only see the files it puts
+  there. If a copy fails, the backup on the server is untouched and an email
+  says why. Sign-in goes through a small helper on societypress.net that holds
+  Google's app secret; backup files go straight from the site to Google.
+
 ## [1.5.184] — 2026-11-26
 
 ### Fixed

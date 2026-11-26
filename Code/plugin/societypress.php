@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.184
+ * Version:     1.5.185
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.184' );
+define( 'SOCIETYPRESS_VERSION', '1.5.185' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -43469,6 +43469,21 @@ function sp_render_settings_export_page(): void {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup created.', 'societypress' ) . '</p></div>';
         } elseif ( $msg === 'uploaded' ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Backup file uploaded. It’s in the list below — use its Restore button to restore it.', 'societypress' ) . '</p></div>';
+        } elseif ( in_array( $msg, [ 'drive_connected', 'drive_disconnected', 'drive_copied' ], true ) ) {
+            $drive_msgs = [
+                'drive_connected'    => __( 'Google Drive connected. Each new backup will be copied there.', 'societypress' ),
+                'drive_disconnected' => __( 'Google Drive disconnected. Copies already there stay there.', 'societypress' ),
+                'drive_copied'       => __( 'The newest backup was copied to Google Drive.', 'societypress' ),
+            ];
+            echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( $drive_msgs[ $msg ] ) . '</p></div>';
+        } elseif ( in_array( $msg, [ 'drive_cancelled', 'drive_failed', 'drive_copy_failed', 'drive_nobackup' ], true ) ) {
+            $drive_msgs = [
+                'drive_cancelled'   => __( 'Google Drive was not connected.', 'societypress' ),
+                'drive_failed'      => __( 'Connecting Google Drive didn’t work. Please try again. If it keeps failing, use Report a Problem.', 'societypress' ),
+                'drive_copy_failed' => __( 'The copy to Google Drive failed. The reason is shown under Copy Backups to Google Drive.', 'societypress' ),
+                'drive_nobackup'    => __( 'There is no backup to copy yet. Create one first.', 'societypress' ),
+            ];
+            echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html( $drive_msgs[ $msg ] ) . '</p></div>';
         } elseif ( $msg === 'restored' ) {
             echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'The site has been restored from the backup. The backup SocietyPress made of the site just before is in the list below, in case you need to undo this. If the backup came from another host, re-enter your payment settings if card payments don’t work.', 'societypress' ) . '</p></div>';
         }
@@ -43527,6 +43542,68 @@ function sp_render_settings_export_page(): void {
             </table>
             <p class="submit"><button type="submit" class="button button-primary"><?php esc_html_e( 'Save Backup Settings', 'societypress' ); ?></button></p>
         </form>
+
+        <?php
+        $drive    = sp_drive_get();
+        $dt_fmt   = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+        ?>
+        <h2 id="sp-drive"><?php esc_html_e( 'Copy Backups to Google Drive', 'societypress' ); ?></h2>
+        <p class="description">
+            <?php esc_html_e( 'Each time a backup finishes, SocietyPress can put a copy in your society’s Google Drive, so a problem with your web host can never take your backups with it. It keeps as many copies there as “Keep this many” above. SocietyPress can only see the files it puts there, nothing else in that Drive.', 'societypress' ); ?>
+        </p>
+        <?php if ( sp_drive_connected() ) : ?>
+            <p>
+                <?php
+                if ( ! empty( $drive['email'] ) ) {
+                    printf(
+                        /* translators: 1: Google account email, 2: folder name */
+                        esc_html__( 'Connected to %1$s. Copies go in the folder “%2$s”.', 'societypress' ),
+                        '<strong>' . esc_html( $drive['email'] ) . '</strong>',
+                        esc_html( sp_drive_folder_name() )
+                    );
+                } else {
+                    /* translators: %s: folder name */
+                    printf( esc_html__( 'Connected. Copies go in the folder “%s”.', 'societypress' ), esc_html( sp_drive_folder_name() ) );
+                }
+                ?>
+            </p>
+            <?php if ( ! empty( $drive['last_error'] ) ) : ?>
+                <div class="notice notice-error inline"><p>
+                    <?php
+                    printf(
+                        /* translators: 1: date and time, 2: reason */
+                        esc_html__( 'The last copy to Google Drive failed (%1$s): %2$s', 'societypress' ),
+                        esc_html( sp_format_wall_clock( $drive['last_error_at'] ?? '', $dt_fmt ) ),
+                        esc_html( $drive['last_error'] )
+                    );
+                    ?>
+                </p></div>
+            <?php elseif ( ! empty( $drive['last_ok'] ) ) : ?>
+                <?php /* translators: %s: date and time */ ?>
+                <p><?php printf( esc_html__( 'Last copied: %s', 'societypress' ), esc_html( sp_format_wall_clock( $drive['last_ok'], $dt_fmt ) ) ); ?></p>
+            <?php else : ?>
+                <p><?php esc_html_e( 'Nothing copied yet. The next backup will be.', 'societypress' ); ?></p>
+            <?php endif; ?>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sp-inline-form">
+                <input type="hidden" name="action" value="sp_drive_copy_now">
+                <?php wp_nonce_field( 'sp_drive_copy_now' ); ?>
+                <button type="submit" class="button"><?php esc_html_e( 'Copy the newest backup now', 'societypress' ); ?></button>
+            </form>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="sp-inline-form" data-sp-confirm="<?php echo esc_attr__( 'Stop copying backups to Google Drive? Copies already there stay there.', 'societypress' ); ?>">
+                <input type="hidden" name="action" value="sp_drive_disconnect">
+                <?php wp_nonce_field( 'sp_drive_disconnect' ); ?>
+                <button type="submit" class="button"><?php esc_html_e( 'Disconnect Google Drive', 'societypress' ); ?></button>
+            </form>
+        <?php else : ?>
+            <p><?php esc_html_e( 'You’ll sign in to Google with the account that should keep the copies. If your society has its own Google account, use that rather than a personal one, so the copies stay with the society when volunteers change.', 'societypress' ); ?></p>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <input type="hidden" name="action" value="sp_drive_connect">
+                <?php wp_nonce_field( 'sp_drive_connect' ); ?>
+                <button type="submit" class="button button-primary"><?php esc_html_e( 'Connect Google Drive', 'societypress' ); ?></button>
+            </form>
+        <?php endif; ?>
+
+        <hr class="sp-mt-24">
 
         <h2><?php esc_html_e( 'Available Backups', 'societypress' ); ?></h2>
         <?php
@@ -43961,7 +44038,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.184',
+            'version'     => '1.5.185',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -43969,7 +44046,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.184',
+            'version'     => '1.5.185',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -43977,7 +44054,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.184',
+            'version'     => '1.5.185',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -43985,7 +44062,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.184',
+            'version'     => '1.5.185',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -43993,7 +44070,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.184',
+            'version'     => '1.5.185',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -74863,6 +74940,11 @@ function sp_run_scheduled_backup( string $trigger_type = 'scheduled' ): void {
 
             // Notify admins (if enabled) that a fresh backup is ready to grab.
             sp_notify_backup_ready( $backup_id );
+
+            // Copy it to Google Drive as its own job — see sp_drive_copy_backup().
+            if ( sp_drive_connected() ) {
+                wp_schedule_single_event( time(), 'sp_drive_copy_backup', [ $backup_id ] );
+            }
         } else {
             $wpdb->update( $prefix . 'backups', [
                 'status' => 'failed',
@@ -75021,6 +75103,456 @@ add_action( 'admin_post_sp_run_backup_now', function () {
     }
     sp_run_scheduled_backup( 'manual' );
     wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'ran', admin_url( 'admin.php?page=sp-settings-export' ) ) );
+    exit;
+} );
+
+// ============================================================================
+// COPY BACKUPS TO GOOGLE DRIVE
+//
+// WHY: a backup kept only on the web host dies with the web host. Copying
+//      each one to the society's own Google Drive means a dead host leaves
+//      something to restore from.
+//
+// Decided with Charles (2026-11-19), see ROADMAP.md:
+//   - Google's app secret can't ship in a downloadable plugin, so a small
+//     relay on societypress.net holds it. It signs the volunteer in and
+//     renews the hourly pass. It stores nothing.
+//   - The backup file never passes through the relay: this site uploads
+//     straight to Google.
+//   - Only the drive.file permission: SocietyPress sees the files it creates,
+//     nothing else in that Drive.
+//   - Keeps as many copies there as the backup screen's "Keep this many".
+//   - If the copy fails, the backup on this server is still fine, and the
+//     volunteer is told.
+// ============================================================================
+
+/**
+ * Base address of the relay. Filterable for testing against a staging relay.
+ */
+function sp_drive_relay_base(): string {
+    return untrailingslashit( (string) apply_filters( 'sp_drive_relay_base', 'https://societypress.net' ) );
+}
+
+function sp_drive_get(): array {
+    $o = get_option( 'sp_drive', [] );
+    return is_array( $o ) ? $o : [];
+}
+
+function sp_drive_save( array $o ): void {
+    update_option( 'sp_drive', $o, false );
+}
+
+function sp_drive_connected(): bool {
+    return ! empty( sp_drive_get()['token'] );
+}
+
+/**
+ * The folder's name in Drive. Named after the society so a volunteer who
+ * looks after two societies can tell the folders apart.
+ */
+function sp_drive_folder_name(): string {
+    $settings = sp_settings();
+    $org      = trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' );
+    /* translators: %s: organization name */
+    return sprintf( __( 'SocietyPress backups — %s', 'societypress' ), wp_strip_all_tags( $org ) );
+}
+
+/**
+ * A pass good for about an hour, renewed through the relay when it runs out.
+ *
+ * @return string|WP_Error
+ */
+function sp_drive_access_token() {
+    $cached = get_transient( 'sp_drive_access' );
+    if ( $cached ) {
+        $token = sp_decrypt( (string) $cached );
+        if ( $token ) {
+            return $token;
+        }
+    }
+
+    $o       = sp_drive_get();
+    $refresh = ! empty( $o['token'] ) ? sp_decrypt( (string) $o['token'] ) : '';
+    if ( ! $refresh ) {
+        return new WP_Error( 'sp_drive_not_connected', __( 'Google Drive is not connected.', 'societypress' ) );
+    }
+
+    $response = wp_remote_post( sp_drive_relay_base() . '/wp-json/societypress/v1/drive/refresh', [
+        'timeout' => 20,
+        'body'    => [ 'refresh_token' => $refresh ],
+    ] );
+    if ( is_wp_error( $response ) ) {
+        return new WP_Error( 'sp_drive_relay', __( 'Could not reach societypress.net to sign in to Google Drive. The backup on this server is fine; the next one will try again.', 'societypress' ) );
+    }
+
+    $body = json_decode( (string) wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['access_token'] ) ) {
+        if ( 'invalid_grant' === ( $body['error'] ?? '' ) ) {
+            return new WP_Error( 'sp_drive_revoked', __( 'Google Drive no longer allows SocietyPress in. Someone may have removed its access from the Google account. Disconnect and connect Google Drive again on the Export & Backup page.', 'societypress' ) );
+        }
+        return new WP_Error( 'sp_drive_relay', __( 'Google Drive sign-in failed. The backup on this server is fine; the next one will try again.', 'societypress' ) );
+    }
+
+    set_transient( 'sp_drive_access', sp_encrypt( (string) $body['access_token'] ), max( 60, (int) ( $body['expires_in'] ?? 3600 ) - 120 ) );
+    return (string) $body['access_token'];
+}
+
+/**
+ * A Drive API call. Returns [ status code, decoded body ] or WP_Error.
+ */
+function sp_drive_api( string $method, string $url, string $token, ?array $json = null ) {
+    $args = [
+        'method'  => $method,
+        'timeout' => 30,
+        'headers' => [ 'Authorization' => 'Bearer ' . $token ],
+    ];
+    if ( null !== $json ) {
+        $args['headers']['Content-Type'] = 'application/json; charset=UTF-8';
+        $args['body']                    = wp_json_encode( $json );
+    }
+    $response = wp_remote_request( $url, $args );
+    if ( is_wp_error( $response ) ) {
+        return new WP_Error( 'sp_drive_unreachable', __( 'Could not reach Google Drive.', 'societypress' ) );
+    }
+    return [ (int) wp_remote_retrieve_response_code( $response ), json_decode( (string) wp_remote_retrieve_body( $response ), true ), $response ];
+}
+
+/**
+ * The backups folder, made the first time and again if someone deletes it.
+ *
+ * @return string|WP_Error Folder id.
+ */
+function sp_drive_folder_id( string $token ) {
+    $o  = sp_drive_get();
+    $id = (string) ( $o['folder_id'] ?? '' );
+
+    if ( '' !== $id ) {
+        $r = sp_drive_api( 'GET', 'https://www.googleapis.com/drive/v3/files/' . rawurlencode( $id ) . '?fields=id,trashed', $token );
+        if ( ! is_wp_error( $r ) && 200 === $r[0] && empty( $r[1]['trashed'] ) ) {
+            return $id;
+        }
+    }
+
+    $r = sp_drive_api( 'POST', 'https://www.googleapis.com/drive/v3/files?fields=id', $token, [
+        'name'     => sp_drive_folder_name(),
+        'mimeType' => 'application/vnd.google-apps.folder',
+    ] );
+    if ( is_wp_error( $r ) ) {
+        return $r;
+    }
+    if ( empty( $r[1]['id'] ) ) {
+        return new WP_Error( 'sp_drive_folder', __( 'Google Drive would not let SocietyPress create its backups folder.', 'societypress' ) );
+    }
+
+    $o              = sp_drive_get();
+    $o['folder_id'] = (string) $r[1]['id'];
+    sp_drive_save( $o );
+    return $o['folder_id'];
+}
+
+/**
+ * Upload one file in pieces.
+ *
+ * WHY in pieces (Google's "resumable" upload): a backup with photos can run
+ * to hundreds of megabytes, and shared hosts cap how much memory one request
+ * may use. Sending 8 MB at a time keeps memory flat whatever the file size.
+ *
+ * @return string|WP_Error Drive file id.
+ */
+function sp_drive_upload_file( string $token, string $folder, string $path ) {
+    $size = (int) filesize( $path );
+
+    $init = wp_remote_post( 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', [
+        'timeout' => 30,
+        'headers' => [
+            'Authorization'           => 'Bearer ' . $token,
+            'Content-Type'            => 'application/json; charset=UTF-8',
+            'X-Upload-Content-Type'   => 'application/zip',
+            'X-Upload-Content-Length' => (string) $size,
+        ],
+        'body'    => wp_json_encode( [ 'name' => basename( $path ), 'parents' => [ $folder ] ] ),
+    ] );
+    $session = is_wp_error( $init ) ? '' : (string) wp_remote_retrieve_header( $init, 'location' );
+    if ( '' === $session ) {
+        return new WP_Error( 'sp_drive_upload', __( 'Google Drive refused to start the upload.', 'societypress' ) );
+    }
+
+    $fh = fopen( $path, 'rb' );
+    if ( ! $fh ) {
+        return new WP_Error( 'sp_drive_upload', __( 'Could not read the backup file.', 'societypress' ) );
+    }
+
+    $piece  = 8 * 1024 * 1024; // Google requires a multiple of 256 KB.
+    $offset = 0;
+    $result = new WP_Error( 'sp_drive_upload', __( 'The upload to Google Drive stopped before it finished.', 'societypress' ) );
+
+    while ( $offset < $size ) {
+        fseek( $fh, $offset );
+        $data = fread( $fh, $piece );
+        $len  = strlen( (string) $data );
+        if ( 0 === $len ) {
+            break;
+        }
+
+        $r = wp_remote_request( $session, [
+            'method'  => 'PUT',
+            'timeout' => 120,
+            'headers' => [
+                'Content-Length' => (string) $len,
+                'Content-Range'  => sprintf( 'bytes %d-%d/%d', $offset, $offset + $len - 1, $size ),
+            ],
+            'body'    => $data,
+        ] );
+        if ( is_wp_error( $r ) ) {
+            break;
+        }
+
+        $code = (int) wp_remote_retrieve_response_code( $r );
+        if ( 200 === $code || 201 === $code ) {
+            $body   = json_decode( (string) wp_remote_retrieve_body( $r ), true );
+            $result = (string) ( $body['id'] ?? '' );
+            break;
+        }
+        if ( 308 !== $code ) {
+            break;
+        }
+
+        // 308 = "keep going". Google says how much it actually kept; resume
+        // from there rather than assuming the whole piece arrived.
+        $range  = (string) wp_remote_retrieve_header( $r, 'range' );
+        $offset = preg_match( '/bytes=0-(\d+)/', $range, $m ) ? (int) $m[1] + 1 : $offset + $len;
+    }
+
+    fclose( $fh );
+    return $result;
+}
+
+/**
+ * Keep only the newest copies in the Drive folder.
+ *
+ * WHY permanent delete, not trash: trashed files still count against the
+ * Drive's storage for 30 days, and a free Google account fills up fast with
+ * backups. The retention count is the society's own choice.
+ */
+function sp_drive_prune( string $token, string $folder, int $keep ): void {
+    $url = 'https://www.googleapis.com/drive/v3/files?' . http_build_query(
+        [
+            'q'        => sprintf( "'%s' in parents and trashed = false", str_replace( "'", '', $folder ) ),
+            'orderBy'  => 'createdTime desc',
+            'fields'   => 'files(id)',
+            'pageSize' => 100,
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+    $r = sp_drive_api( 'GET', $url, $token );
+    if ( is_wp_error( $r ) || 200 !== $r[0] ) {
+        return;
+    }
+    foreach ( array_slice( (array) ( $r[1]['files'] ?? [] ), max( 1, $keep ) ) as $file ) {
+        if ( ! empty( $file['id'] ) ) {
+            sp_drive_api( 'DELETE', 'https://www.googleapis.com/drive/v3/files/' . rawurlencode( (string) $file['id'] ), $token );
+        }
+    }
+}
+
+/**
+ * Copy one finished backup to Drive. Runs on its own, after the backup.
+ *
+ * WHY separately (a one-off scheduled job, not at the end of the backup):
+ * the backup itself can use most of what a shared host allows one request,
+ * and an upload of the same size needs its own time.
+ */
+function sp_drive_copy_backup( $backup_id ): void {
+    if ( ! sp_drive_connected() ) {
+        return;
+    }
+    $path = sp_backup_resolve_path( (int) $backup_id );
+    if ( ! $path ) {
+        return;
+    }
+    @set_time_limit( 900 );
+
+    $result = sp_drive_access_token();
+    if ( ! is_wp_error( $result ) ) {
+        $token  = $result;
+        $result = sp_drive_folder_id( $token );
+        if ( ! is_wp_error( $result ) ) {
+            $folder = $result;
+            $result = sp_drive_upload_file( $token, $folder, $path );
+            if ( ! is_wp_error( $result ) ) {
+                sp_drive_prune( $token, $folder, (int) ( sp_settings()['backup_retention'] ?? 5 ) );
+            }
+        }
+    }
+
+    $o = sp_drive_get();
+    if ( is_wp_error( $result ) ) {
+        $o['last_error']    = $result->get_error_message();
+        $o['last_error_at'] = current_time( 'mysql' );
+        sp_drive_save( $o );
+        error_log( 'SocietyPress Google Drive copy failed: ' . $result->get_error_message() );
+        sp_drive_notify_failure( $result->get_error_message() );
+        return;
+    }
+
+    $o['last_ok'] = current_time( 'mysql' );
+    unset( $o['last_error'], $o['last_error_at'] );
+    sp_drive_save( $o );
+    sp_audit( 'backup_copied_drive', __( 'Backup copied to Google Drive.', 'societypress' ), 'backup', (int) $backup_id );
+}
+add_action( 'sp_drive_copy_backup', 'sp_drive_copy_backup' );
+
+/**
+ * Tell a person when a copy fails. At most one email a day, so a Drive that
+ * stays broken for a week doesn't send a week of identical messages.
+ */
+function sp_drive_notify_failure( string $reason ): void {
+    if ( get_transient( 'sp_drive_failure_mailed' ) ) {
+        return;
+    }
+    $settings = sp_settings();
+    $to       = ! empty( $settings['backup_notify_email'] ) ? $settings['backup_notify_email'] : get_option( 'admin_email' );
+    if ( ! sp_is_email_list( $to ) ) {
+        return;
+    }
+    set_transient( 'sp_drive_failure_mailed', 1, DAY_IN_SECONDS );
+
+    $org = wp_strip_all_tags( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) );
+    /* translators: %s: organization name */
+    $subject = sprintf( __( '[%s] A backup could not be copied to Google Drive', 'societypress' ), $org );
+    $body    = __( 'The backup itself finished and is safe on your web server. Only the copy to Google Drive failed.', 'societypress' ) . "\n\n";
+    /* translators: %s: reason the copy failed */
+    $body   .= sprintf( __( 'Reason: %s', 'societypress' ), $reason ) . "\n\n";
+    $body   .= __( 'Check the Google Drive section of the Export & Backup page:', 'societypress' ) . "\n";
+    $body   .= admin_url( 'admin.php?page=sp-settings-export' );
+
+    wp_mail( $to, $subject, $body );
+}
+
+/**
+ * "Connect Google Drive": send the volunteer to the relay's page that names
+ * this site, then on to Google.
+ */
+add_action( 'admin_post_sp_drive_connect', function () {
+    check_admin_referer( 'sp_drive_connect' );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+
+    // Tied to this user and good for 30 minutes. Proves on the way back that
+    // the sign-in started here, by this person, and not from someone's link.
+    $state = wp_generate_password( 32, false );
+    set_transient( 'sp_drive_state_' . get_current_user_id(), $state, 30 * MINUTE_IN_SECONDS );
+
+    $url = sp_drive_relay_base() . '/?' . http_build_query(
+        [
+            'gsp_drive_connect' => 1,
+            'site'              => home_url( '/' ),
+            'return'            => admin_url( 'admin-post.php?action=sp_drive_return' ),
+            'state'             => $state,
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+    wp_redirect( $url ); // phpcs:ignore WordPress.Security.SafeRedirect -- the relay is off-site by design.
+    exit;
+} );
+
+/**
+ * Back from Google: check it's the sign-in we started, trade the code for
+ * passes through the relay, and keep the long-lived one, encrypted.
+ */
+add_action( 'admin_post_sp_drive_return', function () {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    $back = admin_url( 'admin.php?page=sp-settings-export' );
+    $done = function ( string $msg ) use ( $back ) {
+        wp_safe_redirect( add_query_arg( 'sp_backup_msg', $msg, $back ) . '#sp-drive' );
+        exit;
+    };
+
+    $key      = 'sp_drive_state_' . get_current_user_id();
+    $expected = (string) get_transient( $key );
+    delete_transient( $key );
+
+    if ( ! empty( $_GET['sp_drive_error'] ) ) {
+        $done( 'drive_cancelled' );
+    }
+    $state = sanitize_text_field( wp_unslash( $_GET['sp_drive_state'] ?? '' ) );
+    $code  = sanitize_text_field( wp_unslash( $_GET['sp_drive_code'] ?? '' ) );
+    if ( '' === $expected || '' === $code || ! hash_equals( $expected, $state ) ) {
+        $done( 'drive_failed' );
+    }
+
+    $response = wp_remote_post( sp_drive_relay_base() . '/wp-json/societypress/v1/drive/token', [
+        'timeout' => 20,
+        'body'    => [ 'code' => $code ],
+    ] );
+    $body = is_wp_error( $response ) ? [] : json_decode( (string) wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['refresh_token'] ) || empty( $body['access_token'] ) ) {
+        $done( 'drive_failed' );
+    }
+
+    // Which Google account it is, so the screen can say where copies go.
+    $email = '';
+    $about = sp_drive_api( 'GET', 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', (string) $body['access_token'] );
+    if ( ! is_wp_error( $about ) && 200 === $about[0] ) {
+        $email = sanitize_email( (string) ( $about[1]['user']['emailAddress'] ?? '' ) );
+    }
+
+    sp_drive_save( [
+        'token'        => sp_encrypt( (string) $body['refresh_token'] ),
+        'email'        => $email,
+        'connected_at' => current_time( 'mysql' ),
+    ] );
+    set_transient( 'sp_drive_access', sp_encrypt( (string) $body['access_token'] ), max( 60, (int) ( $body['expires_in'] ?? 3600 ) - 120 ) );
+    sp_audit( 'drive_connected', sprintf( 'Google Drive connected (%s)', $email ?: 'unknown account' ), 'backup' );
+
+    $done( 'drive_connected' );
+} );
+
+/**
+ * "Disconnect": tell Google to cancel the pass, then forget it. Copies
+ * already in Drive stay there; they're the society's.
+ */
+add_action( 'admin_post_sp_drive_disconnect', function () {
+    check_admin_referer( 'sp_drive_disconnect' );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    $o       = sp_drive_get();
+    $refresh = ! empty( $o['token'] ) ? sp_decrypt( (string) $o['token'] ) : '';
+    if ( $refresh ) {
+        wp_remote_post( 'https://oauth2.googleapis.com/revoke', [ 'timeout' => 15, 'body' => [ 'token' => $refresh ] ] );
+    }
+    delete_option( 'sp_drive' );
+    delete_transient( 'sp_drive_access' );
+    sp_audit( 'drive_disconnected', 'Google Drive disconnected', 'backup' );
+
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', 'drive_disconnected', admin_url( 'admin.php?page=sp-settings-export' ) ) . '#sp-drive' );
+    exit;
+} );
+
+/**
+ * "Copy the newest backup now": lets a volunteer see it work without waiting
+ * for the next scheduled backup.
+ */
+add_action( 'admin_post_sp_drive_copy_now', function () {
+    check_admin_referer( 'sp_drive_copy_now' );
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'Permission denied.', 'societypress' ), '', [ 'response' => 403 ] );
+    }
+    global $wpdb;
+    $id = (int) $wpdb->get_var( "SELECT id FROM {$wpdb->prefix}sp_backups WHERE status = 'complete' ORDER BY created_at DESC LIMIT 1" );
+    if ( $id ) {
+        sp_drive_copy_backup( $id );
+    }
+    $o = sp_drive_get();
+    wp_safe_redirect( add_query_arg( 'sp_backup_msg', ! $id ? 'drive_nobackup' : ( empty( $o['last_error'] ) ? 'drive_copied' : 'drive_copy_failed' ), admin_url( 'admin.php?page=sp-settings-export' ) ) . '#sp-drive' );
     exit;
 } );
 

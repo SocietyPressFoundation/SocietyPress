@@ -2783,3 +2783,290 @@ function gsp_render_admin_header_links(): void {
         );
     }
 }
+
+
+/* ==========================================================================
+   GOOGLE DRIVE RELAY
+
+   WHY this exists: SocietyPress copies each backup into the society's own
+   Google Drive. Google only lets a registered app do that, and the app's
+   secret cannot ship inside a plugin anyone can download. So the secret lives
+   here, and this relay does the three things that need it: send the
+   volunteer to Google, trade Google's one-time sign-in code for passes, and
+   renew the hourly pass. It stores nothing. Backup files never come here —
+   the society's site uploads straight to Google.
+
+   The secret is read from a file outside the web root (gsp-secrets/), never
+   from the theme or the database.
+   ========================================================================== */
+
+/**
+ * The Google app's id and secret, or null when the file is missing.
+ */
+function gsp_drive_client(): ?array {
+    static $client = null;
+    if ( null === $client ) {
+        $path   = defined( 'GSP_DRIVE_CLIENT_FILE' ) ? GSP_DRIVE_CLIENT_FILE : dirname( ABSPATH, 2 ) . '/gsp-secrets/google-drive-client.json';
+        $data   = is_readable( $path ) ? json_decode( (string) file_get_contents( $path ), true ) : null;
+        $web    = is_array( $data ) ? ( $data['web'] ?? [] ) : [];
+        $client = ( ! empty( $web['client_id'] ) && ! empty( $web['client_secret'] ) ) ? $web : [];
+    }
+    return $client ?: null;
+}
+
+/**
+ * Must match the redirect address registered with Google, character for
+ * character, or Google refuses the sign-in.
+ */
+function gsp_drive_redirect_uri(): string {
+    return 'https://societypress.net/wp-json/societypress/v1/drive/callback';
+}
+
+/**
+ * Sign and unsign the round-trip state.
+ *
+ * WHY signed: the relay keeps no record between sending the volunteer to
+ *      Google and Google sending them back, so the address to return them to
+ *      rides along inside Google's state value. Signing it means nobody can
+ *      swap in a different address and have a society's sign-in code
+ *      delivered to them.
+ */
+function gsp_drive_state_key(): string {
+    $client = gsp_drive_client();
+    return hash_hmac( 'sha256', 'gsp-drive-state', (string) ( $client['client_secret'] ?? '' ) );
+}
+
+function gsp_drive_sign( array $data ): string {
+    $payload = rtrim( strtr( base64_encode( (string) wp_json_encode( $data ) ), '+/', '-_' ), '=' );
+    return $payload . '.' . hash_hmac( 'sha256', $payload, gsp_drive_state_key() );
+}
+
+function gsp_drive_unsign( string $signed ): ?array {
+    $parts = explode( '.', $signed, 2 );
+    if ( 2 !== count( $parts ) || ! hash_equals( hash_hmac( 'sha256', $parts[0], gsp_drive_state_key() ), $parts[1] ) ) {
+        return null;
+    }
+    $data = json_decode( (string) base64_decode( strtr( $parts[0], '-_', '+/' ) ), true );
+    return is_array( $data ) ? $data : null;
+}
+
+/**
+ * The return address a society's site hands us, if it is one we accept.
+ *
+ * WHY so narrow: it must be the admin-post.php of the same site that is being
+ *      connected. That is the only place a SocietyPress site ever asks to be
+ *      sent back to, and refusing everything else keeps the relay from being
+ *      used to bounce visitors to arbitrary addresses.
+ */
+function gsp_drive_valid_return( string $site, string $return ): bool {
+    $s = wp_parse_url( $site );
+    $r = wp_parse_url( $return );
+    if ( empty( $s['host'] ) || empty( $r['host'] ) || empty( $r['scheme'] ) || empty( $r['path'] ) ) {
+        return false;
+    }
+    return in_array( $r['scheme'], [ 'https', 'http' ], true )
+        && strtolower( $s['host'] ) === strtolower( $r['host'] )
+        && '/wp-admin/admin-post.php' === substr( $r['path'], -strlen( '/wp-admin/admin-post.php' ) );
+}
+
+/**
+ * Per-address limit so the open endpoints cannot be hammered.
+ */
+function gsp_drive_throttled( string $bucket, int $limit ): bool {
+    $ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+    $key = 'gsp_drive_' . $bucket . '_' . md5( $ip );
+    $n   = (int) get_transient( $key );
+    if ( $n >= $limit ) {
+        return true;
+    }
+    set_transient( $key, $n + 1, HOUR_IN_SECONDS );
+    return false;
+}
+
+/**
+ * The page a volunteer sees before Google: which site is asking.
+ *
+ * WHY a page at all, not a straight bounce to Google: Google's screen names
+ *      SocietyPress, not the society. Without this step a stranger could send
+ *      someone a link that connects THEIR Drive to the stranger's site.
+ *      Naming the site first, in plain words, is the guard.
+ *
+ * URL: https://societypress.net/?gsp_drive_connect=1&site=…&return=…&state=…
+ */
+function gsp_drive_connect_page(): void {
+    if ( empty( $_GET['gsp_drive_connect'] ) ) {
+        return;
+    }
+
+    $site   = esc_url_raw( wp_unslash( $_GET['site'] ?? '' ) );
+    $return = esc_url_raw( wp_unslash( $_GET['return'] ?? '' ) );
+    $state  = preg_replace( '/[^A-Za-z0-9]/', '', (string) wp_unslash( $_GET['state'] ?? '' ) );
+    $client = gsp_drive_client();
+
+    if ( ! $client || strlen( $state ) < 20 || ! gsp_drive_valid_return( $site, $return ) ) {
+        wp_die(
+            esc_html__( 'This Google Drive connection link is not valid. Go back to your society’s website and click “Connect Google Drive” again.', 'getsocietypress' ),
+            esc_html__( 'Link not valid', 'getsocietypress' ),
+            [ 'response' => 400 ]
+        );
+    }
+
+    $google = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query(
+        [
+            'client_id'     => $client['client_id'],
+            'redirect_uri'  => gsp_drive_redirect_uri(),
+            'response_type' => 'code',
+            'scope'         => 'https://www.googleapis.com/auth/drive.file',
+            'access_type'   => 'offline',
+            // WHY consent every time: Google only hands out the long-lived
+            // pass on a consent screen. A volunteer reconnecting after a
+            // disconnect would otherwise come back with nothing to keep.
+            'prompt'        => 'consent',
+            'state'         => gsp_drive_sign( [ 'r' => $return, 's' => $state, 't' => time() ] ),
+        ],
+        '',
+        '&',
+        PHP_QUERY_RFC3986
+    );
+    $cancel = add_query_arg( 'sp_drive_error', 'cancelled', $return );
+    $host   = (string) wp_parse_url( $site, PHP_URL_HOST );
+
+    status_header( 200 );
+    nocache_headers();
+    get_header();
+    ?>
+    <div class="page-header">
+        <div class="container">
+            <h1><?php esc_html_e( 'Connect Google Drive', 'getsocietypress' ); ?></h1>
+        </div>
+    </div>
+    <div class="page-content">
+        <div class="container container--narrow">
+            <p>
+                <?php
+                printf(
+                    /* translators: %s: website address, e.g. example.org */
+                    esc_html__( 'The website %s wants to save copies of its backups in your Google Drive.', 'getsocietypress' ),
+                    '<strong>' . esc_html( $host ) . '</strong>'
+                );
+                ?>
+            </p>
+            <p><?php esc_html_e( 'It will only be able to see the files it puts there. Nothing else in your Drive.', 'getsocietypress' ); ?></p>
+            <p><?php esc_html_e( 'If you didn’t just click “Connect Google Drive” on that website yourself, close this page.', 'getsocietypress' ); ?></p>
+            <p>
+                <a class="btn btn-primary" href="<?php echo esc_url( $google ); ?>"><?php esc_html_e( 'Continue to Google', 'getsocietypress' ); ?></a>
+                &nbsp; <a href="<?php echo esc_url( $cancel ); ?>"><?php esc_html_e( 'Cancel', 'getsocietypress' ); ?></a>
+            </p>
+        </div>
+    </div>
+    <?php
+    get_footer();
+    exit;
+}
+add_action( 'template_redirect', 'gsp_drive_connect_page' );
+
+function gsp_register_drive_routes(): void {
+    register_rest_route( 'societypress/v1', '/drive/callback', [
+        'methods'             => 'GET',
+        'callback'            => 'gsp_drive_callback',
+        'permission_callback' => '__return_true',
+    ] );
+    register_rest_route( 'societypress/v1', '/drive/token', [
+        'methods'             => 'POST',
+        'callback'            => 'gsp_drive_token',
+        'permission_callback' => '__return_true',
+    ] );
+    register_rest_route( 'societypress/v1', '/drive/refresh', [
+        'methods'             => 'POST',
+        'callback'            => 'gsp_drive_refresh',
+        'permission_callback' => '__return_true',
+    ] );
+}
+add_action( 'rest_api_init', 'gsp_register_drive_routes' );
+
+/**
+ * Google sends the volunteer here; pass them and the one-time code home.
+ *
+ * WHY hand over the code and not the passes: the code is single-use, dies in
+ * minutes, and is worthless without the secret. The society's site then
+ * trades it for passes server to server, so the long-lived pass never
+ * travels through a browser address bar.
+ */
+function gsp_drive_callback( WP_REST_Request $request ) {
+    $state = gsp_drive_unsign( (string) $request->get_param( 'state' ) );
+    if ( ! $state || empty( $state['r'] ) || empty( $state['s'] ) || time() - (int) ( $state['t'] ?? 0 ) > 30 * MINUTE_IN_SECONDS ) {
+        return new WP_REST_Response( [ 'error' => 'invalid_state' ], 400 );
+    }
+
+    $code = (string) $request->get_param( 'code' );
+    $args = ( '' === $code )
+        ? [ 'sp_drive_error' => 'cancelled' ]
+        : [ 'sp_drive_code' => rawurlencode( $code ), 'sp_drive_state' => rawurlencode( (string) $state['s'] ) ];
+
+    wp_redirect( add_query_arg( $args, (string) $state['r'] ) );
+    exit;
+}
+
+/**
+ * Ask Google for passes with the secret attached; return only what the site needs.
+ */
+function gsp_drive_google_token( array $params ) {
+    $client = gsp_drive_client();
+    if ( ! $client ) {
+        return new WP_REST_Response( [ 'error' => 'relay_not_configured' ], 503 );
+    }
+
+    $response = wp_remote_post( 'https://oauth2.googleapis.com/token', [
+        'timeout' => 20,
+        'body'    => array_merge( $params, [
+            'client_id'     => $client['client_id'],
+            'client_secret' => $client['client_secret'],
+        ] ),
+    ] );
+    if ( is_wp_error( $response ) ) {
+        return new WP_REST_Response( [ 'error' => 'google_unreachable' ], 502 );
+    }
+
+    $body = json_decode( (string) wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['access_token'] ) ) {
+        // Pass Google's reason through: "invalid_grant" means the society
+        // removed access or the pass expired, and the site tells the
+        // volunteer to connect again rather than reporting an outage.
+        return new WP_REST_Response( [ 'error' => sanitize_key( (string) ( $body['error'] ?? 'google_error' ) ) ], 400 );
+    }
+
+    return new WP_REST_Response( array_filter( [
+        'access_token'  => (string) $body['access_token'],
+        'expires_in'    => (int) ( $body['expires_in'] ?? 3600 ),
+        'refresh_token' => (string) ( $body['refresh_token'] ?? '' ),
+    ] ), 200 );
+}
+
+function gsp_drive_token( WP_REST_Request $request ) {
+    if ( gsp_drive_throttled( 'token', 30 ) ) {
+        return new WP_REST_Response( [ 'error' => 'rate_limited' ], 429 );
+    }
+    $code = (string) $request->get_param( 'code' );
+    if ( '' === $code ) {
+        return new WP_REST_Response( [ 'error' => 'missing_code' ], 400 );
+    }
+    return gsp_drive_google_token( [
+        'grant_type'   => 'authorization_code',
+        'code'         => $code,
+        'redirect_uri' => gsp_drive_redirect_uri(),
+    ] );
+}
+
+function gsp_drive_refresh( WP_REST_Request $request ) {
+    if ( gsp_drive_throttled( 'refresh', 120 ) ) {
+        return new WP_REST_Response( [ 'error' => 'rate_limited' ], 429 );
+    }
+    $refresh = (string) $request->get_param( 'refresh_token' );
+    if ( '' === $refresh ) {
+        return new WP_REST_Response( [ 'error' => 'missing_refresh_token' ], 400 );
+    }
+    return gsp_drive_google_token( [
+        'grant_type'    => 'refresh_token',
+        'refresh_token' => $refresh,
+    ] );
+}

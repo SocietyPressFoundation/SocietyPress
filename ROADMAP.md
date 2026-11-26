@@ -32,7 +32,7 @@ Backup page. Sign-in goes through a relay on societypress.net that holds
 Google's app secret and stores nothing; files go straight from the site to
 Google. SocietyPress sees only the files it creates. Tested end to end on
 the demo 2026-11-26, and the Google app was published the same day. Dropbox
-and OneDrive maybe later.
+and OneDrive only if a society asks for them.
 
 ### AI Assistant — 1.5.176
 

@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.186
+ * Version:     1.5.187
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.186' );
+define( 'SOCIETYPRESS_VERSION', '1.5.187' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -3453,6 +3453,40 @@ function sp_create_tables(): void {
         PRIMARY KEY (id),
         KEY ticket_id (ticket_id),
         KEY reply_id (reply_id)
+    ) {$charset_collate};" );
+
+    // ========================================================================
+    // sp_kiosk_devices / sp_kiosk_pairing_codes — paired iPad kiosks
+    //
+    // WHY hashes, not tokens or codes: a copy of the database (a backup in
+    // someone's Drive, say) must not be enough to impersonate a kiosk.
+    // ========================================================================
+    dbDelta( "CREATE TABLE {$prefix}kiosk_devices (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        name            VARCHAR(100)        NOT NULL,
+        modules_enabled VARCHAR(100)        NOT NULL DEFAULT '',
+        attended        TINYINT(1)          NOT NULL DEFAULT 1,
+        idle_seconds    INT(10) UNSIGNED    NOT NULL DEFAULT 120,
+        token_hash      CHAR(64)            NULL,
+        status          VARCHAR(20)         NOT NULL DEFAULT 'pending',
+        paired_at       DATETIME            NULL,
+        last_seen_at    DATETIME            NULL,
+        created_at      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY token_hash (token_hash),
+        KEY status (status)
+    ) {$charset_collate};" );
+
+    dbDelta( "CREATE TABLE {$prefix}kiosk_pairing_codes (
+        id              BIGINT(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+        code_hash       CHAR(64)            NOT NULL,
+        kiosk_device_id BIGINT(20) UNSIGNED NOT NULL,
+        expires_at      DATETIME            NOT NULL,
+        used_at         DATETIME            NULL,
+        created_by      BIGINT(20) UNSIGNED NOT NULL DEFAULT 0,
+        PRIMARY KEY (id),
+        KEY code_hash (code_hash),
+        KEY kiosk_device_id (kiosk_device_id)
     ) {$charset_collate};" );
 
 
@@ -9303,6 +9337,15 @@ add_action( 'admin_menu', function () {
         'sp_render_settings_ai_page'
     );
 
+    sp_add_admin_page(
+        'societypress',
+        __( 'Kiosks — SocietyPress', 'societypress' ),
+        __( 'Kiosks', 'societypress' ),
+        'manage_options',
+        'sp-kiosks',
+        'sp_render_kiosks_page'
+    );
+
     // The volunteers' help assistant. 'read' is a floor, not the gate: the
     // screen and its AJAX handler both require at least one SocietyPress
     // access area, because the person who is stuck is rarely the administrator.
@@ -9599,6 +9642,7 @@ function sp_get_menu_capability_map(): array {
         'sp-settings-design'       => 'sp_manage_settings',
         'sp-settings-modules'      => 'sp_manage_settings',
         'sp-settings-ai'           => 'sp_manage_settings',
+        'sp-kiosks'                => 'sp_manage_settings',
         'sp-ai-assistant'          => 'read',
         // sp-user-access deliberately uses manage_options rather than
         // sp_manage_settings — granting capabilities to other users is
@@ -13963,6 +14007,7 @@ add_action( 'admin_head', function () {
 
 /* ---------- Block + margin combos ---------- */
 .sp-block-mb-6  { display: block; margin-bottom: 6px; }
+.sp-kiosk-code__digits { font-size: 32px; font-weight: 600; letter-spacing: 4px; margin: 8px 0; }
 .sp-block-label { display: block; font-weight: 500; margin-bottom: 2px; }
 .sp-block-section-label { display: block; font-weight: 600; margin: 12px 0 4px; }
 
@@ -15138,7 +15183,7 @@ function sp_default_menu_config(): array {
               'items' => [ 'sp-reports', 'sp-insights', 'sp-annual-report', 'sp-membership-reports' ] ],
 
             [ 'id' => 'settings', 'label' => __( 'Settings', 'societypress' ), 'icon' => 'dashicons-admin-generic',
-              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-payments', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-settings-ai', 'sp-user-access',
+              'items' => [ 'sp-settings-website', 'sp-settings-organization', 'sp-settings-membership', 'sp-settings-directory', 'sp-settings-events', 'sp-settings-payments', 'sp-settings-privacy', 'privacy-policy-guide.php', 'sp-settings-export', 'sp-settings-modules', 'sp-settings-ai', 'sp-kiosks', 'sp-user-access',
                            // Screens that change the admin itself rather than the
                            // public site. Kept apart from the Website group so the
                            // two kinds of "appearance" never sit side by side again.
@@ -44038,7 +44083,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.186',
+            'version'     => '1.5.187',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -44046,7 +44091,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.186',
+            'version'     => '1.5.187',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -44054,7 +44099,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.186',
+            'version'     => '1.5.187',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -44062,7 +44107,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.186',
+            'version'     => '1.5.187',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -44070,7 +44115,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.186',
+            'version'     => '1.5.187',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -148969,3 +149014,363 @@ function sp_privacy_erase_ai_data( string $email_address, int $page = 1 ): array
     ];
 }
 
+// ============================================================================
+// iPAD KIOSK — pairing and settings
+//
+// WHY: at a seminar door or a library desk a society needs an iPad that signs
+//      people in, takes walk-ins and collects dues, with nobody logging in to
+//      WordPress on a shared device. Design: docs/KIOSK-SPEC.md (settled with
+//      Charles 2026-11-25). This section is the foundation the spec says to
+//      build first: an admin adds a kiosk and gets a 6-digit code, the app
+//      trades the code for its own long-lived pass, and every later call is
+//      checked against what that one iPad was allowed to do.
+//
+// The jobs a kiosk may do are enforced here, on the server, not just hidden
+// in the app — a lost or tampered iPad must not reach a job it wasn't given.
+// ============================================================================
+
+/**
+ * The jobs a kiosk can be given, keyed as stored.
+ */
+function sp_kiosk_jobs(): array {
+    return [
+        'events'  => __( 'Event check-in and walk-in registration', 'societypress' ),
+        'library' => __( 'Library visitor sign-in', 'societypress' ),
+        'members' => __( 'Join or renew membership', 'societypress' ),
+    ];
+}
+
+/**
+ * Make a pairing code for a kiosk, replacing any unused one. Returns the
+ * code in plain digits; only its hash is stored.
+ *
+ * WHY 10 minutes and shown once: the code is a key to the society's data for
+ * whoever types it first. Short-lived and never re-displayed means a code
+ * left on a sticky note is worthless by the time anyone finds it.
+ */
+function sp_kiosk_new_pairing_code( int $device_id ): string {
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_kiosk_pairing_codes';
+
+    $wpdb->query( $wpdb->prepare( "DELETE FROM {$table} WHERE kiosk_device_id = %d AND used_at IS NULL", $device_id ) );
+
+    $code = str_pad( (string) random_int( 0, 999999 ), 6, '0', STR_PAD_LEFT );
+    $wpdb->insert( $table, [
+        'code_hash'       => hash( 'sha256', $code ),
+        'kiosk_device_id' => $device_id,
+        'expires_at'      => gmdate( 'Y-m-d H:i:s', time() + 10 * MINUTE_IN_SECONDS ),
+        'created_by'      => get_current_user_id(),
+    ] );
+    return $code;
+}
+
+/**
+ * The kiosk calling this request, or null.
+ *
+ * WHY a custom header as well as Authorization: some shared hosts strip the
+ * Authorization header before PHP sees it. The app sends both, so either
+ * arriving is enough.
+ */
+function sp_kiosk_device_from_request( WP_REST_Request $request ): ?object {
+    $token = (string) $request->get_header( 'x_sp_kiosk_token' );
+    if ( '' === $token ) {
+        $auth = (string) $request->get_header( 'authorization' );
+        if ( 0 === stripos( $auth, 'Bearer ' ) ) {
+            $token = trim( substr( $auth, 7 ) );
+        }
+    }
+    if ( strlen( $token ) < 32 ) {
+        return null;
+    }
+
+    global $wpdb;
+    $device = $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}sp_kiosk_devices WHERE token_hash = %s AND status = 'active'",
+        hash( 'sha256', $token )
+    ) );
+    if ( ! $device ) {
+        return null;
+    }
+
+    // At most one write a minute per kiosk — "last seen" doesn't need to be
+    // exact, and a busy check-in desk shouldn't write on every tap.
+    if ( empty( $device->last_seen_at ) || strtotime( $device->last_seen_at . ' UTC' ) < time() - MINUTE_IN_SECONDS ) {
+        $wpdb->update( $wpdb->prefix . 'sp_kiosk_devices', [ 'last_seen_at' => current_time( 'mysql', true ) ], [ 'id' => $device->id ] );
+    }
+    return $device;
+}
+
+/**
+ * Permission check for kiosk endpoints. Pass a job to require it.
+ */
+function sp_kiosk_permission( WP_REST_Request $request, string $job = '' ) {
+    $device = sp_kiosk_device_from_request( $request );
+    if ( ! $device ) {
+        return new WP_Error( 'sp_kiosk_unpaired', __( 'This iPad is not paired with the society’s website, or it was removed. Ask an administrator for a new pairing code.', 'societypress' ), [ 'status' => 401 ] );
+    }
+    if ( '' !== $job && ! in_array( $job, explode( ',', (string) $device->modules_enabled ), true ) ) {
+        return new WP_Error( 'sp_kiosk_not_allowed', __( 'This iPad isn’t set up for that.', 'societypress' ), [ 'status' => 403 ] );
+    }
+    $request->set_param( '_sp_kiosk_device', $device );
+    return true;
+}
+
+/**
+ * What the app needs to draw itself for this kiosk.
+ */
+function sp_kiosk_config( object $device ): array {
+    $settings = sp_settings();
+    $logo_id  = (int) get_theme_mod( 'custom_logo' );
+    $jobs     = array_values( array_intersect( array_keys( sp_kiosk_jobs() ), explode( ',', (string) $device->modules_enabled ) ) );
+
+    return [
+        'kiosk_id'     => (int) $device->id,
+        'kiosk_name'   => (string) $device->name,
+        'society_name' => wp_strip_all_tags( trim( (string) ( $settings['organization_name'] ?? '' ) ) ?: get_bloginfo( 'name' ) ),
+        'logo_url'     => $logo_id ? (string) wp_get_attachment_image_url( $logo_id, 'medium' ) : '',
+        'site_url'     => home_url( '/' ),
+        'jobs'         => $jobs,
+        'attended'     => (bool) $device->attended,
+        'idle_seconds' => max( 30, (int) $device->idle_seconds ),
+        'api_version'  => 1,
+    ];
+}
+
+add_action( 'rest_api_init', function () {
+    register_rest_route( 'societypress/v1', '/kiosk/pair', [
+        'methods'             => 'POST',
+        'callback'            => 'sp_kiosk_rest_pair',
+        'permission_callback' => '__return_true',
+        'args'                => [ 'code' => [ 'required' => true, 'type' => 'string' ] ],
+    ] );
+    register_rest_route( 'societypress/v1', '/kiosk/config', [
+        'methods'             => 'GET',
+        'callback'            => function ( WP_REST_Request $request ) {
+            return rest_ensure_response( sp_kiosk_config( $request->get_param( '_sp_kiosk_device' ) ) );
+        },
+        'permission_callback' => 'sp_kiosk_permission',
+    ] );
+} );
+
+/**
+ * Trade a pairing code for this iPad's own pass.
+ *
+ * WHY such tight limits: a code is six digits, so guessing is the obvious
+ * attack. Ten tries an hour from one address, and sixty an hour site-wide,
+ * makes guessing a live code in its ten minutes hopeless.
+ */
+function sp_kiosk_rest_pair( WP_REST_Request $request ) {
+    $ip = sp_get_remote_ip();
+    if ( sp_rate_limit_hit( 'sp_kiosk_pair_' . md5( $ip ), 10, HOUR_IN_SECONDS )
+        || sp_rate_limit_hit( 'sp_kiosk_pair_all', 60, HOUR_IN_SECONDS ) ) {
+        return new WP_Error( 'sp_kiosk_rate_limited', __( 'Too many tries. Wait an hour, or ask an administrator for a new code.', 'societypress' ), [ 'status' => 429 ] );
+    }
+
+    $code = preg_replace( '/\D/', '', (string) $request->get_param( 'code' ) );
+    global $wpdb;
+    $codes = $wpdb->prefix . 'sp_kiosk_pairing_codes';
+    $row   = strlen( $code ) === 6 ? $wpdb->get_row( $wpdb->prepare(
+        "SELECT * FROM {$codes} WHERE code_hash = %s AND used_at IS NULL AND expires_at > %s",
+        hash( 'sha256', $code ),
+        current_time( 'mysql', true )
+    ) ) : null;
+    if ( ! $row ) {
+        return new WP_Error( 'sp_kiosk_bad_code', __( 'That code didn’t work. Codes last 10 minutes and work once. Ask an administrator for a new one.', 'societypress' ), [ 'status' => 400 ] );
+    }
+
+    $token = wp_generate_password( 48, false );
+    $wpdb->update( $wpdb->prefix . 'sp_kiosk_devices', [
+        'token_hash'   => hash( 'sha256', $token ),
+        'status'       => 'active',
+        'paired_at'    => current_time( 'mysql', true ),
+        'last_seen_at' => current_time( 'mysql', true ),
+    ], [ 'id' => $row->kiosk_device_id ] );
+    $wpdb->update( $codes, [ 'used_at' => current_time( 'mysql', true ) ], [ 'id' => $row->id ] );
+
+    $device = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}sp_kiosk_devices WHERE id = %d", $row->kiosk_device_id ) );
+    sp_audit( 'kiosk_paired', sprintf( 'Kiosk "%s" paired', $device->name ), 'kiosk', (int) $device->id );
+
+    return rest_ensure_response( [ 'token' => $token, 'config' => sp_kiosk_config( $device ) ] );
+}
+
+/**
+ * Kiosks screen: save before drawing (add, new code, remove).
+ */
+function sp_handle_kiosks_post(): void {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        return;
+    }
+    global $wpdb;
+    $table = $wpdb->prefix . 'sp_kiosk_devices';
+    $back  = admin_url( 'admin.php?page=sp-kiosks' );
+    $do    = sanitize_key( $_POST['sp_kiosk_action'] ?? '' );
+
+    if ( 'add' === $do ) {
+        check_admin_referer( 'sp_kiosk_add' );
+        $name = sanitize_text_field( wp_unslash( $_POST['kiosk_name'] ?? '' ) );
+        $jobs = array_values( array_intersect( array_keys( sp_kiosk_jobs() ), array_map( 'sanitize_key', (array) ( $_POST['kiosk_jobs'] ?? [] ) ) ) );
+        if ( '' === $name ) {
+            sp_screen_post_error( __( 'Give the iPad a name, such as “Front desk”.', 'societypress' ) );
+            return;
+        }
+        if ( ! $jobs ) {
+            sp_screen_post_error( __( 'Tick at least one job for this iPad.', 'societypress' ) );
+            return;
+        }
+        $wpdb->insert( $table, [
+            'name'            => mb_substr( $name, 0, 100 ),
+            'modules_enabled' => implode( ',', $jobs ),
+            'attended'        => empty( $_POST['kiosk_unattended'] ) ? 1 : 0,
+            'idle_seconds'    => 60 * max( 1, min( 30, (int) ( $_POST['kiosk_idle_minutes'] ?? 2 ) ) ),
+            'status'          => 'pending',
+            'created_at'      => current_time( 'mysql', true ),
+        ] );
+        $id = (int) $wpdb->insert_id;
+        sp_audit( 'kiosk_added', sprintf( 'Kiosk "%s" added', $name ), 'kiosk', $id );
+    } elseif ( 'code' === $do || 'remove' === $do ) {
+        $id = (int) ( $_POST['kiosk_id'] ?? 0 );
+        check_admin_referer( 'sp_kiosk_' . $do . '_' . $id );
+        $device = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ) );
+        if ( ! $device ) {
+            return;
+        }
+        if ( 'remove' === $do ) {
+            $wpdb->delete( $wpdb->prefix . 'sp_kiosk_pairing_codes', [ 'kiosk_device_id' => $id ] );
+            $wpdb->delete( $table, [ 'id' => $id ] );
+            sp_audit( 'kiosk_removed', sprintf( 'Kiosk "%s" removed', $device->name ), 'kiosk', $id );
+            wp_safe_redirect( add_query_arg( 'sp_kiosk_msg', 'removed', $back ) );
+            exit;
+        }
+        // A new code means a fresh pairing: the old pass stops working now,
+        // so a reinstalled or replaced iPad can't leave a live one behind.
+        $wpdb->update( $table, [ 'token_hash' => null, 'status' => 'pending' ], [ 'id' => $id ] );
+    } else {
+        return;
+    }
+
+    // WHY a per-user transient, not the URL: the code is a secret, and
+    // addresses end up in browser history and server logs.
+    set_transient( 'sp_kiosk_code_' . get_current_user_id(), [ 'id' => $id, 'code' => sp_kiosk_new_pairing_code( $id ) ], 10 * MINUTE_IN_SECONDS );
+    wp_safe_redirect( add_query_arg( 'sp_kiosk_msg', 'code', $back ) );
+    exit;
+}
+sp_handle_screen_post( 'sp-kiosks', 'sp_handle_kiosks_post' );
+
+function sp_render_kiosks_page(): void {
+    if ( ! current_user_can( 'sp_manage_settings' ) ) {
+        wp_die( esc_html__( 'You do not have permission to view this page.', 'societypress' ) );
+    }
+    global $wpdb;
+    $devices = $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}sp_kiosk_devices ORDER BY name" );
+    $jobs    = sp_kiosk_jobs();
+    $error   = sp_screen_post_error();
+    $msg     = sanitize_key( $_GET['sp_kiosk_msg'] ?? '' );
+    $shown   = 'code' === $msg ? get_transient( 'sp_kiosk_code_' . get_current_user_id() ) : false;
+    if ( $shown ) {
+        delete_transient( 'sp_kiosk_code_' . get_current_user_id() );
+    }
+    $dt_fmt = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Kiosks', 'societypress' ); ?></h1>
+        <p class="description"><?php esc_html_e( 'An iPad at a seminar door or the library desk that signs people in, takes walk-in registrations and collects dues, without anyone logging in to this site. Install the free SocietyPress Kiosk app on the iPad, then add it here to get a pairing code.', 'societypress' ); ?></p>
+
+        <?php if ( $error ) : ?>
+            <div class="notice notice-error"><p><?php echo esc_html( $error ); ?></p></div>
+        <?php elseif ( 'removed' === $msg ) : ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Kiosk removed. That iPad can no longer reach this site.', 'societypress' ); ?></p></div>
+        <?php elseif ( is_array( $shown ) ) : ?>
+            <div class="notice notice-success sp-kiosk-code">
+                <p><?php esc_html_e( 'On the iPad, open the SocietyPress Kiosk app, enter this website’s address and this code:', 'societypress' ); ?></p>
+                <p class="sp-kiosk-code__digits"><?php echo esc_html( chunk_split( $shown['code'], 3, ' ' ) ); ?></p>
+                <p><?php esc_html_e( 'The code works once and expires in 10 minutes. It won’t be shown again; if it runs out, click “New pairing code”.', 'societypress' ); ?></p>
+                <p><?php printf( /* translators: %s: website address */ esc_html__( 'Website address: %s', 'societypress' ), '<strong>' . esc_html( home_url( '/' ) ) . '</strong>' ); ?></p>
+            </div>
+        <?php elseif ( 'code' === $msg ) : ?>
+            <div class="notice notice-warning"><p><?php esc_html_e( 'That pairing code has already been shown. Click “New pairing code” to get another.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <?php if ( $devices ) : ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead><tr>
+                    <th><?php esc_html_e( 'iPad', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Jobs', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Status', 'societypress' ); ?></th>
+                    <th><?php esc_html_e( 'Actions', 'societypress' ); ?></th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ( $devices as $d ) : ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html( $d->name ); ?></strong><br>
+                            <span class="description">
+                                <?php echo $d->attended ? esc_html__( 'A volunteer stands with it', 'societypress' ) : esc_html__( 'Left on its own', 'societypress' ); ?>
+                                · <?php printf( /* translators: %d: minutes */ esc_html( _n( 'clears after %d minute idle', 'clears after %d minutes idle', max( 1, (int) round( $d->idle_seconds / 60 ) ), 'societypress' ) ), max( 1, (int) round( $d->idle_seconds / 60 ) ) ); ?>
+                            </span>
+                        </td>
+                        <td><?php echo esc_html( implode( ', ', array_map( static fn( $j ) => $jobs[ $j ] ?? $j, array_filter( explode( ',', (string) $d->modules_enabled ) ) ) ) ); ?></td>
+                        <td>
+                            <?php
+                            if ( 'active' === $d->status ) {
+                                echo esc_html__( 'Paired', 'societypress' );
+                                if ( $d->last_seen_at ) {
+                                    echo '<br><span class="description">' . esc_html( sprintf( /* translators: %s: date and time */ __( 'Last used %s', 'societypress' ), wp_date( $dt_fmt, strtotime( $d->last_seen_at . ' UTC' ) ) ) ) . '</span>';
+                                }
+                            } else {
+                                esc_html_e( 'Waiting for the iPad to pair', 'societypress' );
+                            }
+                            ?>
+                        </td>
+                        <td>
+                            <form method="post" class="sp-inline-form">
+                                <input type="hidden" name="sp_kiosk_action" value="code">
+                                <input type="hidden" name="kiosk_id" value="<?php echo (int) $d->id; ?>">
+                                <?php wp_nonce_field( 'sp_kiosk_code_' . (int) $d->id ); ?>
+                                <button type="submit" class="button" <?php echo 'active' === $d->status ? 'data-sp-confirm="' . esc_attr__( 'Get a new pairing code? The iPad stops working until the new code is entered on it.', 'societypress' ) . '"' : ''; ?>><?php esc_html_e( 'New pairing code', 'societypress' ); ?></button>
+                            </form>
+                            <form method="post" class="sp-inline-form" data-sp-confirm="<?php echo esc_attr__( 'Remove this iPad? It will stop working immediately.', 'societypress' ); ?>">
+                                <input type="hidden" name="sp_kiosk_action" value="remove">
+                                <input type="hidden" name="kiosk_id" value="<?php echo (int) $d->id; ?>">
+                                <?php wp_nonce_field( 'sp_kiosk_remove_' . (int) $d->id ); ?>
+                                <button type="submit" class="button-link-delete"><?php esc_html_e( 'Remove', 'societypress' ); ?></button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+
+        <h2><?php esc_html_e( 'Add an iPad', 'societypress' ); ?></h2>
+        <form method="post">
+            <input type="hidden" name="sp_kiosk_action" value="add">
+            <?php wp_nonce_field( 'sp_kiosk_add' ); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="sp-kiosk-name"><?php esc_html_e( 'Name', 'societypress' ); ?></label></th>
+                    <td><input type="text" id="sp-kiosk-name" name="kiosk_name" class="regular-text" maxlength="100" placeholder="<?php esc_attr_e( 'Front desk', 'societypress' ); ?>" value="<?php echo esc_attr( $error ? sanitize_text_field( wp_unslash( $_POST['kiosk_name'] ?? '' ) ) : '' ); ?>"></td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Jobs', 'societypress' ); ?></th>
+                    <td>
+                        <?php foreach ( $jobs as $key => $label ) : ?>
+                            <label class="sp-block-mb-6"><input type="checkbox" name="kiosk_jobs[]" value="<?php echo esc_attr( $key ); ?>"> <?php echo esc_html( $label ); ?></label>
+                        <?php endforeach; ?>
+                        <p class="description"><?php esc_html_e( 'With one job the iPad goes straight into it. With more, it opens on a menu.', 'societypress' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Left on its own?', 'societypress' ); ?></th>
+                    <td><label><input type="checkbox" name="kiosk_unattended" value="1"> <?php esc_html_e( 'Nobody will stand with this iPad. Add extra “are you sure” steps.', 'societypress' ); ?></label></td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="sp-kiosk-idle"><?php esc_html_e( 'Clear the screen after', 'societypress' ); ?></label></th>
+                    <td><input type="number" id="sp-kiosk-idle" name="kiosk_idle_minutes" min="1" max="30" value="2" class="small-text"> <?php esc_html_e( 'minutes without a tap', 'societypress' ); ?>
+                        <p class="description"><?php esc_html_e( 'Then the iPad goes back to its start screen and forgets the last person’s details.', 'societypress' ); ?></p></td>
+                </tr>
+            </table>
+            <p class="submit"><button type="submit" class="button button-primary"><?php esc_html_e( 'Add iPad and get pairing code', 'societypress' ); ?></button></p>
+        </form>
+    </div>
+    <?php
+}

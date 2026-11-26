@@ -20,6 +20,17 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.187] — 2026-11-26
+
+### Added
+- Kiosks (Settings → Kiosks): the first part of the iPad kiosk. An
+  administrator adds an iPad, picks its jobs (event check-in, library sign-in,
+  join or renew), says whether a volunteer stands with it and how soon it
+  clears the screen, and gets a 6-digit pairing code that works once and lasts
+  10 minutes. The iPad app trades the code for its own pass. Removing an iPad,
+  or giving it a new code, stops the old pass at once. What each iPad may do is
+  checked on the website, not just in the app.
+
 ## [1.5.186] — 2026-11-26
 
 ### Fixed

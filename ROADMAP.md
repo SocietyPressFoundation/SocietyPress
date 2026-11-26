@@ -16,6 +16,16 @@ For what's already shipped, see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Recently shipped
 
+### Backups copied to Google Drive — 1.5.185 and 1.5.186
+
+Each backup is also copied into the society's own Google Drive, keeping as
+many copies as "Keep this many". A volunteer connects once on the Export &
+Backup page. Sign-in goes through a relay on societypress.net that holds
+Google's app secret and stores nothing; files go straight from the site to
+Google. SocietyPress sees only the files it creates. Tested end to end on
+the demo 2026-11-26, and the Google app was published the same day. Dropbox
+and OneDrive maybe later.
+
 ### AI Assistant — 1.5.176
 
 "Ask the Society" answers visitors from the site's own calendar, membership
@@ -219,25 +229,7 @@ before the session ends.
 
 ### High
 
-#### Send backups off the server automatically
-
-**Motivation:** Backups are saved on the same server as the site, and the
-volunteer is only emailed a reminder to download one. If nobody does and the
-host dies, the backups die with the site and Restore has nothing to restore.
-**Scope:** After each backup, copy it to the society's Google Drive, keeping
-as many copies as the backup screen's retention setting. Google Drive first,
-decided 2026-11-19: volunteers have Google accounts far more often than
-Dropbox. Google's app secret cannot ship in a downloadable plugin, so a small
-stateless relay on societypress.net holds it, swaps the sign-in code for
-access passes, and renews the hourly pass before each upload. Backup files
-never pass through the relay. If societypress.net is down, that day's copy
-fails, the local backup still runs, and the volunteer is warned. Ask only for
-access to files SocietyPress creates (the `drive.file` permission). The relay
-shows which site is being connected before the volunteer signs in. Dropbox
-and OneDrive maybe later.
-**Blockers:** Charles creates a Google account on dev@societypress.net (the
-mailbox exists as of 2026-11-19), then a Google Cloud project for the
-SocietyPress app. Build after that, so it is tested against the real Google.
+Nothing else at high priority right now.
 
 ### Medium
 

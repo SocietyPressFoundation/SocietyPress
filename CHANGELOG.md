@@ -20,6 +20,14 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.184] — 2026-11-26
+
+### Fixed
+- Changes to colors, fonts, menu size and other SocietyPress settings now show
+  on the site right away. Saving a setting, or switching themes, clears the page
+  cache (LiteSpeed, WP Rocket, W3 Total Cache, WP Super Cache), which kept
+  serving the old look before.
+
 ## [1.5.183] — 2026-11-25
 
 ### Fixed

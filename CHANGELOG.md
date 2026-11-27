@@ -20,6 +20,15 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.188] — 2026-11-27
+
+### Fixed
+- Settings → Payments: the Show button beside the Webhook Signing Secret now
+  reveals the secret.
+- Deleting a meeting record, a committee or a store product now asks
+  "Are you sure?" first. Before, the confirmation was skipped and the item was
+  deleted on the first click.
+
 ## [1.5.187] — 2026-11-26
 
 ### Added

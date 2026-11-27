@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.187
+ * Version:     1.5.188
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.187' );
+define( 'SOCIETYPRESS_VERSION', '1.5.188' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -44083,7 +44083,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.187',
+            'version'     => '1.5.188',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -44091,7 +44091,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.187',
+            'version'     => '1.5.188',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -44099,7 +44099,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.187',
+            'version'     => '1.5.188',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -44107,7 +44107,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.187',
+            'version'     => '1.5.188',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -44115,7 +44115,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.187',
+            'version'     => '1.5.188',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
@@ -61723,7 +61723,7 @@ add_action( 'admin_init', function () {
                    value="<?php echo esc_attr( $val ); ?>" class="large-text"
                    placeholder="whsec_..." autocomplete="off" spellcheck="false">
             <button type="button" class="button button-small sp-toggle-secret"
-                    onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent=<?php echo wp_json_encode( __( 'Hide', 'societypress' ) ); ?>;}else{i.type='password';this.textContent=<?php echo wp_json_encode( __( 'Show', 'societypress' ) ); ?>;}">
+                    onclick="var i=this.previousElementSibling;if(i.type==='password'){i.type='text';this.textContent=<?php echo esc_attr( wp_json_encode( __( 'Hide', 'societypress' ) ) ); ?>;}else{i.type='password';this.textContent=<?php echo esc_attr( wp_json_encode( __( 'Show', 'societypress' ) ) ); ?>;}">
                 <?php esc_html_e( 'Show', 'societypress' ); ?>
             </button>
             <p class="description">
@@ -89237,7 +89237,7 @@ function sp_render_meetings_page(): void {
                                 <strong><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $m->title ); ?></a></strong>
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $del_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this meeting record? Attached files in the Media Library are kept.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $del_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo esc_attr( wp_json_encode( __( 'Delete this meeting record? Attached files in the Media Library are kept.', 'societypress' ) ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( sp_format_wall_clock( $m->meeting_date, get_option( 'date_format' ) ) ); ?></td>
@@ -89566,7 +89566,7 @@ function sp_render_committees_page(): void {
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
                                     <span class="toggle"><a href="<?php echo esc_url( $toggle_url ); ?>"><?php echo (int) $c->active ? esc_html__( 'Deactivate', 'societypress' ) : esc_html__( 'Activate', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this committee? Member assignments are preserved.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo esc_attr( wp_json_encode( __( 'Delete this committee? Member assignments are preserved.', 'societypress' ) ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo esc_html( $chair_name ); ?></td>
@@ -113336,7 +113336,7 @@ function sp_render_store_products_page(): void {
                                 <div class="row-actions">
                                     <span class="edit"><a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'societypress' ); ?></a> | </span>
                                     <span class="toggle"><a href="<?php echo esc_url( $toggle_url ); ?>"><?php echo (int) $p->active ? esc_html__( 'Deactivate', 'societypress' ) : esc_html__( 'Activate', 'societypress' ); ?></a> | </span>
-                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo wp_json_encode( __( 'Delete this product? Past order history is preserved.', 'societypress' ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
+                                    <span class="delete"><a href="<?php echo esc_url( $delete_url ); ?>" class="sp-text-danger" onclick="spConfirm(<?php echo esc_attr( wp_json_encode( __( 'Delete this product? Past order history is preserved.', 'societypress' ) ) ); ?>, function(){window.location=this.href;}.bind(this));return false;"><?php esc_html_e( 'Delete', 'societypress' ); ?></a></span>
                                 </div>
                             </td>
                             <td><?php echo $p->sku ? esc_html( $p->sku ) : '—'; ?></td>

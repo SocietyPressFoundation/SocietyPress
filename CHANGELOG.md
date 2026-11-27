@@ -20,6 +20,19 @@ The 1.0 and 1.1 development line is archived in
 
 ---
 
+## [1.5.189] — 2026-11-27
+
+### Fixed
+- Help Desk: an attachment that couldn't be added (too large, the wrong kind
+  of file, or one too many) used to vanish without a word while the ticket
+  said "Sent." The ticket now lists each file that wasn't attached and why.
+- Help Desk: a reply whose only attachment was refused no longer posts an
+  empty message or emails anyone about it.
+
+### Changed
+- Help Desk: attachments can now be up to 20 MB each (was 5 MB), so an
+  original photo straight from a phone fits.
+
 ## [1.5.188] — 2026-11-27
 
 ### Fixed

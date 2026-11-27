@@ -3,7 +3,7 @@
  * Plugin Name: SocietyPress
  * Plugin URI:  https://societypress.net
  * Description: Membership management for genealogical and historical societies.
- * Version:     1.5.188
+ * Version:     1.5.189
  * Author:      Stricklin Development
  * Author URI:  https://stricklindevelopment.com/
  * License:     GPL-2.0-or-later
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 // CONSTANTS
 // ============================================================================
 
-define( 'SOCIETYPRESS_VERSION', '1.5.188' );
+define( 'SOCIETYPRESS_VERSION', '1.5.189' );
 define( 'SOCIETYPRESS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'SOCIETYPRESS_PLUGIN_FILE', __FILE__ );
@@ -22305,9 +22305,10 @@ function sp_ticket_file_types(): array {
 }
 
 function sp_ticket_file_max_bytes(): int {
-    // A phone screenshot is under 2 MB and a photographed screen under 5. Past
-    // that it is a video or a mistake, and shared hosting will refuse it anyway.
-    return 5 * 1024 * 1024;
+    // WHY 20 MB: a straight-off-the-phone photo runs 3–12 MB, and "my photo
+    // looks wrong" tickets need that original, not a shrunken copy. 5 MB
+    // silently ate exactly those. 20 still sits well under common host limits.
+    return 20 * 1024 * 1024;
 }
 
 function sp_ticket_files_per_post(): int {
@@ -22368,7 +22369,7 @@ function sp_ticket_files_dir(): ?string {
  * @param string   $field     The name of the file input.
  * @return int Number of files kept.
  */
-function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field ): int {
+function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field, array &$refused = [] ): int {
     global $wpdb;
 
     if ( empty( $_FILES[ $field ] ) || ! is_array( $_FILES[ $field ]['name'] ?? null ) ) {
@@ -22385,19 +22386,52 @@ function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field 
     $names   = $_FILES[ $field ]['name'];
     $kept    = 0;
 
+    // WHY every skip records a reason: these used to be silent. A reporter
+    // attached a too-big original twice, saw "Sent." both times, and the
+    // ticket got two empty replies while the photo that explained the
+    // problem never arrived. Whoever attached a file must hear it didn't go.
     foreach ( array_keys( $names ) as $i ) {
-        if ( $kept >= sp_ticket_files_per_post() ) {
-            break;
-        }
-
+        $name  = sanitize_file_name( (string) $names[ $i ] );
         $error = (int) ( $_FILES[ $field ]['error'][ $i ] ?? UPLOAD_ERR_NO_FILE );
         $tmp   = (string) ( $_FILES[ $field ]['tmp_name'][ $i ] ?? '' );
         $size  = (int) ( $_FILES[ $field ]['size'][ $i ] ?? 0 );
 
-        if ( $error !== UPLOAD_ERR_OK || $tmp === '' || ! is_uploaded_file( $tmp ) ) {
+        if ( $error === UPLOAD_ERR_NO_FILE ) {
             continue;
         }
-        if ( $size <= 0 || $size > sp_ticket_file_max_bytes() ) {
+        if ( $kept >= sp_ticket_files_per_post() ) {
+            $refused[] = sprintf(
+                /* translators: 1: file name, 2: how many files one message can carry */
+                __( '%1$s was not attached: one message can carry %2$d files.', 'societypress' ),
+                $name,
+                sp_ticket_files_per_post()
+            );
+            continue;
+        }
+        if ( in_array( $error, [ UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE ], true )
+            || ( $error === UPLOAD_ERR_OK && $size > sp_ticket_file_max_bytes() ) ) {
+            $refused[] = $size > 0
+                ? sprintf(
+                    /* translators: 1: file name, 2: its size, 3: the largest allowed, e.g. "20 MB" */
+                    __( '%1$s was not attached: it is %2$s, and the limit is %3$s.', 'societypress' ),
+                    $name,
+                    size_format( $size ),
+                    size_format( sp_ticket_file_max_bytes() )
+                )
+                : sprintf(
+                    /* translators: 1: file name, 2: the largest allowed, e.g. "20 MB" */
+                    __( '%1$s was not attached: it is larger than the %2$s limit.', 'societypress' ),
+                    $name,
+                    size_format( sp_ticket_file_max_bytes() )
+                );
+            continue;
+        }
+        if ( $error !== UPLOAD_ERR_OK || $tmp === '' || ! is_uploaded_file( $tmp ) || $size <= 0 ) {
+            $refused[] = sprintf(
+                /* translators: %s: file name */
+                __( '%s did not upload. Please try attaching it again.', 'societypress' ),
+                $name
+            );
             continue;
         }
 
@@ -22409,6 +22443,11 @@ function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field 
             finfo_close( $finfo );
         }
         if ( ! isset( $allowed[ $mime ] ) ) {
+            $refused[] = sprintf(
+                /* translators: %s: file name */
+                __( '%s was not attached: only pictures (JPG, PNG, GIF, WebP) and PDFs can be added.', 'societypress' ),
+                $name
+            );
             continue;
         }
 
@@ -22418,6 +22457,11 @@ function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field 
         $stored = sprintf( 't%d-%s.%s', $ticket_id, wp_generate_password( 24, false, false ), $allowed[ $mime ] );
 
         if ( ! move_uploaded_file( $tmp, $dir . '/' . $stored ) ) {
+            $refused[] = sprintf(
+                /* translators: %s: file name */
+                __( '%s did not upload. Please try attaching it again.', 'societypress' ),
+                $name
+            );
             continue;
         }
 
@@ -22425,7 +22469,7 @@ function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field 
             'ticket_id'     => $ticket_id,
             'reply_id'      => $reply_id,
             'user_id'       => get_current_user_id(),
-            'original_name' => sanitize_file_name( (string) $names[ $i ] ),
+            'original_name' => $name,
             'stored_name'   => $stored,
             'mime_type'     => $mime,
             'size_bytes'    => $size,
@@ -22436,6 +22480,26 @@ function sp_ticket_store_uploads( int $ticket_id, ?int $reply_id, string $field 
     }
 
     return $kept;
+}
+
+/**
+ * Carry the list of refused attachments across the post-redirect-get.
+ *
+ * WHY a per-user transient: the handler redirects, so the reasons have to
+ * survive one page load. File names don't belong in a URL, and a minute is
+ * plenty for the redirect that reads them straight back.
+ */
+function sp_ticket_stash_refused( array $refused ): void {
+    if ( $refused ) {
+        set_transient( 'sp_ticket_refused_' . get_current_user_id(), $refused, MINUTE_IN_SECONDS );
+    }
+}
+
+function sp_ticket_take_refused(): array {
+    $key     = 'sp_ticket_refused_' . get_current_user_id();
+    $refused = get_transient( $key );
+    delete_transient( $key );
+    return is_array( $refused ) ? $refused : [];
 }
 
 /**
@@ -22992,7 +23056,9 @@ add_action( 'admin_post_sp_file_ticket', function () {
     ] );
 
     $ticket_id = (int) $wpdb->insert_id;
-    sp_ticket_store_uploads( $ticket_id, null, 'sp_ticket_files' );
+    $refused   = [];
+    sp_ticket_store_uploads( $ticket_id, null, 'sp_ticket_files', $refused );
+    sp_ticket_stash_refused( $refused );
     sp_ticket_notify_answerers( $ticket_id );
 
     wp_safe_redirect( add_query_arg(
@@ -23090,9 +23156,19 @@ add_action( 'admin_post_sp_reply_ticket', function () {
         $reply_id = (int) $wpdb->insert_id;
     }
 
+    $refused = [];
     if ( $reply_id ) {
-        sp_ticket_store_uploads( $ticket_id, $reply_id, 'sp_ticket_files' );
+        $kept = sp_ticket_store_uploads( $ticket_id, $reply_id, 'sp_ticket_files', $refused );
+
+        // WHY: the reply row existed only to hold the files. If none of them
+        // made it, an empty reply is noise in the thread and would email the
+        // other side about nothing — take it back out.
+        if ( $body === '' && 0 === $kept ) {
+            $wpdb->delete( $wpdb->prefix . 'sp_ticket_replies', [ 'id' => $reply_id ] );
+            $reply_id = null;
+        }
     }
+    sp_ticket_stash_refused( $refused );
 
     $changed = [ 'updated_at' => current_time( 'mysql' ) ];
 
@@ -23115,6 +23191,16 @@ add_action( 'admin_post_sp_reply_ticket', function () {
         // gets the status dropdown too, and it sits on the current status, so
         // their reply always arrived "set to Done" and never reopened.
         $changed['status'] = 'new';
+    }
+
+    // WHY: nothing written, nothing attached, no status change — so there
+    // is nothing to save, nobody to email, and "Sent." would be a lie.
+    if ( ! $reply_id && ! isset( $changed['status'] ) ) {
+        wp_safe_redirect( add_query_arg(
+            [ 'page' => 'sp-ticket', 'ticket' => $ticket_id, 'sp_unsent' => 1 ],
+            admin_url( 'admin.php' )
+        ) );
+        exit;
     }
 
     $wpdb->update( $wpdb->prefix . 'sp_tickets', $changed, [ 'id' => $ticket_id ] );
@@ -23640,6 +23726,20 @@ function sp_render_ticket_page(): void {
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Sent. Whoever looks after your website has been emailed, and their reply will appear here.', 'societypress' ); ?></p></div>
         <?php elseif ( isset( $_GET['sp_replied'] ) ) : ?>
             <div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Sent.', 'societypress' ); ?></p></div>
+        <?php elseif ( isset( $_GET['sp_unsent'] ) ) : ?>
+            <div class="notice notice-error"><p><?php esc_html_e( 'Nothing was sent. Type a message or attach a file, then press Send again.', 'societypress' ); ?></p></div>
+        <?php endif; ?>
+
+        <?php $sp_refused = sp_ticket_take_refused(); ?>
+        <?php if ( $sp_refused ) : ?>
+            <div class="notice notice-error">
+                <p><strong><?php esc_html_e( 'Some files could not be attached:', 'societypress' ); ?></strong></p>
+                <ul class="ul-disc">
+                    <?php foreach ( $sp_refused as $line ) : ?>
+                        <li><?php echo esc_html( $line ); ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
         <?php endif; ?>
 
         <p>
@@ -44083,7 +44183,7 @@ function sp_get_theme_registry(): array {
         'heritage' => [
             'slug'        => 'heritage',
             'name'        => 'Heritage',
-            'version'     => '1.5.188',
+            'version'     => '1.5.189',
             'description' => __( 'Warm, traditional theme inspired by old library stacks and leather-bound journals. Rich browns, soft cream, and antique gold.', 'societypress' ),
             'colors'      => [ '#3E2723', '#FDF6EC', '#B8860B', '#D4C5A9' ],
             'repo_path'   => 'theme-heritage',
@@ -44091,7 +44191,7 @@ function sp_get_theme_registry(): array {
         'coastline' => [
             'slug'        => 'coastline',
             'name'        => 'Coastline',
-            'version'     => '1.5.188',
+            'version'     => '1.5.189',
             'description' => __( 'Clean, modern theme with an airy coastal feel. Navy and white with soft blue accents — professional and welcoming.', 'societypress' ),
             'colors'      => [ '#1B3A5C', '#FFFFFF', '#5B9BD5', '#EFF6FC' ],
             'repo_path'   => 'theme-coastline',
@@ -44099,7 +44199,7 @@ function sp_get_theme_registry(): array {
         'prairie' => [
             'slug'        => 'prairie',
             'name'        => 'Prairie',
-            'version'     => '1.5.188',
+            'version'     => '1.5.189',
             'description' => __( 'Earthy, welcoming theme with warm greens and natural tones. Inspired by open landscapes and community gathering places.', 'societypress' ),
             'colors'      => [ '#2D5016', '#FAF7F2', '#7A9A5E', '#C4A265' ],
             'repo_path'   => 'theme-prairie',
@@ -44107,7 +44207,7 @@ function sp_get_theme_registry(): array {
         'ledger' => [
             'slug'        => 'ledger',
             'name'        => 'Ledger',
-            'version'     => '1.5.188',
+            'version'     => '1.5.189',
             'description' => __( 'Formal, archival theme with sharp contrasts and buttoned-up elegance. Charcoal, ivory, and burgundy evoke courthouses and official records.', 'societypress' ),
             'colors'      => [ '#2C2C2C', '#F8F5F0', '#7B2D3B', '#D4D0CB' ],
             'repo_path'   => 'theme-ledger',
@@ -44115,7 +44215,7 @@ function sp_get_theme_registry(): array {
         'parlor' => [
             'slug'        => 'parlor',
             'name'        => 'Parlor',
-            'version'     => '1.5.188',
+            'version'     => '1.5.189',
             'description' => __( 'Elegant, refined theme inspired by Victorian parlor rooms and fine stationery. Deep plum, warm ivory, and rose gold.', 'societypress' ),
             'colors'      => [ '#3C1053', '#FFF8F0', '#B76E79', '#E8C4C4' ],
             'repo_path'   => 'theme-parlor',
